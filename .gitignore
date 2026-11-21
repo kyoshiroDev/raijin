@@ -1,0 +1,25 @@
+# Dépendances et builds
+node_modules/
+dist/
+out-tsc/
+coverage/
+.nx/cache/
+.nx/workspace-data/
+.angular/
+.astro/
+
+# Secrets (jamais commités)
+.env
+.env.*
+!.env.example
+.secrets/
+
+# Captures temporaires
+docs/screenshots/**/*.tmp
+
+# Divers
+.DS_Store
+*.log
+.idea/
+test-results/
+playwright-report/
