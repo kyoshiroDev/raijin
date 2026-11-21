@@ -1,4 +1,5 @@
 import { Route } from '@angular/router';
+import { DesignPage } from '@raijin/web-ui';
 
 /**
  * Page de référence visuelle, disponible uniquement en développement.
@@ -10,7 +11,9 @@ const devOnlyRoutes: Route[] =
       {
         path: '_design',
         title: 'Design — Raijin',
-        loadComponent: () => import('@raijin/web-ui').then((m) => m.DesignPage),
+        // web-ui est déjà dans le bundle initial (coquille) : référence statique, retirée en prod
+        // avec cette branche morte (ngDevMode === false), DesignPage est alors éliminé par tree-shaking.
+        component: DesignPage,
       },
     ]
   : [];
@@ -26,6 +29,13 @@ export const appRoutes: Route[] = [
   {
     path: 'suivis',
     title: 'Suivis — Raijin',
+    loadChildren: () =>
+      import('@raijin/web-feature-suivis').then((m) => m.webFeatureSuivisRoutes),
+  },
+  {
+    // Les alertes vivent dans la feature « suivis » ; écran dédié construit en phase suivante.
+    path: 'alertes',
+    title: 'Alertes — Raijin',
     loadChildren: () =>
       import('@raijin/web-feature-suivis').then((m) => m.webFeatureSuivisRoutes),
   },

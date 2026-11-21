@@ -18,10 +18,20 @@ describe('App', () => {
     expect(host.querySelector('router-outlet')).not.toBeNull();
   });
 
+  it('affiche la barre d’onglets avec les 4 entrées et le bouton Notifications', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    const tabs = Array.from(host.querySelectorAll('rj-tab-bar a')).map((a) => a.textContent?.trim());
+    expect(tabs).toEqual(['Analyser', 'Suivis', 'Alertes', 'Compte']);
+    expect(host.querySelector('button[aria-label="Notifications"]')).not.toBeNull();
+    expect(host.querySelector('main#rj-main')).not.toBeNull();
+  });
+
   it('déclare les routes lazy des features et /_design en dev', () => {
     const paths = appRoutes.map((route) => route.path);
     expect(paths).toEqual(
-      expect.arrayContaining(['analyse', 'suivis', 'wallet', 'compte', '_design']),
+      expect.arrayContaining(['analyse', 'suivis', 'alertes', 'wallet', 'compte', '_design']),
     );
     expect(appRoutes.find((r) => r.path === 'analyse')?.loadChildren).toBeDefined();
   });

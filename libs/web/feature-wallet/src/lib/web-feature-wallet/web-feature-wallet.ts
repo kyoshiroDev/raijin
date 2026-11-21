@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 @Component({
   selector: 'rj-web-feature-wallet',
   template: `
-    <section class="mx-auto max-w-reading px-4 py-6 md:px-6 lg:px-8">
+    <section>
       <h1 class="font-display text-h2 text-ink">Scan de wallet</h1>
     </section>
   `,

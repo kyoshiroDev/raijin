@@ -28,6 +28,11 @@
             "glob": "*.{svg,png}",
             "input": "libs/brand/icons",
             "output": "icons"
+          },
+          {
+            "glob": "*.svg",
+            "input": "libs/brand/mascot",
+            "output": "brand/mascot"
           }
         ],
         "styles": [
