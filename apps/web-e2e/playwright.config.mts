@@ -2,7 +2,6 @@ import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { getReadyUrl, workspaceRoot } from '@nx/devkit';
 
-const isCI = !!process.env['CI'];
 // For CI, you may want to set BASE_URL to the deployed application.
 // getReadyUrl moves the address to the port the dev server task reported.
 const baseURL = process.env['BASE_URL'] || getReadyUrl('http://localhost:4200');
@@ -31,10 +30,11 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
+  // Serveur de dev, y compris en CI : la page /_design (référence visuelle testée en responsive et par axe)
+  // n'existe qu'en développement (retirée des builds de production).
   webServer: {
-    command: isCI
-      ? 'pnpm exec nx run web:serve-static'
-      : 'pnpm exec nx run web:serve',
+    command: 'pnpm exec nx run web:serve',
+    timeout: 180_000,
     url: getReadyUrl('http://localhost:4200'),
     reuseExistingServer: true,
     cwd: workspaceRoot,

@@ -44,14 +44,15 @@
 - Tâches :
   - [x] Workspace Nx, projets, tags, frontières, CI, thème Tailwind, PWA, contrats et utilitaires de base (architect)
   - [ ] Créer `.env.example` racine à partir du bloc de `docs/ENV.md` (bloqué pour les agents par la règle deny `.env.*` de `.claude/settings.json` : à faire par l'utilisateur ou l'orchestrateur)
-  - [ ] Composants de base dans `libs/web/ui` + page `/_design` remplie, tous états : Button, VerdictBadge, Card, Input + bouton Coller, AddressChip, BottomSheet, TabBar, Sidebar, Skeleton, EmptyState, Toast ; coquille de navigation (TabBar < 1024 px, Sidebar ≥ 1024 px) (ui-mobile-first). Contrats à utiliser : `Verdict`/`VERDICT_LABELS` (`@raijin/shared-contracts`), `truncateMiddle`/`formatCompactAmount` (`@raijin/shared-util`). Uniquement les utilitaires générés par les tokens (les palettes Tailwind par défaut sont désactivées).
+  - [x] Composants de base dans `libs/web/ui` + page `/_design` remplie, tous états : Button, VerdictBadge, Card, Input + bouton Coller, AddressChip, BottomSheet, TabBar, Sidebar, Skeleton, EmptyState, Toast ; coquille de navigation (TabBar < 1024 px, Sidebar ≥ 1024 px) (ui-mobile-first). Contrats à utiliser : `Verdict`/`VERDICT_LABELS` (`@raijin/shared-contracts`), `truncateMiddle`/`formatCompactAmount` (`@raijin/shared-util`). Uniquement les utilitaires générés par les tokens (les palettes Tailwind par défaut sont désactivées).
   - [ ] Tests : `run-many -t lint typecheck test build`, Playwright responsive de `/_design` (320 → 1920, sans scroll horizontal, cibles ≥ 44 px), axe, captures dans `docs/screenshots/phase-1/` (test-e2e)
   - [ ] Audit de sécurité du socle (CI, dépendances, `.gitignore`, aucune donnée sensible) (security-reviewer)
 - Tests :
 - Sécurité :
-- Commits :
+- Commits : `22e75fd` socle Nx · `6731ad1` import du banc (1 bis) · `4f00f97` composants + /_design
+- Décisions : icônes via `lucide` (lucide-angular incompatible Angular 22) ; graphe Nx non commité (6 Mo, régénérable).
 - Décisions : `.env.example` : chaque variable précédée d'un commentaire avec le service et l'URL de la page où l'obtenir (ou la commande pour la générer), groupée par service (demande utilisateur, à appliquer à chaque nouvelle variable).
-- Décisions : comptes externes supposés absents tant que l'utilisateur n'a pas répondu (simulations section 0 ter).
+- Décisions : comptes externes : seul Helius existe (réponse utilisateur) ; le reste en simulation (section 0 ter).
 
 ### Phase 1 bis — Banc de test, import
 - Tâches :
@@ -69,5 +70,4 @@
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
 
 ## Blocages
-- CI run 44955347320 en échec : `ERR_PNPM_IGNORED_BUILDS` (nx, @swc/core) au `pnpm install --frozen-lockfile`. À corriger par architect (allowBuilds dans pnpm-workspace.yaml) après les agents en cours.
-(aucun)
+- ~~CI run 44955347320 en échec (`ERR_PNPM_IGNORED_BUILDS`)~~ : levé, `allowBuilds` nx + @swc/core dans pnpm-workspace.yaml.
