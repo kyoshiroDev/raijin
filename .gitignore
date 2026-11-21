@@ -23,3 +23,33 @@ docs/screenshots/**/*.tmp
 .idea/
 test-results/
 playwright-report/
+
+# Nx / outils (fusionné depuis le workspace généré)
+tmp/
+.nx/polygraph
+.nx/self-healing
+.nx/migrate-runs
+.sass-cache/
+/typings
+Thumbs.db
+npm-debug.log
+yarn-error.log
+testem.log
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.claude/worktrees
+.claude/settings.local.json
+vite.config.*.timestamp*
+vitest.config.*.timestamp*
+
+.angular
+
+__screenshots__/
+.vitest
+
+# Graphe Nx (régénéré par : pnpm nx graph --file=docs/graph.html)
+docs/graph.html
+docs/static/

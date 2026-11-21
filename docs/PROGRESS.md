@@ -1,7 +1,8 @@
 # PROGRESS — Raijin Shield
 
 ## ACTION REQUISE (vide si rien)
-- **Question groupée (section 0 ter)** : quels comptes de `docs/COMPTES.md` existent déjà (domaine OVH, Stripe, Resend, Helius, Google, Zoho, B2, UptimeRobot, Sentry) ? En attendant ta réponse, tout est développé avec les simulations locales (Mailpit, BillingProvider simulé, RPC public + fixtures, Google désactivé).
+- Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
+- **Helius (phase 1 ter)** : ops-chrome créera les clés « raijin » et « raijin-banc-de-test » dans ton tableau de bord Helius ; tu devras copier toi-même la clé dans `.env` (`HELIUS_API_KEY`). Prépare une session Chrome connectée à Helius.
 
 ## Statut : phase 1 — Socle — en cours
 
@@ -23,7 +24,7 @@
 | Domaine raijinshield.com | — | achat OVH (utilisateur) | acheter, puis phase 8 ter (DNS via ops-chrome) |
 | Stripe | — | compte (mode test) | créer le compte, puis phase 1 ter |
 | Resend | — | compte + domaine | créer le compte ; dev via Mailpit |
-| Helius | — | compte + clé | créer le compte ; dev via RPC public + fixtures |
+| Helius | compte créé | projet + clés (phase 1 ter), clé à copier dans `.env` par l'utilisateur | ops-chrome en phase 1 ter ; en attendant, RPC public + fixtures |
 | Google (GA4, GSC, Cloud) | — | compte dédié | créer le compte ; services désactivés sans variables |
 | Zoho, B2, UptimeRobot, Sentry | — | comptes | avant la mise en ligne (phase 8 ter) |
 
@@ -37,11 +38,17 @@
 - Distant : https://github.com/kyoshiroDev/raijin (privé), `main` et `dev` poussées ; travail sur `dev`. Pas de protection de branche (offre payante) : `main` protégée par `.claude/settings.json`.
 
 ### Phase 1 — Socle
-- Plan (architect) : en cours
+- Plan (architect) : socle Nx 24 « integrated » (pnpm, sans Nx Cloud, alias `@raijin/*` dans `tsconfig.base.json`), 21 projets taggés (dont `brand`) `scope:*`/`type:*`, frontières bloquantes dans `eslint.config.mjs`, cibles lint/typecheck/test/build en cache, Tailwind 4 branché sur `libs/brand/tokens.css` via un thème unique `libs/web/ui/src/styles/theme.css`, PWA de base, route `/_design` (dev seulement, placeholder dans `libs/web/ui`), contrats Zod initiaux (`libs/shared/contracts` : adresse Solana/mint/wallet, `Verdict`, `CheckStatus`, `ApiError {code, message}`) et utilitaires (`libs/shared/util` : base58, `truncateMiddle`, montants compacts fr-FR), CI GitHub, `docs/ARCHITECTURE.md`, `docs/ENV.md`, `docs/graph.html`. Détail : `docs/ARCHITECTURE.md`.
 - Tâches :
+  - [x] Workspace Nx, projets, tags, frontières, CI, thème Tailwind, PWA, contrats et utilitaires de base (architect)
+  - [ ] Créer `.env.example` racine à partir du bloc de `docs/ENV.md` (bloqué pour les agents par la règle deny `.env.*` de `.claude/settings.json` : à faire par l'utilisateur ou l'orchestrateur)
+  - [ ] Composants de base dans `libs/web/ui` + page `/_design` remplie, tous états : Button, VerdictBadge, Card, Input + bouton Coller, AddressChip, BottomSheet, TabBar, Sidebar, Skeleton, EmptyState, Toast ; coquille de navigation (TabBar < 1024 px, Sidebar ≥ 1024 px) (ui-mobile-first). Contrats à utiliser : `Verdict`/`VERDICT_LABELS` (`@raijin/shared-contracts`), `truncateMiddle`/`formatCompactAmount` (`@raijin/shared-util`). Uniquement les utilitaires générés par les tokens (les palettes Tailwind par défaut sont désactivées).
+  - [ ] Tests : `run-many -t lint typecheck test build`, Playwright responsive de `/_design` (320 → 1920, sans scroll horizontal, cibles ≥ 44 px), axe, captures dans `docs/screenshots/phase-1/` (test-e2e)
+  - [ ] Audit de sécurité du socle (CI, dépendances, `.gitignore`, aucune donnée sensible) (security-reviewer)
 - Tests :
 - Sécurité :
 - Commits :
+- Décisions : `.env.example` : chaque variable précédée d'un commentaire avec le service et l'URL de la page où l'obtenir (ou la commande pour la générer), groupée par service (demande utilisateur, à appliquer à chaque nouvelle variable).
 - Décisions : comptes externes supposés absents tant que l'utilisateur n'a pas répondu (simulations section 0 ter).
 
 ## Blocages

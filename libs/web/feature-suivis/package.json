@@ -1,0 +1,10 @@
+{
+  "name": "@raijin/web-feature-suivis",
+  "version": "0.0.1",
+  "peerDependencies": {
+    "@angular/core": "^22.2.0",
+    "@angular/router": "~22.2.0"
+  },
+  "sideEffects": false,
+  "private": true
+}

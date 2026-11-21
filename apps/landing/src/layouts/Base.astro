@@ -1,0 +1,32 @@
+---
+import faviconUrl from '../../../../libs/brand/icons/favicon.svg?url';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#07090d" />
+    <link rel="icon" type="image/svg+xml" href={faviconUrl} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Polices de la charte : chargées ici car l'@import de tokens.css est ignoré une fois inliné par Tailwind. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@600;700&display=swap" />
+  </head>
+  <body class="min-h-dvh bg-base font-sans text-ink">
+    <slot />
+  </body>
+</html>

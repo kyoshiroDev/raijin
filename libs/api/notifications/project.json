@@ -1,0 +1,38 @@
+{
+  "name": "api-notifications",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/notifications/src",
+  "projectType": "library",
+  "tags": [
+    "scope:api",
+    "type:feature"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/api/notifications",
+        "tsConfig": "libs/api/notifications/tsconfig.lib.json",
+        "packageJson": "libs/api/notifications/package.json",
+        "main": "libs/api/notifications/src/index.ts",
+        "assets": [
+          "libs/api/notifications/*.md"
+        ]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "libs/api/notifications",
+        "commands": [
+          "tsc --noEmit -p tsconfig.lib.json",
+          "tsc --noEmit -p tsconfig.spec.json"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

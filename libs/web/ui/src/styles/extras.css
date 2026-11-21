@@ -1,0 +1,17 @@
+/* Compléments de thème dérivés de la charte (BRAND.md) : grille de 4 px, rayon « full »,
+   courbe d'animation. Aucune couleur ici : les couleurs viennent de libs/brand/tokens.css. */
+@theme {
+  --spacing: 4px;
+  --radius-full: 999px;
+  --ease-raijin: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Largeur de lecture max du contenu (PROMPT.md §3) : max-w-reading. */
+  --container-reading: 1200px;
+}
+
+@layer base {
+  body {
+    min-height: 100dvh;
+    background: var(--color-base);
+    color: var(--color-ink);
+  }
+}

@@ -1,0 +1,10 @@
+# Workspace pnpm à un seul package (monorepo Nx « integrated » : toutes les dépendances à la racine).
+# Scripts d'installation des dépendances : refusés par défaut (sécurité de la chaîne d'approvisionnement).
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  unrs-resolver: false
+  lmdb: false
+  msgpackr-extract: false
+  '@nestjs/core': false
+  sharp: false

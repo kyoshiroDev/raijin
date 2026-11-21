@@ -1,0 +1,37 @@
+{
+  "name": "shared-risk-engine",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/risk-engine/src",
+  "projectType": "library",
+  "tags": [
+    "scope:shared",
+    "type:util"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/shared/risk-engine",
+        "main": "libs/shared/risk-engine/src/index.ts",
+        "tsConfig": "libs/shared/risk-engine/tsconfig.lib.json",
+        "assets": [
+          "libs/shared/risk-engine/*.md"
+        ]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "libs/shared/risk-engine",
+        "commands": [
+          "tsc --noEmit -p tsconfig.lib.json",
+          "tsc --noEmit -p tsconfig.spec.json"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}
