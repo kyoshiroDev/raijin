@@ -30,10 +30,10 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
         <div class="mx-auto flex h-14 max-w-reading items-center gap-3 px-4 md:px-6 lg:px-8">
           <a
             routerLink="/"
-            class="inline-flex min-h-11 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring lg:hidden"
+            class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring lg:hidden"
             aria-label="Raijin Shield, accueil"
           >
-            <rj-logo aria-hidden="true" />
+            <rj-logo [decorative]="true" />
           </a>
           <button
             type="button"

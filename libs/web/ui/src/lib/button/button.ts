@@ -13,7 +13,7 @@ const BASE =
 const VARIANTS: Record<RjButtonVariant, string> = {
   // Jaune thunder : UNE seule action principale par écran ; halo shadow-glow au survol et au focus.
   primary: 'bg-thunder text-on-thunder hover:shadow-glow focus-visible:shadow-glow',
-  secondary: 'border border-line bg-surface-raised text-ink hover:border-ink-muted',
+  secondary: 'border border-line-strong bg-surface-raised text-ink hover:border-ink-muted',
   ghost: 'bg-transparent text-ink hover:bg-surface-raised',
 };
 

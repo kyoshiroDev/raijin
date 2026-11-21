@@ -33,11 +33,11 @@ export const appRoutes: Route[] = [
       import('@raijin/web-feature-suivis').then((m) => m.webFeatureSuivisRoutes),
   },
   {
-    // Les alertes vivent dans la feature « suivis » ; écran dédié construit en phase suivante.
+    // Les alertes vivent dans la feature « suivis » (docs/ARCHITECTURE.md), écran dédié.
     path: 'alertes',
     title: 'Alertes — Raijin',
     loadChildren: () =>
-      import('@raijin/web-feature-suivis').then((m) => m.webFeatureSuivisRoutes),
+      import('@raijin/web-feature-suivis').then((m) => m.webFeatureAlertesRoutes),
   },
   {
     path: 'wallet',

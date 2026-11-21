@@ -16,10 +16,10 @@ import { badgeText, type RjNavItem } from './nav-item';
       <div class="flex h-14 shrink-0 items-center border-b border-line" [class.px-5]="!collapsed()" [class.justify-center]="collapsed()">
         <a
           routerLink="/"
-          class="inline-flex min-h-11 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           aria-label="Raijin Shield, accueil"
         >
-          <rj-logo [variant]="collapsed() ? 'mark' : 'wordmark'" aria-hidden="true" />
+          <rj-logo [variant]="collapsed() ? 'mark' : 'wordmark'" [decorative]="true" />
         </a>
       </div>
       <nav [attr.aria-label]="label()" class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-2">
@@ -42,7 +42,7 @@ import { badgeText, type RjNavItem } from './nav-item';
                     [class.text-ink-muted]="!rla.isActive"
                   >
                     <rj-icon [name]="item.icon" [size]="20" />
-                    <span [class.sr-only]="collapsed()" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+                    <span [class.sr-only]="collapsed()" [attr.title]="collapsed() ? null : item.label" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
                     @if (badge(item); as count) {
                       <span
                         aria-hidden="true"

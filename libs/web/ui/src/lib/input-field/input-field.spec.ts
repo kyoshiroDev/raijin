@@ -42,6 +42,16 @@ describe('RjInputField', () => {
     expect(pasted).toHaveBeenCalledWith('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU');
   });
 
+  it('tronque le texte collé à maxlength (256 par défaut) et pose maxlength sur le champ', async () => {
+    const fixture = setup(async () => 'a'.repeat(5000));
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('input')?.getAttribute('maxlength')).toBe('256');
+    (host.querySelector('button') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.value()).toHaveLength(256);
+  });
+
   it('collage refusé : message de repli, focus sur le champ, pasteFailed émis', async () => {
     const fixture = setup(async () => null);
     const failed = vi.fn();

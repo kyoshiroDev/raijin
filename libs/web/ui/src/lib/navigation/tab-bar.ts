@@ -37,7 +37,7 @@ import { badgeText, type RjNavItem } from './nav-item';
                   >
                 }
               </span>
-              <span class="max-w-full truncate">{{ item.label }}</span>
+              <span class="max-w-full truncate" [attr.title]="item.label">{{ item.label }}</span>
               @if (badge(item)) {
                 <span class="sr-only">, {{ item.badge }} non lues</span>
               }

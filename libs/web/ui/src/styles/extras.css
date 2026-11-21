@@ -11,6 +11,10 @@
   --text-input--line-height: 24px;
   /* Seuil du logotype : symbole seul sous 360 px (PROMPT.md §2) : variante xs:. */
   --breakpoint-xs: 360px;
+  /* Bordure des contrôles interactifs (champs, bouton secondaire) dont la bordure est la seule
+     limite : ≥ 3:1 sur base, surface et surface-raised (WCAG 1.4.11). Alias dérivé de ink-muted ;
+     border-line reste réservé aux séparateurs et aux cartes. Suit le thème clair via les variables. */
+  --color-line-strong: color-mix(in srgb, var(--color-ink-muted) 70%, var(--color-surface));
 }
 
 /* Safe areas iOS (PROMPT.md §3) : utilitaires dédiés plutôt que des valeurs arbitraires. */

@@ -149,7 +149,7 @@
         <li class="min-w-0">
           <rj-card [interactive]="true">
             <div class="flex items-start justify-between gap-3">
-              <h3 class="min-w-0 font-display text-h3 text-ink line-clamp-2">{{ token.name }}</h3>
+              <h3 class="min-w-0 font-display text-h3 text-ink line-clamp-2" [title]="token.name">{{ token.name }}</h3>
               <rj-verdict-badge [verdict]="token.verdict" />
             </div>
             <ul class="flex flex-col gap-1.5">

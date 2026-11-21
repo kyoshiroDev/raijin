@@ -15,6 +15,9 @@ import { RjIcon } from '../icon/icon';
 
 let nextId = 0;
 
+/** Longueur max par défaut : assez pour une adresse ou un lien DexScreener / pump.fun / Solscan. */
+export const RJ_INPUT_MAX_LENGTH = 256;
+
 /**
  * Champ de saisie Raijin : 16 px minimum (pas de zoom iOS), 48 px de haut, `inputmode` et
  * `autocomplete` réglables. Avec `pasteable`, un bouton « Coller » lit le presse-papiers ;
@@ -35,6 +38,7 @@ let nextId = 0;
         [attr.autocomplete]="autocomplete()"
         [attr.enterkeyhint]="enterkeyhint()"
         [attr.placeholder]="placeholder() || null"
+        [attr.maxlength]="maxlength()"
         [attr.aria-invalid]="error() ? 'true' : null"
         [attr.aria-describedby]="describedBy()"
         [disabled]="disabled()"
@@ -44,13 +48,13 @@ let nextId = 0;
         spellcheck="false"
         class="min-h-12 w-full min-w-0 flex-1 rounded-md border bg-surface px-3 text-input text-ink placeholder:font-sans placeholder:text-ink-muted transition-colors duration-150 ease-raijin hover:border-ink-muted focus-visible:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
         [class.font-mono]="mono()"
-        [class.border-line]="!error()"
+        [class.border-line-strong]="!error()"
         [class.border-danger]="!!error()"
       />
       @if (pasteable()) {
         <button
           type="button"
-          class="inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center gap-2 rounded-md border border-line bg-surface-raised px-3 text-body font-semibold text-ink transition-colors duration-200 ease-raijin hover:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
+          class="inline-flex min-h-12 min-w-12 shrink-0 items-center justify-center gap-2 rounded-md border border-line-strong bg-surface-raised px-3 text-body font-semibold text-ink transition-colors duration-200 ease-raijin hover:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
           [disabled]="disabled()"
           [attr.aria-label]="'Coller dans le champ ' + label()"
           (click)="paste()"
@@ -94,6 +98,8 @@ export class RjInputField {
   readonly mono = input(false);
   readonly pasteable = input(false);
   readonly disabled = input(false);
+  /** Limite de saisie, appliquée aussi au texte collé (le presse-papiers n'est pas une source sûre). */
+  readonly maxlength = input(RJ_INPUT_MAX_LENGTH);
 
   readonly pasted = output<string>();
   readonly pasteFailed = output<void>();
@@ -118,7 +124,7 @@ export class RjInputField {
       this.field().nativeElement.focus();
       return;
     }
-    const clean = text.trim();
+    const clean = text.trim().slice(0, this.maxlength());
     this.pasteRefused.set(false);
     this.value.set(clean);
     this.pasted.emit(clean);
