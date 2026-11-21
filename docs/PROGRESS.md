@@ -4,6 +4,8 @@
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
 - **Helius (phase 1 ter)** : ops-chrome créera les clés « raijin » et « raijin-banc-de-test » dans ton tableau de bord Helius ; tu devras copier toi-même la clé dans `.env` (`HELIUS_API_KEY`). Prépare une session Chrome connectée à Helius.
 
+- **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
+
 ## Statut : phase 1 — Socle — en cours
 
 ## Compréhension et plan (10 lignes)
@@ -51,5 +53,21 @@
 - Décisions : `.env.example` : chaque variable précédée d'un commentaire avec le service et l'URL de la page où l'obtenir (ou la commande pour la générer), groupée par service (demande utilisateur, à appliquer à chaque nouvelle variable).
 - Décisions : comptes externes supposés absents tant que l'utilisateur n'a pas répondu (simulations section 0 ter).
 
+### Phase 1 bis — Banc de test, import
+- Tâches :
+  - [x] Front de `raijin-old` copié dans `apps/raijin-banc-de-test/` (src, public, ngsw-config.json ; 242 fichiers, 1,7 Mo), `supabase/` dans `legacy/supabase/` (1,9 Mo), plus `legacy/scripts/`, `legacy/docs/`, `legacy/vercel.json` en référence (`legacy/README.md`). Exclus : `.git`, `node_modules`, `.env*`, `.secrets/`, `dist`, `.angular`, `supabase/.temp`, `supabase/.branches`, `*.local.sql`, `src/environments/environment.ts` (généré, contenait la config réelle). Dépôt d'origine non modifié. (bench-quant)
+  - [x] Projet Nx `raijin-banc-de-test` (tags `scope:bench`, `type:app`) : lint, typecheck, test (Vitest via `@angular/build:unit-test`), build (`@angular/build:application`, service worker en prod), serve (port 4300), `write-env`. `legacy/` n'est pas un projet Nx (`.nxignore`, `.prettierignore`). (bench-quant)
+  - [x] Dépendances ajoutées : `@angular/service-worker@~22.2.0` (22.2.7), `@supabase/supabase-js@^2.119.0` (2.119.2, transitoire jusqu'à la phase 8 bis). Aucune 2e version d'Angular : le code était déjà en Angular 22 zoneless. (bench-quant)
+  - [x] Renommage « Raijin-banc-de-test » (title, titres de routes, manifest `name`, `short_name` « Banc test », meta, textes iOS) ; badge permanent `app-bench-badge` « BANC DE TEST » couleur `warn` dans `PageHeader` (tous les écrans connectés) et sur connexion, mot de passe oublié/réinitialisé, compte ; pas de mascotte ; `<meta name="robots" content="noindex, nofollow, noarchive">` et `public/robots.txt` `Disallow: /` ; mention « pas un conseil en investissement ». (bench-quant)
+  - [x] Config Supabase : aucune clé en dur dans les sources versionnées ; `src/environments/environment.ts` versionné avec valeurs factices, config réelle optionnelle via `environment.local.ts` (ignoré par Git) généré par `pnpm nx run raijin-banc-de-test:write-env` (refuse toute clé non publique) et `--configuration=local`. (bench-quant)
+- Adaptations : `noUncheckedIndexedAccess: false` au niveau du projet seulement (289 erreurs d'indexation dans le code d'origine, qui ne l'activait pas ; correction reportée au portage pour ne pas toucher au comportement des calculs). Tailwind 4 limité aux sources du banc (`@import "tailwindcss" source(".")`). Thème d'origine conservé (police Inter auto-hébergée, CSP `font-src 'self'`, rayons/tailles différents de `libs/brand`) ; le `warn` du banc est identique au token `warn` de `libs/brand` (vérifié par `bench-badge.spec.ts`). Test `password-rules.spec.ts` : valeurs `[auth]` de `config.toml` figées dans le spec (import relatif vers `legacy/` refusé par `@nx/enforce-module-boundaries`, règle non désactivée). Aucune règle ESLint désactivée.
+- Tests : `pnpm nx run-many -t lint typecheck test build -p raijin-banc-de-test` vert (79 fichiers, 758 tests ; build initial 540 ko / 130 ko transférés, sous le budget 1 Mo). Global `run-many -t lint typecheck test build` : tout vert sauf `web-ui:lint` et `web-ui:build` (paquet `lucide` importé mais absent de `libs/web/ui/package.json`, travail en cours de ui-mobile-first, hors banc).
+- Points ouverts :
+  - [ ] Inventaire `docs/BENCH.md` (Edge Functions, crons, tables, RLS, Realtime, Auth, Vault → équivalent cible) : phase 8 bis.
+  - [ ] Sélecteurs `app-` conservés (renommage éventuel au portage) ; `strictTemplates` actif et vert.
+  - [ ] `pnpm` signale des avertissements de dépendances pairs (préexistants, à examiner par architect).
+  - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
+
 ## Blocages
+- CI run 44955347320 en échec : `ERR_PNPM_IGNORED_BUILDS` (nx, @swc/core) au `pnpm install --frozen-lockfile`. À corriger par architect (allowBuilds dans pnpm-workspace.yaml) après les agents en cours.
 (aucun)

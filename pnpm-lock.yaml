@@ -26,6 +26,9 @@ importers:
       '@angular/router':
         specifier: ~22.2.0
         version: 22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(rxjs@7.8.2)
+      '@angular/service-worker':
+        specifier: ~22.2.7
+        version: 22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.2.11(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -35,9 +38,15 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.0.0
         version: 11.2.11(@nestjs/common@11.2.11(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.11)
+      '@supabase/supabase-js':
+        specifier: ^2.119.2
+        version: 2.119.2
       axios:
         specifier: ^1.6.0
         version: 1.21.1
+      lucide:
+        specifier: ^1.77.0
+        version: 1.77.0
       reflect-metadata:
         specifier: ^0.2.0
         version: 0.2.2
@@ -56,7 +65,7 @@ importers:
         version: 22.2.8(chokidar@5.0.0)
       '@angular/build':
         specifier: ~22.2.0
-        version: 22.2.8(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@angular/compiler@22.2.7)(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(@types/node@24.19.2)(istanbul-lib-instrument@6.0.3)(jiti@2.4.2)(less@4.8.1)(ng-packagr@22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3))(postcss@8.5.33)(rollup@4.68.7)(tailwindcss@4.3.5)(terser@5.51.4)(tslib@2.9.1)(typescript@6.0.3)(vitest@4.1.12)(yaml@2.9.0)
+        version: 22.2.8(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@angular/compiler@22.2.7)(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(@angular/service-worker@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@types/node@24.19.2)(istanbul-lib-instrument@6.0.3)(jiti@2.4.2)(less@4.8.1)(ng-packagr@22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3))(postcss@8.5.33)(rollup@4.68.7)(tailwindcss@4.3.5)(terser@5.51.4)(tslib@2.9.1)(typescript@6.0.3)(vitest@4.1.12)(yaml@2.9.0)
       '@angular/cli':
         specifier: ~22.2.0
         version: 22.2.8(@types/node@24.19.2)(chokidar@5.0.0)
@@ -80,7 +89,7 @@ importers:
         version: 11.2.11(@nestjs/common@11.2.11(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.11)(@nestjs/platform-express@11.2.11)
       '@nx/angular':
         specifier: 24.0.0
-        version: 24.0.0(979fc959f497804b83d7b10a9cca796d)
+        version: 24.0.0(2acb3c72aea44986f7f6e406873382f1)
       '@nx/devkit':
         specifier: 24.0.0
         version: 24.0.0(nx@24.0.0(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/core@1.15.8(@swc/helpers@0.5.18)))
@@ -458,6 +467,14 @@ packages:
       '@angular/common': 22.2.7
       '@angular/core': 22.2.7
       '@angular/platform-browser': 22.2.7
+      rxjs: ^6.5.3 || ^7.4.0
+
+  '@angular/service-worker@22.2.7':
+    resolution: {integrity: sha512-fyTub4wgfWI8LYAYN+PzRtCcuJ4nvCqhFV0mhgKWWtQrP7yz5ZvyLQuEi0XW4NpOC+KV37LVq1YFmBf/XYmvcg==}
+    engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0}
+    hasBin: true
+    peerDependencies:
+      '@angular/core': 22.2.7
       rxjs: ^6.5.3 || ^7.4.0
 
   '@asamuzakjp/css-color@4.1.2':
@@ -3772,6 +3789,38 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
+  '@supabase/auth-js@2.119.2':
+    resolution: {integrity: sha512-zWi7pGT6XIMWG0Ja5Unvsv9ixwgLTq/pnWNzGVwVXlr/onraf3v4VwepCFSlxGrvNyKRmhn7O6e4CHF1TJg73Q==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/functions-js@2.119.2':
+    resolution: {integrity: sha512-0pmNQRKahGbezgUV2m02l7j4t0Wdl7KMNNMWGCMe76beA7e1IfTPihtNssqWWw1IjqMDi0axoqLiDPzcdbPuGw==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/phoenix@0.4.5':
+    resolution: {integrity: sha512-aAn9H9ovVyeApKy11OWOrrOGq8DV68yWeH4ud2lN9fzn4aO8Zb5GLL9m1pUg9nLqIcT+ZDfAcsZe0E/nqdv2lw==}
+
+  '@supabase/postgrest-js@2.119.2':
+    resolution: {integrity: sha512-Q5RIy5wD79jArQSID06JXqS9F+bKLcTr81Yz7hwk2qkMX4fWMru4HLvG3UvoY0FlQzjcjXqVba7+6GeaItq6UQ==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/realtime-js@2.119.2':
+    resolution: {integrity: sha512-1xHRbZ8RgKq8Qn50uNJMnBdkuzK35GQTo1hx2+bC3QvCxbzXnFkbmq2ZyT9xSjOCuLBfD5ve3ZKxJcbWefL3ow==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/storage-js@2.119.2':
+    resolution: {integrity: sha512-dbzPuYKYc3/HGz+cRXAK45zR5FWMEH6lr2Is13ZOExhOBCM3F0iO96Z9VuhlLA64vPLeSQP24O/jesWg1QY6fw==}
+    engines: {node: '>=22.0.0'}
+
+  '@supabase/supabase-js@2.119.2':
+    resolution: {integrity: sha512-4HvF4G2DwdqjmwPBpz9RHnXWfdK0wSkw4yBhxe64CdeF8gdxsTF9WZuHFuNWtQnHllq71ZDyAghr4Q8nC0m/NA==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.0.0'
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+
   '@swc-node/core@1.15.0':
     resolution: {integrity: sha512-WAerrrl087WgenB92XG4Th2t0NQFfMNLYSe0sW2cEMMqM/LQmP4rozsDJl0vuzTrbewjpKQryxFXI+aYig/dBg==}
     engines: {node: '>= 10'}
@@ -6191,6 +6240,10 @@ packages:
     resolution: {integrity: sha512-Y93lCzHYgGWdrJ66yIktxiaGULYc6oGiABxhcO5AufBeOyoIdZF7bIfLaOrbM0iGIOXQQgxxRrFEnb+Y6w1n4A==}
     engines: {node: '>=10.18'}
 
+  iceberg-js@0.8.1:
+    resolution: {integrity: sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==}
+    engines: {node: '>=20.0.0'}
+
   iconv-lite@0.4.24:
     resolution: {integrity: sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA==}
     engines: {node: '>=0.10.0'}
@@ -6916,6 +6969,9 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide@1.77.0:
+    resolution: {integrity: sha512-DqoScWUEDcTC0KXPKKlZIIdOE++crPcGAQ60KfBNiT+Aq0sgQtxY/1sBCKBzLLo2yLLhYUperyUGHV5PwlBaIQ==}
 
   magic-string@0.30.17:
     resolution: {integrity: sha512-sNPKHvyjVf7gyjwS4xGTaW/mCnF8wnjtifKBEhxfZ7E/S8tQ0rssrwGNn6q8JH/ohItJfSQp9mBtQYuTlH5QnA==}
@@ -9898,7 +9954,7 @@ snapshots:
       eslint: 9.39.5(jiti@2.4.2)
       typescript: 6.0.3
 
-  '@angular/build@22.2.8(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@angular/compiler@22.2.7)(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(@types/node@24.19.2)(istanbul-lib-instrument@6.0.3)(jiti@2.4.2)(less@4.8.1)(ng-packagr@22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3))(postcss@8.5.33)(rollup@4.68.7)(tailwindcss@4.3.5)(terser@5.51.4)(tslib@2.9.1)(typescript@6.0.3)(vitest@4.1.12)(yaml@2.9.0)':
+  '@angular/build@22.2.8(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@angular/compiler@22.2.7)(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(@angular/service-worker@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@types/node@24.19.2)(istanbul-lib-instrument@6.0.3)(jiti@2.4.2)(less@4.8.1)(ng-packagr@22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3))(postcss@8.5.33)(rollup@4.68.7)(tailwindcss@4.3.5)(terser@5.51.4)(tslib@2.9.1)(typescript@6.0.3)(vitest@4.1.12)(yaml@2.9.0)':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@angular-devkit/architect': 0.2202.8(chokidar@5.0.0)
@@ -9934,6 +9990,7 @@ snapshots:
     optionalDependencies:
       '@angular/core': 22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)
       '@angular/platform-browser': 22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))
+      '@angular/service-worker': 22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2)
       '@oxc-parser/binding-wasm32-wasi': 0.156.0
       istanbul-lib-instrument: 6.0.3
       less: 4.8.1
@@ -10029,6 +10086,12 @@ snapshots:
       '@angular/common': 22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)
       '@angular/platform-browser': 22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))
+      rxjs: 7.8.2
+      tslib: 2.9.1
+
+  '@angular/service-worker@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2)':
+    dependencies:
+      '@angular/core': 22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)
       rxjs: 7.8.2
       tslib: 2.9.1
 
@@ -12503,7 +12566,7 @@ snapshots:
 
   '@noble/hashes@1.8.0': {}
 
-  '@nx/angular@24.0.0(979fc959f497804b83d7b10a9cca796d)':
+  '@nx/angular@24.0.0(2acb3c72aea44986f7f6e406873382f1)':
     dependencies:
       '@angular-devkit/core': 22.2.8(chokidar@5.0.0)
       '@angular-devkit/schematics': 22.2.8(chokidar@5.0.0)
@@ -12521,7 +12584,7 @@ snapshots:
       semver: 7.8.6
       tslib: 2.9.1
     optionalDependencies:
-      '@angular/build': 22.2.8(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@angular/compiler@22.2.7)(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(@types/node@24.19.2)(istanbul-lib-instrument@6.0.3)(jiti@2.4.2)(less@4.8.1)(ng-packagr@22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3))(postcss@8.5.33)(rollup@4.68.7)(tailwindcss@4.3.5)(terser@5.51.4)(tslib@2.9.1)(typescript@6.0.3)(vitest@4.1.12)(yaml@2.9.0)
+      '@angular/build': 22.2.8(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@angular/compiler@22.2.7)(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(@angular/platform-browser@22.2.7(@angular/common@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2)))(@angular/service-worker@22.2.7(@angular/core@22.2.7(@angular/compiler@22.2.7)(rxjs@7.8.2))(rxjs@7.8.2))(@types/node@24.19.2)(istanbul-lib-instrument@6.0.3)(jiti@2.4.2)(less@4.8.1)(ng-packagr@22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3))(postcss@8.5.33)(rollup@4.68.7)(tailwindcss@4.3.5)(terser@5.51.4)(tslib@2.9.1)(typescript@6.0.3)(vitest@4.1.12)(yaml@2.9.0)
       '@nx/playwright': 24.0.0(b70df7c9601b32bccb9a0b268b15aca1)
       '@nx/webpack': 24.0.0(@babel/traverse@7.29.15)(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/core@1.15.8(@swc/helpers@0.5.18))(esbuild@0.28.2)(lightningcss@1.33.0)(nx@24.0.0(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/core@1.15.8(@swc/helpers@0.5.18)))(typescript@6.0.3)(webpack-cli@7.3.1)(webpack-dev-server@5.2.7)(webpack@5.110.3)
       ng-packagr: 22.2.6(@angular/compiler-cli@22.2.7(@angular/compiler@22.2.7)(typescript@6.0.3))(@volar/typescript@2.4.31(typescript@6.0.3))(oxc-resolver@11.24.2)(tailwindcss@4.3.5)(tslib@2.9.1)(typescript@6.0.3)
@@ -13471,6 +13534,38 @@ snapshots:
       '@sinonjs/commons': 3.0.1
 
   '@standard-schema/spec@1.1.0': {}
+
+  '@supabase/auth-js@2.119.2':
+    dependencies:
+      tslib: 2.8.1
+
+  '@supabase/functions-js@2.119.2':
+    dependencies:
+      tslib: 2.8.1
+
+  '@supabase/phoenix@0.4.5': {}
+
+  '@supabase/postgrest-js@2.119.2':
+    dependencies:
+      tslib: 2.8.1
+
+  '@supabase/realtime-js@2.119.2':
+    dependencies:
+      '@supabase/phoenix': 0.4.5
+      tslib: 2.8.1
+
+  '@supabase/storage-js@2.119.2':
+    dependencies:
+      iceberg-js: 0.8.1
+      tslib: 2.8.1
+
+  '@supabase/supabase-js@2.119.2':
+    dependencies:
+      '@supabase/auth-js': 2.119.2
+      '@supabase/functions-js': 2.119.2
+      '@supabase/postgrest-js': 2.119.2
+      '@supabase/realtime-js': 2.119.2
+      '@supabase/storage-js': 2.119.2
 
   '@swc-node/core@1.15.0(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)':
     dependencies:
@@ -16281,6 +16376,8 @@ snapshots:
 
   hyperdyperid@1.2.0: {}
 
+  iceberg-js@0.8.1: {}
+
   iconv-lite@0.4.24:
     dependencies:
       safer-buffer: 2.1.2
@@ -17309,6 +17406,8 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide@1.77.0: {}
 
   magic-string@0.30.17:
     dependencies:

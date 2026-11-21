@@ -1,0 +1,258 @@
+@import "tailwindcss" source(".");
+
+/*
+ * ─────────────────────────── RAIJIN · identité visuelle ───────────────────────────
+ * Nuit bleu-noir, éclair jaune électrique utilisé avec parcimonie, chiffres nets.
+ *
+ * Règles de couleur (à respecter dans chaque template) :
+ *  1. L'accent jaune (--color-accent) est RÉSERVÉ à :
+ *       - les scores ≥ 80 (lueur de l'anneau, chiffre du score) ;
+ *       - l'état « Dans la zone » (pastille, bande de zone de la barre quand le prix y est, halo de carte) ;
+ *       - l'action principale d'un écran (.btn-primary, une seule par écran / feuille) ;
+ *       - l'onglet / segment actif (barre du bas, .seg-active) ;
+ *       - le logo (RAI·JIN + éclair) ;
+ *       - les indicateurs de focus clavier (:focus-visible, .field:focus), pour l'accessibilité.
+ *     Tout le reste (compteurs, curseurs, cases à cocher, interrupteurs, survols, courbes) reste neutre :
+ *     surfaces, lignes et texte (fg / muted).
+ *  2. Haussier = bull, baissier = bear, avertissement = warn, information = info : couleurs sémantiques,
+ *     jamais décoratives, et jamais la couleur seule (toujours un libellé ou une icône).
+ *  3. Élévation : base (fond) → surface (cartes) → surface-2 (champs, segments) → surface-3 (survol, puces).
+ *     Bordures : line (par défaut), line-strong (survol / séparation marquée).
+ *  4. Contraste AA vérifié : muted ≥ 6:1 sur toutes les surfaces ; bear ≥ 4.5:1 jusqu'à surface-2
+ *     (éviter le texte bear sur surface-3) ; accent-fg sur accent 12.7:1.
+ *  5. Jamais de couleur hexadécimale dans un template : uniquement ces jetons.
+ *
+ * Typographie : Inter Variable auto-hébergée (latin, SIL OFL 1.1, /fonts/LICENSE-Inter.txt), repli système.
+ * Chiffres : `tabular-nums slashed-zero` partout où l'on affiche des nombres ; adresses et prix en font-mono.
+ * Échelle : text-micro (10 px, onglets) · text-label (11 px, libellés atténués) · text-xs/sm (corps)
+ *           · text-value (15 px, valeurs clés) · text-xl+ (titres, solde).
+ * Mouvement : toute animation est désactivée sous prefers-reduced-motion (variantes motion-safe:).
+ * ────────────────────────────────────────────────────────────────────────────────────
+ */
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Raijin design tokens — Tailwind 4 CSS-first config */
+@theme {
+  --color-base: #07090d;
+  --color-surface: #0d131d;
+  --color-surface-2: #141b28;
+  --color-surface-3: #1b2433;
+  --color-line: #222d3f;
+  --color-line-strong: #2e3b52;
+  --color-fg: #e8eef5;
+  --color-muted: #94a3b8;
+  --color-bull: #22c55e;
+  --color-bear: #f43f5e;
+  --color-warn: #f59e0b;
+  --color-info: #38bdf8;
+  --color-accent: #facc15; /* thunder yellow — see the rules above */
+  --color-accent-fg: #0b0d10;
+
+  /* Electric halo: soft low-alpha accent glow (paired with a 1 px accent-tinted border). Box-shadow only: no layout change. */
+  --shadow-glow: 0 0 18px -6px rgb(250 204 21 / 0.3);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, monospace;
+
+  /* Type scale (font-size / line-height) */
+  --text-micro: 0.625rem;
+  --text-micro--line-height: 0.875rem;
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
+  --text-value: 0.9375rem;
+  --text-value--line-height: 1.25rem;
+
+  /* Height of the bottom tab bar, without the home-indicator inset */
+  --spacing-nav: 3.5rem;
+
+  --animate-sheet-up: sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-panel-in: panel-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: fade-in 180ms ease-out;
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-glow-breathe: glow-breathe 3.2s ease-in-out infinite;
+
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes panel-in {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+  @keyframes glow-breathe {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-base text-fg font-sans antialiased min-h-dvh;
+    -webkit-tap-highlight-color: transparent;
+    /* Inter: disambiguated digits in a sans context (« 1 » with a flag, open « 4 ») */
+    font-feature-settings: "cv01", "cv02";
+  }
+  /* Set by the Sheet component while a modal sheet is open */
+  html.scroll-locked,
+  html.scroll-locked body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  dialog::backdrop {
+    background: transparent;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Safe areas (notch, Dynamic Island, home indicator) — needs viewport-fit=cover */
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+/* Horizontal page padding: 1rem, or more in landscape next to the notch */
+@utility px-safe {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+/* Page bottom padding so content never hides behind the tab bar + home indicator */
+@utility pb-tabbar {
+  padding-bottom: calc(var(--spacing-nav) + 1px + env(safe-area-inset-bottom) + 1rem);
+}
+
+/* Press feedback (scale + brightness) — only when the user accepts motion. */
+@utility press {
+  @media (prefers-reduced-motion: no-preference) {
+    transition-property: transform, filter, background-color, border-color, color;
+    transition-duration: 120ms;
+    &:active:not(:disabled) {
+      transform: scale(0.98);
+      filter: brightness(1.12);
+    }
+  }
+}
+
+/* Declared with @utility so it can be reused with @apply (Tailwind 4) */
+@utility btn {
+  @apply press inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface p-4;
+  }
+  /*
+   * « Électrique » card (score ≥ 80 or « Dans la zone »): accent-tinted 1 px border + halo.
+   * Only colour and box-shadow change (same 1 px border): the card keeps its height. The halo breathes
+   * through the opacity of a pseudo-element (compositor only), never under prefers-reduced-motion.
+   */
+  .card-glow {
+    @apply relative border-accent/30 shadow-glow;
+  }
+  .card-glow::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: 0 0 26px -10px rgb(250 204 21 / 0.28);
+    opacity: 0.6;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .card-glow::after {
+      animation: var(--animate-glow-breathe);
+    }
+  }
+  .btn-primary {
+    @apply btn bg-accent text-accent-fg hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-surface-2 text-fg hover:border-line-strong hover:bg-surface-3;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .field {
+    @apply min-h-11 w-full rounded-xl border border-line bg-base px-3 text-base text-fg sm:text-sm placeholder:text-muted focus:border-accent focus:outline-none;
+  }
+  /* Selected segment / toggle-button: tinted accent, the solid fill stays for the primary action. */
+  .seg-active {
+    @apply bg-accent/15 text-accent ring-1 ring-accent/40 ring-inset;
+  }
+  /* Skeleton block: static surface, shimmer only when motion is accepted. */
+  .skeleton {
+    @apply rounded-md bg-surface-2;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .skeleton {
+      background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in oklab, var(--color-surface-3) 90%, var(--color-fg) 10%) 50%,
+        transparent 100%
+      );
+      background-size: 200% 100%;
+      background-repeat: no-repeat;
+      animation: var(--animate-shimmer);
+    }
+  }
+}

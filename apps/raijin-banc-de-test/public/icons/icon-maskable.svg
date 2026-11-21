@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Raijin (maskable)</title>
+  <!-- purpose "maskable" / apple-touch-icon: full-bleed square background, bolt inside the
+       80 % safe zone (circle of radius 204.8 px centred on 256,256; farthest bolt point ≈ 165 px). -->
+  <rect width="512" height="512" fill="#07090d"/>
+  <g transform="translate(256 256) scale(16) translate(-12 -12)">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="#facc15" stroke="#facc15" stroke-width="0.6" stroke-linejoin="round"/>
+  </g>
+</svg>

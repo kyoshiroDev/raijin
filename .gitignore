@@ -53,3 +53,6 @@ __screenshots__/
 # Graphe Nx (régénéré par : pnpm nx graph --file=docs/graph.html)
 docs/graph.html
 docs/static/
+
+# Banc de test : configuration locale générée (valeurs réelles, jamais commitée)
+apps/raijin-banc-de-test/src/environments/environment.local.ts
