@@ -16,7 +16,7 @@ dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
 | `web-e2e` | `apps/web-e2e` | Playwright : e2e, responsive, axe, captures | `scope:web`, `type:app` |
 | `api` | `apps/api` | API NestJS 11 (`/api/v1`) | `scope:api`, `type:app` |
 | `api-e2e` | `apps/api-e2e` | Tests e2e de l'API (Jest) | `scope:api`, `type:app` |
-| `landing` | `apps/landing` | Landing Astro 5 (SEO, zéro JS par défaut) | `scope:landing`, `type:app` |
+| `landing` | `apps/landing` | Landing Astro 7 (SEO, zéro JS par défaut) | `scope:landing`, `type:app` |
 | `brand` | `libs/brand` | Tokens, logos, icônes, mascotte (fourni) | `scope:shared`, `type:brand` |
 | `shared-contracts` | `libs/shared/contracts` | Schémas Zod + types du contrat API | `scope:shared`, `type:contracts` |
 | `shared-util` | `libs/shared/util` | Formatage (montants, adresses), base58 | `scope:shared`, `type:util` |
@@ -158,7 +158,11 @@ annulation des exécutions obsolètes. E2E Playwright uniquement sur les PR vers
 artefacts de captures envoyés seulement en cas d'échec.
 
 - pnpm : version imposée par `packageManager` du `package.json` (lue par `pnpm/action-setup`),
-  Node 22, `pnpm install --frozen-lockfile`.
+  Node 22 (au moins 22.23.4, exigé par Astro 7 ; `engines` du `package.json`),
+  `pnpm install --frozen-lockfile`.
+- Actions GitHub épinglées par **SHA de commit complet** (tag en commentaire, tags annotés
+  déréférencés vers le commit). `.github/dependabot.yml` propose chaque semaine (lundi) les
+  mises à jour des actions, en PR groupée vers `dev`.
 - Scripts d'installation (pnpm 11, clé `allowBuilds` de `pnpm-workspace.yaml`) : chaque paquet
   doté d'un script doit être listé, sinon l'installation échoue (`ERR_PNPM_IGNORED_BUILDS`).
   Autorisés : `nx`, `@swc/core` (postinstall du binaire natif). Refusés : `esbuild`,
@@ -169,10 +173,17 @@ artefacts de captures envoyés seulement en cas d'échec.
   impact constaté (lint, typecheck, test, build verts) et non corrigeables sans rétrograder
   l'outillage : plugins `@babel/plugin-syntax-*` 7 de `babel-preset-jest` face à `@babel/core` 8 apporté par
   `@angular/build`,
-  `chokidar` attendu par `@angular-devkit/core` 19 (via `@nestjs/schematics`) et 22, `typescript`
-  6 au-delà des plages de `tsconfck` / `zod-to-ts` (dépendances d'Astro 5), `@emnapi/*` de
+  `chokidar` attendu par `@angular-devkit/core` 19 (via `@nestjs/schematics`) et 22, `@emnapi/*` de
   `@napi-rs/wasm-runtime` (Nx, binaire WASM de secours non utilisé sous Linux x64). Aucun ne
   concerne une dépendance directe du `package.json`. À réexaminer à chaque montée de version.
+- **Écart assumé avec PROMPT.md (« Astro 5 »)** : la landing utilise **Astro 7** (`^7.4.13`).
+  Astro 5.18 cumulait 13 alertes `pnpm audit` (dont une critique et plusieurs hautes : RCE via
+  l'optimisation d'images AVIF, SSRF via l'en-tête `Host`, XSS), sans correctif publié sur la
+  branche 5, plus `sharp` < 0.35.5 et `zod` < 4.6.6 transitifs. La montée a été faite tant que la
+  landing n'était qu'un squelette. Avec Vite 8 commun à la racine et à Astro 7, le cast `any` du
+  plugin Tailwind dans `astro.config.mjs` a disparu. `sharp` (0.35.5, dépendance optionnelle
+  d'Astro) reste installé sans son script : la landing n'optimise aucune image au build.
+- Nx monté en **24.0.6** (correctif) : apporte `undici` 7.30.1 (alertes hautes corrigées).
 
 ## 7. Variables d'environnement
 
