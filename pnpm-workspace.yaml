@@ -1,10 +1,18 @@
 # Workspace pnpm à un seul package (monorepo Nx « integrated » : toutes les dépendances à la racine).
-# Scripts d'installation des dépendances : refusés par défaut (sécurité de la chaîne d'approvisionnement).
+# Scripts d'installation des dépendances (pnpm 11, clé `allowBuilds`) : refusés par défaut
+# (sécurité de la chaîne d'approvisionnement). pnpm 11 échoue (ERR_PNPM_IGNORED_BUILDS) si un
+# paquet doté d'un script n'est pas listé : chaque paquet doit donc être explicitement autorisé
+# (true) ou refusé (false).
 allowBuilds:
+  # Autorisés : postinstall de vérification / préparation du binaire natif.
+  nx: true
+  '@swc/core': true
+  # Refusés : binaires fournis par les dépendances optionnelles par plateforme, script inutile.
   '@parcel/watcher': false
   esbuild: false
   unrs-resolver: false
   lmdb: false
   msgpackr-extract: false
   '@nestjs/core': false
+  # Refusé : aucune transformation d'image côté serveur à ce stade (Astro n'en a pas besoin pour la landing).
   sharp: false

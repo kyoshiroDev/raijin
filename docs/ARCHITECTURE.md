@@ -2,8 +2,11 @@
 
 Monorepo **Nx** (pnpm, sans Nx Cloud), mode « integrated » : un seul `package.json`
 racine (une seule version de chaque dépendance), alias TypeScript `@raijin/...`
-déclarés dans `tsconfig.base.json`. Graphe à jour : `docs/graph.html`
-(`pnpm nx graph --file=docs/graph.html`).
+déclarés dans `tsconfig.base.json`.
+
+Graphe Nx : **non commité** (≈ 6 Mo, régénérable ; `docs/graph.html` et `docs/static/` sont
+dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
+`pnpm nx graph --file=docs/graph.html` (fichier local).
 
 ## 1. Structure
 
@@ -25,9 +28,18 @@ déclarés dans `tsconfig.base.json`. Graphe à jour : `docs/graph.html`
 | `web-feature-wallet` | `libs/web/feature-wallet` | Scan de wallet | `scope:web`, `type:feature` |
 | `web-feature-compte` | `libs/web/feature-compte` | Auth, compte, abonnement | `scope:web`, `type:feature` |
 | `api-auth` … `api-solana` | `libs/api/*` | Modules Nest (auth, users, billing, alerts, notifications, solana) | `scope:api`, `type:feature` |
+| `raijin-banc-de-test` | `apps/raijin-banc-de-test` | Front Angular 22 zoneless du banc (importé de `raijin-old`, phase 1 bis) | `scope:bench`, `type:app` |
 
-Prévus plus tard (non créés en phase 1) : `raijin-banc-de-test`, `raijin-banc-de-test-api`,
-`libs/bench/*` (`scope:bench`), `libs/web/feature-admin`, `libs/api/admin`, `libs/api/analytics`.
+Prévus plus tard : `raijin-banc-de-test-api` (phase 8 bis), `libs/bench/*` (`scope:bench`),
+`libs/web/feature-admin`, `libs/api/admin`, `libs/api/analytics`.
+
+### Hors Nx : `legacy/`
+
+`legacy/` contient la référence en lecture seule de l'ancien scanner (`supabase/`, `scripts/`,
+`docs/`, `vercel.json` ; voir `legacy/README.md`). Ce n'est **pas** un projet Nx : ignoré par
+`.nxignore` (et `.prettierignore`), rien n'y est linté, testé ni buildé, et aucun projet ne
+l'importe (un import relatif serait refusé par `@nx/enforce-module-boundaries`). Supprimé après
+la bascule du banc (phase 8 bis).
 
 ## 2. Frontières (`@nx/enforce-module-boundaries`, bloquante, dans `eslint.config.mjs`)
 
@@ -74,6 +86,20 @@ Note : les modules Nest de `libs/api/*` sont taggés `type:feature` (ils jouent 
   Playwright pour l'e2e.
 - **Nommage** : fichiers en kebab-case, sélecteurs Angular préfixés `rj-`.
 
+### Exceptions assumées du banc (`raijin-banc-de-test`)
+
+Code d'origine importé tel quel pour ne pas modifier le comportement des calculs avant la mesure :
+- `noUncheckedIndexedAccess: false` dans le **seul** `apps/raijin-banc-de-test/tsconfig.json`
+  (289 erreurs d'indexation dans le code d'origine, qui ne l'activait pas) ; les autres options
+  strictes restent actives, `strictTemplates` compris. Correction prévue au portage (8 bis).
+- **Thème d'origine conservé** (`apps/raijin-banc-de-test/src/styles.css`, Tailwind 4 limité à
+  ses propres sources par `source(".")`, police Inter auto-hébergée, CSP `font-src 'self'`) : il
+  n'importe pas `libs/brand/tokens.css`. Seule contrainte vérifiée : sa couleur `warn` (badge
+  « BANC DE TEST ») est identique au token `warn` de `libs/brand` (`bench-badge.spec.ts`).
+- Sélecteurs `app-` conservés ; aucune règle ESLint désactivée.
+- Cible supplémentaire `write-env` : génère `src/environments/environment.local.ts` (ignoré par
+  Git, clés publiques uniquement) ; configuration `local` pour `build`/`serve` (port 4300).
+
 ## 4. Styles et thème
 
 - `libs/brand/tokens.css` est la **source unique** des tokens (`@theme` Tailwind 4).
@@ -87,6 +113,11 @@ Note : les modules Nest de `libs/api/*` sont taggés `type:feature` (ils jouent 
   texte, rayons, ombres) : `bg-red-500`, `rounded-xl` ou `text-2xl` ne produisent rien.
   `extras.css` ajoute les valeurs dérivées de la charte : grille `--spacing: 4px`, `rounded-full`,
   `ease-raijin` (`cubic-bezier(.2,.8,.2,1)`), `max-w-reading` (1200 px).
+- Utilitaires ajoutés dans `libs/web/ui/src/styles/extras.css` (phase 1, composants) :
+  variante `xs:` (`--breakpoint-xs: 360px`, seuil du logotype complet), `text-input`
+  (16 px / 24 px, évite le zoom iOS sur les champs), marges de zones sûres `pt-safe`, `pb-safe`,
+  `pl-safe`, `pr-safe` (`env(safe-area-inset-*)`), `pb-tabbar` et `bottom-tabbar` (espace réservé
+  à la barre d'onglets mobile, calculé sur la grille `--spacing`).
 - Utilitaires générés par les tokens : `bg-base`, `bg-surface`, `bg-surface-raised`,
   `text-ink`, `text-ink-muted`, `bg-thunder`, `text-on-thunder`, `text-safe|warn|danger|info`,
   `border-line`, `rounded-sm|md|lg`, `font-display|sans|mono`, `text-display|h1|h2|h3|body|body-sm|label|metric|data`,
@@ -97,6 +128,11 @@ Note : les modules Nest de `libs/api/*` sont taggés `type:feature` (ils jouent 
   standalone) ; les icônes sont copiées au build depuis `libs/brand/icons` (aucune copie dans le dépôt).
 - `/_design` : route déclarée seulement si `isDevMode()` (absente des builds de production),
   composant `DesignPage` dans `libs/web/ui`.
+
+- Icônes : paquet **`lucide`** (ISC, icônes en données `IconNode`), rendues par le composant
+  maison `rj-icon` de `libs/web/ui` ; seules les icônes nommées dans
+  `libs/web/ui/src/lib/icon/icons.ts` entrent dans le bundle. `lucide-angular` est écarté :
+  incompatible avec Angular 22 (dépendances pairs `@angular/core` 13.x à 21.x en 1.0.0).
 
 ## 5. Graphiques de l'admin : Chart.js 4
 
@@ -120,6 +156,23 @@ la lib lazy `libs/web/feature-admin`.
 test build` (avec `nrwl/nx-set-shas`), cache pnpm et cache `.nx/cache`, `concurrency` avec
 annulation des exécutions obsolètes. E2E Playwright uniquement sur les PR vers `main`,
 artefacts de captures envoyés seulement en cas d'échec.
+
+- pnpm : version imposée par `packageManager` du `package.json` (lue par `pnpm/action-setup`),
+  Node 22, `pnpm install --frozen-lockfile`.
+- Scripts d'installation (pnpm 11, clé `allowBuilds` de `pnpm-workspace.yaml`) : chaque paquet
+  doté d'un script doit être listé, sinon l'installation échoue (`ERR_PNPM_IGNORED_BUILDS`).
+  Autorisés : `nx`, `@swc/core` (postinstall du binaire natif). Refusés : `esbuild`,
+  `@parcel/watcher`, `unrs-resolver`, `lmdb`, `msgpackr-extract`, `@nestjs/core` (binaires
+  fournis par les dépendances optionnelles, scripts inutiles) et `sharp` (aucun traitement
+  d'image côté serveur à ce stade). Tout nouveau paquet à script doit être tranché ici.
+- Dépendances pairs : `pnpm peers check` signale des écarts **transitifs uniquement**, sans
+  impact constaté (lint, typecheck, test, build verts) et non corrigeables sans rétrograder
+  l'outillage : plugins `@babel/plugin-syntax-*` 7 de `babel-preset-jest` face à `@babel/core` 8 apporté par
+  `@angular/build`,
+  `chokidar` attendu par `@angular-devkit/core` 19 (via `@nestjs/schematics`) et 22, `typescript`
+  6 au-delà des plages de `tsconfck` / `zod-to-ts` (dépendances d'Astro 5), `@emnapi/*` de
+  `@napi-rs/wasm-runtime` (Nx, binaire WASM de secours non utilisé sous Linux x64). Aucun ne
+  concerne une dépendance directe du `package.json`. À réexaminer à chaque montée de version.
 
 ## 7. Variables d'environnement
 
