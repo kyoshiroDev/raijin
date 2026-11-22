@@ -178,12 +178,61 @@ STRIPE_PRICE_PRO_MONTHLY=price_factice_mensuel
 STRIPE_PRICE_PRO_YEARLY=price_factice_annuel
 
 # ---------------------------------------------------------------------
-# Push web (VAPID)
+# Push web (VAPID) — (optionnel en dev : sans clés, le push est indisponible, alertes par e-mail seulement)
 # ---------------------------------------------------------------------
-# À générer localement : npx web-push generate-vapid-keys
+# VAPID — paire de clés générée localement, une fois par environnement (dev, prod), jamais commitée :
+#   pnpm exec web-push generate-vapid-keys --json
+#   (paquet web-push, docs : https://github.com/web-push-libs/web-push#command-line).
+#   Copie publicKey → VAPID_PUBLIC_KEY et privateKey → VAPID_PRIVATE_KEY dans ton .env.
+#   La clé privée reste côté API (jamais dans le front ni dans les logs) ; la clé publique est servie
+#   par GET /api/v1/push/vapid-public-key. Changer de paire invalide tous les abonnements existants.
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
-VAPID_SUBJECT=mailto:contact@raijinshield.com
+# Contact VAPID exigé par les services push (mailto: ou https:)
+VAPID_SUBJECT=mailto:support@raijinshield.com
+# webpush (envoi réel) ou fake (tests e2e : notifications enregistrées en mémoire, aucun appel réseau ;
+#   refusé en production)
+PUSH_PROVIDER=webpush
+
+# ---------------------------------------------------------------------
+# Suivis, alertes et jobs (BullMQ sur Redis, docs/ARCHITECTURE.md §11)
+# ---------------------------------------------------------------------
+# Raijin — jobs programmés (réanalyse des suivis, envoi des alertes, purges). false dans les tests unitaires.
+JOBS_ENABLED=true
+# Raijin — préfixe des clés BullMQ dans Redis (le banc utilisera raijin-bench)
+BULLMQ_PREFIX=raijin
+# Raijin — route de déclenchement manuel des jobs pour les tests e2e (POST /api/v1/internal/jobs/:name/run).
+#   0 ou 1. Refusé en production (l'API ne démarre pas).
+JOBS_TEST_TRIGGER=0
+# Raijin — suivis actifs par plan (Pro et essai : 50 ; Gratuit : 3), relus avec le plan en base à chaque requête
+FREE_WATCH_LIMIT=3
+PRO_WATCH_LIMIT=50
+# Raijin — historique des alertes affiché, en jours (données conservées 90 jours pour tous)
+FREE_ALERT_HISTORY_DAYS=30
+PRO_ALERT_HISTORY_DAYS=90
+# Raijin — période du planificateur des réanalyses, en secondes
+WATCH_TICK_SECONDS=60
+# Raijin — intervalles des passes par mint suivi, en minutes : rapide (autorités + pool, par lots),
+#   holders (top 20), complète (verdict). Étirés automatiquement si le budget de crédits ne suffit pas.
+WATCH_FAST_INTERVAL_MIN=5
+WATCH_HOLDERS_INTERVAL_MIN=30
+WATCH_FULL_INTERVAL_MIN=360
+# Helius — part des crédits journaliers de l'API réservée aux suivis (≤ HELIUS_DAILY_CREDIT_BUDGET ;
+#   https://www.helius.dev/docs/billing/credits). 12000 sur 22000 : les analyses à la demande gardent ≥ 10000.
+WATCH_DAILY_CREDIT_BUDGET=12000
+# Raijin — une alerte du même type pour le même mint au plus toutes les N minutes (sauf aggravation)
+ALERT_COOLDOWN_MINUTES=360
+# Raijin — délai de regroupement des alertes d'un utilisateur dans un seul e-mail, en secondes ; plafond par jour
+ALERT_EMAIL_BATCH_DELAY_S=120
+ALERT_EMAIL_DAILY_MAX=20
+# Raijin — rétention (purge quotidienne) : analyses, événements produit, compteurs, empreintes d'essai, alertes
+RETENTION_DAYS=90
+# Raijin — heure de la purge quotidienne (cron UTC)
+PURGE_CRON="30 3 * * *"
+# Raijin — URL de base des images des e-mails (Rai en PNG 2x) ; vide = APP_URL/email
+MAIL_ASSETS_BASE_URL=
+# Raijin — maintenance programmée : 1 = toutes les routes sauf /health répondent 503 MAINTENANCE
+MAINTENANCE_MODE=0
 
 # ---------------------------------------------------------------------
 # Google — (optionnel en dev : simulation locale, intégrations désactivées si vide)
@@ -221,7 +270,9 @@ SENTRY_ENVIRONMENT=development
   `COOKIE_SECRET` ou `IP_HASH_SECRET` est absente, factice (`changeme…`, `…factice`) ou plus courte que 32 caractères,
   si `DATABASE_URL`, `REDIS_URL` ou `TRUST_PROXY` manque, si `COOKIE_SECURE` n'est pas `true`, si une origine
   n'est pas en HTTPS, si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`, ou si
-  `ANALYSIS_FIXTURES` est activé. Les messages
+  `ANALYSIS_FIXTURES` est activé, si `JOBS_TEST_TRIGGER=1` ou `PUSH_PROVIDER=fake`, si une seule des deux clés
+  VAPID est fournie (les deux ou aucune : sans clés, push indisponible), ou si `WATCH_DAILY_CREDIT_BUDGET`
+  dépasse `HELIUS_DAILY_CREDIT_BUDGET`. Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les
   secrets absents ou factices sont générés aléatoirement à chaque démarrage, avec un avertissement

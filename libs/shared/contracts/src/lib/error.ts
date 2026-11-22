@@ -1,5 +1,6 @@
 import * as z from './zod';
 import { ANALYSIS_ERROR_CODES } from './analysis/errors';
+import { WATCH_ERROR_CODES } from './watch/errors';
 
 /** Codes d'erreur génériques de l'API (`/api/v1`). */
 export const GENERIC_ERROR_CODES = [
@@ -12,6 +13,8 @@ export const GENERIC_ERROR_CODES = [
   'QUOTA_EXCEEDED',
   'UPSTREAM_UNAVAILABLE',
   'INTERNAL_ERROR',
+  /** Maintenance programmée (`MAINTENANCE_MODE=1`) : 503 sur toutes les routes sauf `health` ; le front affiche la page de maintenance. */
+  'MAINTENANCE',
 ] as const;
 
 /**
@@ -38,11 +41,12 @@ export const AUTH_ERROR_CODES = [
   'AUTH_ACCOUNT_LOCKED',
 ] as const;
 
-/** Codes d'erreur standard de l'API : génériques + authentification + analyse. */
+/** Codes d'erreur standard de l'API : génériques + authentification + analyse + suivis/alertes/push. */
 export const apiErrorCodeSchema = z.enum([
   ...GENERIC_ERROR_CODES,
   ...AUTH_ERROR_CODES,
   ...ANALYSIS_ERROR_CODES,
+  ...WATCH_ERROR_CODES,
 ]);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 

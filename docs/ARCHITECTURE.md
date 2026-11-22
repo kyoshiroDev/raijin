@@ -658,3 +658,158 @@ Si le runner lui-même affiche un `benchmarkIndex` < 1000, le noter dans `PROGRE
 **Recommandation** : d'abord relever la mesure du runner (`gh workflow run ci.yml --ref dev`). Si une page
 est < 95, appliquer l'option 1 puis l'option 2 (coquille desktop et inventaire du chunk en premier), avec une mesure runner
 après chacune ; `zod/mini` seulement en dernier recours ; l'hydratation reste écartée.
+
+## 11. Suivis, alertes et push (phase 4)
+
+### 11.1 Découpage
+- **Contrats** (`@raijin/shared-contracts`) : `watch/` (`watchCreateRequestSchema` `{mint}`, `watchUpdateRequestSchema`
+  `{status}`, `watchSchema` avec `lastVerdict` et `unreadAlerts`, `planLimitsSchema`, `watchListResponseSchema`,
+  `watchSnapshotSchema` serveur/banc, `WATCH_ERROR_CODES`), `alerts/` (`ALERT_TYPES`, payloads par type,
+  `alertSchema` union discriminée sur `type`, `alertListQuerySchema` (statut lu/non lu, types, mint, curseur),
+  `alertReadRequestSchema`, `watchEventSchema` + `dedupeKey`), `notifications/` (préférences, réglages,
+  `PUSH_SERVICE_HOSTS`, abonnement, clé VAPID publique, charge utile au format `ngsw`), `pagination.ts`.
+  `TOKEN_UNANALYZABLE` (m4) et `MAINTENANCE` ajoutés aux codes d'erreur.
+- **`libs/shared/risk-engine`** (pur, solana-data) : `detectWatchEvents(previous, next, thresholds)` →
+  `WatchEvent[]`, `mergeWatchSnapshot`, seuils exportés (`WATCH_EVENT_THRESHOLDS`), `WATCH_RULES_VERSION` ;
+  règles documentées dans `docs/SCORING.md` (section « Événements de suivi »). Le banc pourra les rejouer.
+- **`libs/api/solana`** (solana-data) : collecteurs d'instantanés `collectAuthoritiesBatch(mints ≤ 100)`,
+  `collectPoolsBatch(mints ≤ 30)`, `collectHolders(mint)`, sur les clients et `UpstreamGate` existants ;
+  budget de crédits par voie (`interactive` | `watch`).
+- **`libs/api/alerts`** (nestjs-api) : suivis (CRUD, limites), état par mint, planificateur et workers BullMQ,
+  détection → `WatchEvent` → `Alert`, endpoints alertes, purges, `JobRun`.
+- **`libs/api/notifications`** (nestjs-api) : `PushSender` (`WebPushSender` / `FakePushSender`), abonnements,
+  préférences, e-mail d'alerte groupé (Rai PNG 2x), résumé hebdomadaire.
+- **Web** (ui-mobile-first) : `web-feature-suivis` (Suivis, Alertes), `web-feature-compte` (préférences),
+  `web-data-access` (`WatchesStore`, `AlertsStore`, `PushService` sur `SwPush`), `web-ui` (`rj-status-page` : 404 et
+  maintenance avec Rai bravo), `apps/web` (routes, `provideServiceWorker`, `ngsw-config.json`).
+
+### 11.2 Routes (`/api/v1`, session + e-mail vérifié sauf mention, CSRF sur les mutations)
+`GET watches` · `POST watches` (201, 200 si déjà suivi ; 404 `ANALYSIS_NOT_FOUND` sans analyse ≤ 24 h ; 403
+`WATCH_LIMIT_REACHED`) · `PATCH watches/:id` · `DELETE watches/:id` (204) · `GET alerts` · `GET alerts/unread-count` ·
+`POST alerts/read` · `GET notifications/settings` · `PATCH notifications/preferences` ·
+`GET push/vapid-public-key` (public ; 503 `PUSH_NOT_SUPPORTED` sans clés) · `POST push/subscriptions` (403
+`PUSH_PLAN_REQUIRED` en Gratuit) · `POST push/unsubscribe` (204) · `POST internal/jobs/:name/run` (seulement si
+`JOBS_TEST_TRIGGER=1`, refusé en production). Ressource d'un autre utilisateur : toujours 404.
+
+### 11.3 Jobs : BullMQ (tranché) plutôt que `@nestjs/schedule`
+- **BullMQ** (`bullmq` + `@nestjs/bullmq`, sur le Redis déjà présent) : planification persistante (Job Schedulers),
+  reprises avec backoff, déduplication par `jobId`, concurrence par worker, survie aux redémarrages ; même technologie
+  que l'API du banc (phase 8 bis). `@nestjs/schedule` écarté : cron en mémoire, sans reprise, sans déduplication, passes
+  qui se chevauchent si un traitement dépasse la période, jobs perdus au redémarrage.
+- Files : `watch` (planificateur + passes), `notify` (push, e-mail groupé), `maintenance` (purges ; la fin d'essai
+  horaire de la phase 6 s'y ajoute). Préfixe `BULLMQ_PREFIX` (`raijin`, banc `raijin-bench`).
+- Redis : BullMQ exige `maxmemory-policy noeviction` ; toutes les clés de cache ont un TTL (déjà le cas). À poser dans
+  `docker-compose.dev.yml` maintenant et dans le compose de prod (phase 8). `pnpm install` : vérifier les scripts
+  d'installation (`msgpackr-extract` est déjà refusé dans `allowBuilds`) et `pnpm audit --prod`.
+- **Anti-chevauchement** : planificateur unique (`watch-planner`, toutes les `WATCH_TICK_SECONDS`), worker de
+  concurrence 1 + verrou Redis `lock:watch-planner` (`SET NX PX`) ; passes en `jobId` déterministe
+  (`fast:<créneau>:<lot>`, `holders:<mint>:<créneau>`, `full:<mint>:<créneau>`) : un doublon est ignoré par BullMQ ;
+  verrou par mint (`lock:watch:mint:<mint>`) + `revision` optimiste sur l'état du mint.
+- **Journal** : une ligne `JobRun` par exécution du planificateur et de chaque purge (statut, durée, `details` Json :
+  mints traités, crédits, événements, alertes ; erreur = **code** seulement). `JobRun` purgé à 30 jours.
+- Tests : `JOBS_ENABLED=false` en unitaire (services testés sans Redis via ports) ; e2e avec Redis réel et
+  `JOBS_TEST_TRIGGER=1`.
+
+### 11.4 Fréquence, étalement et budget Helius (1 M crédits/mois partagés avec le banc)
+- 1 M/mois ≈ **33 300 crédits/jour** : banc 10 000, API 22 000 (`HELIUS_DAILY_CREDIT_BUDGET`), marge ≈ 1 300.
+  Dans l'API, voie `watch` plafonnée à **12 000/jour** (`WATCH_DAILY_CREDIT_BUDGET`) ; les analyses à la demande gardent
+  au moins 10 000 (≈ 700 analyses fraîches à ~14 crédits). Compteurs Redis `helius:credits:<jour>` (global) et
+  `helius:credits:watch:<jour>` (voie), même script Lua atomique.
+- **L'état est par mint, pas par suivi** : 40 utilisateurs qui suivent BONK coûtent une seule réanalyse.
+- Trois passes par mint (coûts Helius : RPC 1 crédit, DAS 10) :
+
+  | Passe | Défaut | Appels | Crédits | Par jour |
+  |---|---|---|---|---|
+  | Rapide (autorités + pool) | 5 min | `getMultipleAccounts` jsonParsed par lots de 100 + DexScreener `tokens/v1` par lots de 30 (gratuit) | 1 par lot de 100 mints | 288 × ⌈N/100⌉ |
+  | Holders (top 20) | 30 min | `getTokenLargestAccounts` + propriétaires et programmes en cache 24 h | ≈ 1,2 par mint | ≈ 58 par mint |
+  | Complète (verdict) | 6 h | `collectFacts(full)` du moteur (cache d'âge 24 h) | ≈ 15 par mint | ≈ 60 par mint |
+
+  Soit ≈ **118 crédits/jour par mint + 288 fixes** pour 100 mints : capacité ≈ (12 000 − 288) / 118 ≈ **99 mints
+  distincts** à la cadence par défaut. Un événement critique déclenche une passe complète anticipée (au plus 1 par mint
+  et par heure).
+- **Au-delà** : le planificateur calcule `f = demande estimée / budget restant` et étire les intervalles holders et
+  complète par `f` (la passe rapide, quasi gratuite, reste à 5 min) ; mints suivis par un Pro ou l'essai d'abord, puis
+  le plus en retard. Ex. 300 mints : demande ≈ 36 300 → f ≈ 3 → holders toutes les 1 h 30, verdict toutes les 18 h.
+  Budget de la voie épuisé : passes reportées au lendemain (jamais d'erreur), visible dans `JobRun.details`.
+- **Étalement** : première échéance = maintenant + (hash(mint) mod intervalle), puis `+ intervalle` ; 100 mints à 30 min
+  ≈ 3,3 passes holders/min, très en dessous de 7 req/s. Passes complètes en concurrence 1, holders en concurrence 2.
+- **Sans clé Helius** : RPC public (1 req/s) pour la passe rapide ; `getTokenLargestAccounts` refusé → pas de détection
+  `holder_sold` (groupe `holders` à `null`, aucun faux positif).
+
+### 11.5 Faits stockés pour la comparaison
+- `MintWatchState` (une ligne par mint suivi, supprimée quand plus personne ne le suit) : `snapshot` Json
+  (`WatchSnapshot` v1 : groupes `authorities`, `pool` avec `sqrtK`, `peakSqrtK`/`peakAt`, `holders` top 20 avec montants
+  bruts u64 en texte, `verdict`), chacun daté ; `revision` ; `nextFastAt`, `nextHoldersAt`, `nextFullAt` ; `priority` ;
+  `consecutiveFailures`, `lastErrorCode` ; `unanalyzable`. Seul le dernier instantané est gardé ; l'historique, ce sont
+  les `WatchEvent`.
+- **Règles** (`detectWatchEvents`, première observation d'un groupe = référence, jamais d'alerte) :
+  verdict plus grave (rang safe < warn < danger ; re-référence sans alerte si la version majeure du moteur change) ;
+  **LP retirée > 30 %** : baisse de √(base × quote) du pool principal par rapport au plus haut des 6 dernières heures
+  (invariant d'un pool à produit constant : un swap ne le fait pas baisser, un retrait si ; approximation pour les pools
+  concentrés, documentée) ; mint ou freeze de nouveau actif (révoqué → actif) ; **holder > 5 % qui vend** : holder ≥ 5 %
+  (exclusions de la concentration) dont la position baisse d'au moins 25 % ou d'au moins 1 point d'offre, ou qui sort du
+  top 20 (« vente ou transfert », on ne lit pas les transactions). Gravité : `danger` pour LP, mint, freeze et verdict →
+  Danger ; `warn` sinon.
+- `Watch` : + `status`, `pausedReason`, `pausedAt` ; `lastVerdict`/`lastCheckedAt` recopiés à chaque passe complète.
+  `WatchService.enforcePlanLimit(userId)` met en pause (`plan_limit`) les suivis au-delà de la limite, les plus récents
+  d'abord : utilisé par la fin d'essai (phase 6).
+- Préférences : colonnes `User.notifyEmailAlerts` (true), `notifyPushAlerts` (true), `notifyWeeklyDigest` (false).
+
+### 11.6 Idempotence des alertes (aucun doublon)
+- `WatchEvent` (`mint`, `type`, `severity`, `payload`, `dedupeKey`, `detectedAt`) avec `@@unique([mint, dedupeKey])` ;
+  `Alert.eventId` avec `@@unique([userId, eventId])`. Insertion `ON CONFLICT DO NOTHING` dans la même transaction que la
+  mise à jour de l'état du mint : rejouer une passe (reprise BullMQ, redémarrage) ne crée rien de plus.
+- Clés : `verdict_degraded:<from>><to>:<analysisId>`, `lp_removed:<pool>:<peakAt>` (référence remise au niveau
+  courant après l'alerte), `mint_reactivated:<observedAt>`, `freeze_reactivated:<observedAt>`,
+  `holder_sold:<owner>:<observedAt précédent>`. Délai de grâce `ALERT_COOLDOWN_MINUTES` (6 h) par mint et type, sauf
+  aggravation (Prudence → Danger).
+- Diffusion : suivis **actifs** du mint créés avant `detectedAt`. Livraison réservée par
+  `UPDATE … SET pushedAt/emailedAt = now() WHERE … IS NULL` avant l'envoi (jamais deux fois), relâchée si l'envoi
+  échoue (reprise BullMQ, 5 tentatives). E-mail **groupé** par utilisateur (`ALERT_EMAIL_BATCH_DELAY_S`, job
+  `email:<userId>:<fenêtre>`), plafonné à `ALERT_EMAIL_DAILY_MAX`/jour, exige un e-mail vérifié ; push par alerte
+  (`tag` = mint, les notifications d'un même token se remplacent). Gratuit : e-mail seulement ; Pro et essai : push et/ou
+  e-mail selon les préférences.
+
+### 11.7 Push : service worker Angular et sécurité
+- **`@angular/service-worker`** (déjà en dépendance) : `ngsw-config.json` (coquille et assets en cache, **aucun
+  `dataGroups` sur `/api`** : données toujours fraîches), `provideServiceWorker('ngsw-worker.js', { enabled:
+  !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })` (enregistré après le rendu : sans effet sur le LCP).
+  `SwPush.requestSubscription({ serverPublicKey })` ; l'affichage et le clic sont gérés par `ngsw-worker.js` grâce à
+  la charge utile `{ notification: { …, data: { onActionClick: { default: { operation: 'navigateLastFocusedOrOpen',
+  url } } } } }` (`pushNotificationPayloadSchema`) : **aucun service worker maison**, compatible CSP `script-src 'self'`.
+- **Permission demandée au bon moment** : jamais au chargement ; seulement après un geste explicite (bouton
+  « Activer les notifications » dans Compte, ou carte proposée après le premier suivi d'un compte Pro). iOS hors PWA
+  installée (`navigator.standalone !== true`) : explication « Partager → Sur l'écran d'accueil » au lieu de la demande.
+  Refus : message neutre, pas de relance automatique.
+- **Sécurité** : `VAPID_PRIVATE_KEY` uniquement dans l'environnement de l'API (config Zod : les deux clés ou aucune) ;
+  la clé publique est servie par l'API (pas compilée dans le front). Endpoint filtré par `PUSH_SERVICE_HOSTS` (https,
+  pas de SSRF), timeout 5 s, TTL 24 h, urgence `high` pour Danger. Réponse 404/410 du service push → abonnement
+  supprimé ; autres erreurs → code seulement dans les logs (jamais l'endpoint, qui identifie l'appareil). 10 abonnements
+  max par compte (le plus ancien remplacé) ; un endpoint ré-abonné par un autre compte lui est réattribué (appareil
+  partagé). Déconnexion : le front se désabonne. Charge utile sans e-mail ni donnée de compte, texte nettoyé.
+- Dev : service worker inactif en `serve` ; le push se teste sur le build de production servi en local (`localhost`
+  est un contexte sécurisé). e2e : `PUSH_PROVIDER=fake` (notifications enregistrées par l'API, lues par le test).
+
+### 11.8 E-mails d'alerte et Rai en PNG 2x
+- Template `alert` (thème clair, logo, **Rai pose alerte au-dessus du verdict**, `width="120" height="140"`,
+  alt « Rai, la mascotte de Raijin, en alerte »), une ligne par alerte (type, token tronqué « non vérifié », chiffres),
+  bouton vers `/alertes`, rappel « pas un conseil en investissement », lien de désactivation vers les préférences.
+- PNG rendus depuis `libs/brand/mascot/rai-alerte.svg` et `rai-bravo.svg` (viewBox 240×280) en 2x (240×280 px pour un
+  affichage 120×140) par `tools/scripts/render-mascot-png.mjs` avec `@resvg/resvg-wasm` (déjà en dépendance, aucun
+  binaire natif) ; fichiers commités dans `apps/web/public/email/` (`rai-alerte@2x.png`, `rai-bravo@2x.png`), test de
+  dimensions et de fraîcheur (hash du SVG source).
+- **Hébergement** : `APP_URL/email/…` (même origine publique que le logo déjà utilisé, servie par le conteneur web) ;
+  `MAIL_ASSETS_BASE_URL` permet de pointer ailleurs. La landing n'est pas retenue (déployée à part, phase 7).
+
+### 11.9 Purges (job quotidien `PURGE_CRON`, par lots de 5 000 lignes)
+`TokenAnalysis`, `ProductEvent` (après l'agrégation nocturne de la phase 6 bis), `UsageCounter`, `TrialFingerprint`,
+`Alert`, `WatchEvent` : plus de `RETENTION_DAYS` (90) jours. `JobRun` : 30 jours. Sessions expirées depuis plus d'un
+jour ou révoquées depuis plus de 7 jours (cascade sur leurs refresh tokens ; les refresh utilisés d'une session vivante
+restent, ils servent à détecter la réutilisation). `AuthToken` expirés depuis plus d'un jour. `MintWatchState` sans
+suivi. Chaque purge écrit son `JobRun` (nombre de lignes par table).
+
+### 11.10 404 et maintenance
+`rj-status-page` (`web-ui`, présentation pure : Rai bravo, titre, phrase, lien de retour) ; route `**` → 404 (au lieu
+de la redirection actuelle vers `/analyse`), route `/maintenance`. `MAINTENANCE_MODE=1` : l'API répond 503
+`MAINTENANCE` (sauf `health`) et un intercepteur de `web-data-access` affiche `/maintenance`. Une page statique
+`maintenance.html` (sans JS) est aussi produite pour la page d'erreur Traefik (phase 8).
