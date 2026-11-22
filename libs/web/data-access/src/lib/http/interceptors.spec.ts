@@ -151,6 +151,19 @@ describe('sessionRefreshInterceptor', () => {
     ctrl.expectNone(`${API}/auth/refresh`);
   });
 
+  it('pas de refresh sur UNAUTHORIZED (aucun cookie) ni sur un 401 hors format', async () => {
+    const { http, ctrl } = setup();
+    const me = firstValueFrom(http.get(`${API}/users/me`));
+    ctrl.expectOne(`${API}/users/me`).flush({ code: 'UNAUTHORIZED', message: 'x' }, { status: 401, statusText: 'Unauthorized' });
+    await expect(me).rejects.toMatchObject({ status: 401 });
+    const raw = firstValueFrom(http.get(`${API}/suivis`));
+    ctrl.expectOne(`${API}/suivis`).flush(null, { status: 401, statusText: 'Unauthorized' });
+    await expect(raw).rejects.toMatchObject({ status: 401 });
+    await flushMicrotasks();
+    ctrl.expectNone(`${API}/auth/refresh`);
+    ctrl.expectNone(`${API}/auth/csrf`);
+  });
+
   it('ignore les 401 d’une autre origine', async () => {
     const { http, ctrl } = setup();
     const result = firstValueFrom(http.get('https://api.helius.xyz/v0/x'));

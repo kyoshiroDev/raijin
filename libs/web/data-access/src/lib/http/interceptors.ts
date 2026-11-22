@@ -4,7 +4,7 @@ import { catchError, switchMap, throwError } from 'rxjs';
 import { CsrfToken } from '../auth/csrf-token';
 import { SessionRefresher } from '../auth/session-refresher';
 import { API_BASE_URL } from '../config/api-config';
-import { CSRF_HEADER_NAME, hasErrorCode, rawErrorCode } from './error-code';
+import { CSRF_HEADER_NAME, hasErrorCode } from './error-code';
 import { isApiUrl, isMutation } from './api-url';
 import { SKIP_CSRF, SKIP_SESSION_REFRESH } from './context';
 
@@ -41,7 +41,7 @@ export const csrfInterceptor: HttpInterceptorFn = (req, next) => {
 };
 
 /**
- * Rafraîchissement automatique : sur un 401 de session (`AUTH_SESSION_EXPIRED` ou `UNAUTHORIZED`),
+ * Rafraîchissement automatique : uniquement sur un 401 `AUTH_SESSION_EXPIRED` (jamais `UNAUTHORIZED`),
  * une seule tentative de `POST /auth/refresh` (partagée entre requêtes concurrentes), puis la
  * requête est rejouée une fois. Jamais pour les appels d'auth eux-mêmes ni pour un mauvais mot de passe.
  */
@@ -67,7 +67,9 @@ export const sessionRefreshInterceptor: HttpInterceptorFn = (req, next) => {
 
 function shouldRefresh(error: unknown): boolean {
   if (!(error instanceof HttpErrorResponse) || error.status !== 401) return false;
-  return rawErrorCode(error) === null || hasErrorCode(error, 'AUTH_SESSION_EXPIRED', 'UNAUTHORIZED');
+  // `UNAUTHORIZED` = aucun cookie (visiteur jamais connecté) : rien à rafraîchir.
+  // `AUTH_SESSION_EXPIRED` = cookie présent mais expiré, invalide ou révoqué : un refresh peut réussir.
+  return hasErrorCode(error, 'AUTH_SESSION_EXPIRED');
 }
 
 /** Ordre : cookies, puis refresh (qui rejoue en repassant par le CSRF pour reprendre le nouveau jeton). */

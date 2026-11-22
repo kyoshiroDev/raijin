@@ -41,17 +41,39 @@ describe('AuthStore', () => {
     expect(store.whenReady()).toBe(ready);
   });
 
-  it('sans session : refresh tenté une fois, puis visiteur anonyme', async () => {
+  it('visiteur jamais connecté (UNAUTHORIZED) : anonyme sans tenter de refresh', async () => {
     const { store, ctrl } = setup();
     const ready = store.whenReady();
     ctrl.expectOne(`${API}/auth/session`).flush({ code: 'UNAUTHORIZED', message: 'x' }, unauthorized);
-    await flushMicrotasks();
-    ctrl.expectOne(`${API}/auth/csrf`).flush({ csrfToken: CSRF_ANON });
-    await flushMicrotasks();
-    ctrl.expectOne(`${API}/auth/refresh`).flush({ code: 'AUTH_SESSION_EXPIRED', message: 'x' }, unauthorized);
     await ready;
     expect(store.status()).toBe('anonymous');
     expect(store.user()).toBeNull();
+    ctrl.expectNone(`${API}/auth/refresh`);
+  });
+
+  it('session expirée : un refresh tenté, refusé, puis anonyme', async () => {
+    const { store, ctrl } = setup();
+    const ready = store.whenReady();
+    ctrl.expectOne(`${API}/auth/session`).flush({ code: 'AUTH_SESSION_EXPIRED', message: 'x' }, unauthorized);
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/csrf`).flush({ csrfToken: CSRF_ANON });
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/refresh`).flush({ code: 'UNAUTHORIZED', message: 'x' }, unauthorized);
+    await ready;
+    expect(store.status()).toBe('anonymous');
+  });
+
+  it('session expirée : refresh réussi, session rétablie', async () => {
+    const { store, ctrl, csrf } = setup();
+    csrf.set(CSRF_ANON);
+    const ready = store.whenReady();
+    ctrl.expectOne(`${API}/auth/session`).flush({ code: 'AUTH_SESSION_EXPIRED', message: 'x' }, unauthorized);
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/refresh`).flush(fakeSession());
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSession());
+    await ready;
+    expect(store.isAuthenticated()).toBe(true);
   });
 
   it('API injoignable : état error, puis réessai forcé', async () => {
