@@ -10,7 +10,7 @@ import { RjShieldScan } from './shield-scan';
   selector: 'rj-analysis-loading',
   imports: [RjCard, RjSkeleton, RjShieldScan],
   template: `
-    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       <rj-card>
         <div class="flex items-center gap-4" role="status">
           <rj-shield-scan class="h-18 w-15 shrink-0" />

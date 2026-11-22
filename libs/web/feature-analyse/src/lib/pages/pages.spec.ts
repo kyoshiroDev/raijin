@@ -3,7 +3,8 @@ import { Meta, Title } from '@angular/platform-browser';
 import { ANALYSIS_DISCLAIMER, ANALYSIS_ERROR_MESSAGES } from '@raijin/shared-contracts';
 import { FAKE_MINTS, fakeAnalysis, fakeAnalysisResponse, fakeQuota } from '@raijin/web-data-access';
 import { API, button, query, queryAll, root, settle, setupFeature, submitForm, typeInput, waitFor } from '../testing/harness';
-import { quotaText } from './analyse.page';
+import { NavigationStart } from '@angular/router';
+import { AnalysePage, quotaText } from './analyse.page';
 import { publicPageMeta } from './public-token.page';
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -78,6 +79,41 @@ describe('AnalysePage', () => {
     expect(queryAll(harness, '.bg-thunder')).toHaveLength(1);
     expect(TestBed.inject(Title).getTitle()).toBe('Sain · Kitsune Inu — Raijin');
     ctrl.expectNone(`${API}/analyses`);
+  });
+
+  it('ordre défavorable : un effet « sans mint » pendant la navigation vers /analyse/<mint> n’efface pas le résultat', async () => {
+    const { harness, ctrl, router } = await open();
+    const page = harness.routeDebugElement?.componentInstance as AnalysePage;
+    typeInput(harness, `https://solscan.io/token/${FAKE_MINTS.safe}`);
+    submitForm(harness);
+    ctrl.expectOne(`${API}/analyses`).flush(fakeAnalysisResponse('safe'));
+    // Effet de l'écran rejoué sans mint au moment où la navigation vers /analyse/<mint> démarre.
+    let replayed = false;
+    const sub = router.events.subscribe((event) => {
+      if (event instanceof NavigationStart && !replayed) {
+        replayed = true;
+        page['onRouteMint'](undefined);
+      }
+    });
+    await waitFor(() => router.url === `/analyse/${FAKE_MINTS.safe}`);
+    sub.unsubscribe();
+    expect(replayed).toBe(true);
+    // Et une fois arrivé : un effet tardif sans mint ne vide rien non plus.
+    page['onRouteMint'](undefined);
+    await harness.fixture.whenStable();
+    expect(query(harness, '[data-verdict-block]')?.textContent).toContain('Sain');
+    expect(query<HTMLInputElement>(harness, 'input[name="token"]')?.value).toBe(FAKE_MINTS.safe);
+    ctrl.expectNone(`${API}/analyses`);
+  });
+
+  it('retour sur /analyse : état vide', async () => {
+    const { harness, ctrl, router } = await open(`/analyse/${FAKE_MINTS.safe}`);
+    ctrl.expectOne(`${API}/analyses`).flush(fakeAnalysisResponse('safe'));
+    await settle();
+    await router.navigateByUrl('/analyse');
+    await harness.fixture.whenStable();
+    expect(query(harness, 'rj-empty-state')).not.toBeNull();
+    ctrl.match(`${API}/analyses/quota`).forEach((r) => r.flush(fakeQuota()));
   });
 
   it('accès direct à /analyse/<mint> : analyse lancée', async () => {

@@ -264,9 +264,20 @@ export class AnalysePage {
     }
   }
 
+  /** Vrai si la navigation en cours, ou l'URL courante, vise `/analyse/<mint>`. */
+  private targetsMintRoute(): boolean {
+    const navigation = this.router.currentNavigation();
+    const target = navigation ? this.router.serializeUrl(navigation.finalUrl ?? navigation.extractedUrl) : this.router.url;
+    return /^\/analyse\/[^/?#]+/.test(target);
+  }
+
   private onRouteMint(mint: string | undefined): void {
     if (!mint) {
-      if (!this.store.loading()) this.store.reset();
+      // Retour sur `/analyse` : état vide. Jamais pendant une analyse, ni quand la navigation
+      // en cours (ou déjà faite) mène à `/analyse/<mint>` : l'ordre de création des composants
+      // et d'exécution des effets ne doit pas pouvoir effacer un résultat qui vient d'arriver.
+      if (this.store.loading() || this.targetsMintRoute()) return;
+      this.store.reset();
       return;
     }
     this.input.set(mint);

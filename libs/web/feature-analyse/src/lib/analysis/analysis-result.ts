@@ -32,7 +32,7 @@ const DATE = new Intl.DateTimeFormat('fr-FR', {
   selector: 'rj-analysis-result',
   imports: [RjAddressChip, RjBottomSheet, RjButton, RjCard, RjCheckItem, RjIcon],
   template: `
-    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+    <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       <section class="flex min-w-0 flex-col lg:sticky lg:top-20" aria-label="Verdict">
         <rj-card>
           <div class="flex items-start justify-between gap-3">
@@ -110,8 +110,8 @@ const DATE = new Intl.DateTimeFormat('fr-FR', {
               </button>
             </div>
             <ng-content select="[rjResultActions]" />
-            <p class="flex flex-wrap items-center gap-x-1.5 text-label text-ink-muted">
-              <rj-icon name="clock" [size]="16" />
+            <p class="flex items-start gap-1.5 text-label text-ink-muted">
+              <rj-icon name="clock" [size]="16" class="shrink-0" />
               <span>Analysé le {{ analyzedAt() }}{{ result().cached ? ' (résultat en cache)' : '' }}</span>
             </p>
             <p class="text-label text-ink-muted" data-disclaimer>{{ disclaimer }}</p>
