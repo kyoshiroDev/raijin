@@ -3,6 +3,12 @@ import type { AnalysisCheckId, DataSourceId, DataSourceRef, RiskFacts, TokenProg
 /** Profil de collecte : `full` (analyse de token) ou `light` (scan de wallet, phase 5). */
 export type CollectorProfile = 'full' | 'light';
 
+/** Options de collecte : profil et voie de crédits Helius (`watch` pour les passes de suivi). */
+export interface CollectorOptions {
+  readonly profile: CollectorProfile;
+  readonly lane?: 'interactive' | 'watch';
+}
+
 /** Statut d'une source pour une collecte (persisté dans `TokenAnalysis.sources`). */
 export interface SourceStatus {
   readonly source: DataSourceId;
@@ -49,7 +55,7 @@ export abstract class FactsCollector {
    * Une source en panne donne un groupe de faits à `null` (contrôle `unavailable`) ; une panne
    * totale lève `UpstreamUnavailableError`.
    */
-  abstract collectFacts(mint: string, options: { profile: CollectorProfile }): Promise<CollectedFacts | null>;
+  abstract collectFacts(mint: string, options: CollectorOptions): Promise<CollectedFacts | null>;
 
   /**
    * Résout une adresse de paire (lien DexScreener, Birdeye) vers le mint du token de base.
@@ -64,6 +70,24 @@ export class UpstreamUnavailableError extends Error {
     super('Sources de données indisponibles');
     this.name = 'UpstreamUnavailableError';
   }
+}
+
+/**
+ * Le compte existe mais n'est pas analysable (format ou taille hors normes, ex. compte > 2 Mo) :
+ * 422 `TOKEN_UNANALYZABLE`, cache négatif long (aucune nouvelle collecte coûteuse).
+ */
+export class TokenUnanalyzableError extends Error {
+  readonly code = 'TOKEN_UNANALYZABLE' as const;
+
+  constructor() {
+    super('Token non analysable');
+    this.name = 'TokenUnanalyzableError';
+  }
+}
+
+/** Erreur « non analysable » de `@raijin/api-solana` ou du port (reconnue par son code stable). */
+export function isTokenUnanalyzable(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'TOKEN_UNANALYZABLE';
 }
 
 /**

@@ -38,7 +38,7 @@ export class ApiClient {
   }
 
   async request<T = Record<string, unknown>>(
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     data?: unknown,
   ): Promise<AxiosResponse<T>> {
@@ -64,6 +64,10 @@ export class ApiClient {
 
   post<T = Record<string, unknown>>(path: string, data: unknown = {}) {
     return this.request<T>('POST', path, data);
+  }
+
+  patch<T = Record<string, unknown>>(path: string, data: unknown = {}) {
+    return this.request<T>('PATCH', path, data);
   }
 
   delete<T = Record<string, unknown>>(path: string, data: unknown = {}) {

@@ -127,6 +127,8 @@ ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT=10
 # Raijin — limite par IP et par minute sur POST /analyses, en plus du quota (vide = 10 en production, 60 en dev/test)
 RATE_LIMIT_ANALYSIS_PER_MINUTE=
 # Raijin — durée du cache Redis d'un résultat d'analyse, en secondes (avec clé Helius / sans clé, RPC public lent)
+#   La même durée sert de fenêtre de déduplication du quota (même sujet + même mint : compté une fois tant
+#   que le résultat est servi depuis le cache ; au-delà, une nouvelle collecte coûte des crédits et recompte).
 ANALYSIS_CACHE_TTL_S=60
 ANALYSIS_CACHE_TTL_NO_KEY_S=300
 # Raijin — index.html du build web servi pour /t/<mint> avec les balises Open Graph injectées
@@ -186,6 +188,8 @@ STRIPE_PRICE_PRO_YEARLY=price_factice_annuel
 #   Copie publicKey → VAPID_PUBLIC_KEY et privateKey → VAPID_PRIVATE_KEY dans ton .env.
 #   La clé privée reste côté API (jamais dans le front ni dans les logs) ; la clé publique est servie
 #   par GET /api/v1/push/vapid-public-key. Changer de paire invalide tous les abonnements existants.
+#   Sans clés en développement : paire éphémère générée à chaque démarrage (avertissement, abonnements perdus
+#   au redémarrage) ; en production : push indisponible (jamais de génération).
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 # Contact VAPID exigé par les services push (mailto: ou https:)
@@ -201,8 +205,10 @@ PUSH_PROVIDER=webpush
 JOBS_ENABLED=true
 # Raijin — préfixe des clés BullMQ dans Redis (le banc utilisera raijin-bench)
 BULLMQ_PREFIX=raijin
-# Raijin — route de déclenchement manuel des jobs pour les tests e2e (POST /api/v1/internal/jobs/:name/run).
-#   0 ou 1. Refusé en production (l'API ne démarre pas).
+# Raijin — route de déclenchement manuel des jobs pour les tests e2e (POST /api/v1/internal/jobs/:name/run,
+#   POST /api/v1/internal/fixtures/:scenario avec ANALYSIS_FIXTURES=1, GET /api/v1/internal/push/outbox avec
+#   PUSH_PROVIDER=fake). 0 ou 1. À 1, les planifications automatiques (planificateur, purge, résumé) sont retirées :
+#   les tests déclenchent les jobs eux-mêmes. Refusé en production (l'API ne démarre pas).
 JOBS_TEST_TRIGGER=0
 # Raijin — suivis actifs par plan (Pro et essai : 50 ; Gratuit : 3), relus avec le plan en base à chaque requête
 FREE_WATCH_LIMIT=3
@@ -272,10 +278,15 @@ SENTRY_ENVIRONMENT=development
   n'est pas en HTTPS, si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`, ou si
   `ANALYSIS_FIXTURES` est activé, si `JOBS_TEST_TRIGGER=1` ou `PUSH_PROVIDER=fake`, si une seule des deux clés
   VAPID est fournie (les deux ou aucune : sans clés, push indisponible), ou si `WATCH_DAILY_CREDIT_BUDGET`
-  dépasse `HELIUS_DAILY_CREDIT_BUDGET`. Les messages
+  dépasse `HELIUS_DAILY_CREDIT_BUDGET` (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
+  `mailto:` ni `https:`). Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les
   secrets absents ou factices sont générés aléatoirement à chaque démarrage, avec un avertissement
   (les sessions ne survivent donc pas à un redémarrage tant qu'aucun secret n'est fourni).
+- Tests e2e de l'API (`pnpm nx e2e api-e2e`) : l'API construite est lancée par Jest (`apps/api-e2e/src/support/
+  api-server.ts`) sur le port 3200 avec `ANALYSIS_FIXTURES=1`, `JOBS_TEST_TRIGGER=1`, `PUSH_PROVIDER=fake`,
+  `ALERT_EMAIL_BATCH_DELAY_S=1`, `ALERT_COOLDOWN_MINUTES=0`, `BULLMQ_PREFIX=raijin-e2e` ; journal dans
+  `dist/api-e2e/api.log`.
 - `GET /api/v1/health/config` répond `configured` / `not_configured` par service, sans aucune valeur.
 

@@ -1,5 +1,7 @@
+import { stopApi } from './api-server';
+
 module.exports = async function () {
-  // Rien à tuer ici : Nx arrête lui-même la tâche continue `api:serve`.
-  // (L'ancien `killPort` pouvait tuer un autre service de la machine écoutant sur le même port.)
+  // Arrête uniquement le processus lancé par global-setup (jamais un autre service du même port).
+  await stopApi(globalThis.__API_PROCESS__);
   console.log(globalThis.__TEARDOWN_MESSAGE__);
 };

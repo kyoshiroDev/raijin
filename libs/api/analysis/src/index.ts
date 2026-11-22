@@ -4,6 +4,7 @@ export * from './lib/analysis/analysis.service';
 export * from './lib/analysis/result-builder';
 export * from './lib/analysis/risk-engine.provider';
 export * from './lib/fixtures/fixture-facts-collector';
+export * from './lib/fixtures/fixture-scenarios';
 export * from './lib/og/og-image.service';
 export * from './lib/ports/facts-collector';
 export * from './lib/quota/ip-hash';

@@ -25,7 +25,7 @@ export interface QuotaPolicy {
 export interface QuotaReservation {
   readonly policy: QuotaPolicy;
   readonly day: string;
-  /** Faux si l'analyse était déjà comptée (même sujet + mint dans les 10 min) : rien à rembourser. */
+  /** Faux si l'analyse était déjà comptée (même sujet + mint pendant la durée du cache) : rien à rembourser. */
   readonly counted: boolean;
   readonly used: number;
   readonly seenKey: string | null;
@@ -36,8 +36,13 @@ export const FAILURE_KIND = 'analysis_failure';
 /** Compteur interne des pannes de sources (remboursements plafonnés, sans refus). */
 export const UPSTREAM_FAILURE_KIND = 'analysis_upstream_failure';
 
-/** Une même analyse (sujet + mint) répétée dans ce délai ne recompte pas. */
-export const QUOTA_DEDUP_TTL_MS = 10 * 60_000;
+/**
+ * Une même analyse (sujet + mint) répétée dans ce délai ne recompte pas. Par défaut : durée du cache
+ * des résultats (`ANALYSIS_CACHE_TTL_S`, 60 s ; 300 s sans clé Helius), passée par `AnalysisService` :
+ * tant que le résultat est servi depuis le cache, il ne coûte rien ; au-delà, une nouvelle collecte
+ * (crédits Helius) recompte. Valeur de repli si l'appelant ne précise rien.
+ */
+export const QUOTA_DEDUP_TTL_MS = 60_000;
 const UNLIMITED = 2_147_483_647;
 
 /**
@@ -88,14 +93,14 @@ export class QuotaService {
    * Réserve une analyse de `mint` pour le demandeur, ou lève 429 `QUOTA_EXCEEDED`.
    * À appeler avant l'analyse ; `refund` si elle échoue.
    */
-  async reserve(policy: QuotaPolicy, mint: string): Promise<QuotaReservation> {
+  async reserve(policy: QuotaPolicy, mint: string, dedupTtlMs: number = QUOTA_DEDUP_TTL_MS): Promise<QuotaReservation> {
     const day = this.today();
     // Trop d'échecs aujourd'hui (tokens inexistants en rafale) : refus avant toute collecte.
     if ((await this.used(policy, day, FAILURE_KIND)) >= this.config.analysis.failedDailyLimit) {
       throw new ApiException('QUOTA_EXCEEDED', HttpStatus.TOO_MANY_REQUESTS, ANALYSIS_ERROR_MESSAGES.QUOTA_EXCEEDED);
     }
     const seenKey = `quota:seen:${policy.kind}:${this.subjectKey(policy)}:${mint}`;
-    const fresh = await this.store.setIfAbsent(seenKey, '1', QUOTA_DEDUP_TTL_MS);
+    const fresh = await this.store.setIfAbsent(seenKey, '1', dedupTtlMs);
     if (fresh === false) {
       return { policy, day, counted: false, used: await this.used(policy, day), seenKey: null };
     }

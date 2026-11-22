@@ -12,8 +12,7 @@
         "{workspaceRoot}/coverage/{e2eProjectRoot}"
       ],
       "dependsOn": [
-        "api:build",
-        "api:serve-e2e"
+        "api:build"
       ],
       "options": {
         "cwd": "apps/api-e2e",

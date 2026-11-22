@@ -123,7 +123,11 @@
           "ANALYSIS_FIXTURES": "1",
           "TRUST_PROXY": "1",
           "NODE_ENV": "development",
-          "API_PORT": "3200"
+          "API_PORT": "3200",
+          "JOBS_TEST_TRIGGER": "1",
+          "PUSH_PROVIDER": "fake",
+          "ALERT_EMAIL_BATCH_DELAY_S": "1",
+          "BULLMQ_PREFIX": "raijin-e2e"
         }
       }
     }

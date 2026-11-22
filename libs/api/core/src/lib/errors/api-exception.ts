@@ -12,6 +12,7 @@ export const GENERIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   QUOTA_EXCEEDED: 'Quota atteint.',
   UPSTREAM_UNAVAILABLE: 'Un service externe est indisponible. Réessaie plus tard.',
   INTERNAL_ERROR: 'Une erreur est survenue. Réessaie plus tard.',
+  MAINTENANCE: 'Raijin est en maintenance. Reviens dans quelques minutes.',
 };
 
 export function defaultMessage(code: ApiErrorCode): string {

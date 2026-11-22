@@ -6,10 +6,12 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
-    "tslib": "^2.3.0",
     "@nestjs/common": "^11.0.0",
     "@raijin/api-core": "*",
     "@raijin/shared-contracts": "*",
-    "nodemailer": "^10.6.1"
+    "@raijin/shared-util": "*",
+    "nodemailer": "^10.6.1",
+    "tslib": "^2.3.0",
+    "web-push": "~3.6.7"
   }
 }

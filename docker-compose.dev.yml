@@ -22,9 +22,11 @@ services:
       timeout: 3s
       retries: 10
 
+  # BullMQ (jobs des suivis, docs/ARCHITECTURE.md §11.3) exige noeviction : une clé de job évincée
+  # sous pression mémoire corromprait les files. Toutes les clés de cache ont un TTL.
   redis:
     image: redis:8-alpine
-    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory-policy', 'noeviction']
     ports:
       - '127.0.0.1:6380:6379'
     healthcheck:

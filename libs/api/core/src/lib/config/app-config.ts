@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createECDH, randomBytes } from 'node:crypto';
 import * as z from 'zod';
 import { parseDuration } from './duration';
 
@@ -67,6 +67,48 @@ export interface AppConfig {
     /** Dossier des fixtures rejouées ; `null` : `libs/api/solana/src/fixtures` depuis le répertoire courant. */
     readonly fixturesDir: string | null;
   };
+  /** Suivis et alertes (phase 4, docs/ARCHITECTURE.md §11). */
+  readonly watch: {
+    /** Suivis actifs autorisés : Gratuit, Pro (et essai). */
+    readonly freeLimit: number;
+    readonly proLimit: number;
+    /** Historique des alertes affiché, en jours. */
+    readonly freeAlertHistoryDays: number;
+    readonly proAlertHistoryDays: number;
+    /** Intervalles des passes, en minutes (rapide, holders, complète). */
+    readonly fastIntervalMin: number;
+    readonly holdersIntervalMin: number;
+    readonly fullIntervalMin: number;
+    /** Crédits Helius par jour réservés aux suivis (voie `watch`) et budget global de l'API. */
+    readonly dailyCreditBudget: number;
+    readonly heliusDailyCreditBudget: number;
+    /** Une alerte du même type pour un mint au plus toutes les N minutes (sauf aggravation). */
+    readonly alertCooldownMinutes: number;
+    /** Regroupement des e-mails d'alerte (secondes) et plafond journalier par utilisateur. */
+    readonly emailBatchDelayS: number;
+    readonly emailDailyMax: number;
+  };
+  /** Jobs BullMQ (réanalyses, envois, purges). */
+  readonly jobs: {
+    readonly enabled: boolean;
+    readonly prefix: string;
+    /** `POST internal/jobs/:name/run` (tests e2e) ; refusé en production. */
+    readonly testTrigger: boolean;
+    readonly tickSeconds: number;
+    /** Cron UTC de la purge quotidienne. */
+    readonly purgeCron: string;
+    /** Rétention des analyses, alertes, événements… en jours. */
+    readonly retentionDays: number;
+  };
+  /** Push web VAPID. `publicKey`/`privateKey` à `null` : push indisponible (`PUSH_NOT_SUPPORTED`). */
+  readonly push: {
+    readonly provider: 'webpush' | 'fake';
+    readonly publicKey: string | null;
+    readonly privateKey: string | null;
+    readonly subject: string;
+  };
+  /** `MAINTENANCE_MODE=1` : toutes les routes sauf `health` répondent 503 `MAINTENANCE`. */
+  readonly maintenance: boolean;
   readonly mail: {
     readonly provider: 'smtp' | 'resend';
     readonly from: string;
@@ -77,6 +119,8 @@ export interface AppConfig {
     readonly resendApiKey: string | null;
     /** Logo PNG affiché en en-tête des e-mails (les clients mail bloquent le SVG). */
     readonly logoUrl: string;
+    /** URL de base des images des e-mails (Rai en PNG 2x), sans `/` final. */
+    readonly assetsBaseUrl: string;
   };
   /** Services externes configurés ou non (jamais la valeur) : GET /health/config. */
   readonly services: Readonly<Record<string, boolean>>;
@@ -136,6 +180,38 @@ const envSchema = z.object({
   SMTP_PASSWORD: optionalString,
   RESEND_API_KEY: optionalString,
   MAIL_LOGO_URL: optionalString,
+  MAIL_ASSETS_BASE_URL: optionalString,
+  // Suivis, alertes et jobs (docs/ENV.md, docs/ARCHITECTURE.md §11).
+  JOBS_ENABLED: optionalString,
+  BULLMQ_PREFIX: z.string().trim().regex(/^[a-z0-9-]{1,32}$/).default('raijin'),
+  JOBS_TEST_TRIGGER: optionalString,
+  FREE_WATCH_LIMIT: z.coerce.number().int().min(0).max(1_000).default(3),
+  PRO_WATCH_LIMIT: z.coerce.number().int().min(1).max(1_000).default(50),
+  FREE_ALERT_HISTORY_DAYS: z.coerce.number().int().min(1).max(366).default(30),
+  PRO_ALERT_HISTORY_DAYS: z.coerce.number().int().min(1).max(366).default(90),
+  WATCH_TICK_SECONDS: z.coerce.number().int().min(5).max(3_600).default(60),
+  WATCH_FAST_INTERVAL_MIN: z.coerce.number().int().min(1).max(1_440).default(5),
+  WATCH_HOLDERS_INTERVAL_MIN: z.coerce.number().int().min(1).max(10_080).default(30),
+  WATCH_FULL_INTERVAL_MIN: z.coerce.number().int().min(5).max(10_080).default(360),
+  WATCH_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(12_000),
+  HELIUS_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(22_000),
+  ALERT_COOLDOWN_MINUTES: z.coerce.number().int().min(0).max(10_080).default(360),
+  ALERT_EMAIL_BATCH_DELAY_S: z.coerce.number().int().min(0).max(3_600).default(120),
+  ALERT_EMAIL_DAILY_MAX: z.coerce.number().int().min(0).max(500).default(20),
+  RETENTION_DAYS: z.coerce.number().int().min(7).max(3_650).default(90),
+  PURGE_CRON: z
+    .string()
+    .trim()
+    .regex(/^(?:[0-9*/,-]+\s+){4}[0-9*/,-]+$/, { message: 'cron à 5 champs attendu (ex. 30 3 * * *)' })
+    .default('30 3 * * *'),
+  VAPID_PUBLIC_KEY: optionalString,
+  VAPID_SUBJECT: z
+    .string()
+    .trim()
+    .regex(/^(?:mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/, { message: 'mailto: ou https: attendu' })
+    .default('mailto:support@raijinshield.com'),
+  PUSH_PROVIDER: z.enum(['webpush', 'fake']).default('webpush'),
+  MAINTENANCE_MODE: optionalString,
   // Services consultés seulement pour /health/config (présence, jamais la valeur).
   HELIUS_API_KEY: optionalString,
   STRIPE_SECRET_KEY: optionalString,
@@ -151,6 +227,17 @@ export class ConfigError extends Error {
     super(`Configuration invalide :\n- ${problems.join('\n- ')}`);
     this.name = 'ConfigError';
   }
+}
+
+/** Clé VAPID : base64url (publique 65 octets ≈ 87 caractères, privée 32 octets ≈ 43). */
+const VAPID_PUBLIC_PATTERN = /^[A-Za-z0-9_-]{86,88}$/;
+const VAPID_PRIVATE_PATTERN = /^[A-Za-z0-9_-]{42,44}$/;
+
+/** Paire VAPID P-256 (format de `web-push generate-vapid-keys`) : développement seulement. */
+export function generateVapidKeys(): { publicKey: string; privateKey: string } {
+  const ecdh = createECDH('prime256v1');
+  ecdh.generateKeys();
+  return { publicKey: ecdh.getPublicKey().toString('base64url'), privateKey: ecdh.getPrivateKey().toString('base64url') };
 }
 
 const DEV_DATABASE_URL = 'postgresql://raijin:changeme-factice@localhost:5433/raijin?schema=public';
@@ -266,6 +353,31 @@ export function loadConfig(
     problems.push('ANALYSIS_FIXTURES : interdit en production (sources simulées)');
   }
 
+  const jobsTestTrigger = parseBoolean(e.JOBS_TEST_TRIGGER, false);
+  if (isProduction && jobsTestTrigger) problems.push('JOBS_TEST_TRIGGER : interdit en production (déclenchement manuel des jobs)');
+  if (isProduction && e.PUSH_PROVIDER === 'fake') problems.push('PUSH_PROVIDER : fake interdit en production');
+  if (e.WATCH_DAILY_CREDIT_BUDGET > e.HELIUS_DAILY_CREDIT_BUDGET) {
+    problems.push('WATCH_DAILY_CREDIT_BUDGET : ne doit pas dépasser HELIUS_DAILY_CREDIT_BUDGET');
+  }
+
+  // VAPID : les deux clés ou aucune. Sans clés : push indisponible en production ; paire
+  // éphémère générée en développement (abonnements perdus au redémarrage), jamais affichée.
+  let vapidPublic = isReal(e.VAPID_PUBLIC_KEY) ? e.VAPID_PUBLIC_KEY : null;
+  let vapidPrivate = isReal(e.VAPID_PRIVATE_KEY) ? e.VAPID_PRIVATE_KEY : null;
+  if ((vapidPublic === null) !== (vapidPrivate === null)) {
+    problems.push('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY : fournir les deux clés ou aucune');
+    vapidPublic = null;
+    vapidPrivate = null;
+  } else if (vapidPublic && vapidPrivate) {
+    if (!VAPID_PUBLIC_PATTERN.test(vapidPublic)) problems.push('VAPID_PUBLIC_KEY : clé base64url P-256 attendue');
+    if (!VAPID_PRIVATE_PATTERN.test(vapidPrivate)) problems.push('VAPID_PRIVATE_KEY : clé base64url P-256 attendue');
+  } else if (!isProduction) {
+    const pair = generateVapidKeys();
+    vapidPublic = pair.publicKey;
+    vapidPrivate = pair.privateKey;
+    warn('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY absentes : paire VAPID éphémère générée pour ce démarrage (développement seulement).');
+  }
+
   const config: AppConfig = {
     env: e.NODE_ENV,
     isProduction,
@@ -319,7 +431,38 @@ export function loadConfig(
       smtpPassword: e.SMTP_PASSWORD ?? null,
       resendApiKey,
       logoUrl: e.MAIL_LOGO_URL ?? `${originOf(e.APP_URL)}/icons/icon-192.png`,
+      assetsBaseUrl: (e.MAIL_ASSETS_BASE_URL ?? `${originOf(e.APP_URL)}/email`).replace(/\/+$/, ''),
     },
+    watch: {
+      freeLimit: e.FREE_WATCH_LIMIT,
+      proLimit: e.PRO_WATCH_LIMIT,
+      freeAlertHistoryDays: e.FREE_ALERT_HISTORY_DAYS,
+      proAlertHistoryDays: e.PRO_ALERT_HISTORY_DAYS,
+      fastIntervalMin: e.WATCH_FAST_INTERVAL_MIN,
+      holdersIntervalMin: e.WATCH_HOLDERS_INTERVAL_MIN,
+      fullIntervalMin: e.WATCH_FULL_INTERVAL_MIN,
+      dailyCreditBudget: e.WATCH_DAILY_CREDIT_BUDGET,
+      heliusDailyCreditBudget: e.HELIUS_DAILY_CREDIT_BUDGET,
+      alertCooldownMinutes: e.ALERT_COOLDOWN_MINUTES,
+      emailBatchDelayS: e.ALERT_EMAIL_BATCH_DELAY_S,
+      emailDailyMax: e.ALERT_EMAIL_DAILY_MAX,
+    },
+    jobs: {
+      // Désactivés par défaut en test (services testés sans Redis), actifs sinon.
+      enabled: parseBoolean(e.JOBS_ENABLED, e.NODE_ENV !== 'test'),
+      prefix: e.BULLMQ_PREFIX,
+      testTrigger: jobsTestTrigger,
+      tickSeconds: e.WATCH_TICK_SECONDS,
+      purgeCron: e.PURGE_CRON,
+      retentionDays: e.RETENTION_DAYS,
+    },
+    push: {
+      provider: e.PUSH_PROVIDER,
+      publicKey: vapidPublic,
+      privateKey: vapidPrivate,
+      subject: e.VAPID_SUBJECT,
+    },
+    maintenance: parseBoolean(e.MAINTENANCE_MODE, false),
     services: {
       database: !!databaseUrl,
       redis: redisUrl !== null,
@@ -327,7 +470,7 @@ export function loadConfig(
       resend: !!resendApiKey,
       smtp: provider === 'smtp',
       stripe: isReal(e.STRIPE_SECRET_KEY) && isReal(e.STRIPE_WEBHOOK_SECRET),
-      vapid: isReal(e.VAPID_PRIVATE_KEY),
+      vapid: isReal(e.VAPID_PRIVATE_KEY) && isReal(e.VAPID_PUBLIC_KEY),
       ga4: isReal(e.GA4_MEASUREMENT_ID),
       googleServiceAccount: isReal(e.GOOGLE_SERVICE_ACCOUNT_JSON),
       sentry: isReal(e.SENTRY_DSN_API),

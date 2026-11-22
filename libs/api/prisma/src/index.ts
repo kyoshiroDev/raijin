@@ -5,8 +5,13 @@ export type {
   Alert,
   AuditLog,
   AuthToken,
+  JobRun,
+  MintWatchState,
+  PushSubscription,
   RefreshToken,
   Session,
   User,
+  Watch,
+  WatchEvent,
 } from './generated/prisma/client';
-export { AuthTokenType, Plan, Role, TrialStatus } from './generated/prisma/enums';
+export { AlertSeverity, AuthTokenType, JobRunStatus, Plan, Role, TrialStatus, WatchPauseReason, WatchStatus } from './generated/prisma/enums';

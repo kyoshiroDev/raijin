@@ -18,6 +18,8 @@ export const EMAIL_THEME = {
   thunder: '#facc15',
   'thunder-ink': '#7a5d00',
   'on-thunder': '#07090d',
+  warn: '#a3480a',
+  danger: '#be123c',
 } as const;
 
 const FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";

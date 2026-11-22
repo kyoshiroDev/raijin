@@ -8,7 +8,7 @@ import {
 } from '@raijin/shared-contracts';
 import { canIssueVerdict } from '@raijin/shared-risk-engine';
 import { extractSolanaAddress } from '@raijin/shared-util';
-import { AnalysisClock, FactsCollector, UpstreamUnavailableError } from '../ports/facts-collector';
+import { AnalysisClock, FactsCollector, TokenUnanalyzableError, UpstreamUnavailableError } from '../ports/facts-collector';
 import { QuotaService, type QuotaActor } from '../quota/quota.service';
 import { KeyValueStore } from '../store/key-value-store';
 import { AnalysisRepository } from './analysis.repository';
@@ -23,6 +23,15 @@ export const ANALYSIS_WAIT_MAX_MS = 10_000;
 /** Cache négatif d'un mint inexistant, ou dont la collecte a échoué (sources en panne, compte hostile). */
 export const NOT_FOUND_TTL_MS = 60_000;
 export const UNAVAILABLE_TTL_MS = 60_000;
+/** Cache négatif d'un compte non analysable (format ou taille hors normes) : 1 h, la donnée ne change pas. */
+export const UNANALYZABLE_TTL_MS = 3_600_000;
+
+/** Réanalyse d'un mint suivi (passe complète) : résultat + identifiant de l'analyse enregistrée. */
+export interface WatchAnalysis {
+  readonly result: AnalysisResult;
+  /** `TokenAnalysis.id` (`null` si l'enregistrement a échoué). */
+  readonly analysisId: string | null;
+}
 
 /** Réponse de `POST /analyses` et durée mesurée (en-tête `Server-Timing`). */
 export interface TimedAnalysisResponse {
@@ -30,10 +39,13 @@ export interface TimedAnalysisResponse {
   readonly durationMs: number;
 }
 
-function error(code: 'MINT_INVALID' | 'TOKEN_NOT_FOUND' | 'ANALYSIS_NOT_FOUND' | 'UPSTREAM_UNAVAILABLE'): ApiException {
+type AnalysisErrorCode = 'MINT_INVALID' | 'TOKEN_NOT_FOUND' | 'TOKEN_UNANALYZABLE' | 'ANALYSIS_NOT_FOUND' | 'UPSTREAM_UNAVAILABLE';
+
+function error(code: AnalysisErrorCode): ApiException {
   const status = {
     MINT_INVALID: HttpStatus.BAD_REQUEST,
     TOKEN_NOT_FOUND: HttpStatus.NOT_FOUND,
+    TOKEN_UNANALYZABLE: HttpStatus.UNPROCESSABLE_ENTITY,
     ANALYSIS_NOT_FOUND: HttpStatus.NOT_FOUND,
     UPSTREAM_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
   }[code];
@@ -80,13 +92,16 @@ export class AnalysisService {
     if (!extracted) throw error('MINT_INVALID');
 
     const policy = await this.quota.resolvePolicy(actor);
-    const reservation = await this.quota.reserve(policy, extracted.address);
+    // Fenêtre de déduplication du quota = durée du cache : au-delà, une nouvelle collecte coûte des crédits.
+    const reservation = await this.quota.reserve(policy, extracted.address, this.cacheTtlMs);
     const userId = actor.kind === 'user' ? actor.userId : null;
     let analysis: AnalysisResult;
     try {
       let mint = extracted.address;
       if (extracted.kind === 'pair_or_mint') {
         const direct = await this.readCache(mint);
+        // Échec récent pour cette adresse : erreur immédiate, sans nouvelle résolution de paire (DexScreener).
+        if (!direct) await this.throwIfNegativelyCached(mint);
         mint = direct ? mint : ((await this.resolveMint(mint)) ?? mint);
       }
       analysis = await this.getOrCompute(mint, userId);
@@ -107,6 +122,20 @@ export class AnalysisService {
     });
     this.logger.log(`Analyse ${analysis.cached ? 'en cache' : 'fraîche'} en ${Math.round(durationMs)} ms`);
     return { response: { analysis, quota: await this.quota.info(policy, reservation.used) }, durationMs };
+  }
+
+  /**
+   * Passe complète d'un suivi (docs/ARCHITECTURE.md §11.4) : même pipeline que `POST /analyses`
+   * (cache, verrou, moteur, persistance), **sans quota utilisateur** ni événement produit. Les crédits
+   * sont décomptés par la collecte. Erreurs : `TOKEN_NOT_FOUND`, `TOKEN_UNANALYZABLE`, `UPSTREAM_UNAVAILABLE`.
+   */
+  async analyzeForWatch(mint: string): Promise<WatchAnalysis> {
+    // Toujours une collecte neuve (le résultat en cache peut dater de la création du suivi) ; les
+    // caches par source (âge du token…) restent utilisés. Le résultat rafraîchit le cache de l'analyse.
+    await this.throwIfNegativelyCached(mint);
+    const result = await this.computeWithLock(mint, null, 'watch');
+    const analysisId = await this.repository.findIdAt(mint, new Date(result.analyzedAt));
+    return { result, analysisId };
   }
 
   /** `GET analyses/:mint/latest` : résultat en cache, sinon dernière analyse de moins de 24 h. */
@@ -159,7 +188,7 @@ export class AnalysisService {
     return promise;
   }
 
-  private async computeWithLock(mint: string, userId: string | null): Promise<AnalysisResult> {
+  private async computeWithLock(mint: string, userId: string | null, lane: 'interactive' | 'watch' = 'interactive'): Promise<AnalysisResult> {
     const lockKey = `analysis:lock:${mint}`;
     const token = randomToken(12);
     const acquired = await this.store.setIfAbsent(lockKey, token, ANALYSIS_LOCK_TTL_MS);
@@ -168,7 +197,7 @@ export class AnalysisService {
       if (awaited) return awaited;
     }
     try {
-      return await this.compute(mint, userId);
+      return await this.compute(mint, userId, lane);
     } finally {
       if (acquired) await this.store.deleteIfEquals(lockKey, token);
     }
@@ -189,6 +218,7 @@ export class AnalysisService {
   /** Échec récent pour ce mint : même erreur sans relancer la collecte (crédits Helius). */
   private async throwIfNegativelyCached(mint: string): Promise<void> {
     if (await this.store.get(`analysis:notfound:${mint}`)) throw error('TOKEN_NOT_FOUND');
+    if (await this.store.get(`analysis:unanalyzable:${mint}`)) throw error('TOKEN_UNANALYZABLE');
     if (await this.store.get(`analysis:unavailable:${mint}`)) throw error('UPSTREAM_UNAVAILABLE');
   }
 
@@ -197,13 +227,17 @@ export class AnalysisService {
     return error('UPSTREAM_UNAVAILABLE');
   }
 
-  private async compute(mint: string, userId: string | null): Promise<AnalysisResult> {
+  private async compute(mint: string, userId: string | null, lane: 'interactive' | 'watch' = 'interactive'): Promise<AnalysisResult> {
     const started = performance.now();
     let collected;
     try {
-      collected = await this.collector.collectFacts(mint, { profile: 'full' });
+      collected = await this.collector.collectFacts(mint, lane === 'watch' ? { profile: 'full', lane } : { profile: 'full' });
     } catch (failure) {
       if (failure instanceof UpstreamUnavailableError) throw await this.unavailable(mint);
+      if (failure instanceof TokenUnanalyzableError) {
+        await this.store.set(`analysis:unanalyzable:${mint}`, '1', UNANALYZABLE_TTL_MS);
+        throw error('TOKEN_UNANALYZABLE');
+      }
       throw failure;
     }
     if (!collected) {

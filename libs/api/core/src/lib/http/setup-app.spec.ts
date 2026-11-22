@@ -14,6 +14,14 @@ import { setupApp } from './setup-app';
 
 const bodySchema = z.object({ email: z.email({ message: 'Adresse e-mail invalide.' }) });
 
+@Controller('health')
+class FakeHealthController {
+  @Get()
+  health() {
+    return { ok: true };
+  }
+}
+
 @Controller('demo')
 class DemoController {
   @Get('ok')
@@ -52,7 +60,7 @@ class DemoController {
 
 async function createApp(env: Record<string, string> = {}): Promise<NestExpressApplication> {
   const config = testConfig({ RATE_LIMIT_AUTH_PER_MINUTE: '2', ...env });
-  @Module({ imports: [ApiCoreModule.forRoot(config)], controllers: [DemoController] })
+  @Module({ imports: [ApiCoreModule.forRoot(config)], controllers: [DemoController, FakeHealthController] })
   class DemoModule {}
   const app = await NestFactory.create<NestExpressApplication>(DemoModule, { bodyParser: false, logger: false });
   setupApp(app, config);
@@ -168,6 +176,19 @@ describe('setupApp en production', () => {
       expect(res.headers['strict-transport-security']).toContain('max-age=31536000');
       const boom = await request(app.getHttpServer()).get('/api/v1/demo/boom').expect(500);
       expect(boom.body.stack).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('maintenance : 503 MAINTENANCE partout sauf health', async () => {
+    const app = await createApp({ MAINTENANCE_MODE: '1' });
+    try {
+      const res = await request(app.getHttpServer()).get('/api/v1/demo/ok').expect(503);
+      expect(res.body).toEqual({ code: 'MAINTENANCE', message: expect.stringContaining('maintenance') });
+      expect(res.headers['retry-after']).toBe('300');
+      await request(app.getHttpServer()).post('/api/v1/demo/echo').send({}).expect(503);
+      await request(app.getHttpServer()).get('/api/v1/health').expect(200);
     } finally {
       await app.close();
     }

@@ -6,10 +6,10 @@ import { join } from 'node:path';
 import type { AnalysisRepository } from '../analysis/analysis.repository';
 import { AnalysisService } from '../analysis/analysis.service';
 import { DefaultRiskEngine } from '../analysis/risk-engine.provider';
-import { SystemClock, UpstreamUnavailableError } from '../ports/facts-collector';
+import { SystemClock, TokenUnanalyzableError, UpstreamUnavailableError } from '../ports/facts-collector';
 import type { QuotaService } from '../quota/quota.service';
 import { MemoryKeyValueStore } from '../store/key-value-store';
-import { CONSUME_CREDITS_SCRIPT, RedisCreditBudget, SolanaCacheStore } from './redis-ports';
+import { CONSUME_CREDITS_SCRIPT, CONSUME_LANE_CREDITS_SCRIPT, RedisCreditBudget, SolanaCacheStore } from './redis-ports';
 import { SolanaFactsCollector } from './solana-facts-collector';
 
 const FIXTURES = loadAllFixtures(join(__dirname, '../../../../solana/src/fixtures'));
@@ -81,6 +81,14 @@ describe('intégration @raijin/api-solana (fixtures enregistrées, aucun réseau
     await expect(adapter.collectFacts(BONK, { profile: 'full' })).rejects.toThrow('bug');
   }, 30_000);
 
+  it('compte hors normes (code TOKEN_UNANALYZABLE de la lib) : TokenUnanalyzableError du port', async () => {
+    const solana = new SolanaDataService({ heliusApiKey: null, fetch: createFixtureFetch(FIXTURES, DEFAULT_SOLANA_DATA_CONFIG).fetch });
+    const adapter = new SolanaFactsCollector(solana);
+    const unanalyzable = Object.assign(new Error('Token non analysable.'), { code: 'TOKEN_UNANALYZABLE' });
+    jest.spyOn(solana, 'collectFacts').mockRejectedValueOnce(unanalyzable);
+    await expect(adapter.collectFacts(BONK, { profile: 'full' })).rejects.toBeInstanceOf(TokenUnanalyzableError);
+  }, 30_000);
+
   it('adresse inconnue des fixtures : pas une paire', async () => {
     await expect(collector().resolveMint(BONK)).resolves.toBeNull();
     expect(collector().heliusConfigured).toBe(false);
@@ -118,8 +126,36 @@ describe('ports Redis de @raijin/api-solana', () => {
     expect(CONSUME_CREDITS_SCRIPT).toContain("redis.call('DECRBY', KEYS[1], ARGV[1])");
   });
 
+  it('RedisCreditBudget : voie watch → deux compteurs (global + voie) dans un seul script, lecture de l’usage', async () => {
+    const redis = {
+      eval: jest.fn(async (...args: unknown[]) => (args.length > 0 ? 1 : 0)),
+      get: jest.fn(async (key: string) => (key.startsWith('helius:credits:watch:') ? '42' : '100')),
+    };
+    const budget = new RedisCreditBudget(redis as unknown as ConstructorParameters<typeof RedisCreditBudget>[0], 22_000, undefined, 12_000);
+    await expect(budget.tryConsume(3, 'watch')).resolves.toBe(true);
+    const [script, keys, globalKey, laneKey, credits, globalLimit, laneLimit] = redis.eval.mock.calls[0] ?? [];
+    expect(script).toBe(CONSUME_LANE_CREDITS_SCRIPT);
+    expect(keys).toBe(2);
+    expect(globalKey).toMatch(/^helius:credits:\d{4}-\d{2}-\d{2}$/);
+    expect(laneKey).toMatch(/^helius:credits:watch:\d{4}-\d{2}-\d{2}$/);
+    expect([credits, globalLimit, laneLimit]).toEqual(['3', '22000', '12000']);
+    await expect(budget.used('watch')).resolves.toBe(42);
+    await expect(budget.used('interactive')).resolves.toBe(100);
+    expect(budget.limit('watch')).toBe(12_000);
+    expect(CONSUME_LANE_CREDITS_SCRIPT).toContain("redis.call('DECRBY', KEYS[2], ARGV[1])");
+  });
+
+  it('RedisCreditBudget : voie watch en mémoire plafonnée à part', async () => {
+    const budget = new RedisCreditBudget(null, 10, undefined, 4);
+    await expect(budget.tryConsume(4, 'watch')).resolves.toBe(true);
+    await expect(budget.tryConsume(1, 'watch')).resolves.toBe(false);
+    await expect(budget.tryConsume(6, 'interactive')).resolves.toBe(true);
+    await expect(budget.tryConsume(1, 'interactive')).resolves.toBe(false);
+    await expect(budget.used('watch')).resolves.toBe(0);
+  });
+
   it('RedisCreditBudget : Redis en panne ou absent → budget mémoire', async () => {
-    const failing = new RedisCreditBudget({ eval: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')) }, 10);
+    const failing = new RedisCreditBudget({ eval: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')), get: jest.fn() }, 10);
     await expect(failing.tryConsume(10)).resolves.toBe(true);
     await expect(failing.tryConsume(1)).resolves.toBe(false);
     await expect(new RedisCreditBudget(null, 1).tryConsume(1)).resolves.toBe(true);

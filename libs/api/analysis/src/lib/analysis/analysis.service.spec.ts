@@ -2,7 +2,7 @@ import { testConfig, type AppConfig } from '@raijin/api-core';
 import { ANALYSIS_CHECK_IDS, analysisResultSchema, type AnalysisResult } from '@raijin/shared-contracts';
 import { RISK_ENGINE_VERSION } from '@raijin/shared-risk-engine';
 import { FIXTURE_MINTS, FixtureFactsCollector } from '../fixtures/fixture-facts-collector';
-import { AnalysisClock, FactsCollector, type CollectedFacts } from '../ports/facts-collector';
+import { AnalysisClock, FactsCollector, TokenUnanalyzableError, type CollectedFacts } from '../ports/facts-collector';
 import type { QuotaPolicy, QuotaReservation, QuotaService } from '../quota/quota.service';
 import { KeyValueStore, MemoryKeyValueStore } from '../store/key-value-store';
 import type { AnalysisRepository } from './analysis.repository';
@@ -45,6 +45,7 @@ function fakeRepository() {
   return {
     save: jest.fn(async () => undefined),
     findLatest: jest.fn(async (): Promise<AnalysisResult | null> => null),
+    findIdAt: jest.fn(async (): Promise<string | null> => '01968b3a-7c2e-7d4a-9f00-0123456789ab'),
     recordEvent: jest.fn(async () => undefined),
   };
 }
@@ -140,6 +141,8 @@ describe('AnalysisService : orchestration', () => {
     const reference = (await setup().service.analyze(FIXTURE_MINTS.safe, ANON)).response.analysis;
     const store = new MemoryKeyValueStore();
     const { service, collector } = setup({ store });
+    // Attente large : la machine de test peut être chargée (le résultat arrive après ~20 ms).
+    service.waitMaxMs = 5_000;
     await store.set(`analysis:lock:${FIXTURE_MINTS.safe}`, 'autre-instance', 15_000);
     // L'autre instance publie son résultat dans le cache partagé pendant l'attente.
     setTimeout(() => {
@@ -206,6 +209,23 @@ describe('AnalysisService : orchestration', () => {
   });
 });
 
+describe('AnalysisService : passe complète des suivis', () => {
+  it('sans quota ni événement produit, renvoie l’identifiant de l’analyse enregistrée', async () => {
+    const { service, quota, repository } = setup();
+    const { result, analysisId } = await service.analyzeForWatch(FIXTURE_MINTS.safe);
+    expect(result.verdict).toBe('safe');
+    expect(analysisId).toBe('01968b3a-7c2e-7d4a-9f00-0123456789ab');
+    expect(quota.reserve).not.toHaveBeenCalled();
+    expect(repository.recordEvent).not.toHaveBeenCalled();
+    expect(repository.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('mint inexistant : TOKEN_NOT_FOUND', async () => {
+    const { service } = setup();
+    await expect(service.analyzeForWatch(FIXTURE_MINTS.notFound)).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND' });
+  });
+});
+
 describe('AnalysisService : erreurs et remboursement du quota', () => {
   it('saisie sans adresse : MINT_INVALID, aucun quota réservé', async () => {
     const { service, quota } = setup();
@@ -249,6 +269,41 @@ describe('AnalysisService : erreurs et remboursement du quota', () => {
     const { service, quota } = setup({ collector });
     await expect(service.analyze(FIXTURE_MINTS.warn, ANON)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
     expect(quota.settleFailure).toHaveBeenCalled();
+  });
+
+  it('m3 : adresse en cache négatif → erreur immédiate, sans nouvelle résolution de paire', async () => {
+    const collector = new FixtureFactsCollector(clock);
+    const resolve = jest.spyOn(collector, 'resolveMint');
+    const { service } = setup({ collector });
+    const link = `https://dexscreener.com/solana/${FIXTURE_MINTS.notFound}`;
+    await expect(service.analyze(link, ANON)).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND' });
+    expect(resolve).toHaveBeenCalledTimes(1);
+    await expect(service.analyze(link, ANON)).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND' });
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('m4 : compte non analysable → 422 TOKEN_UNANALYZABLE, échec réglé (compté), cache négatif 1 h', async () => {
+    let now = 0;
+    const store = new MemoryKeyValueStore(() => now);
+    const collectFacts = jest.fn(async (): Promise<CollectedFacts | null> => {
+      throw new TokenUnanalyzableError();
+    });
+    const collector = { resolveMint: async () => null, collectFacts } as unknown as FactsCollector;
+    const { service, quota } = setup({ collector, store });
+    await expect(service.analyze(FIXTURE_MINTS.warn, ANON)).rejects.toMatchObject({ code: 'TOKEN_UNANALYZABLE', status: 422 });
+    expect(quota.settleFailure).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ code: 'TOKEN_UNANALYZABLE' }));
+    now += 59 * 60_000;
+    await expect(service.analyze(FIXTURE_MINTS.warn, ANON)).rejects.toMatchObject({ code: 'TOKEN_UNANALYZABLE' });
+    expect(collectFacts).toHaveBeenCalledTimes(1);
+    now += 2 * 60_000;
+    await expect(service.analyze(FIXTURE_MINTS.warn, ANON)).rejects.toMatchObject({ code: 'TOKEN_UNANALYZABLE' });
+    expect(collectFacts).toHaveBeenCalledTimes(2);
+  });
+
+  it('m5 : fenêtre de déduplication du quota = durée du cache des résultats', async () => {
+    const { service, quota } = setup();
+    await service.analyze(FIXTURE_MINTS.safe, ANON);
+    expect(quota.reserve).toHaveBeenCalledWith(policy, FIXTURE_MINTS.safe, service.cacheTtlMs);
   });
 
   it('erreur inattendue du collecteur : propagée, quota remboursé', async () => {

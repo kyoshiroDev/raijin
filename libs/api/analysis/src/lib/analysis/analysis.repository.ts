@@ -81,6 +81,16 @@ export class AnalysisRepository {
     return parsed.success ? parsed.data : null;
   }
 
+  /** Identifiant de la dernière analyse enregistrée d'un mint à l'instant `analyzedAt` (ou après), ou `null`. */
+  async findIdAt(mint: string, analyzedAt: Date): Promise<string | null> {
+    const row = await this.prisma.tokenAnalysis.findFirst({
+      where: { mint, createdAt: { gte: analyzedAt } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    return row?.id ?? null;
+  }
+
   /** Événement produit (métriques de l'admin). Ne lève jamais. */
   async recordEvent(event: AnalysisEvent): Promise<void> {
     try {

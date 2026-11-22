@@ -10,11 +10,12 @@ import {
   type SolanaDataConfig,
   type SolanaDataOptions,
 } from '@raijin/api-solana';
-import { createFixtureFetch, loadAllFixtures } from '@raijin/api-solana/testing';
+import { createFixtureFetch, fixtureSequenceNames, loadAllFixtures, loadFixtureSequence } from '@raijin/api-solana/testing';
 import Redis from 'ioredis';
 import { join } from 'node:path';
 import { AnalysisRepository } from './analysis/analysis.repository';
 import { AnalysisService } from './analysis/analysis.service';
+import { FixtureScenarios } from './fixtures/fixture-scenarios';
 import { DefaultRiskEngine, RiskEngine } from './analysis/risk-engine.provider';
 import { AnalysisController } from './http/analysis.controller';
 import { ShareController } from './http/share.controller';
@@ -25,6 +26,27 @@ import { SharePageService } from './share/share-page.service';
 import { RedisCreditBudget, SolanaCacheStore } from './solana/redis-ports';
 import { NestSolanaLogger, SolanaFactsCollector } from './solana/solana-facts-collector';
 import { KeyValueStore, MemoryKeyValueStore, RedisKeyValueStore } from './store/key-value-store';
+
+/**
+ * `SolanaDataService` des passes de suivi. Hors fixtures : la même instance que l'analyse (files de
+ * débit et budget partagés). En mode fixtures : une instance avec une clé Helius factice (non secrète)
+ * pour rejouer aussi les fixtures Helius (holders), sur les mêmes scénarios en séquence.
+ */
+export const WATCH_SOLANA_DATA = Symbol('WATCH_SOLANA_DATA');
+/** Clé fictive du mode fixtures (aucun appel réseau : le `fetch` rejoue les enregistrements). */
+export const FIXTURE_HELIUS_KEY = 'fixture-mode-no-network';
+
+/** Scénarios en séquence du mode fixtures ; `null` hors de ce mode. */
+export function createFixtureScenarios(config: AppConfig): FixtureScenarios | null {
+  if (!config.analysis.fixtures || config.isProduction) return null;
+  const dir = fixturesDir(config);
+  const sequences = Object.fromEntries(fixtureSequenceNames(dir).map((name) => [name, loadFixtureSequence(name, dir)]));
+  return new FixtureScenarios(sequences, loadAllFixtures(dir));
+}
+
+function fixturesDir(config: AppConfig): string {
+  return config.analysis.fixturesDir ?? join(process.cwd(), 'libs', 'api', 'solana', 'src', 'fixtures');
+}
 
 /** Connexion Redis de l'analyse (cache, verrous, quota, budget Helius) ; `null` sans `REDIS_URL`. */
 export const ANALYSIS_REDIS = Symbol('ANALYSIS_REDIS');
@@ -45,6 +67,15 @@ export function createAnalysisRedis(config: AppConfig): Redis | null {
 }
 
 /**
+ * Budget de crédits Helius par jour UTC, partagé par l'analyse (voie `interactive`) et les suivis
+ * (voie `watch`, plafond `WATCH_DAILY_CREDIT_BUDGET`). Une instance par processus.
+ */
+export function createCreditBudget(config: AppConfig, redis: Redis | null): RedisCreditBudget {
+  const { config: solanaConfig } = loadSolanaDataConfig(process.env);
+  return new RedisCreditBudget(redis, solanaConfig.heliusDailyCreditBudget, undefined, config.watch.dailyCreditBudget);
+}
+
+/**
  * Réglages du mode fixtures seulement : réponses locales, donc aucun débit à protéger ; une source
  * sans fixture échoue immédiatement (une tentative, délai court) au lieu d'attendre délais et rejeux.
  */
@@ -59,18 +90,25 @@ export function fixtureModeConfig(base: SolanaDataConfig): SolanaDataConfig {
  * sans clé Helius ni réseau. Sinon : configuration de l'environnement (docs/ENV.md), caches par
  * source et budget de crédits Helius dans Redis.
  */
-export function solanaDataOptions(config: AppConfig, store: KeyValueStore, redis: Redis | null): SolanaDataOptions {
+export function solanaDataOptions(
+  config: AppConfig,
+  store: KeyValueStore,
+  redis: Redis | null,
+  creditBudget: RedisCreditBudget = createCreditBudget(config, redis),
+  scenarios: FixtureScenarios | null = null,
+  heliusOverride: string | null = null,
+): SolanaDataOptions {
   const { config: solanaConfig, heliusApiKey } = loadSolanaDataConfig(process.env);
   const logger = new NestSolanaLogger();
   if (config.analysis.fixtures && !config.isProduction) {
-    const dir = config.analysis.fixturesDir ?? join(process.cwd(), 'libs', 'api', 'solana', 'src', 'fixtures');
     // Rejeu appelé uniquement dans ce mode (import statique imposé par les frontières Nx : une lib ne
     // peut pas être importée à la fois statiquement et à la demande) ; aucun fichier lu sinon.
     const replayConfig = fixtureModeConfig(solanaConfig);
+    const source = scenarios ? () => scenarios.current() : loadAllFixtures(fixturesDir(config));
     return {
       config: replayConfig,
-      heliusApiKey: null,
-      fetch: createFixtureFetch(loadAllFixtures(dir), replayConfig).fetch,
+      heliusApiKey: heliusOverride,
+      fetch: createFixtureFetch(source, replayConfig).fetch,
       cache: new MemoryCacheStore(),
       logger,
     };
@@ -79,7 +117,7 @@ export function solanaDataOptions(config: AppConfig, store: KeyValueStore, redis
     config: solanaConfig,
     heliusApiKey,
     cache: new SolanaCacheStore(store),
-    creditBudget: new RedisCreditBudget(redis, solanaConfig.heliusDailyCreditBudget),
+    creditBudget,
     logger,
   };
 }
@@ -100,11 +138,25 @@ export function solanaDataOptions(config: AppConfig, store: KeyValueStore, redis
       inject: [ANALYSIS_REDIS],
       useFactory: (redis: Redis | null): KeyValueStore => (redis ? new RedisKeyValueStore(redis) : new MemoryKeyValueStore()),
     },
+    { provide: RedisCreditBudget, inject: [APP_CONFIG, ANALYSIS_REDIS], useFactory: createCreditBudget },
+    { provide: FixtureScenarios, inject: [APP_CONFIG], useFactory: createFixtureScenarios },
     {
       provide: SolanaDataService,
-      inject: [APP_CONFIG, KeyValueStore, ANALYSIS_REDIS],
-      useFactory: (config: AppConfig, store: KeyValueStore, redis: Redis | null) =>
-        new SolanaDataService(solanaDataOptions(config, store, redis)),
+      inject: [APP_CONFIG, KeyValueStore, ANALYSIS_REDIS, RedisCreditBudget, FixtureScenarios],
+      useFactory: (config: AppConfig, store: KeyValueStore, redis: Redis | null, budget: RedisCreditBudget, scenarios: FixtureScenarios | null) =>
+        new SolanaDataService(solanaDataOptions(config, store, redis, budget, scenarios)),
+    },
+    {
+      provide: WATCH_SOLANA_DATA,
+      inject: [APP_CONFIG, KeyValueStore, ANALYSIS_REDIS, RedisCreditBudget, FixtureScenarios, SolanaDataService],
+      useFactory: (
+        config: AppConfig,
+        store: KeyValueStore,
+        redis: Redis | null,
+        budget: RedisCreditBudget,
+        scenarios: FixtureScenarios | null,
+        shared: SolanaDataService,
+      ) => (scenarios ? new SolanaDataService(solanaDataOptions(config, store, redis, budget, scenarios, FIXTURE_HELIUS_KEY)) : shared),
     },
     { provide: FactsCollector, inject: [SolanaDataService], useFactory: (solana: SolanaDataService) => new SolanaFactsCollector(solana) },
     AnalysisRepository,
@@ -113,7 +165,17 @@ export function solanaDataOptions(config: AppConfig, store: KeyValueStore, redis
     SharePageService,
     OgImageService,
   ],
-  exports: [AnalysisService, QuotaService, KeyValueStore, SolanaDataService],
+  exports: [
+    AnalysisService,
+    QuotaService,
+    KeyValueStore,
+    SolanaDataService,
+    WATCH_SOLANA_DATA,
+    RedisCreditBudget,
+    FixtureScenarios,
+    ANALYSIS_REDIS,
+    AnalysisClock,
+  ],
 })
 export class ApiAnalysisModule implements OnApplicationShutdown {
   constructor(private readonly store: KeyValueStore) {}

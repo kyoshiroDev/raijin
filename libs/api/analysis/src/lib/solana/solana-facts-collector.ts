@@ -1,11 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { TokenNotFoundError, UpstreamError, type LogFields, type SolanaDataService, type SolanaLogger } from '@raijin/api-solana';
-import { FactsCollector, UpstreamUnavailableError, type CollectedFacts, type CollectorProfile } from '../ports/facts-collector';
+import {
+  FactsCollector,
+  isTokenUnanalyzable,
+  TokenUnanalyzableError,
+  UpstreamUnavailableError,
+  type CollectedFacts,
+  type CollectorOptions,
+} from '../ports/facts-collector';
 
 /**
  * Adaptateur du port `FactsCollector` sur `SolanaDataService` (`@raijin/api-solana`) :
  * `TokenNotFoundError` → `null` (404 `TOKEN_NOT_FOUND`) ; `UpstreamError` (lecture du mint impossible)
- * → `UpstreamUnavailableError` (503). Les autres pannes de source donnent des faits `null` et `degraded`.
+ * → `UpstreamUnavailableError` (503) ; compte hors normes (`TokenUnanalyzableError` de la lib, code
+ * `TOKEN_UNANALYZABLE`) → `TokenUnanalyzableError` du port (422). Les autres pannes de source donnent des faits `null` et `degraded`.
  */
 export class SolanaFactsCollector extends FactsCollector {
   constructor(private readonly solana: SolanaDataService) {
@@ -16,7 +24,7 @@ export class SolanaFactsCollector extends FactsCollector {
     return this.solana.heliusConfigured;
   }
 
-  async collectFacts(mint: string, options: { profile: CollectorProfile }): Promise<CollectedFacts | null> {
+  async collectFacts(mint: string, options: CollectorOptions): Promise<CollectedFacts | null> {
     try {
       const collected = await this.solana.collectFacts(mint, options);
       return {
@@ -38,6 +46,7 @@ export class SolanaFactsCollector extends FactsCollector {
       };
     } catch (error) {
       if (error instanceof TokenNotFoundError) return null;
+      if (isTokenUnanalyzable(error)) throw new TokenUnanalyzableError();
       // Lecture du mint impossible : 503 (remboursement plafonné, cache négatif), jamais un 500.
       if (error instanceof UpstreamError) throw new UpstreamUnavailableError();
       throw error;

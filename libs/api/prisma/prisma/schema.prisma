@@ -48,6 +48,24 @@ enum Verdict {
   danger
 }
 
+/// Statut d'un suivi (contrat `watchStatusSchema`) : seuls les suivis actifs sont réanalysés et alertent.
+enum WatchStatus {
+  active
+  paused
+}
+
+/// Motif de pause (contrat `watchPauseReasonSchema`).
+enum WatchPauseReason {
+  user
+  plan_limit
+}
+
+/// Gravité d'un événement de suivi et de ses alertes (contrat `alertSeveritySchema`).
+enum AlertSeverity {
+  warn
+  danger
+}
+
 enum JobRunStatus {
   RUNNING
   SUCCESS
@@ -98,6 +116,12 @@ model User {
   utmCampaign      String?
   referrer         String?
   landingPath      String?
+  /// Préférences de notification (contrat `notificationPreferencesSchema`, docs/ARCHITECTURE.md §11.5).
+  notifyEmailAlerts  Boolean   @default(true)
+  notifyPushAlerts   Boolean   @default(true)
+  notifyWeeklyDigest Boolean   @default(false)
+  /// Dernier résumé hebdomadaire envoyé (idempotence du job du lundi).
+  weeklyDigestSentAt DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
@@ -193,6 +217,7 @@ model TrialFingerprint {
 
   @@index([hash])
   @@index([userId])
+  @@index([createdAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -257,44 +282,118 @@ model TokenAnalysis {
   @@index([createdAt])
 }
 
+/// Suivi d'un mint par un utilisateur (docs/ARCHITECTURE.md §11.5). L'état réanalysé est par mint
+/// (`MintWatchState`), partagé entre tous les utilisateurs qui le suivent.
 model Watch {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  userId        String            @db.Uuid
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mint          String
+  status        WatchStatus       @default(active)
+  pausedReason  WatchPauseReason?
+  pausedAt      DateTime?
+  /// Recopiés à chaque passe complète (verdict) du mint.
+  lastVerdict   Verdict?
+  lastCheckedAt DateTime?
+  createdAt     DateTime          @default(now())
+
+  @@unique([userId, mint])
+  @@index([mint, status])
+  @@index([userId, status])
+}
+
+/// État de réanalyse d'un mint suivi (une ligne par mint, supprimée quand plus personne ne le suit).
+/// Seul le dernier instantané est gardé ; l'historique, ce sont les `WatchEvent`.
+model MintWatchState {
+  mint                String    @id
+  /// `WatchSnapshot` v1 (`@raijin/shared-contracts`) : groupes datés authorities, pool, holders, verdict.
+  snapshot            Json?
+  /// Métadonnées de la dernière analyse (non fiables, nettoyées) : e-mails et notifications.
+  token               Json?
+  /// Verrou optimiste : incrémenté à chaque écriture de l'instantané.
+  revision            Int       @default(0)
+  nextFastAt          DateTime  @default(now())
+  nextHoldersAt       DateTime  @default(now())
+  nextFullAt          DateTime  @default(now())
+  /// Dernière passe complète anticipée (au plus une par heure après un événement critique).
+  lastEarlyFullAt     DateTime?
+  /// 1 si au moins un suivi actif d'un compte Pro ou en essai (servi en premier sous budget).
+  priority            Int       @default(0)
+  consecutiveFailures Int       @default(0)
+  /// Code d'erreur seulement (jamais de message ni d'URL).
+  lastErrorCode       String?
+  /// Compte hors normes (TOKEN_UNANALYZABLE) : plus de passe complète.
+  unanalyzable        Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([nextFastAt])
+  @@index([nextHoldersAt])
+  @@index([nextFullAt])
+}
+
+/// Événement détecté sur un mint (`detectWatchEvents`), une seule fois grâce à `dedupeKey`.
+/// Purgé après RETENTION_DAYS (cascade sur les alertes).
+model WatchEvent {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  mint       String
+  /// `AlertType` du contrat.
+  type       String
+  severity   AlertSeverity
+  payload    Json
+  dedupeKey  String
+  detectedAt DateTime
+  createdAt  DateTime      @default(now())
+
+  alerts Alert[]
+
+  @@unique([mint, dedupeKey])
+  @@index([mint, type, detectedAt])
+  @@index([createdAt])
+}
+
+/// Alerte d'un utilisateur pour un événement d'un mint suivi (une seule par utilisateur et événement).
+model Alert {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId    String?       @db.Uuid
+  event      WatchEvent?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  mint       String
+  type       String
+  severity   AlertSeverity @default(warn)
+  payload    Json
+  /// Métadonnées du token au moment de l'alerte (non fiables, nettoyées).
+  token      Json?
+  readAt     DateTime?
+  /// Livraison réservée (`UPDATE … WHERE … IS NULL`) puis confirmée ; relâchée si l'envoi échoue.
+  emailedAt  DateTime?
+  pushedAt   DateTime?
+  /// E-mail non envoyé (préférence, plafond journalier, adresse non vérifiée) : jamais repris.
+  emailSkipped Boolean     @default(false)
+  createdAt  DateTime      @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([mint])
+  @@index([createdAt])
+}
+
+/// Abonnement push web (VAPID) d'un appareil. L'endpoint identifie l'appareil : jamais journalisé.
+model PushSubscription {
   id            String    @id @default(uuid(7)) @db.Uuid
   userId        String    @db.Uuid
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mint          String
-  lastVerdict   Verdict?
-  lastCheckedAt DateTime?
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  lastSuccessAt DateTime?
   createdAt     DateTime  @default(now())
-
-  @@unique([userId, mint])
-  @@index([mint])
-}
-
-model Alert {
-  id        String    @id @default(uuid(7)) @db.Uuid
-  userId    String    @db.Uuid
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mint      String
-  type      String
-  payload   Json
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
 
   @@index([userId, createdAt])
-  @@index([mint])
-}
-
-model PushSubscription {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  userId    String   @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userAgent String?
-  createdAt DateTime @default(now())
-
-  @@index([userId])
 }
 
 /// Compteur de quotas journaliers : par utilisateur (connecté) ou par IP hachée (anonyme).
@@ -327,6 +426,7 @@ model ProductEvent {
 
   @@index([userId])
   @@index([type, createdAt])
+  @@index([createdAt])
 }
 
 model DailyMetric {
@@ -345,9 +445,14 @@ model JobRun {
   startedAt  DateTime     @default(now())
   finishedAt DateTime?
   status     JobRunStatus @default(RUNNING)
+  /// Code d'erreur seulement (jamais de message).
   error      String?
+  durationMs Int?
+  /// Compteurs de l'exécution (mints traités, crédits, événements, alertes, lignes purgées).
+  details    Json?
 
   @@index([job, startedAt])
+  @@index([startedAt])
 }
 
 /// Journal d'audit (sécurité et admin). L'utilisateur supprimé devient null (journal conservé).
