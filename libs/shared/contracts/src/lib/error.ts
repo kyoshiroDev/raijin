@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from './zod';
 import { ANALYSIS_ERROR_CODES } from './analysis/errors';
 
 /** Codes d'erreur génériques de l'API (`/api/v1`). */

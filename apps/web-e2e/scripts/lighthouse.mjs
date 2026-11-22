@@ -22,6 +22,10 @@ const RUNS = Number(arg('runs', '3'));
 const BASE = arg('base', 'http://127.0.0.1:4310').replace(/\/$/, '');
 const API = arg('api', 'http://localhost:3100').replace(/\/$/, '');
 const THRESHOLD = Number(arg('threshold', '95'));
+// Multiplicateur CPU du throttling simulé : 4 (défaut Lighthouse) fait foi. Une autre valeur ne sert
+// qu'au diagnostic sur une machine lente (benchmarkIndex < 1000, avertissement Lighthouse), voir
+// docs/ARCHITECTURE.md §10 ; elle est alors notée dans le résumé.
+const CPU = arg('cpu', null);
 const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 const CATEGORIES = ['performance', 'accessibility', 'best-practices', 'seo'];
 const PAGES = [
@@ -36,7 +40,17 @@ mkdirSync(fullDir, { recursive: true });
 mkdirSync(summaryDir, { recursive: true });
 
 /** Publie une analyse récente de BONK (la page /t/<mint> lit la dernière analyse ≤ 24 h). */
-async function ensureLatest() {
+async function ensureLatest(attempt = 1) {
+  try {
+    await publishLatest();
+  } catch (error) {
+    // Connexion keep-alive fermée par l'API pendant un passage Lighthouse (~30 s) : on réessaie.
+    if (attempt >= 3) throw error;
+    await ensureLatest(attempt + 1);
+  }
+}
+
+async function publishLatest() {
   const ip = `10.253.${randomBytes(1)[0]}.${randomBytes(1)[0]}`;
   const csrfRes = await fetch(`${API}/api/v1/auth/csrf`, { headers: { 'X-Forwarded-For': ip } });
   const cookie = (csrfRes.headers.getSetCookie?.() ?? []).map((c) => c.split(';')[0]).join('; ');
@@ -66,6 +80,7 @@ function runLighthouse(url, out) {
       `--output-path=${out}`,
       `--only-categories=${CATEGORIES.join(',')}`,
       '--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage',
+      ...(CPU ? [`--throttling.cpuSlowdownMultiplier=${CPU}`] : []),
     ],
     { stdio: ['ignore', 'inherit', 'inherit'], env: { ...process.env, CHROME_PATH: chromium.executablePath() } },
   );
@@ -81,12 +96,23 @@ function failingAudits(lhr, category) {
     .map((audit) => ({ id: audit.id, score: audit.score, title: audit.title, displayValue: audit.displayValue ?? null }));
 }
 
-await ensureLatest();
-const summary = { phase: PHASE, base: BASE, runs: RUNS, lighthouse: null, date: new Date().toISOString(), threshold: THRESHOLD, pages: [] };
+const summary = {
+  phase: PHASE,
+  base: BASE,
+  runs: RUNS,
+  lighthouse: null,
+  date: new Date().toISOString(),
+  threshold: THRESHOLD,
+  cpuSlowdownMultiplier: CPU ? Number(CPU) : 4,
+  pages: [],
+};
 let failed = false;
 for (const page of PAGES) {
   const lhrs = [];
   for (let run = 1; run <= RUNS; run++) {
+    // Analyse récente et en cache avant chaque passage : on mesure le front, pas une analyse
+    // recalculée par l'API (le cache d'un résultat partiel est court, docs/ARCHITECTURE.md §9.5).
+    await ensureLatest();
     const lhr = runLighthouse(`${BASE}${page.path}`, join(fullDir, `${page.name}-${run}`));
     summary.lighthouse = lhr.lighthouseVersion;
     lhrs.push(lhr);
@@ -100,6 +126,7 @@ for (const page of PAGES) {
     url: page.path,
     scores,
     performanceRuns: perf.map((s) => Math.round(s * 100)),
+    benchmarkIndex: lhrs.map((lhr) => Math.round(lhr.environment.benchmarkIndex)),
     metrics: Object.fromEntries(
       ['first-contentful-paint', 'largest-contentful-paint', 'total-blocking-time', 'cumulative-layout-shift', 'speed-index'].map((id) => [
         id,
@@ -118,7 +145,7 @@ writeFileSync(join(summaryDir, 'summary.json'), `${JSON.stringify(summary, null,
 const lines = [
   `# Lighthouse mobile — ${PHASE}`,
   '',
-  `Lighthouse ${summary.lighthouse}, émulation mobile par défaut (Moto G Power, 4G lente simulée), build de production servi par \`apps/web-e2e/scripts/serve-prod.mjs\`, API en mode fixtures. Médiane de ${RUNS} passages (performance). Seuil : ${THRESHOLD}. Généré par \`pnpm nx run web-e2e:lighthouse\` le ${summary.date.slice(0, 10)}.`,
+  `Lighthouse ${summary.lighthouse}, émulation mobile par défaut (Moto G Power, 4G lente simulée), build de production servi par \`apps/web-e2e/scripts/serve-prod.mjs\`, API en mode fixtures. Médiane de ${RUNS} passages (performance). Seuil : ${THRESHOLD}. Multiplicateur CPU : ${summary.cpuSlowdownMultiplier}${summary.cpuSlowdownMultiplier === 4 ? ' (défaut)' : ' (diagnostic, ne fait pas foi)'} ; benchmarkIndex de la machine : ${summary.pages.flatMap((p) => p.benchmarkIndex).join(', ')} (Lighthouse attend > 1000). Généré par \`pnpm nx run web-e2e:lighthouse\` le ${summary.date.slice(0, 10)}.`,
   '',
   '| Page | Performance | Accessibilité | Best Practices | SEO | LCP | TBT | CLS |',
   '|---|---|---|---|---|---|---|---|',

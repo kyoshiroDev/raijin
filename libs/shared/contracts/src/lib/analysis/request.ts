@@ -1,5 +1,5 @@
 import { ANALYSIS_INPUT_MAX_LENGTH } from '@raijin/shared-util';
-import { z } from 'zod';
+import * as z from '../zod';
 import { mintAddressSchema } from '../address';
 
 /**

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 
 /**
  * Règles de mot de passe (NIST SP 800-63B) : longueur seule, pas de règles de composition.

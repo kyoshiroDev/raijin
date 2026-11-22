@@ -1,4 +1,5 @@
 import { Route } from '@angular/router';
+import { webFeatureAnalyseRoutes, webFeaturePublicTokenRoutes } from '@raijin/web-feature-analyse';
 import { DesignPage } from '@raijin/web-ui';
 
 /**
@@ -20,17 +21,14 @@ const devOnlyRoutes: Route[] =
 
 export const appRoutes: Route[] = [
   { path: '', pathMatch: 'full', redirectTo: 'analyse' },
-  {
-    path: 'analyse',
-    title: 'Analyser — Raijin',
-    loadChildren: () =>
-      import('@raijin/web-feature-analyse').then((m) => m.webFeatureAnalyseRoutes),
-  },
+  // Écran d'arrivée et page publique : chargés avec le bundle initial (docs/ARCHITECTURE.md §10).
+  // Une route lazy ajoutait une cascade de requêtes (chunk de la feature puis ses chunks partagés)
+  // entre le démarrage d'Angular et l'élément LCP, soit ~0,6 s en 4G lente simulée.
+  { path: 'analyse', title: 'Analyser — Raijin', children: webFeatureAnalyseRoutes },
   {
     // Page publique d'une analyse (partage, image Open Graph injectée par l'API).
     path: 't',
-    loadChildren: () =>
-      import('@raijin/web-feature-analyse').then((m) => m.webFeaturePublicTokenRoutes),
+    children: webFeaturePublicTokenRoutes,
   },
   {
     path: 'suivis',

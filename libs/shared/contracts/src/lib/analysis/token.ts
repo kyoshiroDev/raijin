@@ -1,5 +1,5 @@
 import { sanitizeUntrustedText } from '@raijin/shared-util';
-import { z } from 'zod';
+import * as z from '../zod';
 import { mintAddressSchema } from '../address';
 
 export const TOKEN_NAME_MAX_LENGTH = 64;

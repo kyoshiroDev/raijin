@@ -1,5 +1,5 @@
 import { isSolanaAddress } from '@raijin/shared-util';
-import { z } from 'zod';
+import * as z from './zod';
 
 /** Adresse Solana (clé publique base58, 32 à 44 caractères, 32 octets décodés). */
 export const solanaAddressSchema = z

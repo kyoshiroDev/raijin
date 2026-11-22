@@ -543,3 +543,68 @@ fixtures, pages : `/analyse` (vide), `/analyse/<mint>` (résultat), `/t/<mint>`.
 - **Image OG** : logo et Rai copiés dans `og/brand-assets.ts` (test d'égalité avec `libs/brand`), polices WOFF
   `@fontsource` copiées dans `dist/apps/api/assets/fonts` au build (`OG_FONTS_DIR` sinon). Nom du token réduit aux
   caractères latins des polices, 24 caractères max, toujours « (non vérifié) ».
+
+## 10. Performance mobile (Lighthouse ≥ 95, PROMPT.md §3 et §9.5)
+
+### 10.1 Diagnostic (2026-11-22, HEAD `32bd628`)
+Lighthouse 13.6, mobile, throttling simulé par défaut (CPU ×4, 4G lente), build de production + API en
+mode fixtures. Médiane de 3 : Perf 62 / 54 / 62 (`/analyse`, `/analyse/<mint>`, `/t/<mint>`), BP 96 / 96 / 92.
+- **Zod entier dans le front** : `import { z } from 'zod'` lie le namespace `z` comme **valeur** ; ni
+  esbuild ni Rolldown ne l'éliminent : chunk de contrats de 438 kB brut (locales 264 kB, JSON Schema
+  34 kB, compilateur JIT 29 kB). Avec `import * as z from 'zod'` : 106 kB (mesuré, même contenu utile).
+- **Chemin du LCP** : route `analyse` chargée à la demande → cascade main → chunk de la feature → 6 petits
+  chunks partagés → rendu. Lighthouse (Lantern) compte aussi toute requête **commencée** avant le LCP
+  observé : `auth/session`, `analyses/quota` puis le chunk Zod (chargé pour valider la réponse du quota)
+  allongeaient le LCP simulé à 3,9–5,1 s.
+- **TBT** : la tâche longue principale (~125 ms observés, ~730 ms simulés) est le **premier rendu de la
+  coquille** (`RjAppShell` : barre latérale desktop rendue même sur mobile, icônes, logo, barre d'onglets),
+  puis le rendu du résultat (9 contrôles), puis l'évaluation de Zod. 3 `Intl.NumberFormat` créés au
+  chargement de `shared-util` (~15 ms ×4 chacun) s'y ajoutaient.
+- **Best Practices** : 401 de `GET auth/session` pour tout visiteur anonyme (erreur réseau en console) ;
+  sur `/t` (servie avec CSP), test `new Function('')` de Zod 4 → violation `script-src` (`inspector-issues`).
+- **Machine de mesure** : `benchmarkIndex` 620–1190 selon la charge (agents en parallèle, réduction
+  thermique `intel_powerclamp`), sous le seuil de 1000 attendu par Lighthouse (avertissement « slower CPU »).
+  Les tâches longues simulées y sont gonflées : la note qui fait foi reste celle du multiplicateur 4,
+  mesurée machine au repos (`benchmarkIndex` ≥ 1000 sur les 3 passages).
+
+### 10.2 Décisions
+1. **Pas de prérendu (SSG) ni de SSR Angular** (§9.7 maintenu). Le prérendu ne réglerait que le LCP de
+   `/analyse`, déjà à 0,8 s une fois la route chargée au démarrage ; pour `/analyse/<mint>` et `/t/<mint>`,
+   le LCP dépend de la réponse de l'API (contenu par mint, non prérendable). L'hydratation rejoue les
+   templates de la coquille : elle ne supprime pas la tâche longue qui fait le TBT. L'hydratation
+   incrémentale et le rejeu d'événements ajoutent un script inline (`ng-event-dispatch-contract`)
+   incompatible avec `script-src 'self'`. Coût en plus : `@angular/ssr`, build serveur, gardes navigateur
+   partout. Option rouverte seulement si les tâches 10.3 ne suffisent pas, avec un hash CSP documenté.
+   Une coquille HTML statique dans `index.html` est écartée pour la même raison (TBT inchangé, balisage
+   dupliqué hors composants).
+2. **Routes `analyse` et `t` dans le bundle initial** (`apps/web/src/app/app.routes.ts`, `children`
+   statiques) ; `suivis`, `alertes`, `wallet`, `compte` restent à la demande. Bundle initial ≈ 377 kB brut
+   (budget : avertissement 400 kB, erreur 500 kB). Mesuré : LCP de `/analyse` 3,8 s → 0,8–1,7 s.
+3. **Zod côté front** : `import * as z from …` partout (règle ESLint `no-restricted-syntax` à la racine :
+   `import { z }` et `import z` de `zod` interdits, imports de type permis). Les contrats importent Zod
+   via `libs/shared/contracts/src/lib/zod.ts`, qui exécute `config({ jitless: true })` **avant** tout
+   schéma (dépendance explicite : un import d'effet dans `index.ts` était réordonné par Rolldown) :
+   plus de `new Function`, plus de violation CSP, pas de compilation au premier parse ; même réglage côté
+   API et banc. Zod reste hors du bundle initial (chunk à la demande, 106 kB brut / ~30 kB transférés).
+   `zod/mini` (14 kB) écarté pour l'instant : réécriture de tous les contrats et de leurs usages côté API
+   pour un gain secondaire une fois Zod sorti du chemin critique.
+4. **Contrat `GET /auth/session`** → 200 `SessionState` (`sessionStateSchema`, union discriminée sur
+   `authenticated`) : `{ authenticated: false }` quand la requête ne porte **aucun** cookie de session
+   (ni access ni refresh) ; `{ authenticated: true, user, accessTokenExpiresAt, csrfToken }` sinon. Un
+   cookie présent mais access absent/expiré/invalide → 401 comme avant (le front tente le refresh).
+5. **Rien avant le LCP qui ne le serve** : la session, l'attribution, le quota et le préchargement des
+   contrats partent après le premier rendu de la route (`afterNextRender` puis `requestIdleCallback`,
+   repli `setTimeout`), les gardes de route continuant d'attendre `AuthStore.whenReady()`. Sur
+   `/analyse/<mint>` et `/t/<mint>`, la requête d'analyse part dès l'entrée dans la route, en parallèle
+   du jeton CSRF et du chunk des contrats (jamais en série derrière eux).
+6. **Formateurs `Intl` créés au premier usage** (`libs/shared/util/src/lib/format.ts`).
+7. **Mesure** : `apps/web-e2e/scripts/lighthouse.mjs` republie l'analyse de BONK avant **chaque** passage
+   (sinon un résultat partiel sorti du cache est recalculé pendant la mesure : jusqu'à 4 s de serveur),
+   note le `benchmarkIndex` de chaque passage et accepte `--cpu <n>` (diagnostic seulement, noté « ne fait
+   pas foi » dans le résumé). L'API garde l'`index.html` lu au démarrage : la redémarrer après un build web,
+   sinon `/t/<mint>` référence des chunks disparus (NO_FCP).
+
+### 10.3 Budgets (complètent §9.10)
+Tâche longue au démarrage ≤ 50 ms observés sur la machine de mesure au repos (≤ 200 ms simulés) ; aucune
+requête API ni chunk Zod avant le premier rendu de `/analyse` ; LCP ≤ 2 s simulé sur les 3 pages ; TBT
+≤ 200 ms ; CLS ≤ 0,05 ; 0 erreur console et 0 problème « Issues » (visiteur anonyme, CSP de l'API active).

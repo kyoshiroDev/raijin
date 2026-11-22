@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpStatus, Module, Post } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { z } from 'zod';
+import * as z from 'zod';
 import request from 'supertest';
 import { testConfig } from '../../testing/test-config';
 import { ApiCoreModule } from '../api-core.module';

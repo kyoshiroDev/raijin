@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 import { relativePathSchema } from './common';
 import { publicUserSchema } from './user';
 
@@ -34,3 +34,20 @@ export const magicLinkSessionSchema = authSessionSchema.extend({
   redirectPath: relativePathSchema.nullable(),
 });
 export type MagicLinkSession = z.infer<typeof magicLinkSessionSchema>;
+
+/**
+ * GET /api/v1/auth/session → 200 `SessionState` (phase 3, performance et Best Practices) :
+ * - `{ authenticated: true, ...AuthSession }` : session valide ;
+ * - `{ authenticated: false }` : **aucun** cookie de session (ni access, ni refresh) : visiteur
+ *   anonyme, sans 401 (une erreur réseau dans la console coûte des points Lighthouse) ni tentative
+ *   de refresh inutile.
+ * Un 401 reste renvoyé quand un cookie de session est présent mais l'access token absent, expiré ou
+ * invalide : le front tente alors un refresh (intercepteur), comme avant.
+ */
+export const anonymousSessionStateSchema = z.object({ authenticated: z.literal(false) });
+export const authenticatedSessionStateSchema = authSessionSchema.extend({ authenticated: z.literal(true) });
+export const sessionStateSchema = z.discriminatedUnion('authenticated', [
+  authenticatedSessionStateSchema,
+  anonymousSessionStateSchema,
+]);
+export type SessionState = z.infer<typeof sessionStateSchema>;

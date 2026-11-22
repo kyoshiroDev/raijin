@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 import { externalLabelSchema, relativePathSchema } from './common';
 
 /** URL de provenance : http(s) uniquement, bornée. Les autres schémas sont refusés. */

@@ -1,0 +1,143 @@
+{
+  "phase": "perf-diag-cpu2",
+  "base": "http://127.0.0.1:4310",
+  "runs": 1,
+  "lighthouse": "13.6.0",
+  "date": "2026-11-22T05:36:37.841Z",
+  "threshold": 95,
+  "cpuSlowdownMultiplier": 2,
+  "pages": [
+    {
+      "name": "analyse",
+      "url": "/analyse",
+      "scores": {
+        "performance": 96,
+        "accessibility": 100,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "performanceRuns": [
+        96
+      ],
+      "benchmarkIndex": [
+        776
+      ],
+      "metrics": {
+        "first-contentful-paint": "0.8 s",
+        "largest-contentful-paint": "0.8 s",
+        "total-blocking-time": "230 ms",
+        "cumulative-layout-shift": "0",
+        "speed-index": "1.5 s"
+      },
+      "failing": {
+        "performance": [
+          {
+            "id": "total-blocking-time",
+            "score": 0.87,
+            "title": "Total Blocking Time",
+            "displayValue": "230 ms"
+          }
+        ],
+        "best-practices": [
+          {
+            "id": "errors-in-console",
+            "score": 0,
+            "title": "Browser errors were logged to the console",
+            "displayValue": null
+          }
+        ]
+      },
+      "report": "dist/lighthouse/perf-diag-cpu2/analyse-1.report.html"
+    },
+    {
+      "name": "analyse-bonk",
+      "url": "/analyse/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "scores": {
+        "performance": 85,
+        "accessibility": 100,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "performanceRuns": [
+        85
+      ],
+      "benchmarkIndex": [
+        1060
+      ],
+      "metrics": {
+        "first-contentful-paint": "1.6 s",
+        "largest-contentful-paint": "3.2 s",
+        "total-blocking-time": "330 ms",
+        "cumulative-layout-shift": "0",
+        "speed-index": "1.6 s"
+      },
+      "failing": {
+        "performance": [
+          {
+            "id": "largest-contentful-paint",
+            "score": 0.73,
+            "title": "Largest Contentful Paint",
+            "displayValue": "3.2 s"
+          },
+          {
+            "id": "total-blocking-time",
+            "score": 0.75,
+            "title": "Total Blocking Time",
+            "displayValue": "330 ms"
+          }
+        ],
+        "best-practices": [
+          {
+            "id": "errors-in-console",
+            "score": 0,
+            "title": "Browser errors were logged to the console",
+            "displayValue": null
+          }
+        ]
+      },
+      "report": "dist/lighthouse/perf-diag-cpu2/analyse-bonk-1.report.html"
+    },
+    {
+      "name": "t-bonk",
+      "url": "/t/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "scores": {
+        "performance": 84,
+        "accessibility": 100,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "performanceRuns": [
+        84
+      ],
+      "benchmarkIndex": [
+        778
+      ],
+      "metrics": {
+        "first-contentful-paint": "0.8 s",
+        "largest-contentful-paint": "0.8 s",
+        "total-blocking-time": "620 ms",
+        "cumulative-layout-shift": "0",
+        "speed-index": "2.0 s"
+      },
+      "failing": {
+        "performance": [
+          {
+            "id": "total-blocking-time",
+            "score": 0.48,
+            "title": "Total Blocking Time",
+            "displayValue": "620 ms"
+          }
+        ],
+        "best-practices": [
+          {
+            "id": "errors-in-console",
+            "score": 0,
+            "title": "Browser errors were logged to the console",
+            "displayValue": null
+          }
+        ]
+      },
+      "report": "dist/lighthouse/perf-diag-cpu2/t-bonk-1.report.html"
+    }
+  ]
+}

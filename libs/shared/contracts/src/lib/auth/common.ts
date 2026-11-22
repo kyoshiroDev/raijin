@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 
 /** Longueur maximale d'une adresse e-mail (RFC 5321). */
 export const EMAIL_MAX_LENGTH = 254;

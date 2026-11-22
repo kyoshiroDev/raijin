@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from './zod';
 
 /** Verdict global d'une analyse : Sain, Prudence ou Danger. */
 export const verdictSchema = z.enum(['safe', 'warn', 'danger']);

@@ -1,5 +1,5 @@
 import { isAllowedHttpsUrl } from '@raijin/shared-util';
-import { z } from 'zod';
+import * as z from '../zod';
 
 /** Sources de données de l'analyse. `solana_rpc` = RPC public, utilisé tant que la clé Helius manque. */
 export const DATA_SOURCE_IDS = [

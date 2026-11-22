@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 
 /** Codes d'erreur propres à l'analyse (s'ajoutent aux codes génériques, dont QUOTA_EXCEEDED). */
 export const ANALYSIS_ERROR_CODES = [

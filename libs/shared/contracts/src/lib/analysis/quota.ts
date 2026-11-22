@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 import { planSchema } from '../auth/user';
 
 /** Types de quota (colonne `UsageCounter.kind`). */

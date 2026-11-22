@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { PASSWORD_HINT, PASSWORD_RULES, newPasswordSchema, opaqueTokenSchema } from '@raijin/shared-contracts';
 import { AuthStore, toClientError, type ClientError } from '@raijin/web-data-access';
 import { RjButton, RjInputField } from '@raijin/web-ui';
-import { z } from 'zod';
+import * as z from 'zod';
 import { RjAuthLayout } from '../shared/auth-layout';
 import { injectStripToken } from '../shared/strip-token';
 import { focusFirstInvalid, focusPageTitle } from '../shared/focus';

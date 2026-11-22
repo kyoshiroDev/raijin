@@ -1,19 +1,18 @@
 const LOCALE = 'fr-FR';
 const NBSP = '\u00a0';
 
-const compactFormatter = new Intl.NumberFormat(LOCALE, {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
+/**
+ * Formateurs créés au premier usage : instancier `Intl.NumberFormat` au chargement du module coûte
+ * ~15 ms de CPU par formateur sur mobile (données ICU), sur le chemin critique du premier écran.
+ */
+function lazyFormatter(options: Intl.NumberFormatOptions): () => Intl.NumberFormat {
+  let formatter: Intl.NumberFormat | undefined;
+  return () => (formatter ??= new Intl.NumberFormat(LOCALE, options));
+}
 
-const exactFormatter = new Intl.NumberFormat(LOCALE, {
-  maximumFractionDigits: 2,
-});
-
-const percentFormatter = new Intl.NumberFormat(LOCALE, {
-  style: 'percent',
-  maximumFractionDigits: 1,
-});
+const compactFormatter = lazyFormatter({ notation: 'compact', maximumFractionDigits: 1 });
+const exactFormatter = lazyFormatter({ maximumFractionDigits: 2 });
+const percentFormatter = lazyFormatter({ style: 'percent', maximumFractionDigits: 1 });
 
 /** Normalise les espaces insécables fines (U+202F) en espaces insécables (U+00A0). */
 function normalizeSpaces(value: string): string {
@@ -28,7 +27,7 @@ export function formatCompactAmount(value: number, symbol = '$'): string {
   if (!Number.isFinite(value)) {
     return '—';
   }
-  const compact = normalizeSpaces(compactFormatter.format(value));
+  const compact = normalizeSpaces(compactFormatter().format(value));
   if (!symbol) {
     return compact;
   }
@@ -43,7 +42,7 @@ export function formatExactAmount(value: number, symbol = '$'): string {
   if (!Number.isFinite(value)) {
     return '—';
   }
-  const exact = normalizeSpaces(exactFormatter.format(value));
+  const exact = normalizeSpaces(exactFormatter().format(value));
   return symbol ? `${exact}${NBSP}${symbol}` : exact;
 }
 
@@ -52,5 +51,5 @@ export function formatPercent(fraction: number): string {
   if (!Number.isFinite(fraction)) {
     return '—';
   }
-  return normalizeSpaces(percentFormatter.format(fraction));
+  return normalizeSpaces(percentFormatter().format(fraction));
 }

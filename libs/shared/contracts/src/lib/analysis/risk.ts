@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 import { mintAddressSchema, solanaAddressSchema } from '../address';
 import { checkStatusSchema, verdictSchema } from '../verdict';
 import { analysisCheckIdSchema } from './checks';

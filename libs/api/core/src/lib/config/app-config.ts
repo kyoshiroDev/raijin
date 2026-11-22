@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { z } from 'zod';
+import * as z from 'zod';
 import { parseDuration } from './duration';
 
 /** Configuration typée de l'API, construite une seule fois au démarrage depuis `process.env`. */

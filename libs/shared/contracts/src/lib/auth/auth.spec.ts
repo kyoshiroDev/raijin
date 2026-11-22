@@ -19,6 +19,7 @@ import {
   relativePathSchema,
   resendVerificationRequestSchema,
   resetPasswordRequestSchema,
+  sessionStateSchema,
   signupAttributionSchema,
   verifyEmailRequestSchema,
 } from '../../index';
@@ -192,6 +193,16 @@ describe('profil et session', () => {
     expect(authSessionSchema.safeParse({ user, accessTokenExpiresAt: NOW, csrfToken }).success).toBe(true);
     expect(csrfResponseSchema.safeParse({ csrfToken: 'court' }).success).toBe(false);
     expect(CSRF_HEADER).toBe('X-CSRF-Token');
+  });
+
+  it('état de session : anonyme sans 401, ou session complète', () => {
+    const csrfToken = 'b'.repeat(43);
+    expect(sessionStateSchema.parse({ authenticated: false })).toEqual({ authenticated: false });
+    expect(
+      sessionStateSchema.safeParse({ authenticated: true, user, accessTokenExpiresAt: NOW, csrfToken }).success,
+    ).toBe(true);
+    expect(sessionStateSchema.safeParse({ authenticated: true }).success).toBe(false);
+    expect(sessionStateSchema.safeParse({ user, accessTokenExpiresAt: NOW, csrfToken }).success).toBe(false);
   });
 
   it('réponse neutre non vide', () => {

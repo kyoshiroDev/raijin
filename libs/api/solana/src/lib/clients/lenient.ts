@@ -1,5 +1,5 @@
 import { isSolanaAddress } from '@raijin/shared-util';
-import { z } from 'zod';
+import * as z from 'zod';
 
 /**
  * Tableau externe toléré élément par élément : un élément malformé (donnée hostile ou format

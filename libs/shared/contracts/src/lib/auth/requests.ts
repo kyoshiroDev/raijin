@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 import { signupAttributionSchema } from './attribution';
 import { emailSchema, opaqueTokenSchema, relativePathSchema } from './common';
 import { currentPasswordSchema, newPasswordSchema } from './password';

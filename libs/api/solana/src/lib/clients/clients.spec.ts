@@ -8,7 +8,7 @@ import { callJsonRpc, type JsonRpcTransport } from './json-rpc';
 import { JupiterQuoteClient } from './jupiter';
 import { RugCheckClient } from './rugcheck';
 import { SolanaRpcClient } from './solana-rpc';
-import { z } from 'zod';
+import * as z from 'zod';
 
 const MINT = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

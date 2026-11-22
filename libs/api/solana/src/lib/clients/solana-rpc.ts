@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { UpstreamError } from '../core/errors';
 import type { CreditBudget, SolanaLogger } from '../core/ports';
 import { callJsonRpc, type JsonRpcTransport } from './json-rpc';

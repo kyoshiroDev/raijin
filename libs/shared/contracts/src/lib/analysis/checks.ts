@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 
 /**
  * Les 9 contrôles de l'analyse (PROMPT.md §4.1), dans l'ordre d'affichage.

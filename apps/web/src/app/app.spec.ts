@@ -28,11 +28,22 @@ describe('App', () => {
     expect(host.querySelector('main#rj-main')).not.toBeNull();
   });
 
-  it('déclare les routes lazy des features et /_design en dev', () => {
+  it('déclare les routes des features et /_design en dev', () => {
     const paths = appRoutes.map((route) => route.path);
     expect(paths).toEqual(
       expect.arrayContaining(['analyse', 't', 'suivis', 'alertes', 'wallet', 'compte', '_design']),
     );
-    expect(appRoutes.find((r) => r.path === 'analyse')?.loadChildren).toBeDefined();
+  });
+
+  it('charge l’analyse et la page publique avec le bundle initial, les autres features à la demande', () => {
+    // docs/ARCHITECTURE.md §10 : pas de cascade de chunks avant l'élément LCP de l'écran d'arrivée.
+    for (const path of ['analyse', 't']) {
+      const route = appRoutes.find((r) => r.path === path);
+      expect(route?.children?.length).toBeGreaterThan(0);
+      expect(route?.loadChildren).toBeUndefined();
+    }
+    for (const path of ['suivis', 'alertes', 'wallet', 'compte']) {
+      expect(appRoutes.find((r) => r.path === path)?.loadChildren).toBeDefined();
+    }
   });
 });

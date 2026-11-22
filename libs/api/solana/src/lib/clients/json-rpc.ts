@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { UpstreamError, type UpstreamId } from '../core/errors';
 import { requestJson } from '../core/http';
 import type { FetchLike, SolanaLogger } from '../core/ports';

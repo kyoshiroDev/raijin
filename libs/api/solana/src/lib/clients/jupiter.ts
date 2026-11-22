@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { UpstreamError } from '../core/errors';
 import { getJson, pathSegment, type RestTransport } from './rest';
 

@@ -1,5 +1,5 @@
 import { isSolanaAddress } from '@raijin/shared-util';
-import { z } from 'zod';
+import * as z from 'zod';
 import { UpstreamError } from '../core/errors';
 import { lenientArray } from './lenient';
 import { getJson, pathSegment, type RestTransport } from './rest';

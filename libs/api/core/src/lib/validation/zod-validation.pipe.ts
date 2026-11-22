@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable, PipeTransform } from '@nestjs/common';
 import { ApiBody } from '@nestjs/swagger';
-import { z } from 'zod';
+import * as z from 'zod';
 import { ApiException } from '../errors/api-exception';
 
 /**

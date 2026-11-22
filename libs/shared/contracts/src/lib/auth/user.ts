@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from '../zod';
 
 /** Plan de l'utilisateur (mêmes valeurs que l'enum Prisma `Plan`). */
 export const planSchema = z.enum(['FREE', 'PRO']);

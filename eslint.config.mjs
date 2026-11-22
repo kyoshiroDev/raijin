@@ -54,4 +54,20 @@ export default [
       ],
     },
   },
+  {
+    // `import { z } from 'zod'` (ou `import z from 'zod'`) fait entrer tout Zod dans le bundle front,
+    // locales et JSON Schema compris (454 kB contre 90 kB mesurés à l'esbuild) ; `import * as z from
+    // 'zod'` reste éliminable. Convention appliquée partout (docs/ARCHITECTURE.md §10).
+    files: ['**/*.ts', '**/*.mts', '**/*.cts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "ImportDeclaration[source.value='zod'][importKind!='type'] > ImportSpecifier[imported.name='z'][importKind!='type'], ImportDeclaration[source.value='zod'][importKind!='type'] > ImportDefaultSpecifier",
+          message: "Utiliser « import * as z from 'zod' » : le namespace z importé par nom n'est pas éliminé au build (bundle front).",
+        },
+      ],
+    },
+  },
 ];
