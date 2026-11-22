@@ -3,7 +3,7 @@ import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
 import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
-import { ANALYSIS_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
+import { ANALYSIS_PAGES, BILLING_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
@@ -21,6 +21,7 @@ test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
 const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analyser un token' }, ...ANALYSIS_PAGES];
 /** Phase 4 : suivis (vide, rempli, limite), alertes (liste, filtres, vide), préférences, 404, maintenance. */
 /** Phase 5 : scan de wallet (visiteur, Gratuit, saisie, résultats délégations et Danger, vide, phrase refusée, quota). */
+/** Phase 6 : abonnement (offres par état, succès, faux Checkout, faux portail), fin d'essai, choix des suivis, bandeau. */
 const SHOTS =
   PHASE === 'phase-1'
     ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
@@ -30,9 +31,11 @@ const SHOTS =
         ? WATCH_PAGES
         : PHASE === 'phase-5'
           ? WALLET_PAGES
-          : PAGES.filter((p) => p.path.startsWith('/compte'));
+          : PHASE === 'phase-6'
+            ? BILLING_PAGES
+            : PAGES.filter((p) => p.path.startsWith('/compte'));
 /** Résultats d'analyse et listes : page entière. */
-const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste', 'wallet-delegations', 'wallet-danger']);
+const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste', 'wallet-delegations', 'wallet-danger', 'abonnement-visiteur', 'abonnement-gratuit', 'abonnement-essai', 'abonnement-pro', 'abonnement-retard', 'abonnement-resilie', 'abonnement-indisponible', 'fin-essai', 'choix-suivis']);
 
 for (const entry of SHOTS) {
   const { name } = entry;

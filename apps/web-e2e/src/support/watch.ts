@@ -80,7 +80,7 @@ export async function followViaApi(request: APIRequestContext, mint: string) {
   return api(request, 'POST', '/watches', { mint });
 }
 
-async function withPg<T>(run: (pg: PgClient) => Promise<T>): Promise<T> {
+export async function withPg<T>(run: (pg: PgClient) => Promise<T>): Promise<T> {
   const pg = new PgClient({ connectionString: DATABASE_URL });
   await pg.connect();
   try {
@@ -90,10 +90,14 @@ async function withPg<T>(run: (pg: PgClient) => Promise<T>): Promise<T> {
   }
 }
 
-/** Essai Pro de 7 jours posé en base (l'activation réelle de l'essai arrive en phase 6), comme api-e2e. */
+/**
+ * Essai Pro de 7 jours posé en base sur un compte Gratuit (adresse jetable, `createVerifiedAccount` par défaut),
+ * comme api-e2e : état d'essai indépendant de l'anti-abus. L'essai démarré par la vérification est testé dans
+ * trial.flow.spec.ts.
+ */
 export function startTrial(email: string): Promise<void> {
   return withPg(async (pg) => {
-    await pg.query(`UPDATE "User" SET "trialStatus" = 'ACTIVE', "trialEndsAt" = now() + interval '7 days' WHERE "email" = $1`, [email]);
+    await pg.query(`UPDATE "User" SET "trialStatus" = 'ACTIVE', "trialStartedAt" = now(), "trialEndsAt" = now() + interval '7 days' WHERE "email" = $1`, [email]);
   });
 }
 
@@ -118,7 +122,7 @@ export function seedAnalysis(mint: string, fromMint: string, symbol: string): Pr
 /** Retire les suivis restants d'un mint (tests précédents interrompus) : l'état du mint repart d'une référence. */
 export function purgeMintWatches(mint: string): Promise<void> {
   return withPg(async (pg) => {
-    await pg.query(`DELETE FROM "Watch" WHERE "mint" = $1 AND "userId" IN (SELECT "id" FROM "User" WHERE "email" LIKE 'e2e-%@exemple.fr')`, [mint]);
+    await pg.query(`DELETE FROM "Watch" WHERE "mint" = $1 AND "userId" IN (SELECT "id" FROM "User" WHERE "email" LIKE 'e2e-%@exemple.fr' OR "email" LIKE 'e2e-%@mailinator.com')`, [mint]);
     await pg.query(`DELETE FROM "MintWatchState" WHERE "mint" = $1 AND NOT EXISTS (SELECT 1 FROM "Watch" WHERE "Watch"."mint" = $1)`, [mint]);
   });
 }

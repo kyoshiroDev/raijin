@@ -176,6 +176,7 @@ test('préférences Gratuit : push expliqué sans bouton, e-mail et résumé heb
   await expect(push).toBeDisabled();
   await expect(page.locator('[data-pref="pushAlerts"]')).toContainText('Les notifications push font partie du plan Pro');
   await expect(page.getByRole('button', { name: 'Activer sur cet appareil' })).toHaveCount(0);
+  await expect(page.locator('[data-push-upgrade]').getByRole('link', { name: 'Voir l’offre Pro' })).toHaveAttribute('href', '/abonnement');
 
   const email = page.getByRole('switch', { name: 'Alertes par e-mail' });
   const digest = page.getByRole('switch', { name: 'Résumé hebdomadaire' });
@@ -198,7 +199,8 @@ test('préférences Gratuit : push expliqué sans bouton, e-mail et résumé heb
   // Interface optimiste : l'enregistrement est vérifié côté API.
   await expect
     .poll(async () => (await api(freeApi, 'GET', '/notifications/settings')).body['preferences'])
-    .toEqual({ emailAlerts: true, pushAlerts: true, weeklyDigest: true });
+    // `trialEmails` (phase 6) : préférence des e-mails de l'essai, active par défaut, non modifiée ici.
+    .toEqual({ emailAlerts: true, pushAlerts: true, weeklyDigest: true, trialEmails: true });
   expect((await api(freeApi, 'GET', '/notifications/settings')).body['pushAllowed']).toBe(false);
 });
 

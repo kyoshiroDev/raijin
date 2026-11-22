@@ -71,8 +71,9 @@ test('Gratuit : écran du plan Pro, l’API répond 403 WALLET_SCAN_PLAN_REQUIRE
   await openPage(page, '/wallet');
   const card = page.locator('[data-access="plan"]');
   await expect(card.getByRole('heading', { name: 'Le scan de wallet fait partie du plan Pro' })).toBeVisible();
-  await expect(card.locator('[data-plan-text]')).toContainText('Tu peux l’activer depuis ton compte');
-  await expect(card.getByRole('link', { name: 'Voir mon compte' })).toHaveAttribute('href', '/compte');
+  // Phase 6 : l'offre Pro se prend sur la page Abonnement (et non plus depuis le compte).
+  await expect(card.locator('[data-plan-text]')).toContainText('Tu peux l’activer depuis la page Abonnement');
+  await expect(card.getByRole('link', { name: 'Voir l’offre Pro' })).toHaveAttribute('href', '/abonnement');
   await expect(walletField(page)).toHaveCount(0);
   await expect(disclaimer(page)).toContainText(WALLET_MESSAGES.disclaimer);
 

@@ -70,6 +70,9 @@ export default defineConfig({
         ALERT_EMAIL_BATCH_DELAY_S: '1',
         ALERT_COOLDOWN_MINUTES: '0',
         BULLMQ_PREFIX: 'raijin-web-e2e',
+        // Phase 6 (billing.flow.spec.ts, trial.flow.spec.ts) : paiement simulé (faux Checkout, faux portail,
+        // webhooks signés localement ; défaut hors production, explicite ici pour ne pas dépendre d'un .env).
+        BILLING_PROVIDER: 'fake',
       },
     },
     {

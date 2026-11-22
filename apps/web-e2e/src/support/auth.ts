@@ -17,8 +17,23 @@ export const NEW_PASSWORD = 'encore une autre phrase longue';
 /** Cookies d'auth en dev (`COOKIE_SECURE=false`), §8.4. */
 export const AUTH_COOKIES = ['rj_at', 'rj_rt', 'rj_csrf'] as const;
 
+/** Adresse unique d'un domaine ordinaire : éligible à l'essai Pro de 7 jours (phase 6) à la vérification. */
 export function uniqueEmail(prefix: string): string {
   return `e2e-${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}@exemple.fr`;
+}
+
+/**
+ * Adresse unique d'un domaine jetable (liste de l'anti-abus, docs/ARCHITECTURE.md §13.6) : le compte reste en
+ * Gratuit après vérification (pas d'essai Pro), comme `uniqueFreeEmail` d'api-e2e. Mailpit reçoit tout (SMTP local).
+ */
+export function uniqueFreeEmail(prefix: string): string {
+  return uniqueEmail(prefix).replace(/@exemple\.fr$/, '@mailinator.com');
+}
+
+/** IP fictive (API de test en TRUST_PROXY=1) : empreinte d'essai neuve (IP + navigateur), quota anonyme neuf. */
+export function freshIp(): string {
+  const b = Array.from({ length: 3 }, () => Math.floor(Math.random() * 256));
+  return `10.${b[0]}.${b[1]}.${b[2]}`;
 }
 
 interface MailpitSummary {
@@ -63,10 +78,10 @@ export function linkFrom(text: string, path: string): string {
 }
 
 /** Requête d'API faite par le contexte (cookies partagés avec le navigateur), avec Origin et CSRF. */
-async function apiPost(request: APIRequestContext, path: string, csrf: string, data: unknown) {
+async function apiPost(request: APIRequestContext, path: string, csrf: string, data: unknown, extra: Record<string, string> = {}) {
   return request.post(`${APP_ORIGIN}/api/v1${path}`, {
     data,
-    headers: { Origin: APP_ORIGIN, 'X-CSRF-Token': csrf },
+    headers: { Origin: APP_ORIGIN, 'X-CSRF-Token': csrf, ...extra },
   });
 }
 
@@ -79,20 +94,25 @@ async function anonymousCsrf(request: APIRequestContext): Promise<string> {
 /**
  * Crée un compte vérifié par l'API (sans passer par l'interface) : inscription, e-mail Mailpit,
  * vérification. Le contexte se retrouve connecté (cookies posés par la vérification).
+ *
+ * Phase 6 : la vérification d'une adresse ordinaire démarre un essai Pro de 7 jours (une fois par empreinte
+ * IP + navigateur). `plan` rend le résultat déterministe :
+ * - `free` (défaut) : adresse jetable → compte Gratuit, quel que soit l'ordre des tests ;
+ * - `trial` : adresse ordinaire, vérification depuis une IP fictive neuve → essai Pro réellement démarré.
  */
-export async function createVerifiedAccount(context: RequestOwner, prefix = 'compte') {
+export async function createVerifiedAccount(context: RequestOwner, prefix = 'compte', plan: 'free' | 'trial' = 'free') {
   const request = requestOf(context);
-  const { email, link } = await registerViaApi(request, prefix);
+  const { email, link } = await registerViaApi(request, prefix, plan === 'free' ? uniqueFreeEmail(prefix) : uniqueEmail(prefix));
   const token = new URL(link, APP_ORIGIN).searchParams.get('token');
+  const extra: Record<string, string> = plan === 'trial' ? { 'X-Forwarded-For': freshIp() } : {};
   const csrf = await anonymousCsrf(request);
-  const verify = await apiPost(request, '/auth/verify-email', csrf, { token });
+  const verify = await apiPost(request, '/auth/verify-email', csrf, { token }, extra);
   expect(verify.status(), `POST /auth/verify-email : ${await verify.text()}`).toBe(200);
   return { email, password: PASSWORD };
 }
 
 /** Inscription par l'API, sans vérification : renvoie le lien de confirmation reçu dans Mailpit. */
-export async function registerViaApi(context: RequestOwner, prefix = 'compte') {
-  const email = uniqueEmail(prefix);
+export async function registerViaApi(context: RequestOwner, prefix = 'compte', email = uniqueEmail(prefix)) {
   const request = requestOf(context);
   const since = Date.now() - 1000;
   const csrf = await anonymousCsrf(request);

@@ -2,6 +2,7 @@ import { expect, request, type Page } from '@playwright/test';
 import { APP_ORIGIN, PASSWORD, createVerifiedAccount, loginViaApi, uniqueEmail } from './auth';
 import { MINTS, expectVerdict, exhaustAnonymousQuota, publishAnalysis, randomMint, useFreshIp } from './analysis';
 import { followViaApi, seedAlerts, startTrial } from './watch';
+import { billingAccount, forceBillingMode, raiPose, trialBanner } from './billing';
 import { FAKE_SEED, WALLETS, scanWallet, scanWalletResult, setWalletScansUsed, walletField, walletTrialAccount } from './wallet';
 
 export interface PageEntry {
@@ -358,6 +359,149 @@ export const WALLET_PAGES: readonly PageEntry[] = [
   },
 ];
 
+const SUBSCRIPTION_H1 = 'Abonnement';
+
+/** Offres affichées (prix chargés depuis l'API). */
+async function offersReady(page: Page): Promise<void> {
+  await expect(page.locator('[data-plan="PRO"] [data-price]')).not.toBeEmpty({ timeout: 15_000 });
+}
+
+/**
+ * Écrans de l'abonnement et de l'essai (phase 6), API réelle en simulation (`BILLING_PROVIDER=fake`) :
+ * offres (visiteur, Gratuit, essai, Pro, retard de paiement, résilié, paiement indisponible), retour de
+ * Checkout, faux Checkout, faux portail, fin d'essai, choix des suivis, bandeau d'essai dans la coque.
+ */
+export const BILLING_PAGES: readonly PageEntry[] = [
+  {
+    name: 'abonnement-visiteur',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-trial-offer]')).toBeVisible();
+    },
+  },
+  {
+    name: 'abonnement-gratuit',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    auth: true,
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-plan-status]')).toContainText('Gratuit', { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'abonnement-essai',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    account: () => billingAccount('essai'),
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-plan-status]')).toContainText('Essai Pro', { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'abonnement-pro',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    account: () => billingAccount('pro'),
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-portal]')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'abonnement-retard',
+    shot: 'abonnement-pro-retard',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    account: () => billingAccount('retard'),
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-payment-issue]')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'abonnement-resilie',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    account: () => billingAccount('resilie'),
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-status-detail]')).toContainText('Résiliation programmée', { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'abonnement-indisponible',
+    path: '/abonnement',
+    heading: SUBSCRIPTION_H1,
+    auth: true,
+    prepare: (page) => forceBillingMode(page, 'unavailable'),
+    act: async (page) => {
+      await offersReady(page);
+      await expect(page.locator('[data-billing-unavailable]')).toBeVisible();
+      await expect(page.locator('[data-plan="PRO"] [data-checkout]')).toBeDisabled();
+    },
+  },
+  {
+    name: 'abonnement-succes',
+    path: '/abonnement/succes',
+    heading: 'Bienvenue dans Raijin Pro',
+    account: () => billingAccount('pro'),
+    act: async (page) => {
+      await expect(page.locator('[data-state="confirmed"]')).toBeVisible({ timeout: 20_000 });
+      await expect(raiPose(page, 'bravo')).toBeVisible();
+    },
+  },
+  {
+    name: 'simulation',
+    path: '/abonnement/simulation?session=cs_fake_e2eCaptureSession0001',
+    heading: 'Paiement simulé',
+    auth: true,
+    act: async (page) => {
+      await expect(page.locator('[data-simulate-paid]')).toBeEnabled({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'simulation-portail',
+    path: '/abonnement/simulation-portail',
+    heading: 'Portail simulé',
+    account: () => billingAccount('pro'),
+    act: async (page) => {
+      await expect(page.locator('[data-action="cancel_at_period_end"]')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'fin-essai',
+    path: '/abonnement/fin-essai',
+    heading: 'Ton essai Pro est terminé',
+    account: () => billingAccount('fin-essai'),
+    act: async (page) => {
+      await expect(page.locator('[data-pause-note]')).toBeVisible({ timeout: 15_000 });
+      await expect(raiPose(page, 'bravo')).toBeVisible();
+    },
+  },
+  {
+    name: 'choix-suivis',
+    path: '/abonnement/suivis',
+    heading: 'Choisis tes 3 suivis actifs',
+    account: () => billingAccount('fin-essai'),
+    act: async (page) => {
+      await expect(page.locator('[data-counter]')).toHaveText('3 / 3 sélectionnés', { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'bandeau-essai',
+    path: '/analyse',
+    heading: ANALYSE_H1,
+    account: () => billingAccount('essai'),
+    act: async (page) => {
+      await expect(trialBanner(page)).toContainText('Essai Pro : plus que', { timeout: 15_000 });
+    },
+  },
+];
+
 /** Pages testées (routes de l'app + page de référence visuelle, servie uniquement en dev). */
 export const PAGES: readonly PageEntry[] = [
   { name: 'analyse', path: '/analyse', heading: 'Analyser un token' },
@@ -388,6 +532,7 @@ export const PAGES: readonly PageEntry[] = [
   ...ANALYSIS_PAGES,
   ...WATCH_PAGES,
   ...WALLET_PAGES,
+  ...BILLING_PAGES,
 ];
 
 let sharedAccount: Promise<{ email: string; password: string }> | undefined;
