@@ -154,7 +154,7 @@ jobs:
 
       - name: Version de Playwright
         id: playwright
-        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache des navigateurs Playwright
         id: playwright-cache
@@ -283,7 +283,7 @@ jobs:
 
       - name: Version de Playwright
         id: playwright
-        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       # Même clé que le job e2e : un seul Chromium en cache pour les deux jobs.
       - name: Cache des navigateurs Playwright
