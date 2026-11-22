@@ -11,7 +11,7 @@ import {
 import { BILLING_CONFIG, type BillingConfig } from '../config/billing-config';
 import { BillingProvider, WebhookSignatureError, type BillingWebhookEvent, type ProviderInvoice, type ProviderSubscription } from '../provider/billing-provider';
 import { checkoutSessionRefs, invoiceSubscriptionId, toProviderInvoice, toProviderSubscription } from '../provider/stripe-mapping';
-import { BillingMailService } from '../mail/billing-mail.service';
+import { BillingMailJobs } from '../mail/billing-mail-jobs';
 import { BillingClock, PlanLimitHooks, TrialConversion } from './billing-ports';
 import { toPrismaInterval, toPrismaStatus } from './billing-enums';
 
@@ -53,7 +53,7 @@ export class BillingWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly provider: BillingProvider,
-    private readonly mail: BillingMailService,
+    private readonly mail: BillingMailJobs,
     private readonly plans: PlanLimitHooks,
     private readonly clock: BillingClock,
     private readonly trial: TrialConversion,
@@ -208,12 +208,15 @@ export class BillingWebhookService {
   }
 
   /**
-   * Rattachement : `metadata.userId` (abonnement puis session) si le compte existe et que son client Stripe
-   * est absent ou identique ; sinon le compte portant ce client Stripe. Ligne `User` verrouillée.
+   * Rattachement : `metadata.userId` (abonnement puis session) si le compte existe, que son client Stripe est
+   * absent ou identique, et que ce client n'appartient pas à un autre compte ; sinon le compte portant ce client
+   * Stripe. Ligne `User` verrouillée.
    */
   private async findUser(tx: Tx, candidates: readonly (string | null)[], customerId: string | null): Promise<LockedUser | null> {
+    // Client déjà rattaché à un compte : lui seul fait foi (une metadata ne peut pas détourner l'abonnement).
+    const holder = customerId ? await tx.user.findUnique({ where: { stripeCustomerId: customerId }, select: { id: true } }) : null;
     for (const id of candidates) {
-      if (!id) continue;
+      if (!id || (holder && holder.id !== id)) continue;
       const user = await this.lockUser(tx, { id });
       if (user && (!user.stripeCustomerId || !customerId || user.stripeCustomerId === customerId)) return user;
     }
@@ -236,12 +239,13 @@ export class BillingWebhookService {
       if (effects.enforce) await this.plans.enforcePlanLimit(userId);
     });
     if (!email) return;
-    // Un événement n'est traité qu'une fois (StripeEvent) : un seul reçu par facture.
+    // File `notify` (jobId = facture) ; un événement n'est traité qu'une fois (StripeEvent).
+    const base = { userId, interval: effects.interval, renewsAt: effects.renewsAt };
     if (effects.receipt) {
-      const receipt = effects.receipt;
-      await this.safely(event, 'RECEIPT_MAIL', () => this.mail.sendReceipt(email, receipt, effects.interval, effects.renewsAt));
+      const invoice = effects.receipt;
+      await this.safely(event, 'RECEIPT_MAIL', () => this.mail.enqueue({ ...base, kind: 'receipt', invoice }, event.id));
     }
-    if (effects.paymentFailed) await this.safely(event, 'PAYMENT_FAILED_MAIL', () => this.mail.sendPaymentFailed(email, effects.failedInvoice));
+    if (effects.paymentFailed) await this.safely(event, 'PAYMENT_FAILED_MAIL', () => this.mail.enqueue({ ...base, kind: 'payment_failed', invoice: effects.failedInvoice }, event.id));
   }
 
   private async safely(event: BillingWebhookEvent, step: string, run: () => Promise<unknown>): Promise<void> {

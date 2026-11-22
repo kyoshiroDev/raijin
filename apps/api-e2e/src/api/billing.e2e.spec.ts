@@ -189,6 +189,34 @@ describe('Abonnement (e2e, simulation)', () => {
   });
 });
 
+describe('Suppression du compte abonné (e2e, audit I1)', () => {
+  async function proAccount(prefix: string) {
+    const user = await registered(prefix);
+    const session = await checkoutSession(user.client, 'month');
+    expect((await user.client.post<BillingAccount>('/billing/simulation/checkout', { sessionId: session, outcome: 'paid' })).data.plan).toBe('PRO');
+    const sub = await subscriptionRow(user.userId);
+    return { ...user, customer: sub.customer, subscriptionId: sub.stripeSubscriptionId };
+  }
+
+  it('prestataire en échec : 503, compte et abonnement conservés ; puis suppression : abonnement résilié et client supprimé', async () => {
+    const { client, userId, customer, subscriptionId } = await proAccount('billing-delete');
+    expect((await client.post(`/internal/billing/fake-failures/cancel`, {})).status).toBe(204);
+    const refused = await client.delete('/users/me', { password: PASSWORD });
+    expect(refused.status).toBe(503);
+    expect(await sql(`SELECT 1 FROM "User" WHERE "id" = $1::uuid`, [userId])).toHaveLength(1);
+    const before = await client.get<{ deleted: boolean; subscriptions: { id: string; status: string }[] }>(`/internal/billing/fake-customers?id=${customer}`);
+    expect(before.data).toEqual({ deleted: false, subscriptions: [{ id: subscriptionId, status: 'active' }] });
+    expect((await account(client)).plan).toBe('PRO');
+
+    const deleted = await client.delete('/users/me', { password: PASSWORD });
+    expect(deleted.status).toBe(204);
+    expect(await sql(`SELECT 1 FROM "User" WHERE "id" = $1::uuid`, [userId])).toHaveLength(0);
+    const observer = await new ApiClient().init();
+    const after = await observer.get<{ deleted: boolean; subscriptions: { id: string; status: string }[] }>(`/internal/billing/fake-customers?id=${customer}`);
+    expect(after.data).toEqual({ deleted: true, subscriptions: [{ id: subscriptionId, status: 'canceled' }] });
+  });
+});
+
 describe('Abonnement (e2e, Stripe non configuré)', () => {
   const PORT = 3201;
   const SECRET = `whsec_e2e${randomBytes(12).toString('hex')}`;

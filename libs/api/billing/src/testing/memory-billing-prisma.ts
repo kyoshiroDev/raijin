@@ -107,6 +107,11 @@ export class MemoryBillingPrisma {
         if (!row) throw new Error(`${table} introuvable`);
         return { ...update(row, data) };
       },
+      updateMany: async ({ where, data }: { where: Where; data: Row }) => {
+        const list = rows().filter((candidate) => matches(candidate, where));
+        for (const row of list) update(row, data);
+        return { count: list.length };
+      },
       upsert: async ({ where, create, update: changes }: { where: Where; create: Row; update: Row }) => {
         this.upserts += 1;
         if (this.failOnUpsert === this.upserts) throw new Error('panne simulée');

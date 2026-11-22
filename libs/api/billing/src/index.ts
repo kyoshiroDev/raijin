@@ -1,5 +1,6 @@
 export * from './lib/api-billing.module';
 export * from './lib/config/billing-config';
+export * from './lib/domain/billing-account-closer';
 export * from './lib/domain/billing-ports';
 export * from './lib/domain/billing.service';
 export * from './lib/domain/billing-webhook.service';

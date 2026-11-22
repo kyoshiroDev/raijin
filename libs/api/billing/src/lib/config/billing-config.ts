@@ -63,19 +63,30 @@ const billingEnvSchema = z.object({
   RATE_LIMIT_BILLING_PER_MINUTE: z.preprocess((value) => (value === '' ? undefined : value), z.coerce.number().int().min(1).max(600).optional()),
 });
 
+/** APP_URL locale : seule cible acceptée par la simulation (une instance exposée ne doit jamais accorder Pro gratuitement). */
+export function isLocalUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost');
+  } catch {
+    return false;
+  }
+}
+
 function real(value: string | undefined, pattern: RegExp): string | null {
   return value && !PLACEHOLDER.test(value) && pattern.test(value) ? value : null;
 }
 
 /**
  * Construit la configuration de l'abonnement.
- * - `BILLING_PROVIDER` : `fake` par défaut hors production, `stripe` en production ; `fake` en production → refus.
+ * - `BILLING_PROVIDER` : `fake` par défaut hors production, `stripe` en production ; `fake` en production ou avec une
+ *   `APP_URL` non locale → refus.
  * - Une clé `sk_live_` hors production → refus (mode test uniquement en développement).
  * - `stripe` sans clé, secret ou prix valides : l'API démarre en mode « paiement indisponible » (avertissement).
  */
 export function loadBillingConfig(
   env: NodeJS.ProcessEnv,
-  app: Pick<AppConfig, 'isProduction'>,
+  app: Pick<AppConfig, 'isProduction' | 'appUrl'>,
   warn: (message: string) => void = () => undefined,
 ): BillingConfig {
   const parsed = billingEnvSchema.safeParse(env);
@@ -86,6 +97,7 @@ export function loadBillingConfig(
   const problems: string[] = [];
   const provider = e.BILLING_PROVIDER ?? (app.isProduction ? 'stripe' : 'fake');
   if (provider === 'fake' && app.isProduction) problems.push('BILLING_PROVIDER : fake interdit en production (simulation)');
+  else if (provider === 'fake' && !isLocalUrl(app.appUrl)) problems.push('BILLING_PROVIDER : fake réservé à une APP_URL locale (localhost, 127.0.0.1, *.localhost)');
 
   const secretKey = real(e.STRIPE_SECRET_KEY, SECRET_KEY);
   const livemode = secretKey !== null && /^(sk|rk)_live_/.test(secretKey);

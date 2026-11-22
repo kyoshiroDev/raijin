@@ -13,6 +13,8 @@ import { BillingThrottleGuard } from './http/billing-throttle.guard';
 import { BillingController } from './http/billing.controller';
 import { SimulationOnlyGuard } from './http/simulation.guard';
 import { BillingMailService } from './mail/billing-mail.service';
+import { BillingMailJobs } from './mail/billing-mail-jobs';
+import { BillingAccountCloser } from './domain/billing-account-closer';
 import { BillingProvider } from './provider/billing-provider';
 import { FakeBillingProvider } from './provider/fake-billing.provider';
 import { StripeBillingProvider } from './provider/stripe-billing.provider';
@@ -49,12 +51,14 @@ export class ApiBillingModule implements OnApplicationBootstrap {
   /**
    * `options.trialConversion` : fournisseur de `TrialConversion` venant d'un autre module (ex. `TrialLifecycleService`
    * d'`api-trial`, avec son module dans `options.imports`) ; par défaut `DefaultTrialConversion`.
+   * `options.testRoutes` : enregistre `internal/billing/*` (fixtures signées, pannes simulées) ; à passer seulement
+   * avec `JOBS_TEST_TRIGGER=1` hors production (le contrôleur refuse en plus ces cas à chaque requête).
    */
-  static forRoot(config: BillingConfig, options: { imports?: ModuleMetadata['imports']; trialConversion?: InjectionToken } = {}): DynamicModule {
+  static forRoot(config: BillingConfig, options: { imports?: ModuleMetadata['imports']; trialConversion?: InjectionToken; testRoutes?: boolean } = {}): DynamicModule {
     return {
       module: ApiBillingModule,
       imports: [ApiAuthModule, ApiAlertsModule, ApiNotificationsModule, ...(options.imports ?? [])],
-      controllers: [BillingController, BillingInternalController],
+      controllers: options.testRoutes ? [BillingController, BillingInternalController] : [BillingController],
       providers: [
         { provide: BILLING_CONFIG, useValue: config },
         { provide: BillingProvider, inject: [BILLING_CONFIG, APP_CONFIG], useFactory: createBillingProvider },
@@ -62,13 +66,15 @@ export class ApiBillingModule implements OnApplicationBootstrap {
         options.trialConversion ? { provide: TrialConversion, useExisting: options.trialConversion } : { provide: TrialConversion, useClass: DefaultTrialConversion },
         BillingClock,
         BillingMailService,
+        BillingMailJobs,
+        BillingAccountCloser,
         BillingService,
         BillingWebhookService,
         BillingSimulationService,
         BillingThrottleGuard,
         SimulationOnlyGuard,
       ],
-      exports: [BillingProvider, BillingService, BILLING_CONFIG],
+      exports: [BillingProvider, BillingService, BillingAccountCloser, BILLING_CONFIG],
     };
   }
 

@@ -79,7 +79,7 @@ describe('BillingSimulationService', () => {
   });
 
   it('hors simulation (Stripe) ou en production : 404', async () => {
-    const stripe = new StripeBillingProvider(loadBillingConfig({ BILLING_PROVIDER: 'stripe' }, { isProduction: false }));
+    const stripe = new StripeBillingProvider(loadBillingConfig({ BILLING_PROVIDER: 'stripe' }, { isProduction: false, appUrl: 'http://localhost:4200' }));
     const kit = billingKit({ provider: stripe });
     expect(await code(kit.simulation.completeCheckout(USER, { sessionId: 'cs_fake_abcdefghijklmnop', outcome: 'paid' }))).toBe('NOT_FOUND');
     expect(await code(kit.simulation.portalAction(USER, { action: 'resume' }))).toBe('NOT_FOUND');

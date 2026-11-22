@@ -85,7 +85,7 @@ describe('BillingService : Checkout et portail', () => {
     expect(await rejection(kit.billing.createCheckout(USER, 'month'))).toEqual({ code: 'AUTH_EMAIL_NOT_VERIFIED', status: 403 });
   });
 
-  it('crée le client une seule fois (verrou), URL de simulation de la même origine, checkout_started', async () => {
+  it('crée le client une seule fois (hors transaction, idempotent), URL de simulation de la même origine, checkout_started', async () => {
     const kit = billingKit();
     kit.prisma.addUser({ id: USER });
     const first = await kit.billing.createCheckout(USER, 'year');
@@ -96,7 +96,8 @@ describe('BillingService : Checkout et portail', () => {
     expect(first.url).toMatch(new RegExp(`^${kit.app.appUrl}/abonnement/simulation\\?session=cs_fake_[A-Za-z0-9]{32}$`));
     expect(isAllowedBillingRedirect(first.url, kit.app.appUrl)).toBe(true);
     expect(kit.prisma.tables['productEvent']?.map((row) => row['properties'])).toEqual([{ interval: 'year' }, { interval: 'month' }]);
-    expect(kit.prisma.rawQueries.some((query) => query.includes('FOR UPDATE'))).toBe(true);
+    // Aucun verrou tenu pendant l'appel réseau au prestataire.
+    expect(kit.prisma.rawQueries.some((query) => query.includes('FOR UPDATE'))).toBe(false);
   });
 
   it('abonnement Pro en cours (actif ou en retard) : 409 ALREADY_SUBSCRIBED', async () => {
@@ -113,11 +114,38 @@ describe('BillingService : Checkout et portail', () => {
     kit.prisma.addUser({ id: USER });
     expect(await rejection(kit.billing.createPortal(USER))).toEqual({ code: 'NO_BILLING_ACCOUNT', status: 409 });
     await kit.prisma.user.update({ where: { id: USER }, data: { stripeCustomerId: 'cus_fake_x' } });
+    // Checkout abandonné (client sans abonnement) : ni portail ni bouton « Gérer ».
+    expect(await rejection(kit.billing.createPortal(USER))).toEqual({ code: 'NO_BILLING_ACCOUNT', status: 409 });
+    expect((await kit.billing.account(USER)).portalAvailable).toBe(false);
+    await kit.prisma.subscription.create({
+      data: { userId: USER, stripeSubscriptionId: 'sub_old', stripePriceId: 'p', status: 'CANCELED', interval: 'MONTH', currentPeriodEnd: NOW, cancelAtPeriodEnd: false },
+    });
+    expect((await kit.billing.account(USER)).portalAvailable).toBe(true);
     expect((await kit.billing.createPortal(USER)).url).toBe(`${kit.app.appUrl}/abonnement/simulation-portail`);
   });
 
+  it('abonnement Pro connu de Stripe mais pas encore en base (webhook en retard) : 409 ALREADY_SUBSCRIBED', async () => {
+    const kit = billingKit();
+    kit.prisma.addUser({ id: USER, stripeCustomerId: 'cus_fake_retard' });
+    kit.fake.createSubscription({ customerId: 'cus_fake_retard', userId: USER, interval: 'month', status: 'past_due' });
+    expect(await rejection(kit.billing.createCheckout(USER, 'year'))).toEqual({ code: 'ALREADY_SUBSCRIBED', status: 409 });
+  });
+
+  it('client rattaché entre-temps par une requête concurrente : celui du compte est gardé', async () => {
+    const kit = billingKit();
+    kit.prisma.addUser({ id: USER });
+    jest.spyOn(kit.fake, 'createCustomer').mockImplementationOnce(async () => {
+      await kit.prisma.user.update({ where: { id: USER }, data: { stripeCustomerId: 'cus_fake_premier' } });
+      return 'cus_fake_second';
+    });
+    const create = jest.spyOn(kit.fake, 'createCheckoutSession');
+    await kit.billing.createCheckout(USER, 'month');
+    expect(kit.prisma.tables['user']?.[0]?.['stripeCustomerId']).toBe('cus_fake_premier');
+    expect(create.mock.calls[0]?.[0]).toMatchObject({ customerId: 'cus_fake_premier' });
+  });
+
   it('Stripe non configuré : mode unavailable, 503 BILLING_NOT_CONFIGURED', async () => {
-    const config = loadBillingConfig({ BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_factice' }, { isProduction: false });
+    const config = loadBillingConfig({ BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_factice' }, { isProduction: false, appUrl: 'http://localhost:4200' });
     const kit = billingKit({ provider: new StripeBillingProvider(config) });
     kit.prisma.addUser({ id: USER, stripeCustomerId: 'cus_x' });
     expect(kit.billing.plans().mode).toBe('unavailable');

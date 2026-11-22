@@ -1,5 +1,5 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { ApiException } from '@raijin/api-core';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { ApiException, errorCode } from '@raijin/api-core';
 import {
   AuditService,
   AuthService,
@@ -9,15 +9,19 @@ import {
 } from '@raijin/api-auth';
 import { PrismaService } from '@raijin/api-prisma';
 import type { PublicUser } from '@raijin/shared-contracts';
+import { AccountBillingCloser } from './account-billing-closer';
 
 /** Compte de l'utilisateur connecté : profil, export et suppression (RGPD). */
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger('Users');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
     private readonly audit: AuditService,
+    private readonly billing: AccountBillingCloser,
   ) {}
 
   async me(userId: string): Promise<PublicUser> {
@@ -42,6 +46,15 @@ export class UsersService {
         trialStatus: true,
         trialStartedAt: true,
         trialEndsAt: true,
+        trialDay1MailAt: true,
+        trialDayMinus2MailAt: true,
+        trialEndMailAt: true,
+        trialEndScreenSeenAt: true,
+        notifyEmailAlerts: true,
+        notifyPushAlerts: true,
+        notifyWeeklyDigest: true,
+        notifyTrialEmails: true,
+        stripeCustomerId: true,
         termsAcceptedAt: true,
         passwordChangedAt: true,
         lastLoginAt: true,
@@ -57,20 +70,22 @@ export class UsersService {
           orderBy: { createdAt: 'desc' },
         },
         subscriptions: {
-          select: { status: true, interval: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, createdAt: true },
+          select: { status: true, interval: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, createdAt: true, updatedAt: true },
         },
         watches: { select: { mint: true, lastVerdict: true, lastCheckedAt: true, createdAt: true } },
         alerts: { select: { mint: true, type: true, payload: true, readAt: true, createdAt: true } },
         tokenAnalyses: { select: { mint: true, verdict: true, score: true, createdAt: true } },
         pushSubscriptions: { select: { userAgent: true, createdAt: true } },
         usageCounters: { select: { kind: true, day: true, count: true } },
-        productEvents: { select: { type: true, createdAt: true } },
+        productEvents: { select: { type: true, properties: true, createdAt: true } },
         auditLogs: { select: { action: true, userAgent: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
       },
     });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
     await this.audit.record('account.exported', userId, client);
-    return { exportedAt: new Date().toISOString(), format: 'raijin-export-v1', account: user };
+    // Identifiant du client de paiement jamais exporté brut : seulement son existence.
+    const { stripeCustomerId, ...account } = user;
+    return { exportedAt: new Date().toISOString(), format: 'raijin-export-v1', account: { ...account, hasPaymentCustomer: stripeCustomerId !== null } };
   }
 
   /** Suppression définitive, confirmée par le mot de passe. Les journaux d'audit sont anonymisés. */
@@ -79,6 +94,15 @@ export class UsersService {
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
     // Même compteur d'échecs que la connexion (verrouillage) ; échecs audités (account.delete_failed).
     await this.auth.confirmPassword(user, password, client, 'account.delete');
+    // Abonnement résilié chez le prestataire AVANT toute suppression ; en cas d'échec, le compte est conservé.
+    try {
+      await this.billing.closeForUser(userId);
+    } catch (error) {
+      this.logger.error(`Clôture de la facturation impossible, compte conservé (${errorCode(error)})`);
+      await this.audit.record('account.delete_billing_failed', userId, client);
+      if (error instanceof ApiException) throw error;
+      throw new ApiException('UPSTREAM_UNAVAILABLE', HttpStatus.SERVICE_UNAVAILABLE);
+    }
     await this.sessions.revokeAllForUser(userId, 'account_deleted');
     await this.audit.record('account.deleted', userId, client);
     // Cascade : sessions, jetons, suivis, alertes, abonnements push, quotas, TOTP.

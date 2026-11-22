@@ -12,7 +12,7 @@ const ENV = {
   STRIPE_PRICE_PRO_YEARLY: 'price_1Yearly00001',
   STRIPE_PORTAL_CONFIGURATION_ID: 'bpc_1portal01',
 };
-const config = loadBillingConfig(ENV, { isProduction: false });
+const config = loadBillingConfig(ENV, { isProduction: false, appUrl: 'http://localhost:4200' });
 
 function price(interval: 'month' | 'year', cents: number, extra: Record<string, unknown> = {}) {
   return { id: `price_${interval}`, active: true, type: 'recurring', currency: 'eur', unit_amount: cents, recurring: { interval, interval_count: 1 }, ...extra };
@@ -25,11 +25,11 @@ function notFound() {
 /** Client Stripe simulé (aucun appel réseau). */
 function client() {
   return {
-    customers: { create: jest.fn(async () => ({ id: 'cus_1' })) },
+    customers: { create: jest.fn(async () => ({ id: 'cus_1' })), del: jest.fn(async () => ({ deleted: true })) },
     checkout: { sessions: { create: jest.fn(async () => ({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' })) } },
     billingPortal: { sessions: { create: jest.fn(async () => ({ url: 'https://billing.stripe.com/p/session/x' })) } },
     prices: { retrieve: jest.fn(async (id: string) => (id.includes('Monthly') ? price('month', 990) : price('year', 9900))) },
-    subscriptions: { retrieve: jest.fn() },
+    subscriptions: { retrieve: jest.fn(), list: jest.fn(), cancel: jest.fn(async () => ({})) },
     invoices: { retrieve: jest.fn() },
   };
 }
@@ -121,6 +121,30 @@ describe('StripeBillingProvider', () => {
     await expect(stripe.retrieveInvoice('in_x')).resolves.toBeNull();
   });
 
+  it('clôture : liste les abonnements Pro, résilie sans prorata (idempotent), supprime le client (introuvable : ok)', async () => {
+    const { mock, stripe } = provider();
+    const sub = (id: string, status: string) => ({ id, object: 'subscription', customer: 'cus_1', status, metadata: {}, items: { data: [{ current_period_end: 1_800_000_000, price: { id: 'price_1Monthly0001' } }] } });
+    mock.subscriptions.list.mockResolvedValueOnce({ data: [sub('sub_a', 'active'), sub('sub_b', 'canceled'), sub('sub_c', 'past_due')] });
+    expect((await stripe.listProSubscriptions('cus_1')).map((s) => s.id)).toEqual(['sub_a', 'sub_c']);
+    expect(mock.subscriptions.list).toHaveBeenCalledWith({ customer: 'cus_1', status: 'all', limit: 100 });
+    mock.subscriptions.retrieve.mockResolvedValueOnce({ status: 'active' });
+    await stripe.cancelSubscriptionNow('sub_a');
+    expect(mock.subscriptions.cancel).toHaveBeenCalledWith('sub_a', { prorate: false, invoice_now: false }, { idempotencyKey: 'cancel:sub_a' });
+    mock.subscriptions.retrieve.mockResolvedValueOnce({ status: 'canceled' });
+    await stripe.cancelSubscriptionNow('sub_b');
+    expect(mock.subscriptions.cancel).toHaveBeenCalledTimes(1);
+    mock.subscriptions.retrieve.mockRejectedValueOnce(notFound());
+    await expect(stripe.cancelSubscriptionNow('sub_x')).resolves.toBeUndefined();
+    mock.subscriptions.retrieve.mockRejectedValueOnce(new Error('panne'));
+    await expect(stripe.cancelSubscriptionNow('sub_y')).rejects.toThrow('panne');
+    await stripe.deleteCustomer('cus_1');
+    expect(mock.customers.del).toHaveBeenCalledWith('cus_1');
+    mock.customers.del.mockRejectedValueOnce(notFound());
+    await expect(stripe.deleteCustomer('cus_1')).resolves.toBeUndefined();
+    mock.customers.del.mockRejectedValueOnce(new Error('panne'));
+    await expect(stripe.deleteCustomer('cus_1')).rejects.toThrow('panne');
+  });
+
   it('vérifie la signature avec le secret du webhook', () => {
     const { stripe } = provider();
     const good = signFakeEvent(ENV.STRIPE_WEBHOOK_SECRET, 'invoice.paid', { id: 'in_1', object: 'invoice' }, { created: new Date() });
@@ -129,7 +153,7 @@ describe('StripeBillingProvider', () => {
   });
 
   it('sans configuration : indisponible, aucun appel possible', async () => {
-    const stripe = new StripeBillingProvider(loadBillingConfig({ BILLING_PROVIDER: 'stripe' }, { isProduction: false }));
+    const stripe = new StripeBillingProvider(loadBillingConfig({ BILLING_PROVIDER: 'stripe' }, { isProduction: false, appUrl: 'http://localhost:4200' }));
     expect(stripe.mode()).toBe('unavailable');
     await expect(stripe.verifyPrices()).resolves.toBe('error');
     await expect(stripe.createPortalSession('cus_1', 'x')).rejects.toBeInstanceOf(BillingUnavailableError);

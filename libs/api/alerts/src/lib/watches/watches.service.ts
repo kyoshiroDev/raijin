@@ -125,11 +125,14 @@ export class WatchesService {
    * 400 `WATCH_KEEP_INVALID` (aucun indice sur les suivis des autres comptes).
    */
   async keep(userId: string, watchIds: readonly string[]): Promise<WatchListResponse> {
-    const { limits } = await this.plans.verifiedRights(userId);
+    await this.plans.verifiedRights(userId);
     const ids = [...new Set(watchIds)];
-    if (ids.length === 0 || ids.length !== watchIds.length || ids.length > limits.maxActiveWatches) throw keepInvalid();
+    if (ids.length === 0 || ids.length !== watchIds.length) throw keepInvalid();
     const mints = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
+      // Limite relue sous le verrou (un changement de plan concurrent ne la contourne pas).
+      const { entitlements } = await this.plans.policyIn(tx, userId);
+      if (ids.length > entitlements.maxActiveWatches) throw keepInvalid();
       const kept = await tx.watch.findMany({ where: { userId, id: { in: ids } }, select: { id: true, mint: true } });
       if (kept.length !== ids.length) throw keepInvalid();
       const others = await tx.watch.findMany({

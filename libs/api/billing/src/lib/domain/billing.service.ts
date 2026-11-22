@@ -104,33 +104,28 @@ export class BillingService {
         : null,
       trial: buildTrialDetails(user, now),
       paymentIssue: pro?.status === 'PAST_DUE',
-      portalAvailable: mode !== 'unavailable' && user.stripeCustomerId !== null,
+      // Portail seulement s'il existe ou a existé un abonnement (pas après un Checkout simplement abandonné).
+      portalAvailable: mode !== 'unavailable' && user.stripeCustomerId !== null && latest !== null,
       checkoutAvailable: mode !== 'unavailable' && policy.emailVerified && !pro,
       mode,
     };
   }
 
   /**
-   * `POST billing/checkout-sessions` : e-mail vérifié, aucun abonnement Pro en cours (`ALREADY_SUBSCRIBED`),
-   * client Stripe créé sous verrou de la ligne `User` (une seule création même en cas de double clic).
+   * `POST billing/checkout-sessions` : e-mail vérifié, aucun abonnement Pro en cours, ni en base ni chez le
+   * prestataire (`ALREADY_SUBSCRIBED`). Le client Stripe est créé **hors transaction** (aucun verrou tenu pendant
+   * l'appel réseau) avec la clé d'idempotence `customer:<userId>` (double clic : même client), puis rattaché
+   * seulement si le compte n'en a pas encore (`UPDATE … WHERE stripeCustomerId IS NULL`).
    */
   async createCheckout(userId: string, interval: BillingInterval): Promise<BillingRedirect> {
     if (this.provider.mode() === 'unavailable') throw notConfigured();
-    const customer = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
-        const user = await tx.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true, stripeCustomerId: true } });
-        if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
-        if (!user.emailVerifiedAt) throw ApiException.auth('AUTH_EMAIL_NOT_VERIFIED', HttpStatus.FORBIDDEN);
-        const active = await tx.subscription.count({ where: { userId, status: { in: PRO_STATUSES } } });
-        if (active > 0) throw billingError('ALREADY_SUBSCRIBED', HttpStatus.CONFLICT);
-        if (user.stripeCustomerId) return user.stripeCustomerId;
-        const customerId = await this.call(() => this.provider.createCustomer({ userId, email: user.email, idempotencyKey: `customer:${userId}` }));
-        await tx.user.update({ where: { id: userId }, data: { stripeCustomerId: customerId } });
-        return customerId;
-      },
-      { timeout: 20_000, maxWait: 10_000 },
-    );
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true, stripeCustomerId: true } });
+    if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+    if (!user.emailVerifiedAt) throw ApiException.auth('AUTH_EMAIL_NOT_VERIFIED', HttpStatus.FORBIDDEN);
+    if ((await this.prisma.subscription.count({ where: { userId, status: { in: PRO_STATUSES } } })) > 0) throw billingError('ALREADY_SUBSCRIBED', HttpStatus.CONFLICT);
+    const customer = user.stripeCustomerId ?? (await this.attachCustomer(userId, user.email));
+    // Webhook pas encore reçu (ou perdu) : Stripe fait foi.
+    if ((await this.call(() => this.provider.listProSubscriptions(customer))).length > 0) throw billingError('ALREADY_SUBSCRIBED', HttpStatus.CONFLICT);
     const minute = Math.floor(this.clock.now().getTime() / 60_000);
     const url = await this.call(() =>
       this.provider.createCheckoutSession({
@@ -146,12 +141,22 @@ export class BillingService {
     return { url };
   }
 
-  /** `POST billing/portal-sessions` : `NO_BILLING_ACCOUNT` sans client Stripe. */
+  /** Crée le client Stripe (idempotent) puis le rattache au compte s'il n'en a toujours pas ; renvoie le client du compte. */
+  private async attachCustomer(userId: string, email: string): Promise<string> {
+    const created = await this.call(() => this.provider.createCustomer({ userId, email, idempotencyKey: `customer:${userId}` }));
+    await this.prisma.user.updateMany({ where: { id: userId, stripeCustomerId: null }, data: { stripeCustomerId: created } });
+    const current = await this.prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } });
+    if (!current?.stripeCustomerId) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+    return current.stripeCustomerId;
+  }
+
+  /** `POST billing/portal-sessions` : `NO_BILLING_ACCOUNT` sans client Stripe ni abonnement (actuel ou passé). */
   async createPortal(userId: string): Promise<BillingRedirect> {
     if (this.provider.mode() === 'unavailable') throw notConfigured();
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
-    if (!user.stripeCustomerId) throw billingError('NO_BILLING_ACCOUNT', HttpStatus.CONFLICT);
+    const subscribed = user.stripeCustomerId ? await this.prisma.subscription.count({ where: { userId } }) : 0;
+    if (!user.stripeCustomerId || subscribed === 0) throw billingError('NO_BILLING_ACCOUNT', HttpStatus.CONFLICT);
     const customerId = user.stripeCustomerId;
     const url = await this.call(() => this.provider.createPortalSession(customerId, `${this.app.appUrl}${BILLING_RETURN_PATHS.subscription}`));
     return { url };

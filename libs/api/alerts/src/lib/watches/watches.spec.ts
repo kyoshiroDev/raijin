@@ -193,6 +193,17 @@ describe('fin d’essai : keep, reprise, limite dans une transaction', () => {
     await expect(t.watches.keep(U1, [ids[0] as string, ids[0] as string])).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID' });
     await expect(t.watches.keep(U1, [])).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID' });
     expect(statusOf(t).slice(0, 3)).toEqual(['active:-', 'active:-', 'active:-']);
+    // Limite relue sous le verrou : un passage en Gratuit entre la lecture des droits et la transaction est vu.
+    const racing = setup({ plan: 'PRO' });
+    const proIds: string[] = [];
+    for (let index = 0; index < 4; index += 1) proIds.push((await racing.watches.create(U1, mint(index))).watch.id);
+    const policyIn = racing.plans.policyIn.bind(racing.plans);
+    jest.spyOn(racing.plans, 'policyIn').mockImplementationOnce(async (tx, id) => {
+      const row = racing.prisma.tables['user']?.[0];
+      if (row) row['plan'] = 'FREE';
+      return policyIn(tx, id);
+    });
+    await expect(racing.watches.keep(U1, proIds)).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID' });
     const unverified = setup({ emailVerifiedAt: null });
     await expect(unverified.watches.keep(U1, [ids[0] as string])).rejects.toMatchObject({ code: 'AUTH_EMAIL_NOT_VERIFIED' });
   });

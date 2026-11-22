@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { errorCode } from '@raijin/api-core';
-import type { BillingInterval, BillingMode } from '@raijin/shared-contracts';
+import { isProSubscriptionStatus, type BillingInterval, type BillingMode } from '@raijin/shared-contracts';
 import Stripe from 'stripe';
 import { stripeConfigured, type BillingConfig } from '../config/billing-config';
 import {
@@ -36,6 +36,11 @@ export function verifyStripeSignature(rawBody: Buffer, signature: string | undef
     throw new WebhookSignatureError();
   }
   return { id: event.id, type: event.type, created: new Date(event.created * 1000), livemode: event.livemode === true, object: object as Record<string, unknown> };
+}
+
+/** Objet introuvable chez Stripe (404 / `resource_missing`). */
+function isMissing(error: unknown): boolean {
+  return error instanceof Stripe.errors.StripeInvalidRequestError && (error.statusCode === 404 || error.code === 'resource_missing');
 }
 
 /**
@@ -112,11 +117,38 @@ export class StripeBillingProvider extends BillingProvider {
     return session.url;
   }
 
+  async listProSubscriptions(customerId: string): Promise<ProviderSubscription[]> {
+    const page = await this.stripe().subscriptions.list({ customer: customerId, status: 'all', limit: 100 });
+    return page.data
+      .map((sub) => toProviderSubscription(sub))
+      .filter((sub): sub is ProviderSubscription => sub !== null && isProSubscriptionStatus(sub.status));
+  }
+
+  async cancelSubscriptionNow(id: string): Promise<void> {
+    try {
+      const current = await this.stripe().subscriptions.retrieve(id);
+      if (current.status === 'canceled' || current.status === 'incomplete_expired') return;
+      await this.stripe().subscriptions.cancel(id, { prorate: false, invoice_now: false }, { idempotencyKey: `cancel:${id}` });
+    } catch (error) {
+      if (isMissing(error)) return;
+      throw error;
+    }
+  }
+
+  async deleteCustomer(customerId: string): Promise<void> {
+    try {
+      await this.stripe().customers.del(customerId);
+    } catch (error) {
+      if (isMissing(error)) return;
+      throw error;
+    }
+  }
+
   async retrieveSubscription(id: string): Promise<ProviderSubscription | null> {
     try {
       return toProviderSubscription(await this.stripe().subscriptions.retrieve(id));
     } catch (error) {
-      if (error instanceof Stripe.errors.StripeInvalidRequestError && error.statusCode === 404) return null;
+      if (isMissing(error)) return null;
       throw error;
     }
   }
@@ -125,7 +157,7 @@ export class StripeBillingProvider extends BillingProvider {
     try {
       return toProviderInvoice(await this.stripe().invoices.retrieve(id));
     } catch (error) {
-      if (error instanceof Stripe.errors.StripeInvalidRequestError && error.statusCode === 404) return null;
+      if (isMissing(error)) return null;
       throw error;
     }
   }

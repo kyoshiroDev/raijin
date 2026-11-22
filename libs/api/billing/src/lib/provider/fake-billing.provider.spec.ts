@@ -1,7 +1,7 @@
 import { loadBillingConfig } from '../config/billing-config';
 import { addInterval, FakeBillingProvider, fakeId } from './fake-billing.provider';
 
-const config = loadBillingConfig({}, { isProduction: false });
+const config = loadBillingConfig({}, { isProduction: false, appUrl: 'http://localhost:4200' });
 
 describe('FakeBillingProvider', () => {
   it('identifiants, fin de période, mode', async () => {

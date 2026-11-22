@@ -176,6 +176,16 @@ describe('BillingWebhookService : rattachement', () => {
     expect(kit.prisma.tables['user']?.find((row) => row['id'] === OTHER)?.['plan']).toBe('FREE');
   });
 
+  it('metadata d’un autre compte alors que le client appartient déjà à un compte : rattaché au porteur du client', async () => {
+    const kit = setup({ stripeCustomerId: 'cus_porteur0001' });
+    kit.prisma.addUser({ id: OTHER, email: 'autre@exemple.fr' });
+    const event = kit.fixture('customer.subscription.updated', { userId: OTHER, customerId: 'cus_porteur0001' });
+    await kit.webhook.handle(event.payload, event.signature);
+    expect(user(kit)['plan']).toBe('PRO');
+    const other = kit.prisma.tables['user']?.find((row) => row['id'] === OTHER);
+    expect(other).toMatchObject({ plan: 'FREE', stripeCustomerId: null });
+  });
+
   it('aucun compte : marqué traité (200), journalisé, rien d’autre', async () => {
     const kit = setup();
     const event = kit.fixture('customer.subscription.updated', { userId: OTHER, customerId: 'cus_inconnu0001', eventId: 'evt_unmatched' });

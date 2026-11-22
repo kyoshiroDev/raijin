@@ -98,6 +98,20 @@ describe('BillingInternalController (fixtures signées)', () => {
   });
 });
 
+describe('BillingInternalController (faux Stripe)', () => {
+  it('pannes simulées et état du client ; 404 hors test ou hors simulation', async () => {
+    const { kit } = controller();
+    const on = new BillingInternalController(testConfig({ JOBS_TEST_TRIGGER: '1' }), kit.config, kit.webhook, kit.fake);
+    on.failNext('cancel');
+    await expect(kit.fake.cancelSubscriptionNow('sub_x')).rejects.toThrow('panne simulée');
+    expect(await code(async () => on.failNext('autre'))).toBe('404 NOT_FOUND');
+    expect(on.customer('cus_fake_abcd')).toEqual({ deleted: false, subscriptions: [] });
+    expect(await code(async () => on.customer('x'))).toBe('400 VALIDATION_ERROR');
+    const off = new BillingInternalController(kit.app, kit.config, kit.webhook, kit.fake);
+    expect(await code(async () => off.customer('cus_fake_abcd'))).toBe('404 NOT_FOUND');
+  });
+});
+
 describe('billingWebhookRawBody', () => {
   const app = express();
   app.post('/hook', billingWebhookRawBody(), express.json(), (req, res) => {

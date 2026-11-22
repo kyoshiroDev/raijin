@@ -89,6 +89,12 @@ export abstract class BillingProvider {
   abstract createCheckoutSession(input: CheckoutInput): Promise<string>;
   /** URL du portail client (ou de la page de simulation du portail). */
   abstract createPortalSession(customerId: string, returnUrl: string): Promise<string>;
+  /** Abonnements ouvrant Pro (`active`, `trialing`, `past_due`) d'un client chez le prestataire. */
+  abstract listProSubscriptions(customerId: string): Promise<ProviderSubscription[]>;
+  /** Résiliation immédiate, sans prorata ni facture finale ; abonnement déjà résilié ou introuvable : sans effet. */
+  abstract cancelSubscriptionNow(id: string): Promise<void>;
+  /** Suppression du client (moyens de paiement compris) ; client déjà supprimé ou introuvable : sans effet. */
+  abstract deleteCustomer(customerId: string): Promise<void>;
   /** `null` : abonnement introuvable chez le prestataire. */
   abstract retrieveSubscription(id: string): Promise<ProviderSubscription | null>;
   abstract retrieveInvoice(id: string): Promise<ProviderInvoice | null>;

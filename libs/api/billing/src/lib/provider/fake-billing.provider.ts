@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { BILLING_RETURN_PATHS, type BillingInterval, type BillingMode, type SubscriptionStatus } from '@raijin/shared-contracts';
+import { BILLING_RETURN_PATHS, isProSubscriptionStatus, type BillingInterval, type BillingMode, type SubscriptionStatus } from '@raijin/shared-contracts';
 import Stripe from 'stripe';
 import type { BillingConfig } from '../config/billing-config';
 import {
@@ -63,6 +63,9 @@ export class FakeBillingProvider extends BillingProvider {
   private readonly sessions = new Map<string, FakeCheckoutSession>();
   private readonly subscriptions = new Map<string, Json>();
   private readonly invoices = new Map<string, Json>();
+  private readonly deletedCustomers = new Set<string>();
+  /** Pannes simulées (tests e2e) : la prochaine résiliation / suppression de client échoue. */
+  private readonly failures = new Set<'cancel' | 'deleteCustomer'>();
 
   constructor(
     private readonly config: BillingConfig,
@@ -91,6 +94,37 @@ export class FakeBillingProvider extends BillingProvider {
   /** Le faux portail ne dépend ni du client ni de l'URL de retour (page fixe de l'app). */
   async createPortalSession(): Promise<string> {
     return `${this.appUrl}${BILLING_RETURN_PATHS.simulatedPortal}`;
+  }
+
+  async listProSubscriptions(customerId: string): Promise<ProviderSubscription[]> {
+    return [...this.subscriptions.values()]
+      .map((raw) => toProviderSubscription(raw))
+      .filter((sub): sub is ProviderSubscription => sub !== null && sub.customerId === customerId && isProSubscriptionStatus(sub.status));
+  }
+
+  async cancelSubscriptionNow(id: string): Promise<void> {
+    if (this.failures.delete('cancel')) throw Object.assign(new Error('panne simulée'), { code: 'FAKE_PROVIDER_DOWN' });
+    const current = this.subscriptions.get(id);
+    if (current && current['status'] !== 'canceled') this.updateSubscription(id, { status: 'canceled', cancelAtPeriodEnd: false });
+  }
+
+  async deleteCustomer(customerId: string): Promise<void> {
+    if (this.failures.delete('deleteCustomer')) throw Object.assign(new Error('panne simulée'), { code: 'FAKE_PROVIDER_DOWN' });
+    this.deletedCustomers.add(customerId);
+  }
+
+  /** Programme une panne de la prochaine opération (route interne de test). */
+  failNext(operation: 'cancel' | 'deleteCustomer'): void {
+    this.failures.add(operation);
+  }
+
+  /** État simulé d'un client (route interne de test) : supprimé ou non, statuts de ses abonnements. */
+  customerState(customerId: string): { deleted: boolean; subscriptions: { id: string; status: SubscriptionStatus }[] } {
+    const subscriptions = [...this.subscriptions.values()]
+      .map((raw) => toProviderSubscription(raw))
+      .filter((sub): sub is ProviderSubscription => sub !== null && sub.customerId === customerId)
+      .map((sub) => ({ id: sub.id, status: sub.status }));
+    return { deleted: this.deletedCustomers.has(customerId), subscriptions };
   }
 
   async retrieveSubscription(id: string): Promise<ProviderSubscription | null> {

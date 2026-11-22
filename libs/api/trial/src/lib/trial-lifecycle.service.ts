@@ -210,7 +210,9 @@ export class TrialLifecycleService implements OnModuleInit {
     });
     if (!user?.trialEndsAt) return { sent: false };
     const free = planPolicyLimits(this.config).free;
-    if (kind !== 'ended' && (!user.notifyTrialEmails || user.plan !== 'FREE' || !isTrialActive(user, now))) return { sent: false };
+    // Abonné Pro au moment de l'envoi (abonnement pris entre la fin d'essai et le job) : aucun e-mail d'essai, J0 compris.
+    if (user.plan !== 'FREE') return { sent: false };
+    if (kind !== 'ended' && (!user.notifyTrialEmails || !isTrialActive(user, now))) return { sent: false };
     const recap = await this.recaps.recap(userId, now);
     if (kind === 'day1') await this.mail.sendDay1(user.email, recap);
     else if (kind === 'dayMinus2') await this.mail.sendDayMinus2(user.email, recap, user.trialEndsAt, free);

@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { APP_CONFIG, ApiException, type AppConfig } from '@raijin/api-core';
 import { buildFixtureEvent, isFixtureName, webhookFixtureOverridesSchema } from '../../testing/webhook-fixtures';
@@ -9,9 +9,10 @@ import { FakeBillingProvider, signEventJson } from '../provider/fake-billing.pro
 import { toProviderSubscription } from '../provider/stripe-mapping';
 
 /**
- * `POST internal/billing/webhook-fixtures/:name` (tests e2e) : rejoue une fixture d'événement Stripe signée à la
- * volée, par le même chemin que le webhook. Active seulement si `JOBS_TEST_TRIGGER=1` hors production (refusé
- * par la configuration en production) ; sinon 404 comme une route inexistante.
+ * Routes de test `internal/billing/*` (e2e) : fixtures d'événements Stripe signées à la volée et traitées par le
+ * même chemin que le webhook, pannes et état du faux Stripe. Contrôleur **enregistré seulement** avec
+ * `JOBS_TEST_TRIGGER=1` hors production (`ApiBillingModule.forRoot(…, { testRoutes })`), et 404 à chaque requête
+ * sinon (défense en profondeur).
  */
 @ApiExcludeController()
 @Controller('internal/billing')
@@ -22,6 +23,28 @@ export class BillingInternalController {
     private readonly webhooks: BillingWebhookService,
     private readonly provider: BillingProvider,
   ) {}
+
+  private fake(): FakeBillingProvider {
+    if (!this.app.jobs.testTrigger || this.app.isProduction || !(this.provider instanceof FakeBillingProvider)) throw new ApiException('NOT_FOUND', HttpStatus.NOT_FOUND);
+    return this.provider;
+  }
+
+  /** `POST internal/billing/fake-failures/:operation` : la prochaine résiliation / suppression de client du faux Stripe échoue. */
+  @Post('fake-failures/:operation')
+  @HttpCode(204)
+  failNext(@Param('operation') operation: string): void {
+    const fake = this.fake();
+    if (operation !== 'cancel' && operation !== 'deleteCustomer') throw new ApiException('NOT_FOUND', HttpStatus.NOT_FOUND);
+    fake.failNext(operation);
+  }
+
+  /** `GET internal/billing/fake-customers?id=` : état du client dans le faux Stripe (supprimé, abonnements). */
+  @Get('fake-customers')
+  customer(@Query('id') id: string | undefined): ReturnType<FakeBillingProvider['customerState']> {
+    const fake = this.fake();
+    if (!id || !/^cus_[A-Za-z0-9_]{4,64}$/.test(id)) throw new ApiException('VALIDATION_ERROR', HttpStatus.BAD_REQUEST);
+    return fake.customerState(id);
+  }
 
   @Post('webhook-fixtures/:name')
   @HttpCode(200)

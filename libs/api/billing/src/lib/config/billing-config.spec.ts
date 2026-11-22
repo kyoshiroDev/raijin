@@ -1,8 +1,8 @@
 import { ConfigError } from '@raijin/api-core';
 import { loadBillingConfig, stripeConfigured } from './billing-config';
 
-const DEV = { isProduction: false };
-const PROD = { isProduction: true };
+const DEV = { isProduction: false, appUrl: 'http://localhost:4200' };
+const PROD = { isProduction: true, appUrl: 'https://app.raijinshield.com' };
 const STRIPE = {
   BILLING_PROVIDER: 'stripe',
   STRIPE_SECRET_KEY: 'sk_test_51abcdefghijklmnopqrstuvwxyz',
@@ -34,6 +34,15 @@ describe('loadBillingConfig', () => {
   it('production : stripe par défaut ; fake refusé', () => {
     expect(loadBillingConfig({}, PROD).provider).toBe('stripe');
     expect(problems(() => loadBillingConfig({ BILLING_PROVIDER: 'fake' }, PROD))).toEqual([expect.stringContaining('BILLING_PROVIDER')]);
+  });
+
+  it('simulation réservée à une APP_URL locale', () => {
+    expect(problems(() => loadBillingConfig({}, { isProduction: false, appUrl: 'https://staging.raijinshield.com' }))).toEqual([expect.stringContaining('APP_URL locale')]);
+    expect(problems(() => loadBillingConfig({ BILLING_PROVIDER: 'fake' }, { isProduction: false, appUrl: 'http://192.168.1.10:4200' }))).toHaveLength(1);
+    for (const appUrl of ['http://127.0.0.1:4300', 'http://raijin.localhost:4200', 'http://[::1]:4200']) {
+      expect(loadBillingConfig({}, { isProduction: false, appUrl }).provider).toBe('fake');
+    }
+    expect(loadBillingConfig({ BILLING_PROVIDER: 'stripe' }, { isProduction: false, appUrl: 'https://staging.raijinshield.com' }).provider).toBe('stripe');
   });
 
   it('stripe sans clés ou avec les valeurs factices : démarre, non configuré, avertissement sans valeur', () => {

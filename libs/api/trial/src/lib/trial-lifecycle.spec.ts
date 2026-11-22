@@ -204,6 +204,13 @@ describe('e-mails d’essai (job trial-email)', () => {
     expect(await service.sendEmail('00000000-0000-7000-8000-000000000000', 'ended')).toEqual({ sent: false });
   });
 
+  it('J0 : pas envoyé si le compte est devenu Pro avant l’envoi (relecture en base)', async () => {
+    const { service, trialUser, mail } = setup();
+    const user = trialUser({ trialStatus: 'ENDED', plan: 'PRO' });
+    expect(await service.sendEmail(user['id'] as string, 'ended', at(8 * DAY))).toEqual({ sent: false });
+    expect(mail.sendEnded).not.toHaveBeenCalled();
+  });
+
   it('échec d’envoi : l’erreur remonte (BullMQ réessaie avec le même jobId)', async () => {
     const { service, trialUser, mail } = setup();
     const user = trialUser({ trialStatus: 'ENDED' });
