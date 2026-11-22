@@ -3,6 +3,7 @@ import type { AnalysisResult, QuotaInfo } from '@raijin/shared-contracts';
 import { firstValueFrom } from 'rxjs';
 import type { ClientError } from '../http/api-error';
 import { AnalysisApi } from './analysis-api';
+import { AnalysisPrefetch } from './analysis-prefetch';
 
 /**
  * - `idle` : rien de demandé (état vide de l'écran) ;
@@ -21,7 +22,9 @@ export type AnalysisStatus = 'idle' | 'loading' | 'ready' | 'error';
 @Injectable()
 export class AnalysisStore {
   private readonly api = inject(AnalysisApi);
+  private readonly prefetch = inject(AnalysisPrefetch);
   private sequence = 0;
+  private quotaRequest: Promise<void> | null = null;
 
   private readonly currentStatus = signal<AnalysisStatus>('idle');
   private readonly currentResult = signal<AnalysisResult | null>(null);
@@ -41,15 +44,17 @@ export class AnalysisStore {
   /** Lance l'analyse d'une saisie (mint ou lien). Résout `true` si un résultat est arrivé. */
   async analyze(input: string): Promise<boolean> {
     const id = this.begin();
+    const trimmed = input.trim();
     try {
-      const response = await firstValueFrom(this.api.analyze({ input: input.trim() }));
+      // Requête lancée au démarrage sur `/analyse/<mint>` (même saisie) : réutilisée, jamais rejouée.
+      const response = await firstValueFrom(this.prefetch.take(trimmed) ?? this.api.analyze({ input: trimmed }));
       if (id !== this.sequence) return false;
       this.currentQuota.set(response.quota);
       this.succeed(response.analysis);
       return true;
     } catch (error) {
       if (id !== this.sequence) return false;
-      await this.fail(error, id);
+      await this.fail(error, id, true);
       return false;
     }
   }
@@ -69,13 +74,18 @@ export class AnalysisStore {
     }
   }
 
-  /** Rafraîchit le quota restant (discret : un échec n'affiche rien). */
-  async refreshQuota(): Promise<void> {
-    try {
-      this.currentQuota.set(await firstValueFrom(this.api.quota()));
-    } catch {
-      // Le quota est une information d'appoint : l'API le renverra avec la prochaine analyse.
-    }
+  /**
+   * Rafraîchit le quota restant (discret : un échec n'affiche rien). Une seule requête à la fois :
+   * les appels concurrents (écran, erreur d'analyse) partagent la même.
+   */
+  refreshQuota(): Promise<void> {
+    this.quotaRequest ??= firstValueFrom(this.api.quota())
+      .then(
+        (quota) => this.currentQuota.set(quota),
+        () => undefined, // Information d'appoint : l'API le renverra avec la prochaine analyse.
+      )
+      .finally(() => (this.quotaRequest = null));
+    return this.quotaRequest;
   }
 
   /** Affiche une erreur locale sans appel réseau (ex. adresse invalide dans l'URL). */
@@ -105,12 +115,15 @@ export class AnalysisStore {
     this.currentStatus.set('ready');
   }
 
-  private async fail(error: unknown, id: number): Promise<void> {
+  private async fail(error: unknown, id: number, withQuota = false): Promise<void> {
     const { toAnalysisError } = await import('./analysis-errors');
     if (id !== this.sequence) return;
     const clientError = toAnalysisError(error);
     if (clientError.code === 'QUOTA_EXCEEDED') {
       this.currentQuota.update((quota) => (quota ? { ...quota, remaining: 0, used: quota.limit ?? quota.used } : quota));
+    } else if (withQuota && !this.currentQuota()) {
+      // Une erreur ne porte pas le quota : on le demande (une fois) pour l'afficher quand même.
+      void this.refreshQuota();
     }
     this.currentResult.set(null);
     this.currentError.set(clientError);

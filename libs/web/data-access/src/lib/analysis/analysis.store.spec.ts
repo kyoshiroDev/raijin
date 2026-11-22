@@ -5,6 +5,7 @@ import { ANALYSIS_ERROR_MESSAGES, analysisResultSchema } from '@raijin/shared-co
 import { loadContracts } from '../contracts';
 import { FAKE_MINTS, fakeAnalysis, fakeAnalysisResponse, fakeQuota } from '../testing/analysis-fixtures';
 import { toAnalysisError } from './analysis-errors';
+import { AnalysisPrefetch } from './analysis-prefetch';
 import { AnalysisStore } from './analysis.store';
 
 const API = '/api/v1';
@@ -62,6 +63,7 @@ describe('AnalysisStore', () => {
     expect(store.status()).toBe('error');
     expect(store.error()?.code).toBe('INTERNAL_ERROR');
     expect(store.result()).toBeNull();
+    ctrl.expectOne(`${API}/analyses/quota`).flush(fakeQuota());
   });
 
   it.each([
@@ -74,6 +76,42 @@ describe('AnalysisStore', () => {
     ctrl.expectOne(`${API}/analyses`).flush({ code, message: 'texte brut du serveur' }, { status, statusText: 'x' });
     await done;
     expect(store.error()).toEqual({ code, message: ANALYSIS_ERROR_MESSAGES[code], status });
+    ctrl.expectOne(`${API}/analyses/quota`).flush(fakeQuota());
+  });
+
+  it('erreur sans quota connu (ex. TOKEN_NOT_FOUND) : quota demandé une seule fois et affiché', async () => {
+    const { store, ctrl } = await setup();
+    const done = store.analyze(FAKE_MINTS.safe);
+    ctrl.expectOne(`${API}/analyses`).flush({ code: 'TOKEN_NOT_FOUND', message: 'x' }, { status: 404, statusText: 'x' });
+    await done;
+    // Appel concurrent (écran à l'inactivité) : même requête partagée.
+    const again = store.refreshQuota();
+    ctrl.expectOne(`${API}/analyses/quota`).flush(fakeQuota({ used: 0, remaining: 3 }));
+    await again;
+    expect(store.quota()?.remaining).toBe(3);
+    // Quota connu : une nouvelle erreur ne le redemande pas.
+    const retry = store.analyze(FAKE_MINTS.safe);
+    ctrl.expectOne(`${API}/analyses`).flush({ code: 'TOKEN_NOT_FOUND', message: 'x' }, { status: 404, statusText: 'x' });
+    await retry;
+    ctrl.expectNone(`${API}/analyses/quota`);
+  });
+
+  it('requête de démarrage (AnalysisPrefetch) : réclamée une fois pour la même saisie, jamais rejouée', async () => {
+    const { store, ctrl } = await setup();
+    const prefetch = TestBed.inject(AnalysisPrefetch);
+    prefetch.start(FAKE_MINTS.warn);
+    const req = ctrl.expectOne(`${API}/analyses`);
+    const done = store.analyze(FAKE_MINTS.warn);
+    ctrl.expectNone(`${API}/analyses`);
+    req.flush(fakeAnalysisResponse('warn', { remaining: 2, used: 1 }));
+    expect(await done).toBe(true);
+    expect(store.result()?.verdict).toBe('warn');
+    expect(store.quota()?.remaining).toBe(2);
+    // Déjà réclamée : la suivante repart sur une requête normale ; autre saisie : ignorée.
+    expect(prefetch.take(FAKE_MINTS.warn)).toBeNull();
+    prefetch.start(FAKE_MINTS.warn);
+    ctrl.expectOne(`${API}/analyses`).flush(fakeAnalysisResponse('warn'));
+    expect(prefetch.take(FAKE_MINTS.safe)).toBeNull();
   });
 
   it('quota dépassé : quota connu ramené à 0', async () => {

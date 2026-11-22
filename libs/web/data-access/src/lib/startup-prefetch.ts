@@ -1,5 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, makeEnvironmentProviders, provideAppInitializer, type EnvironmentProviders } from '@angular/core';
+import { isSolanaAddress } from '@raijin/shared-util';
+import { AnalysisPrefetch } from './analysis/analysis-prefetch';
 import { CsrfToken } from './auth/csrf-token';
 import { prefetchContracts } from './contracts';
 
@@ -15,6 +17,12 @@ export interface StartupPrefetchOptions {
    * (et Zod) est demandé au démarrage, en parallèle de la requête, plutôt qu'en cascade derrière elle.
    */
   readonly contracts?: readonly RegExp[];
+  /**
+   * Page d'arrivée qui lance une analyse à son ouverture (`/analyse/<mint>`, le mint étant le
+   * premier groupe capturé) : `POST analyses` part au démarrage et l'écran réclame cette requête
+   * (`AnalysisPrefetch`), sans en envoyer une seconde. Ignoré si le mint n'est pas une adresse valide.
+   */
+  readonly analyze?: RegExp;
 }
 
 /**
@@ -28,6 +36,17 @@ export function provideStartupPrefetch(options: StartupPrefetchOptions): Environ
       const matches = (patterns: readonly RegExp[] | undefined) => patterns?.some((pattern) => pattern.test(path)) ?? false;
       if (matches(options.csrf)) inject(CsrfToken).ensure().subscribe({ error: () => undefined });
       if (matches(options.contracts)) prefetchContracts();
+      const mint = options.analyze ? decodeMint(options.analyze.exec(path)?.[1]) : null;
+      if (mint && isSolanaAddress(mint)) inject(AnalysisPrefetch).start(mint);
     }),
   ]);
+}
+
+function decodeMint(segment: string | undefined): string | null {
+  if (!segment) return null;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
 }

@@ -67,8 +67,9 @@ export const sessionRefreshInterceptor: HttpInterceptorFn = (req, next) => {
 
 function shouldRefresh(error: unknown): boolean {
   if (!(error instanceof HttpErrorResponse) || error.status !== 401) return false;
-  // `UNAUTHORIZED` = aucun cookie (visiteur jamais connecté) : rien à rafraîchir.
-  // `AUTH_SESSION_EXPIRED` = cookie présent mais expiré, invalide ou révoqué : un refresh peut réussir.
+  // `UNAUTHORIZED` = aucun cookie d'access sur une route protégée : rien à rafraîchir pour cette requête.
+  // `AUTH_SESSION_EXPIRED` = cookie d'access expiré, invalide ou révoqué, ou cookie de refresh seul
+  // (`GET /auth/session`, contrat `SessionState`) : un refresh peut réussir, l'utilisateur reste connecté.
   return hasErrorCode(error, 'AUTH_SESSION_EXPIRED');
 }
 

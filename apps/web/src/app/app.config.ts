@@ -17,6 +17,7 @@ export const appConfig: ApplicationConfig = {
     // valident une analyse (contrats) dès l'ouverture. Demandés au démarrage, en parallèle.
     provideStartupPrefetch({
       csrf: [/^\/analyse\/[^/]+\/?$/],
+      analyze: /^\/analyse\/([^/?#]+)\/?$/,
       contracts: [/^\/(analyse|t)\/[^/]+\/?$/],
     }),
   ],
