@@ -34,6 +34,9 @@ const LOGIN_CODES: readonly string[] = ['UNAUTHORIZED', 'AUTH_SESSION_EXPIRED', 
       <p class="pb-2 text-body text-ink-muted">
         Un suivi en pause reste dans ta liste : tu peux le reprendre plus tard, sans perdre son historique d’alertes.
       </p>
+      @if (canUpgrade()) {
+        <p class="pb-2" data-limit-upgrade><a routerLink="/abonnement" [class]="textLink" (click)="limitOpen.set(false)">Voir l’offre Pro</a></p>
+      }
       <button rjSheetFooter type="button" rjButton="ghost" (click)="limitOpen.set(false)">Fermer</button>
       <a rjSheetFooter rjButton="secondary" icon="suivis" routerLink="/suivis" (click)="limitOpen.set(false)">Gérer mes suivis</a>
     </rj-bottom-sheet>
@@ -77,6 +80,13 @@ export class RjFollowButton {
     return this.watches.isBusy(this.mint()) || (watch !== null && this.watches.isBusy(watch.id));
   });
   protected readonly limitText = computed(() => watchLimitExplanation(this.watches.limits()));
+  /** Lien vers l'abonnement seulement en Gratuit (hors essai), sans urgence. */
+  protected readonly canUpgrade = computed(() => {
+    const limits = this.watches.limits();
+    return !!limits && limits.plan === 'FREE' && !limits.trialActive;
+  });
+  protected readonly textLink =
+    'inline-flex min-h-11 items-center rounded-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors duration-150 ease-raijin hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
 
   constructor() {
     // État « Suivi » : la liste est lue une fois la session connue (jamais pour un visiteur).

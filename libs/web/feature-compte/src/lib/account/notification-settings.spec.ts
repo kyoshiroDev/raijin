@@ -63,7 +63,7 @@ describe('RjNotificationSettings', () => {
     const req = ctrl.expectOne(`${API}/notifications/preferences`);
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ weeklyDigest: true });
-    req.flush(fakeNotificationSettings({ preferences: { emailAlerts: true, pushAlerts: true, weeklyDigest: true } }));
+    req.flush(fakeNotificationSettings({ preferences: { emailAlerts: true, pushAlerts: true, weeklyDigest: true, trialEmails: true } }));
     await settle();
     await fixture.whenStable();
     expect(switchOf('weeklyDigest').getAttribute('aria-checked')).toBe('true');
@@ -115,6 +115,19 @@ describe('RjNotificationSettings', () => {
     const { host, switchOf } = await setup(fakeNotificationSettings({ emailVerified: false }));
     expect(switchOf('emailAlerts').disabled).toBe(true);
     expect(host.querySelector('a[href="/compte/verifier-email"]')).not.toBeNull();
+  });
+
+  it('e-mails de l’essai : désactivables, l’e-mail de fin d’essai reste annoncé', async () => {
+    const { fixture, ctrl, host, switchOf } = await setup();
+    expect(switchOf('trialEmails').getAttribute('aria-checked')).toBe('true');
+    expect(host.querySelector('[data-pref="trialEmails"]')?.textContent).toContain('toujours envoyé');
+    switchOf('trialEmails').click();
+    const req = ctrl.expectOne(`${API}/notifications/preferences`);
+    expect(req.request.body).toEqual({ trialEmails: false });
+    req.flush(fakeNotificationSettings({ preferences: { emailAlerts: true, pushAlerts: true, weeklyDigest: false, trialEmails: false } }));
+    await settle();
+    await fixture.whenStable();
+    expect(switchOf('trialEmails').getAttribute('aria-checked')).toBe('false');
   });
 
   it('erreur de chargement : message et « Réessayer »', async () => {

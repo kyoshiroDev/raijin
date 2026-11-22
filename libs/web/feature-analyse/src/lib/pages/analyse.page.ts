@@ -129,6 +129,11 @@ function errorTitle(code: string): string {
                 <p class="text-body text-ink-muted">Avec un compte gratuit, tu as plus d’analyses chaque jour.</p>
                 <a rjButton="secondary" routerLink="/compte/inscription" icon="compte">Créer un compte gratuit</a>
               </div>
+            } @else if (auth.user()?.plan === 'FREE') {
+              <div rjCardFooter class="flex flex-col items-start gap-3" data-quota-upgrade>
+                <p class="text-body text-ink-muted">Le plan Pro n’a pas de limite quotidienne d’analyses.</p>
+                <a rjButton="secondary" routerLink="/abonnement" icon="safe">Voir l’offre Pro</a>
+              </div>
             }
           </rj-card>
         }
@@ -165,7 +170,7 @@ function errorTitle(code: string): string {
 })
 export class AnalysePage {
   protected readonly store = inject(AnalysisStore);
-  private readonly auth = inject(AuthStore);
+  protected readonly auth = inject(AuthStore);
   private readonly router = inject(Router);
   private readonly field = viewChild.required<RjInputField>('field');
 

@@ -34,6 +34,17 @@ export class WatchesApi {
     return contracts.watchSchema.parse(body);
   }
 
+  /**
+   * `POST watches/keep` : les suivis listés restent actifs, les autres (actifs ou en pause `plan_limit`)
+   * passent en pause `plan_limit`. Au plus `limits.maxActiveWatches` identifiants (`WATCH_KEEP_INVALID`).
+   */
+  async keep(watchIds: readonly string[]): Promise<WatchListResponse> {
+    const contracts = await loadContracts();
+    const request = contracts.watchKeepRequestSchema.parse({ watchIds });
+    const body = await firstValueFrom(this.http.post(`${this.base}/watches/keep`, request));
+    return contracts.watchListResponseSchema.parse(body);
+  }
+
   async remove(id: string): Promise<void> {
     await firstValueFrom(this.http.delete(`${this.base}/watches/${encodeURIComponent(id)}`));
   }

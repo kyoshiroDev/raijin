@@ -23,3 +23,4 @@ export * from './lib/toast/toast';
 export * from './lib/design/design-page';
 export * from './lib/status-page/status-page';
 export * from './lib/switch/switch';
+export * from './lib/trial-banner/trial-banner';

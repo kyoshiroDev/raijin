@@ -86,7 +86,9 @@ export function trialText(user: PublicUser): string {
               </span>
             </div>
             <p class="text-body text-ink-muted">{{ trial() }}</p>
-            <p rjCardFooter class="text-body-sm text-ink-muted">Le détail des offres et la facturation arrivent bientôt ici.</p>
+            <div rjCardFooter class="flex flex-col gap-2 sm:flex-row">
+              <a rjButton="secondary" icon="safe" routerLink="/abonnement" data-subscription-link>{{ user.plan === 'PRO' && user.trial.status !== 'active' ? 'Gérer mon abonnement' : 'Voir les offres' }}</a>
+            </div>
           </rj-card>
 
           <rj-notification-settings class="md:col-span-2" />

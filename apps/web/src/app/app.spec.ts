@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { UnreadAlerts } from '@raijin/web-data-access';
+import { AuthStore, TRIAL_BANNER_STORAGE_KEY, UnreadAlerts, fakeSession } from '@raijin/web-data-access';
 import { App, NAV_ITEMS, navItemsWithUnread } from './app';
 import { appRoutes } from './app.routes';
 
@@ -34,7 +34,7 @@ describe('App', () => {
   it('déclare les routes des features et /_design en dev', () => {
     const paths = appRoutes.map((route) => route.path);
     expect(paths).toEqual(
-      expect.arrayContaining(['analyse', 't', 'suivis', 'alertes', 'wallet', 'compte', 'maintenance', '_design', '**']),
+      expect.arrayContaining(['analyse', 't', 'suivis', 'alertes', 'wallet', 'compte', 'abonnement', 'maintenance', '_design', '**']),
     );
   });
 
@@ -64,8 +64,34 @@ describe('App', () => {
       expect(route?.children?.length).toBeGreaterThan(0);
       expect(route?.loadChildren).toBeUndefined();
     }
-    for (const path of ['suivis', 'alertes', 'wallet', 'compte']) {
+    for (const path of ['suivis', 'alertes', 'wallet', 'compte', 'abonnement']) {
       expect(appRoutes.find((r) => r.path === path)?.loadChildren).toBeDefined();
     }
+  });
+
+  it('bandeau d’essai : visible pendant l’essai, refermé jusqu’au lendemain, absent hors essai', async () => {
+    localStorage.removeItem(TRIAL_BANNER_STORAGE_KEY);
+    const endsAt = new Date(Date.now() + 3 * 86_400_000 - 60_000).toISOString();
+    TestBed.inject(AuthStore).applySession(fakeSession({ plan: 'PRO', trial: { status: 'active', startedAt: new Date().toISOString(), endsAt } }));
+    const fixture = TestBed.createComponent(App);
+    const host = fixture.nativeElement as HTMLElement;
+    // Bloc @defer : le chunk du bandeau se charge quand la session indique un essai.
+    for (let i = 0; i < 50 && !host.querySelector('rj-trial-banner'); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fixture.whenStable();
+    }
+    expect(host.querySelector('rj-trial-banner')?.textContent).toContain('Essai Pro : plus que 3 jours');
+    host.querySelector<HTMLButtonElement>('rj-trial-banner button')?.click();
+    await fixture.whenStable();
+    expect(host.querySelector('rj-trial-banner')).toBeNull();
+    expect(localStorage.getItem(TRIAL_BANNER_STORAGE_KEY)).not.toBeNull();
+    localStorage.removeItem(TRIAL_BANNER_STORAGE_KEY);
+  });
+
+  it('pas de bandeau pour un compte sans essai actif', async () => {
+    TestBed.inject(AuthStore).applySession(fakeSession());
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).querySelector('rj-trial-banner-host')).toBeNull();
   });
 });

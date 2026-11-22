@@ -99,7 +99,12 @@ const CLOCK_MS = 60_000;
           @if (planPausedCount() > 0) {
             <p class="flex items-start gap-3 rounded-lg border border-line-strong bg-surface-raised p-4 text-body text-ink" role="note" data-plan-paused>
               <rj-icon name="info" [size]="20" class="mt-0.5 shrink-0 text-info" />
-              <span>{{ planPausedText() }}</span>
+              <span class="flex flex-col items-start gap-1">
+                <span>{{ planPausedText() }}</span>
+                @if (canUpgrade()) {
+                  <a routerLink="/abonnement/suivis" [class]="textLink + ' -mb-2'" data-choose-watches>Choisir mes suivis actifs</a>
+                }
+              </span>
             </p>
           }
 
@@ -225,6 +230,9 @@ const CLOCK_MS = 60_000;
 
     <rj-bottom-sheet [(open)]="limitOpen" title="Limite de suivis atteinte" [description]="limitText()">
       <p class="pb-2 text-body text-ink-muted">Pour reprendre ce suivi, mets d’abord en pause ou retire un suivi actif.</p>
+      @if (canUpgrade()) {
+        <p class="pb-2" data-limit-upgrade><a routerLink="/abonnement" [class]="textLink" (click)="limitOpen.set(false)">Voir l’offre Pro</a></p>
+      }
       <button rjSheetFooter type="button" rjButton="secondary" (click)="limitOpen.set(false)">J’ai compris</button>
     </rj-bottom-sheet>
   `,
@@ -257,6 +265,13 @@ export class SuivisPage {
     return left > 1 ? `Tu peux encore suivre ${left} tokens.` : 'Tu peux encore suivre 1 token.';
   });
   protected readonly planPausedCount = computed(() => this.store.items().filter((watch) => watch.pausedReason === 'plan_limit').length);
+  /** Liens vers l'abonnement et le choix des suivis : seulement en Gratuit (hors essai). */
+  protected readonly canUpgrade = computed(() => {
+    const limits = this.store.limits();
+    return !!limits && limits.plan === 'FREE' && !limits.trialActive;
+  });
+  protected readonly textLink =
+    'inline-flex min-h-11 items-center rounded-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors duration-150 ease-raijin hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
   protected readonly planPausedText = computed(() => {
     const count = this.planPausedCount();
     return count > 1

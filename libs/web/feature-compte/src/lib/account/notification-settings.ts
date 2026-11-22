@@ -12,7 +12,8 @@ export const IOS_PUSH_HELP =
   'Sur iPhone et iPad, ajoute d’abord Raijin à l’écran d’accueil : touche Partager, puis « Sur l’écran d’accueil », et ouvre Raijin depuis son icône.';
 
 /**
- * Carte « Notifications » de l'écran Compte : alertes par e-mail, résumé hebdomadaire et push.
+ * Carte « Notifications » de l'écran Compte : alertes par e-mail, résumé hebdomadaire, e-mails de
+ * l'essai Pro (J+1 et J-2 ; l'e-mail de fin d'essai part toujours) et push.
  * Le push est réservé au plan Pro et à l'essai (message neutre en Gratuit, sans urgence). La
  * permission du navigateur n'est demandée qu'au clic sur « Activer sur cet appareil ».
  */
@@ -47,6 +48,15 @@ export const IOS_PUSH_HELP =
               (checkedChange)="save('weeklyDigest', $event)"
               data-pref="weeklyDigest"
             />
+            <rj-switch
+              label="E-mails de l’essai"
+              description="Le lendemain du début et deux jours avant la fin. L’e-mail de fin d’essai est toujours envoyé."
+              [checked]="settings.preferences.trialEmails"
+              [disabled]="!settings.emailVerified"
+              [busy]="saving() === 'trialEmails'"
+              (checkedChange)="save('trialEmails', $event)"
+              data-pref="trialEmails"
+            />
             @if (!settings.emailVerified) {
               <p class="py-3"><a routerLink="/compte/verifier-email" [class]="link">Confirmer mon adresse</a></p>
             }
@@ -62,6 +72,9 @@ export const IOS_PUSH_HELP =
               (checkedChange)="save('pushAlerts', $event)"
               data-pref="pushAlerts"
             />
+            @if (!settings.pushAllowed) {
+              <p class="py-3" data-push-upgrade><a routerLink="/abonnement" [class]="link">Voir l’offre Pro</a></p>
+            }
             @if (settings.pushAllowed && settings.pushConfigured) {
               <div class="flex flex-col gap-3 py-3" data-push-device>
                 @switch (availability()) {

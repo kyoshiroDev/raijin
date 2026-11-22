@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
-import { UnreadAlerts } from '@raijin/web-data-access';
+import { AuthStore, UnreadAlerts } from '@raijin/web-data-access';
 import { RjAppShell, type RjNavItem } from '@raijin/web-ui';
+import { RjTrialBannerHost } from './trial-banner-host';
 
 /** Entrées de la barre d'onglets (4 max, PROMPT.md §3) et du haut de la barre latérale. */
 export const NAV_ITEMS: readonly RjNavItem[] = [
@@ -24,7 +25,7 @@ export function navItemsWithUnread(unread: number): readonly RjNavItem[] {
 /** Coquille de l'app : volontairement fine, la mise en page vit dans @raijin/web-ui. */
 @Component({
   selector: 'rj-root',
-  imports: [RouterOutlet, RjAppShell],
+  imports: [RouterOutlet, RjAppShell, RjTrialBannerHost],
   template: `
     <rj-app-shell
       [items]="navItems()"
@@ -32,6 +33,10 @@ export function navItemsWithUnread(unread: number): readonly RjNavItem[] {
       [notificationCount]="unread.count()"
       (notifications)="openAlerts()"
     >
+      <!-- Bandeau d'essai : chunk à part, chargé seulement pour un compte en essai (ou essai terminé). -->
+      @defer (when trialAccount()) {
+        <rj-trial-banner-host />
+      }
       <router-outlet />
     </rj-app-shell>
   `,
@@ -42,6 +47,12 @@ export class App {
   protected readonly unread = inject(UnreadAlerts);
   protected readonly navItems = computed(() => navItemsWithUnread(this.unread.count()));
   protected readonly secondaryItems = SECONDARY_NAV_ITEMS;
+  private readonly auth = inject(AuthStore);
+  /** Essai en cours, ou terminé sans abonnement (écran de fin peut-être à voir) : déclenche le `@defer`. */
+  protected readonly trialAccount = computed(() => {
+    const trial = this.auth.user()?.trial.status;
+    return trial === 'active' || (trial === 'ended' && this.auth.user()?.plan === 'FREE');
+  });
 
   constructor() {
     // Badge des alertes : première lecture après le premier rendu de la route (hors chemin du LCP).

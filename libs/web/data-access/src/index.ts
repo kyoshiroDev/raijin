@@ -34,3 +34,8 @@ export * from './lib/notifications/service-worker';
 export * from './lib/notifications/provide-push';
 export * from './lib/wallet/wallet-scan.service';
 export * from './lib/testing/wallet-fixtures';
+export * from './lib/billing/billing-api';
+export * from './lib/billing/billing.store';
+export * from './lib/billing/trial-api';
+export * from './lib/billing/trial-banner';
+export * from './lib/testing/billing-fixtures';

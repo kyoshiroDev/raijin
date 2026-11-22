@@ -109,6 +109,19 @@ export class WatchesStore {
     });
   }
 
+  /** Choix des suivis à garder après la fin de l'essai (la liste renvoyée remplace la liste locale). */
+  async keep(watchIds: readonly string[]): Promise<{ ok: true } | { ok: false; error: ClientError }> {
+    try {
+      const response = await this.api.keep(watchIds);
+      this.currentItems.set(sortWatches(response.items));
+      this.currentLimits.set(response.limits);
+      this.currentStatus.set('ready');
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: toClientError(error) };
+    }
+  }
+
   /** Oublie tout (déconnexion). */
   reset(): void {
     this.currentItems.set([]);

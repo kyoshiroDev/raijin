@@ -145,7 +145,7 @@ type View = 'loading' | 'auth-error' | 'signed-out' | 'plan' | 'access-error' | 
             <div class="border-t border-line pt-4"><ng-container *ngTemplateOutlet="featureList" /></div>
             <div rjCardFooter class="flex flex-wrap gap-2 pt-1">
               @if (auth.emailVerified()) {
-                <a rjButton="primary" routerLink="/compte" icon="compte">Voir mon compte</a>
+                <a rjButton="primary" routerLink="/abonnement" icon="safe">Voir l’offre Pro</a>
               } @else {
                 <a rjButton="primary" routerLink="/compte/verifier-email" icon="mail">Confirmer mon adresse</a>
               }
@@ -457,9 +457,9 @@ export class WalletPage {
       return 'Confirme ton adresse e-mail : ton essai Pro de 7 jours démarre alors automatiquement, sans carte bancaire. Il inclut le scan de wallet.';
     }
     if (user.trial.status === 'ended') {
-      return 'Ton essai Pro est terminé. Le scan de wallet reste disponible avec le plan Pro, que tu peux activer depuis ton compte quand tu le souhaites.';
+      return 'Ton essai Pro est terminé. Le scan de wallet reste disponible avec le plan Pro, que tu peux activer depuis la page Abonnement quand tu le souhaites.';
     }
-    return 'Le plan Pro ajoute le scan de wallet, plus de suivis et les alertes push. Tu peux l’activer depuis ton compte quand tu le souhaites.';
+    return 'Le plan Pro ajoute le scan de wallet, plus de suivis et les alertes push. Tu peux l’activer depuis la page Abonnement quand tu le souhaites.';
   });
 
   protected readonly analyzedMax = computed(() => {

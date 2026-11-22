@@ -106,7 +106,10 @@ describe('RjFollowButton', () => {
     expect(text).toContain('Limite de suivis atteinte');
     expect(text).toContain('plan Gratuit permet 3 suivis actifs');
     expect(text).not.toMatch(/vite|dernière chance|dépêche/i);
-    expect(dialog()?.querySelector('a')?.getAttribute('href')).toBe('/suivis');
+    expect(dialog()?.querySelector('a[href="/suivis"]')).not.toBeNull();
+    // Gratuit hors essai : lien sobre vers la page Abonnement (plus de lien provisoire vers /compte).
+    expect(dialog()?.querySelector('[data-limit-upgrade] a')?.getAttribute('href')).toBe('/abonnement');
+    expect(dialog()?.querySelector('a[href="/compte"]')).toBeNull();
   });
 
   it('déjà suivi : « Ne plus suivre » après confirmation (DELETE)', async () => {

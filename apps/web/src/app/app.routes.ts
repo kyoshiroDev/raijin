@@ -56,6 +56,12 @@ export const appRoutes: Route[] = [
       import('@raijin/web-feature-compte').then((m) => m.webFeatureCompteRoutes),
   },
   {
+    // Abonnement, retours de Checkout, simulation, fin d'essai (feature Compte, chargée à la demande).
+    path: 'abonnement',
+    loadChildren: () =>
+      import('@raijin/web-feature-compte').then((m) => m.webFeatureAbonnementRoutes),
+  },
+  {
     // API en maintenance (503 `MAINTENANCE`, intercepteur de web-data-access).
     path: 'maintenance',
     title: 'Maintenance — Raijin',
