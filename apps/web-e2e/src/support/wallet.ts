@@ -45,7 +45,7 @@ export const WALLET_MESSAGES = {
   tooLarge: 'Ce wallet contient trop de comptes de tokens pour un scan. Analyse plutôt les tokens un par un.',
   isToken: 'Cette adresse est celle d’un token, pas d’un wallet. Tu peux lancer son analyse.',
   quota: 'Tu as atteint ton nombre de scans de wallet pour aujourd’hui. Il se renouvelle à minuit (UTC).',
-  seed: 'Ne colle jamais ta phrase de récupération : Raijin n’en a pas besoin. Efface-la et colle seulement ton adresse publique.',
+  seed: 'On ne te demande jamais ta phrase de récupération. Ne la colle nulle part : Raijin a effacé le champ.',
   mint: 'C’est l’adresse d’un token, pas celle d’un wallet.',
   program: 'C’est l’adresse d’un programme Solana, pas celle d’un wallet.',
   apiInvalid: 'Ce n’est pas une adresse publique de wallet Solana. Copie-la depuis ton wallet (bouton Recevoir).',

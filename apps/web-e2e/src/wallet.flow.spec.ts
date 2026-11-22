@@ -1,6 +1,6 @@
 import { expect as baseExpect, test, type Page } from '@playwright/test';
 import { useFreshIp } from './support/analysis';
-import { createVerifiedAccount, PASSWORD } from './support/auth';
+import { createVerifiedAccount, PASSWORD, webStorageDump } from './support/auth';
 import { openPage } from './support/pages';
 import { api, startTrial } from './support/watch';
 import {
@@ -233,9 +233,14 @@ test.describe('essai Pro', () => {
     // Bouton « Coller » : la phrase de récupération est refusée dès le collage.
     await page.evaluate((seed) => navigator.clipboard.writeText(seed), FAKE_SEED);
     await page.getByRole('button', { name: 'Coller dans le champ Adresse publique du wallet' }).click();
-    await expect(walletField(page)).toHaveValue(FAKE_SEED);
     await expect(page.getByText(WALLET_MESSAGES.seed)).toBeVisible();
+    await expect(walletField(page), 'phrase effacée immédiatement').toHaveValue('');
     await expect(walletField(page)).toHaveAttribute('aria-invalid', 'true');
+    expect((await webStorageDump(page)).join('\n'), 'phrase absente du stockage').not.toContain('abandon');
+    // Tapée au clavier : effacée aussi dès qu'elle compte 12 mots.
+    await walletField(page).fill(FAKE_SEED);
+    await expect(walletField(page)).toHaveValue('');
+    await expect(page.getByText(WALLET_MESSAGES.seed)).toBeVisible();
     await scanButton(page).click();
     await expect(walletField(page)).toBeFocused();
 

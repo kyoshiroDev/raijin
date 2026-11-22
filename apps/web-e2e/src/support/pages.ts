@@ -339,6 +339,7 @@ export const WALLET_PAGES: readonly PageEntry[] = [
     act: async (page) => {
       await walletFormReady(page);
       await walletField(page).fill(FAKE_SEED);
+      await expect(walletField(page)).toHaveValue('');
       await expect(walletField(page)).toHaveAttribute('aria-invalid', 'true');
     },
   },
