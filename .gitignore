@@ -59,3 +59,6 @@ docs/static/
 
 # Banc de test : configuration locale générée (valeurs réelles, jamais commitée)
 apps/raijin-banc-de-test/src/environments/environment.local.ts
+
+# Cache local de la CLI Supabase (jamais commité)
+supabase/.temp/
