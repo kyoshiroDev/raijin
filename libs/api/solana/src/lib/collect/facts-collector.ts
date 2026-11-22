@@ -90,6 +90,11 @@ class SourceTracker {
     if (!this.reports.has(id)) this.reports.set(id, { status: 'skipped', latencyMs: null, errorKind: null });
   }
 
+  /** Appel déjà effectué hors suivi (lecture du mint). */
+  markOk(id: DataSourceId, latencyMs: number): void {
+    this.record(id, true, latencyMs, null);
+  }
+
   private record(id: DataSourceId, ok: boolean, latencyMs: number, errorKind: UpstreamErrorKind | null): void {
     const previous = this.reports.get(id);
     if (previous?.status === 'error') {
@@ -151,8 +156,17 @@ export class FactsCollector {
     try {
       // Coût d'abord : le compte de mint (1 crédit) est lu seul. Un mint introuvable ne déclenche
       // aucun autre appel (ni DAS à 10 crédits, ni signatures, ni sources tierces).
-      const mintResult = await tracker.track(servedBy, rpcFallback, () => this.deps.rpc.getMint(mint, signal));
-      if (mintResult !== null && mintResult.value === null) throw new TokenNotFoundError();
+      // Sans compte de mint lisible, aucun verdict n'est possible (canIssueVerdict) : on s'arrête ici,
+      // quelle que soit la cause, pour ne facturer aucun autre appel (analyse remboursée par l'API).
+      let mintResult: RpcCallResult<ParsedMint | null>;
+      const mintStartedAt = clock.now();
+      try {
+        mintResult = await this.deps.rpc.getMint(mint, signal);
+      } catch (error) {
+        throw error instanceof UpstreamError ? error : new UpstreamError(rpcFallback === 'helius' ? 'helius_rpc' : 'solana_rpc', 'network');
+      }
+      if (mintResult.value === null) throw new TokenNotFoundError();
+      tracker.markOk(mintResult.servedBy, clock.now() - mintStartedAt);
 
       const dexPromise = tracker.track('dexscreener', 'dexscreener', () => this.deps.dexscreener.getTokenPairs(mint, signal));
       const geckoPromise = full
@@ -182,7 +196,7 @@ export class FactsCollector {
       }
       if (!this.deps.das.configured) tracker.skip('helius');
 
-      const parsedMint = mintResult?.value ?? null;
+      const parsedMint: ParsedMint | null = mintResult.value;
       const mintAccount = parsedMint === null ? null : buildMintAccountFacts(parsedMint);
       const liquidity = buildLiquidityFacts(mint, dex, gecko, rugcheck, config.lpRemovedMaxUsd);
       const pools = poolAddresses(dex, gecko, rugcheck);
@@ -221,7 +235,7 @@ export class FactsCollector {
         untrusted: true,
       });
 
-      const rpcSource: DataSourceId = mintResult?.servedBy ?? rpcFallback;
+      const rpcSource: DataSourceId = mintResult.servedBy;
       const checkSources = this.checkSources(mint, {
         rpc: rpcSource,
         holders: holdersResult.source ?? rpcSource,

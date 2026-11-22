@@ -107,6 +107,8 @@ export class SolanaRpcClient {
           return { value: await callJsonRpc(this.helius.transport, method, params, schema, signal), servedBy: 'helius' };
         } catch (error) {
           if (signal?.aborted) throw error;
+          // Réponse trop volumineuse : propriété du compte, pas une panne ; le RPC public dirait pareil.
+          if (error instanceof UpstreamError && error.kind === 'too_large') throw error;
           const kind = error instanceof UpstreamError ? error.kind : 'network';
           this.logger.warn('helius_fallback_public_rpc', { method, kind });
         }
@@ -119,7 +121,17 @@ export class SolanaRpcClient {
 
   /** Compte de mint (jsonParsed). `null` si le compte n'existe pas ou n'est pas un mint. */
   async getMint(mint: string, signal?: AbortSignal): Promise<RpcCallResult<ParsedMint | null>> {
-    const result = await this.call('getAccountInfo', [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }], accountInfoSchema, signal);
+    let result: RpcCallResult<z.infer<typeof accountInfoSchema>>;
+    try {
+      result = await this.call('getAccountInfo', [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }], accountInfoSchema, signal);
+    } catch (error) {
+      // Un compte de mint pèse quelques Ko (Token-2022 avec métadonnées compris) : un compte de plusieurs
+      // Mo (file d'événements, carnet d'ordres…) n'est pas un mint. (`dataSlice` est incompatible avec jsonParsed.)
+      if (error instanceof UpstreamError && error.kind === 'too_large') {
+        return { value: null, servedBy: this.helius === null ? 'solana_rpc' : 'helius' };
+      }
+      throw error;
+    }
     const value = result.value.value;
     if (value === null || (value.owner !== SPL_TOKEN_PROGRAM && value.owner !== TOKEN_2022_PROGRAM)) {
       return { value: null, servedBy: result.servedBy };

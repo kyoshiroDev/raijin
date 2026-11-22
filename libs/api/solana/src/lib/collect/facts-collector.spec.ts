@@ -1,7 +1,7 @@
 import { ANALYSIS_CHECK_IDS, riskFactsSchema } from '@raijin/shared-contracts';
 import { evaluateRisk } from '@raijin/shared-risk-engine';
 import { resolveSolanaDataConfig } from '../config';
-import { TokenNotFoundError } from '../core/errors';
+import { TokenNotFoundError, UpstreamError } from '../core/errors';
 import { MemoryCacheStore } from '../core/memory';
 import type { CacheStore, Clock, LogFields, SolanaLogger } from '../core/ports';
 import { SolanaDataService, type SolanaDataOptions } from '../solana-data.service';
@@ -277,13 +277,35 @@ describe('collectFacts : scénarios synthétiques', () => {
     expect(result.sources.every((s) => s.status !== 'ok' || s.id === 'solana_rpc')).toBe(true);
   });
 
-  it('RPC en panne : autorités inconnues (mintAccount null) sans TokenNotFound', async () => {
+  it('RPC en panne (réseau) : UpstreamError immédiate, aucun autre appel facturé', async () => {
     const fixtures = loadAllFixtures().filter((f) => f.source !== 'solana-rpc');
-    const { svc } = service({ fixtures, signaturePageLimit: 100 });
-    const result = await svc.collectFacts(MINTS.bonk);
-    expect(result.facts.mintAccount).toBeNull();
-    expect(result.facts.sellSimulation).toBeNull();
-    expect(result.token.decimals).toBeNull();
+    const { svc, calls } = service({ fixtures, signaturePageLimit: 100 });
+    const error = await svc.collectFacts(MINTS.bonk).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamError);
+    expect(error).toMatchObject({ source: 'solana_rpc', kind: 'network' });
+    expect(calls).toEqual([{ source: 'solana_rpc', route: 'getAccountInfo' }]);
+  });
+
+  it('compte de plus de 2 Mo (file d’événements…) : TokenNotFound, un seul appel même avec Helius', async () => {
+    const credits: number[] = [];
+    const { svc, calls } = service({
+      heliusApiKey: TEST_KEY,
+      creditBudget: { tryConsume: async (n: number) => (credits.push(n), true) },
+      overrides: (url) =>
+        url.includes('helius-rpc')
+          ? new Response('{}', { headers: { 'content-type': 'application/json', 'content-length': '3000000' } })
+          : undefined,
+    });
+    await expect(svc.collectFacts(MINTS.bonk)).rejects.toBeInstanceOf(TokenNotFoundError);
+    expect(calls).toEqual([{ source: 'helius_rpc', route: 'getAccountInfo' }]);
+    expect(credits).toEqual([1]);
+  });
+
+  it('autre erreur inattendue du RPC : réemballée en UpstreamError', async () => {
+    const { svc } = service();
+    const rpc = (svc as unknown as { collector: { deps: { rpc: { getMint: () => Promise<never> } } } }).collector.deps.rpc;
+    rpc.getMint = () => Promise.reject(new Error('https://secret'));
+    await expect(svc.collectFacts(MINTS.bonk)).rejects.toMatchObject({ name: 'UpstreamError', kind: 'network' });
   });
 
   it('échéance globale : les appels trop lents sont abandonnés, résultat partiel', async () => {

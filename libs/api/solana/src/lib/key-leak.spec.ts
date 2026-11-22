@@ -42,9 +42,10 @@ describe('anti-fuite de la clé Helius', () => {
       },
       config: { maxAttempts: 1 },
     });
-    const facts = await service.collectFacts(MINT);
-    expect(JSON.stringify(facts)).not.toContain(KEY);
-    expect(facts.facts.mintAccount).toBeNull();
-    expect(facts.sources.every((source) => source.status !== 'ok')).toBe(true);
+    const error = (await service.collectFacts(MINT).catch((e: unknown) => e)) as Error;
+    expect(error.name).toBe('UpstreamError');
+    expect(error.cause).toBeUndefined();
+    expect(`${error.message} ${error.stack ?? ''} ${JSON.stringify(error)}`).not.toContain(KEY);
+    expect(`${error.message} ${JSON.stringify(error)}`).not.toContain('helius-rpc');
   });
 });
