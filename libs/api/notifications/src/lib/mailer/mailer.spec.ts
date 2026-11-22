@@ -41,7 +41,7 @@ describe('mailers', () => {
   it('ResendMailer échoue sans divulguer la clé', async () => {
     const fetchMock = jest.fn().mockResolvedValue({ ok: false, status: 422 });
     const mailer = new ResendMailer('re_cle_secrete', 'x@y.fr', fetchMock as unknown as typeof fetch);
-    await expect(mailer.send(message)).rejects.toThrow('HTTP 422');
+    await expect(mailer.send(message)).rejects.toMatchObject({ code: 'RESEND_REJECTED', responseCode: 422 });
     await expect(mailer.send(message)).rejects.not.toThrow('re_cle_secrete');
   });
 

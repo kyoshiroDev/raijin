@@ -83,7 +83,7 @@ describe('SessionService', () => {
     expect(mock.auditLog.create.mock.calls[0][0].data.action).toBe('auth.refresh_reuse_detected');
   });
 
-  it('réutilisation dans le délai de grâce (onglets concurrents) → refus sans révocation', async () => {
+  it('réutilisation dans le délai de grâce (onglets concurrents) → 409 CONFLICT sans révocation', async () => {
     const { mock, sessions } = setup();
     mock.refreshToken.findUnique.mockResolvedValue({
       id: 'rt-1',
@@ -92,7 +92,7 @@ describe('SessionService', () => {
       expiresAt: future(),
       session: { id: 'sid-1', userId: 'user-1', revokedAt: null, expiresAt: future() },
     });
-    await expectExpired(sessions.rotate('concurrent', client));
+    await expect(sessions.rotate('concurrent', client)).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(mock.session.updateMany).not.toHaveBeenCalled();
   });
 

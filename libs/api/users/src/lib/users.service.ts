@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ApiException } from '@raijin/api-core';
 import {
   AuditService,
-  PasswordService,
+  AuthService,
   SessionService,
   toPublicUser,
   type ClientInfo,
@@ -15,7 +15,7 @@ import type { PublicUser } from '@raijin/shared-contracts';
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly passwords: PasswordService,
+    private readonly auth: AuthService,
     private readonly sessions: SessionService,
     private readonly audit: AuditService,
   ) {}
@@ -77,9 +77,8 @@ export class UsersService {
   async delete(userId: string, password: string, client: ClientInfo): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
-    if (!(await this.passwords.verify(user.passwordHash, password))) {
-      throw ApiException.auth('AUTH_INVALID_CREDENTIALS', HttpStatus.BAD_REQUEST);
-    }
+    // Même compteur d'échecs que la connexion (verrouillage) ; échecs audités (account.delete_failed).
+    await this.auth.confirmPassword(user, password, client, 'account.delete');
     await this.sessions.revokeAllForUser(userId, 'account_deleted');
     await this.audit.record('account.deleted', userId, client);
     // Cascade : sessions, jetons, suivis, alertes, abonnements push, quotas, TOTP.

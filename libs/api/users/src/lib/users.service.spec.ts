@@ -1,5 +1,5 @@
 import { ApiException } from '@raijin/api-core';
-import type { AuditService, PasswordService, SessionService } from '@raijin/api-auth';
+import type { AuditService, AuthService, SessionService } from '@raijin/api-auth';
 import type { PrismaService, User } from '@raijin/api-prisma';
 import { UsersService } from './users.service';
 
@@ -21,16 +21,16 @@ function setup() {
   const prisma = {
     user: { findUnique: jest.fn(), delete: jest.fn() },
   };
-  const passwords = { verify: jest.fn() };
+  const auth = { confirmPassword: jest.fn() };
   const sessions = { revokeAllForUser: jest.fn() };
   const audit = { record: jest.fn() };
   const service = new UsersService(
     prisma as unknown as PrismaService,
-    passwords as unknown as PasswordService,
+    auth as unknown as AuthService,
     sessions as unknown as SessionService,
     audit as unknown as AuditService,
   );
-  return { prisma, passwords, sessions, audit, service };
+  return { prisma, auth, sessions, audit, service };
 }
 
 describe('UsersService', () => {
@@ -56,14 +56,15 @@ describe('UsersService', () => {
     await expect(service.export('u', client)).rejects.toBeInstanceOf(ApiException);
   });
 
-  it('suppression : mot de passe exigé, sessions révoquées, audit avant suppression', async () => {
-    const { prisma, passwords, sessions, audit, service } = setup();
+  it('suppression : mot de passe confirmé (compteur d’échecs partagé), sessions révoquées, audit', async () => {
+    const { prisma, auth, sessions, audit, service } = setup();
     prisma.user.findUnique.mockResolvedValue(user);
-    passwords.verify.mockResolvedValueOnce(false);
+    auth.confirmPassword.mockRejectedValueOnce(new ApiException('AUTH_INVALID_CREDENTIALS', 400));
     await expect(service.delete('u', 'faux', client)).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+    expect(auth.confirmPassword).toHaveBeenCalledWith(user, 'faux', client, 'account.delete');
     expect(prisma.user.delete).not.toHaveBeenCalled();
 
-    passwords.verify.mockResolvedValueOnce(true);
+    auth.confirmPassword.mockResolvedValueOnce(undefined);
     await service.delete('u', 'bon', client);
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith('u', 'account_deleted');
     expect(audit.record).toHaveBeenCalledWith('account.deleted', 'u', client);

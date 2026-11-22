@@ -32,7 +32,10 @@ export class ResendMailer extends Mailer {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      throw new Error(`Resend a refusé l'envoi (HTTP ${response.status})`);
+      throw Object.assign(new Error(`Resend a refusé l'envoi (HTTP ${response.status})`), {
+        code: 'RESEND_REJECTED',
+        responseCode: response.status,
+      });
     }
     this.logger.log(`E-mail « ${message.subject} » envoyé à ${maskEmail(message.to)}`);
   }

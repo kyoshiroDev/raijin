@@ -10,6 +10,8 @@ import type { ClientInfo } from './client-info';
  */
 export const REFRESH_REUSE_GRACE_MS = 10_000;
 
+export const REFRESH_CONFLICT_MESSAGE = 'Ta session vient d’être rafraîchie ailleurs. Réessaie.';
+
 export type RevocationReason =
   | 'logout'
   | 'reuse'
@@ -59,12 +61,15 @@ export class SessionService {
     if (!record) throw expired();
 
     if (record.usedAt) {
-      if (now.getTime() - record.usedAt.getTime() > REFRESH_REUSE_GRACE_MS) {
-        await this.revoke(record.sessionId, 'reuse');
-        await this.audit.record('auth.refresh_reuse_detected', record.session.userId, client, {
-          sessionId: record.sessionId,
-        });
+      if (now.getTime() - record.usedAt.getTime() <= REFRESH_REUSE_GRACE_MS) {
+        // Rafraîchissement concurrent (autre onglet) : les cookies ont déjà été tournés par l'autre
+        // requête. 409 CONFLICT : le front rejoue sa requête sans se déconnecter (cookies conservés).
+        throw new ApiException('CONFLICT', HttpStatus.CONFLICT, REFRESH_CONFLICT_MESSAGE);
       }
+      await this.revoke(record.sessionId, 'reuse');
+      await this.audit.record('auth.refresh_reuse_detected', record.session.userId, client, {
+        sessionId: record.sessionId,
+      });
       throw expired();
     }
     const session = record.session;

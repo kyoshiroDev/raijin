@@ -70,7 +70,7 @@ export class CsrfService {
  * Garde globale des mutations (POST, PUT, PATCH, DELETE) :
  * 1. en-tête `Origin` présent et autorisé ;
  * 2. en-tête `X-CSRF-Token` identique au cookie CSRF (httpOnly) ;
- * 3. signature valide pour la session courante (ou anonyme).
+ * 3. signature valide pour la session courante si un sid est lu, anonyme sinon.
  * Refus : 403 `AUTH_CSRF_INVALID`.
  */
 @Injectable()
@@ -100,9 +100,10 @@ export class CsrfGuard implements CanActivate {
     const cookie = this.cookies.read(req, 'csrf');
     if (typeof header !== 'string' || !cookie || !safeEqual(header, cookie)) throw this.refuse();
 
-    if (this.csrf.verify(header, null)) return true;
+    // Session lue (access token signé, même expiré) : seul un jeton lié à ce sid est accepté.
+    // Sans session : jeton anonyme uniquement.
     const sessionId = this.sessions.resolve(req);
-    if (sessionId && this.csrf.verify(header, sessionId)) return true;
+    if (this.csrf.verify(header, sessionId)) return true;
     throw this.refuse();
   }
 

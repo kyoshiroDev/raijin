@@ -13,6 +13,7 @@ import { AuditService } from './audit.service';
 import { AuthTokenService } from './auth-token.service';
 import type { ClientInfo } from './client-info';
 import { normalizeEmail } from './email-normalizer';
+import { LoginAttemptsService } from './login-attempts.service';
 import { PasswordService } from './password.service';
 import { SessionService } from './session.service';
 
@@ -46,6 +47,7 @@ export class AuthService {
     private readonly accessTokens: AccessTokenService,
     private readonly mail: AuthMailService,
     private readonly audit: AuditService,
+    private readonly attempts: LoginAttemptsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -152,44 +154,49 @@ export class AuthService {
   // Connexion, sessions
   // -------------------------------------------------------------------------
 
+  /**
+   * Connexion. Même réponse (401 AUTH_INVALID_CREDENTIALS) et même coût (argon2 réel ou factice)
+   * que le compte existe ou non, qu'il soit verrouillé ou non : aucune énumération possible.
+   * Le verrouillage temporaire est indexé par adresse normalisée, comptes inconnus compris.
+   */
   async login(input: LoginRequest, client: ClientInfo): Promise<IssuedSession> {
-    const user = await this.prisma.user.findUnique({
-      where: { emailNormalized: normalizeEmail(input.email) },
-    });
-    if (!user) {
-      await this.passwords.verifyDummy(input.password);
+    const emailNormalized = normalizeEmail(input.email);
+    const [user, locked] = await Promise.all([
+      this.prisma.user.findUnique({ where: { emailNormalized } }),
+      this.attempts.isLocked(emailNormalized),
+    ]);
+    const valid = user
+      ? await this.passwords.verify(user.passwordHash, input.password)
+      : (await this.passwords.verifyDummy(input.password), false);
+
+    if (!user || !valid || locked) {
+      const lockedNow = locked ? false : await this.attempts.recordFailure(emailNormalized);
+      const action = locked ? 'auth.login_locked' : lockedNow ? 'auth.account_locked' : 'auth.login_failed';
+      await this.audit.record(action, user?.id ?? null, client);
       throw invalidCredentials(HttpStatus.UNAUTHORIZED);
     }
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw ApiException.auth('AUTH_ACCOUNT_LOCKED', HttpStatus.TOO_MANY_REQUESTS);
-    }
-    if (!(await this.passwords.verify(user.passwordHash, input.password))) {
-      await this.registerFailedLogin(user, client);
-      throw invalidCredentials(HttpStatus.UNAUTHORIZED);
-    }
+    await this.attempts.reset(emailNormalized);
     const fresh = await this.prisma.user.update({
       where: { id: user.id },
-      data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date() },
     });
     await this.audit.record('auth.login', user.id, client, { method: 'password' });
     return this.startSession(fresh, client);
   }
 
-  private async registerFailedLogin(user: User, client: ClientInfo): Promise<void> {
-    const updated = await this.prisma.user.update({
-      where: { id: user.id },
-      data: { failedLoginCount: { increment: 1 } },
-      select: { failedLoginCount: true },
-    });
-    if (updated.failedLoginCount >= this.config.auth.lockoutThreshold) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginCount: 0, lockedUntil: new Date(Date.now() + this.config.auth.lockoutMs) },
-      });
-      await this.audit.record('auth.account_locked', user.id, client);
-    } else {
-      await this.audit.record('auth.login_failed', user.id, client);
+  /**
+   * Confirmation par mot de passe d'une action sensible (changement de mot de passe, suppression
+   * du compte) : soumise au même compteur d'échecs que la connexion. Refus : 400 INVALID_CREDENTIALS.
+   */
+  async confirmPassword(user: User, password: string, client: ClientInfo, action: string): Promise<void> {
+    const locked = await this.attempts.isLocked(user.emailNormalized);
+    const valid = await this.passwords.verify(user.passwordHash, password);
+    if (locked || !valid) {
+      if (!locked) await this.attempts.recordFailure(user.emailNormalized);
+      await this.audit.record(`${action}_failed`, user.id, client, { locked });
+      throw invalidCredentials(HttpStatus.BAD_REQUEST);
     }
+    await this.attempts.reset(user.emailNormalized);
   }
 
   /** Rotation du refresh (cookie) : nouvelle paire de jetons, même session. */
@@ -286,12 +293,11 @@ export class AuthService {
       data: {
         passwordHash: await this.passwords.hash(password),
         passwordChangedAt: now,
-        failedLoginCount: 0,
-        lockedUntil: null,
         emailVerifiedAt: user.emailVerifiedAt ?? now,
       },
     });
     await this.tokens.revokeUnused(user.id, ['PASSWORD_RESET', 'MAGIC_LINK']);
+    await this.attempts.reset(user.emailNormalized);
     await this.sessions.revokeAllForUser(user.id, 'password_reset');
     this.dispatch('mot de passe changé', this.mail.sendPasswordChanged(user.email));
     await this.audit.record('auth.password_reset', user.id, client);
@@ -305,10 +311,7 @@ export class AuthService {
     client: ClientInfo,
   ): Promise<void> {
     const user = await this.currentUser(userId);
-    if (!(await this.passwords.verify(user.passwordHash, input.currentPassword))) {
-      await this.audit.record('auth.password_change_failed', user.id, client);
-      throw invalidCredentials(HttpStatus.BAD_REQUEST);
-    }
+    await this.confirmPassword(user, input.currentPassword, client, 'auth.password_change');
     if (this.passwords.isRejected(input.newPassword, user.email)) {
       throw ApiException.auth('AUTH_PASSWORD_REJECTED', HttpStatus.BAD_REQUEST);
     }
@@ -342,7 +345,11 @@ export class AuthService {
    */
   private dispatch(label: string, sending: Promise<void>): void {
     sending.catch((error: unknown) => {
-      this.logger.error(`E-mail « ${label} » non envoyé : ${(error as Error).message}`);
+      // Uniquement code et statut : les messages SMTP peuvent contenir l'adresse du destinataire.
+      const { code, responseCode } = (error ?? {}) as { code?: unknown; responseCode?: unknown };
+      this.logger.error(
+        `E-mail « ${label} » non envoyé (code=${typeof code === 'string' ? code : 'inconnu'}, statut=${typeof responseCode === 'number' ? responseCode : '-'})`,
+      );
     });
   }
 }

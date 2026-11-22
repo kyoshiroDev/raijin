@@ -121,11 +121,12 @@ describe('CSRF', () => {
     expect(new CsrfGuard(new Reflector(), csrf, cookies, new SessionIdResolverRegistry(), config).canActivate(rpc)).toBe(true);
   });
 
-  it('accepte un jeton anonyme ou lié à la session courante', () => {
+  it('sans session : jeton anonyme ; avec session : jeton lié uniquement', () => {
     const anon = csrf.issue(null);
     expect(guard(mutation(anon, anon))()).toBe(true);
     const bound = csrf.issue('sid-9');
     expect(guard(mutation(bound, bound), { sid: 'sid-9' })()).toBe(true);
+    expect(guard(mutation(anon, anon), { sid: 'sid-9' })).toThrow(ApiException);
   });
 
   it.each([

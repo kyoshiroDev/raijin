@@ -18,7 +18,10 @@ export const GENERIC_ERROR_CODES = [
  * si un e-mail possède un compte (pas d'énumération), un jeton invalide ou expiré donne le même code.
  */
 export const AUTH_ERROR_CODES = [
-  /** E-mail ou mot de passe incorrect (message identique dans les deux cas). */
+  /**
+   * E-mail ou mot de passe incorrect, ou trop de tentatives (verrouillage temporaire) : une seule
+   * réponse pour ne révéler ni l'existence du compte ni son verrouillage.
+   */
   'AUTH_INVALID_CREDENTIALS',
   /** Action réservée à un e-mail vérifié. */
   'AUTH_EMAIL_NOT_VERIFIED',
@@ -30,7 +33,7 @@ export const AUTH_ERROR_CODES = [
   'AUTH_CSRF_INVALID',
   /** Mot de passe refusé (règles de longueur, ou identique à l'e-mail). */
   'AUTH_PASSWORD_REJECTED',
-  /** Compte temporairement verrouillé après trop d'échecs de connexion. */
+  /** Réservé : l'API ne le renvoie plus (verrouillage couvert par AUTH_INVALID_CREDENTIALS). */
   'AUTH_ACCOUNT_LOCKED',
 ] as const;
 
@@ -50,7 +53,8 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 
 /** Messages français par défaut des erreurs d'auth (affichés par le front, ton neutre). */
 export const AUTH_ERROR_MESSAGES: Readonly<Record<AuthErrorCode, string>> = {
-  AUTH_INVALID_CREDENTIALS: 'E-mail ou mot de passe incorrect.',
+  AUTH_INVALID_CREDENTIALS:
+    'E-mail ou mot de passe incorrect. Après plusieurs essais, patiente quelques minutes avant de réessayer.',
   AUTH_EMAIL_NOT_VERIFIED: 'Confirme d’abord ton adresse e-mail.',
   AUTH_TOKEN_INVALID: 'Ce lien n’est plus valide. Demande-en un nouveau.',
   AUTH_SESSION_EXPIRED: 'Ta session a expiré. Reconnecte-toi.',

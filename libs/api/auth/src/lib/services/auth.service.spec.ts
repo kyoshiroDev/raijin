@@ -7,6 +7,7 @@ import { AccessTokenService } from './access-token.service';
 import type { AuditService } from './audit.service';
 import type { AuthTokenService } from './auth-token.service';
 import { AuthService, NEUTRAL_MESSAGES } from './auth.service';
+import { LoginAttemptsService, MemoryAttemptStore } from './login-attempts.service';
 import { PasswordService } from './password.service';
 import type { SessionService } from './session.service';
 
@@ -50,6 +51,7 @@ async function setup() {
   };
   const audit = { record: jest.fn(), hashIp: jest.fn() };
   const accessTokens = new AccessTokenService(new JwtService({}), new AuthCookies(config), config);
+  const attempts = new LoginAttemptsService(config, new MemoryAttemptStore());
   const service = new AuthService(
     prisma,
     passwords,
@@ -58,10 +60,11 @@ async function setup() {
     accessTokens,
     mail as unknown as AuthMailService,
     audit as unknown as AuditService,
+    attempts,
     config,
   );
   mock.productEvent.create.mockResolvedValue({});
-  return { mock, service, sessions, tokens, mail, audit, accessTokens, passwordHash, config, passwords };
+  return { mock, service, sessions, tokens, mail, audit, accessTokens, passwordHash, config, passwords, attempts };
 }
 
 const actions = (audit: { record: jest.Mock }) => audit.record.mock.calls.map((call) => call[0]);
@@ -190,47 +193,51 @@ describe('AuthService.verifyEmail / resendVerification', () => {
 });
 
 describe('AuthService.login', () => {
+  const login = (service: AuthService, email: string, password: string) => service.login({ email, password }, client);
+
   it('identifiants valides : compteur remis à zéro, session émise', async () => {
-    const { mock, service, passwordHash, audit } = await setup();
-    const user = userFixture({ passwordHash, failedLoginCount: 2 });
+    const { mock, service, passwordHash, audit, attempts } = await setup();
+    const user = userFixture({ passwordHash });
     mock.user.findUnique.mockResolvedValue(user);
-    mock.user.update.mockResolvedValue({ ...user, failedLoginCount: 0 });
-    const issued = await service.login({ email: 'JEAN.dupont@exemple.fr', password: PASSWORD }, client);
-    expect(issued.user.failedLoginCount).toBe(0);
+    mock.user.update.mockResolvedValue(user);
+    await attempts.recordFailure('jean.dupont@exemple.fr');
+    const issued = await login(service, 'JEAN.dupont@exemple.fr', PASSWORD);
+    expect(issued.sessionId).toBe('sid-new');
     expect(mock.user.findUnique).toHaveBeenCalledWith({ where: { emailNormalized: 'jean.dupont@exemple.fr' } });
-    expect(mock.user.update.mock.calls[0][0].data).toMatchObject({ failedLoginCount: 0, lockedUntil: null });
+    await expect(attempts.isLocked('jean.dupont@exemple.fr')).resolves.toBe(false);
     expect(actions(audit)).toEqual(['auth.login']);
   });
 
-  it('compte inconnu : vérification factice puis AUTH_INVALID_CREDENTIALS', async () => {
-    const { mock, service, passwords } = await setup();
+  it('compte inconnu : vérification factice, AUTH_INVALID_CREDENTIALS, échec audité sans utilisateur', async () => {
+    const { mock, service, passwords, audit } = await setup();
     const dummy = jest.spyOn(passwords, 'verifyDummy');
     mock.user.findUnique.mockResolvedValue(null);
-    await expectApiError(service.login({ email: 'x@y.fr', password: 'p' }, client), 'AUTH_INVALID_CREDENTIALS', 401);
+    await expectApiError(login(service, 'x@y.fr', 'p'), 'AUTH_INVALID_CREDENTIALS', 401);
     expect(dummy).toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith('auth.login_failed', null, client);
   });
 
-  it('mauvais mot de passe : échec compté, verrouillage au seuil', async () => {
-    const { mock, service, passwordHash, audit, config } = await setup();
+  it('verrouillage au seuil : même réponse 401 ensuite, même avec le bon mot de passe, argon2 toujours exécuté', async () => {
+    const { mock, service, passwordHash, audit, config, passwords } = await setup();
     mock.user.findUnique.mockResolvedValue(userFixture({ passwordHash }));
-    mock.user.update.mockResolvedValueOnce({ failedLoginCount: 1 });
-    await expectApiError(service.login({ email: 'jean.dupont@exemple.fr', password: 'faux' }, client), 'AUTH_INVALID_CREDENTIALS', 401);
-    expect(actions(audit)).toEqual(['auth.login_failed']);
-
-    mock.user.update.mockResolvedValueOnce({ failedLoginCount: config.auth.lockoutThreshold }).mockResolvedValueOnce({});
-    await expectApiError(service.login({ email: 'jean.dupont@exemple.fr', password: 'faux' }, client), 'AUTH_INVALID_CREDENTIALS', 401);
-    const lock = mock.user.update.mock.calls.at(-1)?.[0].data;
-    expect(lock.failedLoginCount).toBe(0);
-    expect(lock.lockedUntil.getTime()).toBeGreaterThan(Date.now());
+    for (let i = 0; i < config.auth.lockoutThreshold; i++) {
+      await expectApiError(login(service, 'jean.dupont@exemple.fr', 'faux'), 'AUTH_INVALID_CREDENTIALS', 401);
+    }
     expect(actions(audit)).toContain('auth.account_locked');
+    const verify = jest.spyOn(passwords, 'verify');
+    await expectApiError(login(service, 'jean.dupont@exemple.fr', PASSWORD), 'AUTH_INVALID_CREDENTIALS', 401);
+    expect(verify).toHaveBeenCalled();
+    expect(actions(audit).at(-1)).toBe('auth.login_locked');
+    expect(mock.user.update).not.toHaveBeenCalled();
   });
 
-  it('compte verrouillé : AUTH_ACCOUNT_LOCKED sans vérifier le mot de passe', async () => {
-    const { mock, service, passwords } = await setup();
-    const verify = jest.spyOn(passwords, 'verify');
-    mock.user.findUnique.mockResolvedValue(userFixture({ lockedUntil: new Date(Date.now() + 60_000) }));
-    await expectApiError(service.login({ email: 'jean.dupont@exemple.fr', password: PASSWORD }, client), 'AUTH_ACCOUNT_LOCKED', 429);
-    expect(verify).not.toHaveBeenCalled();
+  it('adresse sans compte : verrouillée aussi au seuil (aucune différence observable)', async () => {
+    const { mock, service, config, attempts } = await setup();
+    mock.user.findUnique.mockResolvedValue(null);
+    for (let i = 0; i < config.auth.lockoutThreshold; i++) {
+      await expectApiError(login(service, 'fantome@exemple.fr', 'faux'), 'AUTH_INVALID_CREDENTIALS', 401);
+    }
+    await expect(attempts.isLocked('fantome@exemple.fr')).resolves.toBe(true);
   });
 });
 
@@ -316,18 +323,27 @@ describe('AuthService mots de passe', () => {
   });
 
   it('réinitialisation : nouveau hash, déverrouillage, toutes les sessions révoquées, avis envoyé', async () => {
-    const { mock, service, tokens, sessions, mail } = await setup();
+    const { mock, service, tokens, sessions, mail, attempts, config } = await setup();
+    for (let i = 0; i < config.auth.lockoutThreshold; i++) await attempts.recordFailure('jean.dupont@exemple.fr');
     tokens.consume.mockResolvedValue({ userId: 'u' });
     mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u', lockedUntil: new Date(Date.now() + 1000) }));
     mock.user.update.mockResolvedValue({});
     await service.resetPassword('jeton', 'nouvelle phrase de passe', client);
     const data = mock.user.update.mock.calls[0][0].data;
     expect(data.passwordHash).toMatch(/^\$argon2id\$/);
-    expect(data).toMatchObject({ failedLoginCount: 0, lockedUntil: null });
     expect(data.emailVerifiedAt).toBeInstanceOf(Date);
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith('u', 'password_reset');
     expect(tokens.revokeUnused).toHaveBeenCalledWith('u', ['PASSWORD_RESET', 'MAGIC_LINK']);
     expect(mail.sendPasswordChanged).toHaveBeenCalledWith('jean.dupont@exemple.fr');
+    await expect(attempts.isLocked('jean.dupont@exemple.fr')).resolves.toBe(false);
+  });
+
+  it('confirmation par mot de passe verrouillée : refus même avec le bon mot de passe', async () => {
+    const { service, passwordHash, attempts, config, audit } = await setup();
+    const user = userFixture({ passwordHash });
+    for (let i = 0; i < config.auth.lockoutThreshold; i++) await attempts.recordFailure(user.emailNormalized);
+    await expectApiError(service.confirmPassword(user, PASSWORD, client, 'account.delete'), 'AUTH_INVALID_CREDENTIALS', 400);
+    expect(audit.record).toHaveBeenLastCalledWith('account.delete_failed', user.id, client, { locked: true });
   });
 
   it('réinitialisation refusée : jeton invalide, utilisateur disparu, mot de passe = e-mail', async () => {

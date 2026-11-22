@@ -84,7 +84,7 @@ const envSchema = z.object({
   AUTH_LOCKOUT_THRESHOLD: z.coerce.number().int().min(3).max(50).default(5),
   AUTH_LOCKOUT_DURATION: z.string().default('15m'),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(120),
-  RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).default(10),
+  RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).optional(),
   MAIL_PROVIDER: z.enum(['smtp', 'resend']).default('smtp'),
   MAIL_FROM: z.string().trim().min(3).default('Raijin <noreply@raijinshield.com>'),
   SMTP_HOST: z.string().trim().min(1).default('localhost'),
@@ -178,6 +178,11 @@ export function loadConfig(
   }
 
   let trustProxy: number | false = false;
+  if (!e.TRUST_PROXY && isProduction) {
+    // Sans valeur explicite, Express verrait l'IP de Traefik : rate limiting et verrouillage
+    // s'appliqueraient à tous les visiteurs à la fois (ou, mal réglé, l'IP serait falsifiable).
+    problems.push('TRUST_PROXY : obligatoire en production (1 derrière Traefik, 0 si l’API est exposée directement)');
+  }
   if (e.TRUST_PROXY) {
     const hops = Number(e.TRUST_PROXY);
     if (Number.isInteger(hops) && hops >= 0 && hops <= 10) trustProxy = hops === 0 ? false : hops;
@@ -239,7 +244,8 @@ export function loadConfig(
     },
     rateLimit: {
       perMinute: e.RATE_LIMIT_PER_MINUTE,
-      authPerMinute: e.RATE_LIMIT_AUTH_PER_MINUTE,
+      // 10 par défaut en production ; 60 en dev/test (parcours e2e et essais manuels répétés).
+      authPerMinute: e.RATE_LIMIT_AUTH_PER_MINUTE ?? (isProduction ? 10 : 60),
     },
     mail: {
       provider,

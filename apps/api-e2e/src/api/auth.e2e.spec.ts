@@ -61,10 +61,12 @@ describe('API Raijin : parcours d’auth', () => {
     expect(client.cookies.get('rj_rt')).not.toBe(before.cookies.get('rj_rt'));
     expect((await client.get('/users/me')).status).toBe(200);
 
-    // L'ancien refresh, déjà utilisé, est refusé.
+    // L'ancien refresh, déjà utilisé, rejoué dans la fenêtre de grâce (onglet concurrent) :
+    // 409 CONFLICT, sans révoquer la session ni effacer les cookies.
     const stale = await before.post('/auth/refresh');
-    expect(stale.status).toBe(401);
-    expect(stale.data['code']).toBe('AUTH_SESSION_EXPIRED');
+    expect(stale.status).toBe(409);
+    expect(stale.data['code']).toBe('CONFLICT');
+    expect((await client.get('/users/me')).status).toBe(200);
 
     expect((await client.post('/auth/logout')).status).toBe(204);
     // Cookies effacés par la déconnexion : « pas connecté », le front ne tente pas de refresh.
@@ -84,10 +86,10 @@ describe('API Raijin : parcours d’auth', () => {
     expect(refresh.data['code']).toBe('UNAUTHORIZED');
   });
 
-  it('refresh avec un jeton CSRF anonyme (front : auth/csrf puis auth/refresh), même sans access token', async () => {
+  it('refresh après auth/csrf (front : auth/csrf puis auth/refresh), avec ou sans access token', async () => {
     const email = uniqueEmail('refresh-csrf');
     const client = await registerAndVerify(email);
-    // Jeton CSRF anonyme obtenu après connexion : accepté par la garde.
+    // auth/csrf après connexion : jeton lié à la session (seul accepté tant qu'un sid est lu).
     expect((await client.get('/auth/csrf')).status).toBe(200);
     expect((await client.post('/auth/refresh')).status).toBe(200);
 
@@ -129,6 +131,27 @@ describe('API Raijin : parcours d’auth', () => {
     const ok = await client.post('/auth/login', { email: email.toUpperCase(), password: PASSWORD });
     expect(ok.status).toBe(200);
     expect((await client.get('/auth/session')).status).toBe(200);
+  });
+
+  it('verrouillage : réponse identique pour un compte verrouillé (même bon mot de passe) et une adresse inconnue', async () => {
+    const email = uniqueEmail('verrou');
+    await registerAndVerify(email);
+    const ghost = uniqueEmail('fantome');
+    const client = await new ApiClient().init();
+    const responses: { status: number; data: unknown }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const known = await client.post('/auth/login', { email, password: 'pas le bon mot de passe' });
+      const unknown = await client.post('/auth/login', { email: ghost, password: 'pas le bon mot de passe' });
+      responses.push(known, unknown);
+    }
+    const lockedKnown = await client.post('/auth/login', { email, password: PASSWORD });
+    const lockedUnknown = await client.post('/auth/login', { email: ghost, password: PASSWORD });
+    responses.push(lockedKnown, lockedUnknown);
+    for (const res of responses) {
+      expect(res.status).toBe(401);
+      expect(res.data).toEqual(responses[0]?.data);
+    }
+    expect((responses[0]?.data as { code: string }).code).toBe('AUTH_INVALID_CREDENTIALS');
   });
 
   it('inscription d’une adresse existante : même réponse, e-mail « compte existant »', async () => {

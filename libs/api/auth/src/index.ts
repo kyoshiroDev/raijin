@@ -5,6 +5,7 @@ export * from './lib/services/audit.service';
 export * from './lib/services/auth.service';
 export * from './lib/services/client-info';
 export * from './lib/services/email-normalizer';
+export * from './lib/services/login-attempts.service';
 export * from './lib/services/password.service';
 export * from './lib/services/public-user';
 export * from './lib/services/session.service';

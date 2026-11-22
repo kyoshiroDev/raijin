@@ -46,7 +46,8 @@ DATABASE_URL=postgresql://raijin:changeme-factice@localhost:5433/raijin?schema=p
 REDIS_URL=redis://localhost:6380
 # Rate limiting par IP : toutes routes, et renforcé par route sensible de /auth (connexion, inscription, liens e-mail)
 RATE_LIMIT_PER_MINUTE=120
-RATE_LIMIT_AUTH_PER_MINUTE=10
+# Vide = 10 en production, 60 en dev/test
+RATE_LIMIT_AUTH_PER_MINUTE=
 
 # ---------------------------------------------------------------------
 # Auth : JWT et cookies httpOnly
@@ -67,10 +68,15 @@ COOKIE_SECURE=false
 EMAIL_VERIFY_TTL=24h
 PASSWORD_RESET_TTL=30m
 MAGIC_LINK_TTL=15m
-# Verrouillage temporaire après échecs de connexion consécutifs (nombre d'échecs, durée)
+# Verrouillage temporaire par adresse e-mail (compteur Redis, aussi pour les adresses sans compte) :
+# nombre d'échecs (connexion ou confirmation par mot de passe), durée. Réponse toujours identique.
 AUTH_LOCKOUT_THRESHOLD=5
 AUTH_LOCKOUT_DURATION=15m
-# Nombre de proxys de confiance devant l'API (IP réelle pour le rate limiting) : 1 derrière Traefik en prod, vide en dev
+# Nombre de proxys de confiance devant l'API (OBLIGATOIRE en production, l'API refuse de démarrer sinon) :
+#   1 derrière Traefik (VPS) : Express prend l'IP réelle dans X-Forwarded-For posé par Traefik, sinon
+#   toutes les requêtes auraient l'IP de Traefik (rate limiting et verrouillage communs à tous) ;
+#   0 si l'API est exposée sans proxy. Jamais plus que le nombre réel de proxys (IP falsifiable).
+#   Vide en dev.
 TRUST_PROXY=
 # Clé de chiffrement des secrets TOTP (2FA admin), 32 octets. À générer : openssl rand -base64 32
 TOTP_ENCRYPTION_KEY=changeme-cle-totp-factice
@@ -160,7 +166,7 @@ SENTRY_ENVIRONMENT=development
 
 - **Production** (`NODE_ENV=production`) : l'API refuse de démarrer si `JWT_ACCESS_SECRET` ou
   `COOKIE_SECRET` est absente, factice (`changeme…`, `…factice`) ou plus courte que 32 caractères,
-  si `DATABASE_URL` ou `REDIS_URL` manque, si `COOKIE_SECURE` n'est pas `true`, si une origine
+  si `DATABASE_URL`, `REDIS_URL` ou `TRUST_PROXY` manque, si `COOKIE_SECURE` n'est pas `true`, si une origine
   n'est pas en HTTPS, ou si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`. Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les

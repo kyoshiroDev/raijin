@@ -101,6 +101,17 @@ describe('loadConfig', () => {
     ).toThrow(/COOKIE_SECURE[\s\S]*CORS_ORIGINS[\s\S]*REDIS_URL|REDIS_URL/);
   });
 
+  it('production : TRUST_PROXY obligatoire (0 explicite accepté)', () => {
+    expect(() => loadConfig({ ...prodEnv, TRUST_PROXY: undefined })).toThrow(/TRUST_PROXY : obligatoire/);
+    expect(loadConfig({ ...prodEnv, TRUST_PROXY: '0' }).trustProxy).toBe(false);
+  });
+
+  it('limite d’auth par défaut : 10 en production, 60 en dev ; surchargeable', () => {
+    expect(loadConfig(prodEnv).rateLimit.authPerMinute).toBe(10);
+    expect(loadConfig({ NODE_ENV: 'test' }).rateLimit.authPerMinute).toBe(60);
+    expect(loadConfig({ NODE_ENV: 'test', RATE_LIMIT_AUTH_PER_MINUTE: '3' }).rateLimit.authPerMinute).toBe(3);
+  });
+
   it('refuse les valeurs mal formées', () => {
     expect(() => loadConfig({ NODE_ENV: 'test', API_PORT: 'abc' })).toThrow(ConfigError);
     expect(() => loadConfig({ NODE_ENV: 'test', TRUST_PROXY: 'beaucoup' })).toThrow(/TRUST_PROXY/);

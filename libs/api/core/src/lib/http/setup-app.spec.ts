@@ -157,6 +157,7 @@ describe('setupApp en production', () => {
       LANDING_URL: 'https://raijinshield.com',
       DATABASE_URL: 'postgresql://u:p@db/raijin',
       REDIS_URL: 'redis://127.0.0.1:1',
+      TRUST_PROXY: '1',
       JWT_ACCESS_SECRET: strong,
       COOKIE_SECRET: `${strong}q`,
     });

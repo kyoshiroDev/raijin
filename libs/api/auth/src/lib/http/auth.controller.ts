@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiZodBody, AuthCookies, AuthThrottle, CsrfService, ZodValidationPipe } from '@raijin/api-core';
+import { ApiException, ApiZodBody, AuthCookies, AuthThrottle, CsrfService, ZodValidationPipe } from '@raijin/api-core';
 import {
   changePasswordRequestSchema,
   forgotPasswordRequestSchema,
@@ -46,7 +46,9 @@ export class AuthController {
   @Get('csrf')
   @ApiOperation({ summary: 'Pose le cookie CSRF et renvoie le jeton à garder en mémoire' })
   csrfToken(@Req() req: Request, @Res({ passthrough: true }) res: Response): CsrfResponse {
-    const sessionId = this.accessTokens.fromRequest(req)?.sid ?? null;
+    // Lié au sid de l'access token signé, même expiré : la garde CSRF exige ce lien dès qu'un
+    // sid est présent (flux front : auth/csrf puis auth/refresh après expiration de l'access).
+    const sessionId = this.accessTokens.readSessionId(req);
     const csrfToken = this.csrf.issue(sessionId);
     this.cookies.setCsrf(res, csrfToken);
     return { csrfToken };
@@ -110,7 +112,8 @@ export class AuthController {
     try {
       return this.respond(res, await this.auth.refresh(this.cookies.read(req, 'refresh'), client));
     } catch (error) {
-      this.cookies.clearSession(res);
+      // 409 (refresh concurrent dans la fenêtre de grâce) : les cookies déjà tournés restent valables.
+      if (!(error instanceof ApiException && error.code === 'CONFLICT')) this.cookies.clearSession(res);
       throw error;
     }
   }

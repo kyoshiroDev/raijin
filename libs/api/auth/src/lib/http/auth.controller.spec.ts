@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { ApiCoreModule, ApiException, setupApp, testConfig } from '@raijin/api-core';
 import { PrismaService } from '@raijin/api-prisma';
@@ -168,6 +169,31 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
     expect(cookiesOf(res)['rj_rt']?.raw).toMatch(/Expires=Thu, 01 Jan 1970/);
   });
 
+  it('auth/csrf puis auth/refresh avec un access token expiré : jeton lié au sid, accepté', async () => {
+    const expired = new JwtService({}).sign(
+      { sub: 'u', sid: 'sid-exp', role: 'USER', exp: Math.floor(Date.now() / 1000) - 60 },
+      { secret: config.auth.accessSecret, issuer: 'raijin-api', audience: 'raijin-app' },
+    );
+    const csrfRes = await request(server()).get('/api/v1/auth/csrf').set('Cookie', `rj_at=${expired}`).expect(200);
+    const token = csrfRes.body.csrfToken as string;
+    auth.refresh.mockResolvedValue(issued('sid-exp'));
+    await request(server())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `rj_csrf=${token}; rj_at=${expired}; rj_rt=r` })
+      .expect(200);
+  });
+
+  it('POST /auth/refresh concurrent (409 CONFLICT) : cookies conservés', async () => {
+    const { token, cookie } = await anonymousCsrf();
+    auth.refresh.mockRejectedValue(new ApiException('CONFLICT', 409));
+    const res = await request(server())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `${cookie}; rj_rt=r` })
+      .expect(409);
+    expect(res.body.code).toBe('CONFLICT');
+    expect(cookiesOf(res)['rj_rt']).toBeUndefined();
+  });
+
   it('GET /auth/session : sans cookie → UNAUTHORIZED ; session révoquée ou jeton invalide → AUTH_SESSION_EXPIRED', async () => {
     const anonymous = await request(server()).get('/api/v1/auth/session').expect(401);
     expect(anonymous.body.code).toBe('UNAUTHORIZED');
@@ -199,12 +225,18 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
     expect(cookiesOf(res)['rj_csrf']?.value).toBe(res.body.csrfToken);
   });
 
-  it('POST /auth/logout : 204, cookies effacés, nouveau CSRF anonyme', async () => {
-    const { token, cookie } = await anonymousCsrf();
+  it('POST /auth/logout : 204, cookies effacés, nouveau CSRF anonyme ; jeton anonyme refusé si session lue', async () => {
+    const anon = await anonymousCsrf();
     const session = issued('sid-out');
+    await request(server())
+      .post('/api/v1/auth/logout')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': anon.token, Cookie: `${anon.cookie}; rj_at=${session.accessToken}` })
+      .expect(403);
+    const csrfRes = await request(server()).get('/api/v1/auth/csrf').set('Cookie', `rj_at=${session.accessToken}`).expect(200);
+    const token = csrfRes.body.csrfToken as string;
     const res = await request(server())
       .post('/api/v1/auth/logout')
-      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `${cookie}; rj_at=${session.accessToken}; rj_rt=r` })
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `rj_csrf=${token}; rj_at=${session.accessToken}; rj_rt=r` })
       .expect(204);
     expect(auth.logout).toHaveBeenCalledWith('sid-out', 'r', expect.anything());
     const cookies = cookiesOf(res);

@@ -8,6 +8,7 @@ import { AccessTokenService } from './services/access-token.service';
 import { AuditService } from './services/audit.service';
 import { AuthTokenService } from './services/auth-token.service';
 import { AuthService } from './services/auth.service';
+import { LoginAttemptsService } from './services/login-attempts.service';
 import { PasswordService } from './services/password.service';
 import { SessionService } from './services/session.service';
 
@@ -25,10 +26,11 @@ import { SessionService } from './services/session.service';
     AuthGuard,
     AuthService,
     AuthTokenService,
+    LoginAttemptsService,
     PasswordService,
     SessionService,
   ],
-  exports: [AccessTokenService, AuditService, AuthGuard, PasswordService, SessionService],
+  exports: [AccessTokenService, AuditService, AuthGuard, AuthService, LoginAttemptsService, PasswordService, SessionService],
 })
 export class ApiAuthModule implements OnModuleInit {
   constructor(
