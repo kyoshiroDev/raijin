@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Aucun compte Token-2022.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenAccountsByOwner",
+    "params": [
+      "54SpU9vgpM99H5qc91upiTYXe3i7gQ2RM78BHZoTDayp",
+      {
+        "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      },
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": []
+    }
+  }
+}

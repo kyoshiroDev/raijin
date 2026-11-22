@@ -53,7 +53,10 @@ describe('SolanaRpcClient', () => {
     expect(client.heliusConfigured).toBe(false);
     await expect(client.getMint(MINT)).resolves.toEqual({ value: null, servedBy: 'solana_rpc' });
     await client.getSignaturesForAddress(MINT, 10, 'sig-avant');
-    await expect(client.getTokenAccountsByOwner(MINT, 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')).resolves.toMatchObject({ value: { value: [] } });
+    await expect(client.getTokenAccountsByOwner(MINT, 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')).resolves.toEqual({
+      value: { accounts: [], received: 0, rejected: 0 },
+      servedBy: 'solana_rpc',
+    });
     expect(bodies[1]).toMatchObject({ params: [MINT, { limit: 10, before: 'sig-avant' }] });
   });
 

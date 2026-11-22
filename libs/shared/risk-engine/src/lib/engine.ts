@@ -196,6 +196,7 @@ function checkStatus(reasons: readonly RiskReason[]): CheckStatus {
  */
 export function createRiskEngine(partialConfig: Partial<RiskEngineConfig> = {}): EvaluateRisk {
   const config = resolveRiskEngineConfig(partialConfig);
+  const notEvaluated: ReadonlySet<AnalysisCheckId> = new Set(config.notEvaluated);
 
   return (facts: RiskFacts): RiskAssessment => {
     const list = new ReasonList();
@@ -218,13 +219,17 @@ export function createRiskEngine(partialConfig: Partial<RiskEngineConfig> = {}):
       if (isAvailable(id, facts)) {
         return { id, status: 'ok', reasonCodes: [] };
       }
+      // Règle D3 : contrôle non demandé par le profil → « non évalué » (aucune raison DATA_UNAVAILABLE).
+      if (notEvaluated.has(id)) {
+        return { id, status: 'unavailable', reasonCodes: [] };
+      }
       reasons.push({ checkId: id, code: 'DATA_UNAVAILABLE', status: 'unavailable', critical: false });
       return { id, status: 'unavailable', reasonCodes: ['DATA_UNAVAILABLE'] };
     });
 
     return {
       engineVersion: config.version,
-      verdict: decideVerdict(facts, config, reasons, checks),
+      verdict: decideVerdict(facts, config, reasons, checks, notEvaluated),
       reasons,
       checks,
     };
@@ -236,16 +241,45 @@ function decideVerdict(
   config: RiskEngineConfig,
   reasons: readonly RiskReason[],
   checks: readonly RiskCheckOutcome[],
+  notEvaluated: ReadonlySet<AnalysisCheckId>,
 ): Verdict {
   if (reasons.some((reason) => reason.critical)) return 'danger';
   const score = reasons
     .filter((reason) => reason.status === 'warn')
     .reduce((sum, reason) => sum + (config.reasonWeights[reason.code] ?? 1), 0);
-  const unavailable = checks.filter((check) => check.status === 'unavailable').length;
+  // D2 ne compte que les contrôles demandés (D3 : les non évalués sont exclus).
+  const unavailable = checks.filter((check) => check.status === 'unavailable' && !notEvaluated.has(check.id)).length;
   if (!canIssueVerdict(facts)) return 'warn';
   if (unavailable >= config.unavailableChecksBlockSafe) return 'warn';
   if (score >= config.cautionScoreThreshold) return 'warn';
   return 'safe';
+}
+
+/** Profondeur d'une évaluation (scan de wallet : « contrôle rapide (6/9) »). */
+export interface AssessmentDepth {
+  /** `light` si le moteur avait des contrôles non demandés (règle D3), sinon `full`. */
+  readonly coverage: 'full' | 'light';
+  /** Contrôles réellement évalués (statut ok, warn ou danger), sur 9. */
+  readonly checksEvaluated: number;
+  /** Contrôles non demandés par le profil et sans donnée (D3). */
+  readonly notEvaluated: AnalysisCheckId[];
+  /** Contrôles demandés mais indisponibles (source en panne, clé absente) : comptés par D2. */
+  readonly unavailable: AnalysisCheckId[];
+}
+
+/**
+ * Profondeur de `assessment`, avec la liste `notEvaluated` du moteur qui l'a produite
+ * (`LIGHT_PROFILE_NOT_EVALUATED` pour le scan de wallet, vide pour une analyse complète).
+ */
+export function assessmentDepth(assessment: RiskAssessment, notEvaluated: readonly AnalysisCheckId[] = []): AssessmentDepth {
+  const skipped = new Set(notEvaluated);
+  const missing = assessment.checks.filter((check) => check.status === 'unavailable');
+  return {
+    coverage: skipped.size > 0 ? 'light' : 'full',
+    checksEvaluated: assessment.checks.length - missing.length,
+    notEvaluated: missing.filter((check) => skipped.has(check.id)).map((check) => check.id),
+    unavailable: missing.filter((check) => !skipped.has(check.id)).map((check) => check.id),
+  };
 }
 
 /** Moteur avec les seuils par défaut. */

@@ -1,8 +1,9 @@
-import type { RiskFacts } from '@raijin/shared-contracts';
+import { ANALYSIS_CHECK_IDS, type AnalysisCheckId, type DataSourceId, type DataSourceRef, type RiskFacts } from '@raijin/shared-contracts';
 import { isSolanaAddress } from '@raijin/shared-util';
 import type { DexPair } from '../clients/dexscreener';
 import type { GeckoPool } from '../clients/geckoterminal';
 import type { ParsedMint } from '../clients/solana-rpc';
+import { sourceRef } from '../source-links';
 import type { RugCheckDigest } from './rugcheck-digest';
 import { clampPct } from './rugcheck-digest';
 
@@ -200,4 +201,33 @@ export function buildCreatorFacts(
 export function buildRugcheckFacts(digest: RugCheckDigest | null): RiskFacts['rugcheck'] {
   if (digest === null) return null;
   return { scoreNormalised: digest.scoreNormalised, rugged: digest.rugged, risks: [...digest.risks] };
+}
+
+export interface CheckSourcesUsed {
+  readonly rpc: DataSourceId;
+  readonly holders: DataSourceId;
+  readonly metadata: DataSourceId;
+  readonly lpFromRugcheck: boolean;
+  /** Profil `light` : GeckoTerminal non interrogé. */
+  readonly light: boolean;
+}
+
+/** Sources citées par contrôle (liens publics construits par Raijin), dans l'ordre de `ANALYSIS_CHECK_IDS`. */
+export function buildCheckSources(mint: string, used: CheckSourcesUsed): Record<AnalysisCheckId, DataSourceRef[]> {
+  const ref = (id: DataSourceId) => sourceRef(id, mint);
+  const liquidity: DataSourceRef[] = [ref('dexscreener')];
+  if (!used.light) liquidity.push(ref('geckoterminal'));
+  if (used.lpFromRugcheck) liquidity.push(ref('rugcheck'));
+  const map: Record<AnalysisCheckId, DataSourceRef[]> = {
+    mint_authority: [ref(used.rpc)],
+    freeze_authority: [ref(used.rpc)],
+    liquidity,
+    holder_concentration: [ref(used.holders)],
+    sell_simulation: [ref('jupiter'), ref('dexscreener')],
+    metadata_mutable: [ref(used.metadata)],
+    token_age: [ref(used.rpc), ref('dexscreener')],
+    creator_history: [ref('rugcheck')],
+    rugcheck: [ref('rugcheck')],
+  };
+  return Object.fromEntries(ANALYSIS_CHECK_IDS.map((id) => [id, map[id]])) as Record<AnalysisCheckId, DataSourceRef[]>;
 }

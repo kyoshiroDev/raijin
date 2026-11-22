@@ -58,4 +58,28 @@ describe('configuration Solana', () => {
     expect(config.limits.jupiter).toEqual({ ...DEFAULT_SOLANA_DATA_CONFIG.limits.jupiter, timeoutMs: 9_000 });
     expect(config.cacheTtlSeconds).toEqual({ ...DEFAULT_SOLANA_DATA_CONFIG.cacheTtlSeconds, rugcheck: 60 });
   });
+
+  it('scan de wallet : variables WALLET_* et fusion profonde', () => {
+    const { config } = loadSolanaDataConfig({
+      WALLET_DAILY_CREDIT_BUDGET: '2500',
+      WALLET_SCAN_MAX_ACCOUNTS: '800',
+      WALLET_SCAN_MAX_TOKENS: '15',
+      WALLET_SCAN_MAX_TOKENS_NO_KEY: '5',
+      WALLET_SCAN_PRICE_LOOKUP_MAX: '90',
+      WALLET_SCAN_DUST_USD: '0.5',
+      WALLET_SCAN_DEADLINE_MS: '12000',
+    });
+    expect(config.walletDailyCreditBudget).toBe(2_500);
+    expect(config.wallet).toEqual({
+      ...DEFAULT_SOLANA_DATA_CONFIG.wallet,
+      maxAccounts: 800,
+      maxTokens: 15,
+      maxTokensNoKey: 5,
+      priceLookupMax: 90,
+      dustUsd: 0.5,
+      deadlineMs: 12_000,
+    });
+    expect(resolveSolanaDataConfig({ wallet: { dustUsd: 2 } }).wallet).toEqual({ ...DEFAULT_SOLANA_DATA_CONFIG.wallet, dustUsd: 2 });
+    expect(() => loadSolanaDataConfig({ WALLET_SCAN_MAX_ACCOUNTS: '0' })).toThrow('WALLET_SCAN_MAX_ACCOUNTS');
+  });
 });

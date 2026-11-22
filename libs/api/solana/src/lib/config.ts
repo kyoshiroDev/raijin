@@ -31,6 +31,13 @@ export interface SolanaDataConfig {
    * (ARCHITECTURE.md §11.4 : 12 000 sur 22 000, les analyses à la demande gardent au moins 10 000).
    */
   readonly watchDailyCreditBudget: number;
+  /**
+   * Plafond journalier de la voie `wallet` (scans de wallet), compté dans le budget global
+   * (ARCHITECTURE.md §12.3 : 3 000 sur 22 000).
+   */
+  readonly walletDailyCreditBudget: number;
+  /** Scan de wallet (ARCHITECTURE.md §12, variables `WALLET_SCAN_*` de docs/ENV.md). */
+  readonly wallet: WalletScanConfig;
   /** Durée de cache des propriétaires de comptes de token et de leur programme (passe holders, s). */
   readonly holderOwnersCacheTtlSeconds: number;
   readonly maxResponseBytes: number;
@@ -59,6 +66,29 @@ export interface SolanaDataConfig {
   };
 }
 
+export interface WalletScanConfig {
+  /** Au-delà de ce nombre de comptes de tokens (SPL + Token-2022) : `WalletTooLargeError`. */
+  readonly maxAccounts: number;
+  /** Tokens analysés par scan avec clé Helius (les suivants : `over_limit`). */
+  readonly maxTokens: number;
+  /** Tokens analysés par scan sans clé Helius (RPC public à 1 req/s). */
+  readonly maxTokensNoKey: number;
+  /** Mints dont le prix est demandé à DexScreener (lots de 30) ; au-delà, prix inconnu. */
+  readonly priceLookupMax: number;
+  /** Valeur connue sous ce seuil (USD) : poussière, non analysée. Prix inconnu ≠ poussière. */
+  readonly dustUsd: number;
+  /** Échéance de `collectFactsLightBatch` (ms). */
+  readonly deadlineMs: number;
+  /** Délai d'un appel `getTokenAccountsByOwner` (réponse jusqu'à 2 Mo, lente sur le RPC public). */
+  readonly accountsTimeoutMs: number;
+  /** Cache des faits `light` par mint (s) ; partagé entre scans, indépendant de la version du moteur. */
+  readonly lightFactsCacheTtlSeconds: number;
+  /** Cache des faits `light` dégradés (source manquante) : plus court (s). */
+  readonly degradedLightFactsCacheTtlSeconds: number;
+  /** Cache des paires DexScreener lues pour les prix, réutilisées pour la liquidité (s). */
+  readonly pairsCacheTtlSeconds: number;
+}
+
 export const DEFAULT_SOLANA_DATA_CONFIG: SolanaDataConfig = {
   heliusRpcBaseUrl: 'https://mainnet.helius-rpc.com',
   publicRpcUrl: 'https://api.mainnet-beta.solana.com',
@@ -77,6 +107,19 @@ export const DEFAULT_SOLANA_DATA_CONFIG: SolanaDataConfig = {
   },
   heliusDailyCreditBudget: 22_000,
   watchDailyCreditBudget: 12_000,
+  walletDailyCreditBudget: 3_000,
+  wallet: {
+    maxAccounts: 1_000,
+    maxTokens: 20,
+    maxTokensNoKey: 8,
+    priceLookupMax: 150,
+    dustUsd: 1,
+    deadlineMs: 15_000,
+    accountsTimeoutMs: 10_000,
+    lightFactsCacheTtlSeconds: 600,
+    degradedLightFactsCacheTtlSeconds: 60,
+    pairsCacheTtlSeconds: 300,
+  },
   holderOwnersCacheTtlSeconds: 86_400,
   maxResponseBytes: 2_000_000,
   maxAttempts: 2,
@@ -95,11 +138,12 @@ export const DEFAULT_SOLANA_DATA_CONFIG: SolanaDataConfig = {
   cacheTtlSeconds: { tokenAge: 86_400, creator: 3_600, rugcheck: 300 },
 };
 
-/** Fusion profonde (limites et TTL) d'une configuration partielle. */
+/** Fusion profonde (limites, TTL et scan de wallet) d'une configuration partielle. */
 export function resolveSolanaDataConfig(
-  partial: Partial<Omit<SolanaDataConfig, 'limits' | 'cacheTtlSeconds'>> & {
+  partial: Partial<Omit<SolanaDataConfig, 'limits' | 'cacheTtlSeconds' | 'wallet'>> & {
     limits?: Partial<Record<UpstreamId, Partial<SourceLimits>>>;
     cacheTtlSeconds?: Partial<SolanaDataConfig['cacheTtlSeconds']>;
+    wallet?: Partial<WalletScanConfig>;
   } = {},
 ): SolanaDataConfig {
   const base = DEFAULT_SOLANA_DATA_CONFIG;
@@ -112,6 +156,7 @@ export function resolveSolanaDataConfig(
     ...partial,
     limits,
     cacheTtlSeconds: { ...base.cacheTtlSeconds, ...partial.cacheTtlSeconds },
+    wallet: { ...base.wallet, ...partial.wallet },
   };
 }
 
@@ -138,6 +183,13 @@ const envSchema = z.object({
   HELIUS_DAS_RPS: rateSchema.optional(),
   HELIUS_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).optional(),
   WATCH_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).optional(),
+  WALLET_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).optional(),
+  WALLET_SCAN_MAX_ACCOUNTS: z.coerce.number().int().min(1).max(5_000).optional(),
+  WALLET_SCAN_MAX_TOKENS: z.coerce.number().int().min(0).max(100).optional(),
+  WALLET_SCAN_MAX_TOKENS_NO_KEY: z.coerce.number().int().min(0).max(100).optional(),
+  WALLET_SCAN_PRICE_LOOKUP_MAX: z.coerce.number().int().min(0).max(1_000).optional(),
+  WALLET_SCAN_DUST_USD: z.coerce.number().min(0).max(1_000_000).optional(),
+  WALLET_SCAN_DEADLINE_MS: z.coerce.number().int().min(1_000).max(60_000).optional(),
   SOLANA_RPC_RPS: rateSchema.optional(),
 });
 
@@ -184,6 +236,15 @@ export function loadSolanaDataConfig(env: Readonly<Record<string, string | undef
     rugcheckBaseUrl: e.RUGCHECK_API_URL ?? base.rugcheckBaseUrl,
     heliusDailyCreditBudget: e.HELIUS_DAILY_CREDIT_BUDGET ?? base.heliusDailyCreditBudget,
     watchDailyCreditBudget: e.WATCH_DAILY_CREDIT_BUDGET ?? base.watchDailyCreditBudget,
+    walletDailyCreditBudget: e.WALLET_DAILY_CREDIT_BUDGET ?? base.walletDailyCreditBudget,
+    wallet: {
+      maxAccounts: e.WALLET_SCAN_MAX_ACCOUNTS ?? base.wallet.maxAccounts,
+      maxTokens: e.WALLET_SCAN_MAX_TOKENS ?? base.wallet.maxTokens,
+      maxTokensNoKey: e.WALLET_SCAN_MAX_TOKENS_NO_KEY ?? base.wallet.maxTokensNoKey,
+      priceLookupMax: e.WALLET_SCAN_PRICE_LOOKUP_MAX ?? base.wallet.priceLookupMax,
+      dustUsd: e.WALLET_SCAN_DUST_USD ?? base.wallet.dustUsd,
+      deadlineMs: e.WALLET_SCAN_DEADLINE_MS ?? base.wallet.deadlineMs,
+    },
     limits: {
       helius_rpc: { ratePerSecond: e.HELIUS_RPC_RPS ?? base.limits.helius_rpc.ratePerSecond },
       helius_das: { ratePerSecond: e.HELIUS_DAS_RPS ?? base.limits.helius_das.ratePerSecond },

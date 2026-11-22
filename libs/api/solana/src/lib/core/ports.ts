@@ -18,11 +18,12 @@ export interface Clock {
 }
 
 /**
- * Voie de crédits (ARCHITECTURE.md §11.4) : `interactive` = analyses à la demande ; `watch` = passes
- * de suivi (plafond propre `WATCH_DAILY_CREDIT_BUDGET`, compté aussi dans le budget global).
+ * Voie de crédits (ARCHITECTURE.md §11.4, §12.3) : `interactive` = analyses à la demande ; `watch` =
+ * passes de suivi (plafond propre `WATCH_DAILY_CREDIT_BUDGET`) ; `wallet` = scans de wallet (plafond
+ * propre `WALLET_DAILY_CREDIT_BUDGET`). Les voies plafonnées sont comptées aussi dans le budget global.
  */
-export type CreditLane = 'interactive' | 'watch';
-export const CREDIT_LANES: readonly CreditLane[] = ['interactive', 'watch'];
+export type CreditLane = 'interactive' | 'watch' | 'wallet';
+export const CREDIT_LANES: readonly CreditLane[] = ['interactive', 'watch', 'wallet'];
 
 /** Budget journalier de crédits Helius (compté dans Redis par l'API, en mémoire par défaut). */
 export interface CreditBudget {

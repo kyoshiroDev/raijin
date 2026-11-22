@@ -1,4 +1,4 @@
-import type { RiskReasonCode } from '@raijin/shared-contracts';
+import { ANALYSIS_CHECK_IDS, type AnalysisCheckId, type RiskReasonCode } from '@raijin/shared-contracts';
 import { RISK_ENGINE_VERSION } from './shared-risk-engine';
 
 /**
@@ -56,7 +56,23 @@ export interface RiskEngineConfig {
   readonly cautionScoreThreshold: number;
   /** Poids des signaux modérés (défaut 1). Les raisons critiques ne sont pas pondérées. */
   readonly reasonWeights: Readonly<Partial<Record<RiskReasonCode, number>>>;
+  /**
+   * Contrôles **non demandés** par le profil de collecte (règle D3, docs/SCORING.md) : sans donnée,
+   * ils sont « non évalués » et ne comptent pas pour D2. Vide par défaut (analyse complète). Le scan
+   * de wallet utilise `LIGHT_PROFILE_NOT_EVALUATED`. Les autorités mint / freeze (D1) sont refusées.
+   */
+  readonly notEvaluated: readonly AnalysisCheckId[];
 }
+
+/**
+ * Contrôles non demandés par le profil `light` (scan de wallet, ARCHITECTURE.md §12.4) : devis de
+ * vente Jupiter, historique du créateur, RugCheck. Les extensions Token-2022 qui bloquent la revente
+ * (non transférable, frais) restent évaluées : elles viennent du compte de mint.
+ */
+export const LIGHT_PROFILE_NOT_EVALUATED: readonly AnalysisCheckId[] = ['sell_simulation', 'creator_history', 'rugcheck'];
+
+/** Contrôles qui ne peuvent jamais être « non évalués » (règle D1 : verdict impossible sans eux). */
+const ALWAYS_EVALUATED: ReadonlySet<AnalysisCheckId> = new Set(['mint_authority', 'freeze_authority']);
 
 export const DEFAULT_RISK_ENGINE_CONFIG: RiskEngineConfig = {
   version: RISK_ENGINE_VERSION,
@@ -81,6 +97,7 @@ export const DEFAULT_RISK_ENGINE_CONFIG: RiskEngineConfig = {
     RUGCHECK_WARN: 0.25,
     FREEZE_AUTHORITY_KNOWN_ISSUER: 0.5,
   },
+  notEvaluated: [],
 };
 
 /** Fusionne une configuration partielle avec les valeurs par défaut et la valide. */
@@ -90,6 +107,11 @@ export function resolveRiskEngineConfig(partial: Partial<RiskEngineConfig> = {})
     ...partial,
     reasonWeights: { ...DEFAULT_RISK_ENGINE_CONFIG.reasonWeights, ...partial.reasonWeights },
   };
+  for (const id of config.notEvaluated) {
+    if (!(ANALYSIS_CHECK_IDS as readonly string[]).includes(id) || ALWAYS_EVALUATED.has(id)) {
+      throw new RangeError(`Contrôle non évaluable invalide : ${String(id)}.`);
+    }
+  }
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(config.version)) {
     throw new RangeError('Version du moteur invalide (semver attendu).');
   }

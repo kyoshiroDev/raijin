@@ -6,6 +6,7 @@ export {
   FIXTURES_DIR,
   createFixtureFetch,
   createFixtureSequence,
+  fixtureAddress,
   fixtureFiles,
   fixtureSequenceNames,
   loadAllFixtures,
@@ -16,3 +17,4 @@ export {
   type FixtureSequence,
   type RecordedCall,
 } from './lib/testing/fixture-fetch';
+export { WALLET_FIXTURE_ACCOUNTS, WALLET_FIXTURE_ADDRESSES } from './lib/testing/wallet-fixtures';

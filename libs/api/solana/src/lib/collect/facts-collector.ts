@@ -1,10 +1,9 @@
 import {
-  ANALYSIS_CHECK_IDS,
   RISK_FACTS_VERSION,
   riskFactsSchema,
   tokenMetadataSchema,
-  type AnalysisCheckId,
   type DataSourceId,
+  type AnalysisCheckId,
   type DataSourceRef,
   type RiskFacts,
   type TokenMetadata,
@@ -20,8 +19,8 @@ import type { SolanaDataConfig } from '../config';
 import { TokenNotFoundError, TokenUnanalyzableError, UpstreamError, type UpstreamErrorKind } from '../core/errors';
 import type { CacheStore, Clock, CreditLane, SolanaLogger } from '../core/ports';
 import { KNOWN_AMM_PROGRAMS, KNOWN_EXCLUDED_OWNERS, USDC_MINT, WSOL_MINT } from '../known-accounts';
-import { sourceRef } from '../source-links';
 import {
+  buildCheckSources,
   buildCreatorFacts,
   buildLiquidityFacts,
   buildMintAccountFacts,
@@ -86,7 +85,7 @@ export interface FactsCollectorDeps {
 }
 
 /** Suivi des appels par source pour le rapport final. */
-class SourceTracker {
+export class SourceTracker {
   private readonly reports = new Map<DataSourceId, { status: SourceStatus; latencyMs: number | null; errorKind: UpstreamErrorKind | null }>();
 
   constructor(private readonly clock: Clock) {}
@@ -133,7 +132,7 @@ class SourceTracker {
   }
 }
 
-function cleanName(value: unknown, max: number): string | null {
+export function cleanName(value: unknown, max: number): string | null {
   const cleaned = sanitizeUntrustedText(typeof value === 'string' ? value : '', max);
   return cleaned === '' ? null : cleaned;
 }
@@ -243,7 +242,7 @@ export class FactsCollector {
       });
 
       const rpcSource: DataSourceId = mintResult.servedBy;
-      const checkSources = this.checkSources(mint, {
+      const checkSources = buildCheckSources(mint, {
         rpc: rpcSource,
         holders: holdersResult.source ?? rpcSource,
         metadata: metadata.source,
@@ -442,29 +441,6 @@ export class FactsCollector {
       if (cleaned !== null) return cleaned;
     }
     return null;
-  }
-
-  private checkSources(
-    mint: string,
-    used: { rpc: DataSourceId; holders: DataSourceId; metadata: DataSourceId; lpFromRugcheck: boolean; light: boolean },
-  ): Record<AnalysisCheckId, DataSourceRef[]> {
-    const ref = (id: DataSourceId) => sourceRef(id, mint);
-    const liquidity: DataSourceRef[] = [ref('dexscreener')];
-    if (!used.light) liquidity.push(ref('geckoterminal'));
-    if (used.lpFromRugcheck) liquidity.push(ref('rugcheck'));
-    const map: Record<AnalysisCheckId, DataSourceRef[]> = {
-      mint_authority: [ref(used.rpc)],
-      freeze_authority: [ref(used.rpc)],
-      liquidity,
-      holder_concentration: [ref(used.holders)],
-      sell_simulation: [ref('jupiter'), ref('dexscreener')],
-      metadata_mutable: [ref(used.metadata)],
-      token_age: [ref(used.rpc), ref('dexscreener')],
-      creator_history: [ref('rugcheck')],
-      rugcheck: [ref('rugcheck')],
-    };
-    // Ordre garanti identique à ANALYSIS_CHECK_IDS.
-    return Object.fromEntries(ANALYSIS_CHECK_IDS.map((id) => [id, map[id]])) as Record<AnalysisCheckId, DataSourceRef[]>;
   }
 
   private async readCache<T>(key: string): Promise<T | null> {

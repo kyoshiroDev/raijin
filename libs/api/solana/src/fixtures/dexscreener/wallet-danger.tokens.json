@@ -1,0 +1,162 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "dexscreener",
+  "synthetic": true,
+  "note": "Prix du wallet Danger : aucun pool pour le token « mint actif ».",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/v1/solana/9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRew,BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi,EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "params": {}
+  },
+  "status": 200,
+  "body": [
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "5akzFEhZaHBxRPvCB6262qhvtnKRMcQvjSTMJfvdAgtR",
+      "labels": [
+        "CPMM"
+      ],
+      "baseToken": {
+        "address": "9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRew",
+        "name": "Raijin Fixture Safe",
+        "symbol": "RFSAFE"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.0018",
+      "priceUsd": "0.25",
+      "liquidity": {
+        "usd": 850000,
+        "base": 1700000,
+        "quote": 3000
+      },
+      "pairCreatedAt": 1709251200000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "DJNtGuBGEQiUCWE8F981M2C3ZghZt2XLD8f2sQdZ6rsZ",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01439",
+      "priceUsd": "0.9968",
+      "liquidity": {
+        "base": 121763,
+        "quote": 29936,
+        "usd": 2195066.34
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "4QU2NpRaqmKMvPSwVKQDeW4V6JFEKJdkzbzdauumD9qN",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01438",
+      "priceUsd": "0.9967",
+      "liquidity": {
+        "base": 10328,
+        "quote": 2804.6135,
+        "usd": 204570.88
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "AdmoAEv4VKu2nUwYt8Ps59SoPnF53yFxQgZD6sFwMZF5",
+      "labels": [
+        "DLMM Pro"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01438",
+      "priceUsd": "0.9967",
+      "liquidity": {
+        "base": 47631,
+        "quote": 747.182,
+        "usd": 99233.85
+      },
+      "pairCreatedAt": 1795277161000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002104",
+      "priceUsd": "1.0021",
+      "liquidity": {
+        "base": 27243,
+        "quote": 1816394,
+        "usd": 1843695.14
+      },
+      "pairCreatedAt": 1723699296000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "4fuUiYxTQ6QCrdSq9ouBYcTM7bqSwYTSyLueGZLTy4T4",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002001",
+      "priceUsd": "1.0020",
+      "liquidity": {
+        "base": 8170.7682,
+        "quote": 597501,
+        "usd": 605688.18
+      },
+      "pairCreatedAt": 1669603219000
+    }
+  ]
+}

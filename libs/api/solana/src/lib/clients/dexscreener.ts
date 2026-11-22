@@ -29,6 +29,12 @@ const pairSchema = z.object({
 export type DexPair = z.infer<typeof pairSchema>;
 
 const pairsArraySchema = lenientArray(pairSchema, 200);
+
+/** Paires relues depuis un cache (Redis de l'hôte) : revalidées comme une réponse externe. */
+export function parseCachedPairs(value: unknown): DexPair[] | null {
+  const parsed = pairsArraySchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 const pairLookupSchema = z.object({ pairs: lenientArray(pairSchema, 30).nullable() });
 
 /** Taille maximale d'un lot DexScreener (`tokens/v1` et `latest/dex/pairs` : 30 adresses). */

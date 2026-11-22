@@ -35,15 +35,44 @@ const full = await solana.collectFacts(mint, { profile: 'full', lane: 'watch' })
 
 Aucune de ces fonctions ne lève : une panne donne un groupe `null` (jamais de fausse alerte). `CreditBudget.tryConsume(
 credits, lane)` est appelé à **chaque tentative** (rejeux compris) ; `MemoryCreditBudget(global, clock, { watch })`
-applique le plafond de voie (`WATCH_DAILY_CREDIT_BUDGET`, 12 000 par défaut), compté aussi dans le global. Une réponse
+applique les plafonds de voie (`WATCH_DAILY_CREDIT_BUDGET`, 12 000 ; `WALLET_DAILY_CREDIT_BUDGET`, 3 000), comptés aussi
+dans le global. Une réponse
 `too_large` n'ouvre pas le disjoncteur (propriété du compte, pas une panne).
+
+## Scan de wallet (phase 5, ARCHITECTURE.md §12)
+
+```ts
+// 1. Avoirs (voie `wallet`, 3 crédits avec clé) : lève WalletInvalidError | WalletIsTokenError | WalletTooLargeError | UpstreamError
+const holdings = await solana.listWalletHoldings(address, { signal }); // tokens triés + selection, delegations, summary, credits
+// 2. Verdicts rapides des mints `analyze` absents du cache de l'hôte (ne lève pas)
+const batch = await solana.collectFactsLightBatch(mintsToAnalyze, { signal }); // entries ok | unavailable(reason), credits
+// 3. Moteur avec la règle D3 (docs/SCORING.md §3)
+const engine = createRiskEngine({ notEvaluated: LIGHT_PROFILE_NOT_EVALUATED });
+```
+
+- Nature (`getAccountInfo` jsonParsed) : mint → `WALLET_IS_TOKEN`, programme ou compte de token → `WALLET_INVALID`,
+  compte absent → wallet sans SOL (scan normal). Adresses connues refusées sans appel.
+- Comptes : `getTokenAccountsByOwner` jsonParsed × 2 (SPL, Token-2022), délai 10 s ; délégations (`delegate`,
+  `delegatedAmount`) sur **tous** les comptes, vides et NFT compris ; > `maxAccounts` (1 000) ou > 2 Mo →
+  `WALLET_TOO_LARGE` avant tout prix. Vides (sans délégation) et NFT probables (0 décimale, solde 1) comptés.
+- Prix : DexScreener `tokens/v1` par lots de 30 (150 mints au plus, ordre trié) ; poussière si prix connu et valeur
+  < 1 USD ; **prix inconnu ≠ poussière**. Tri : valeur décroissante, puis inconnue ; 20 analysés (8 sans clé).
+- Faits `light` : cache `solana:light-facts:v1:<mint>` (600 s, 60 s si dégradé, revalidé au rejeu), puis lots triés :
+  `getMultipleAccounts` (100), DAS `getAssetBatch` (1 000, 10 crédits), paires (cache du scan 300 s, sinon `tokens/v1`),
+  `getTokenLargestAccounts` par mint, propriétaires et programmes groupés par 100 (cache 24 h partagé avec les suivis).
+  Sans clé ou budget refusé : ni DAS ni holders. Motifs `unavailable` : `upstream`, `timeout` (échéance 15 s ou signal
+  de l'hôte), `budget`, `unanalyzable`.
+- Coût mesuré (chaîne simulée, `wallet-collector.spec.ts`) : 20 tokens à froid = 3 + 39 = **42 crédits** ; wallet
+  re-scanné avec verdicts en cache = 3. Fixtures : `WALLET_FIXTURE_ADDRESSES` de `@raijin/api-solana/testing`
+  (générées par `scripts/build-wallet-fixtures.mjs`).
 
 ## Sources et limites (vérifiées le 22/11/2026)
 
 | Source | Routes | Limite retenue (configurable) | Doc |
 |---|---|---|---|
 | Helius RPC | `getAccountInfo`, `getTokenLargestAccounts`, `getMultipleAccounts`, `getSignaturesForAddress` | 7 req/s (Free : 10 partagés avec le banc), 1 crédit | https://www.helius.dev/docs/billing/rate-limits |
-| Helius DAS | `getAsset` | 1,5 req/s (Free : 2), 10 crédits | https://www.helius.dev/docs/billing/credits |
+| Helius RPC (scan de wallet) | `getTokenAccountsByOwner` (jsonParsed, filtre `programId`) | même file, 1 crédit | https://www.helius.dev/docs/api-reference/rpc/http/gettokenaccountsbyowner |
+| Helius DAS | `getAsset`, `getAssetBatch` (≤ 1 000 ids) | 1,5 req/s (Free : 2), 10 crédits l'appel | https://www.helius.dev/docs/billing/credits |
 | RPC public | mêmes méthodes RPC (sans clé) | 1 req/s ; `getTokenLargestAccounts` refusé (429) | https://solana.com/docs/references/clusters |
 | DexScreener | `token-pairs/v1/solana/{mint}`, `latest/dex/pairs/solana/{pairs}`, `tokens/v1/solana/{mints}` (≤ 30, une paire principale par token, réserves `liquidity.base/quote`) | 4 req/s (doc : 300/min) | https://docs.dexscreener.com/api/reference |
 | GeckoTerminal | `networks/solana/tokens/{mint}/pools` | 10/min | https://www.geckoterminal.com/dex-api |

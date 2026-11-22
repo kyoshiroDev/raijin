@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { DEFAULT_SOLANA_DATA_CONFIG, type SolanaDataConfig } from '../config';
@@ -99,6 +100,72 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/** Adresse base58 déterministe (32 octets de SHA-256 d'un libellé « raijin:fixture:… »). */
+export function fixtureAddress(label: string): string {
+  const bytes = createHash('sha256').update(`raijin:fixture:${label}`).digest();
+  let value = BigInt(`0x${bytes.toString('hex')}`);
+  let out = '';
+  while (value > 0n) {
+    out = (BASE58[Number(value % 58n)] as string) + out;
+    value /= 58n;
+  }
+  for (const byte of bytes) {
+    if (byte !== 0) break;
+    out = `1${out}`;
+  }
+  return out;
+}
+
+interface SyntheticTokenAccounts {
+  readonly $synthetic: 'tokenAccounts';
+  readonly count: number;
+  readonly owner: string;
+  readonly programId: string;
+  readonly mint: string;
+  readonly decimals: number;
+  readonly seed: string;
+}
+
+function isSynthetic(value: unknown): value is SyntheticTokenAccounts {
+  return typeof value === 'object' && value !== null && (value as { $synthetic?: unknown }).$synthetic === 'tokenAccounts';
+}
+
+/**
+ * Corps `{ result: { value: { $synthetic: 'tokenAccounts', count, … } } }` : liste développée en
+ * `count` comptes jsonParsed déterministes (wallet hors normes, sans fichier de plusieurs Mo).
+ */
+function expandSynthetic(body: unknown): unknown {
+  const result = (body as { result?: { value?: unknown } } | null)?.result;
+  if (!result || !isSynthetic(result.value)) return body;
+  const spec = result.value;
+  const value = Array.from({ length: Math.min(spec.count, 5_000) }, (_, index) => ({
+    pubkey: fixtureAddress(`${spec.seed}:acct:${index}`),
+    account: {
+      data: {
+        parsed: {
+          info: {
+            isNative: false,
+            mint: spec.mint,
+            owner: spec.owner,
+            state: 'initialized',
+            tokenAmount: { amount: String(index + 1), decimals: spec.decimals, uiAmount: (index + 1) / 10 ** spec.decimals, uiAmountString: String((index + 1) / 10 ** spec.decimals) },
+          },
+          type: 'account',
+        },
+        program: 'spl-token',
+        space: 165,
+      },
+      executable: false,
+      lamports: 2039280,
+      owner: spec.programId,
+      space: 165,
+    },
+  }));
+  return { ...(body as object), result: { ...result, value } };
+}
+
 function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -123,7 +190,7 @@ export function createFixtureFetch(
     if (url.startsWith(config.heliusRpcBaseUrl) || url.startsWith(config.publicRpcUrl)) {
       const helius = url.startsWith(config.heliusRpcBaseUrl);
       const payload = JSON.parse(String(init?.body)) as { method: string; params: unknown };
-      const source = helius ? (payload.method === 'getAsset' ? 'helius_das' : 'helius_rpc') : 'solana_rpc';
+      const source = helius ? (payload.method.startsWith('getAsset') ? 'helius_das' : 'helius_rpc') : 'solana_rpc';
       calls.push({ source, route: payload.method });
       if (override) return override;
       const order = helius ? ['helius', 'solana-rpc'] : ['solana-rpc'];
@@ -131,7 +198,7 @@ export function createFixtureFetch(
         const match = fixtures.find(
           (fixture) => fixture.source === wanted && fixture.request.rpcMethod === payload.method && sameJson(fixture.request.params, payload.params),
         );
-        if (match) return jsonResponse(match.status, match.body);
+        if (match) return jsonResponse(match.status, expandSynthetic(match.body));
       }
       throw new TypeError(`fetch failed ${url}`);
     }

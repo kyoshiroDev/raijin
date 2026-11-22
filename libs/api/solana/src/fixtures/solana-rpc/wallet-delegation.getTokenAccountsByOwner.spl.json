@@ -1,0 +1,105 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Délégation totale (100 RFSAFE) et délégation sur un compte USDC vide.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenAccountsByOwner",
+    "params": [
+      "HeESQ5wM9nFoXTgiNY2XWpK5PtiUfQ7kTvk3kk6ksZwf",
+      {
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": [
+        {
+          "pubkey": "5NNPv6pui5g1t33e1NXFT3HFpJiGXKsi8AXiYX9dHHse",
+          "account": {
+            "data": {
+              "parsed": {
+                "info": {
+                  "isNative": false,
+                  "mint": "9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRew",
+                  "owner": "HeESQ5wM9nFoXTgiNY2XWpK5PtiUfQ7kTvk3kk6ksZwf",
+                  "state": "initialized",
+                  "tokenAmount": {
+                    "amount": "400000000",
+                    "decimals": 6,
+                    "uiAmount": 400,
+                    "uiAmountString": "400"
+                  },
+                  "delegate": "FbpneW1TW5P8ZULWwPxaRqxKgWiMJ48sT6buhkqgfTAT",
+                  "delegatedAmount": {
+                    "amount": "400000000",
+                    "decimals": 6,
+                    "uiAmount": 400,
+                    "uiAmountString": "400"
+                  }
+                },
+                "type": "account"
+              },
+              "program": "spl-token",
+              "space": 165
+            },
+            "executable": false,
+            "lamports": 2039280,
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "rentEpoch": 18446744073709552000,
+            "space": 165
+          }
+        },
+        {
+          "pubkey": "3waiZUXjXAnXLNJRCN5uAwUdnuBA3DdZxzaP1TNKqV5z",
+          "account": {
+            "data": {
+              "parsed": {
+                "info": {
+                  "isNative": false,
+                  "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                  "owner": "HeESQ5wM9nFoXTgiNY2XWpK5PtiUfQ7kTvk3kk6ksZwf",
+                  "state": "initialized",
+                  "tokenAmount": {
+                    "amount": "0",
+                    "decimals": 6,
+                    "uiAmount": 0,
+                    "uiAmountString": "0"
+                  },
+                  "delegate": "7Td8GgrVo4L2VuRASS9NVNTQaAzsh2NY5jzvjiqaExgq",
+                  "delegatedAmount": {
+                    "amount": "25000000",
+                    "decimals": 6,
+                    "uiAmount": 25,
+                    "uiAmountString": "25"
+                  }
+                },
+                "type": "account"
+              },
+              "program": "spl-token",
+              "space": 165
+            },
+            "executable": false,
+            "lamports": 2039280,
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "rentEpoch": 18446744073709552000,
+            "space": 165
+          }
+        }
+      ]
+    }
+  }
+}

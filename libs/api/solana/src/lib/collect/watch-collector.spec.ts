@@ -102,7 +102,8 @@ describe('fixtures en séquence', () => {
   it('scénarios disponibles, étapes ordonnées, exclues des fixtures de base', () => {
     expect(fixtureSequenceNames()).toEqual(['watch-holder-sold', 'watch-lp-removed', 'watch-mint-reactivated']);
     expect(loadFixtureSequence('watch-lp-removed')).toHaveLength(3);
-    expect(loadAllFixtures().some((fixture) => fixture.request.path?.startsWith('/tokens/v1/'))).toBe(false);
+    // Les lots `tokens/v1` des séquences ne sont pas dans les fixtures de base (celles du scan de wallet, si).
+    expect(loadAllFixtures().some((fixture) => fixture.request.path === '/tokens/v1/solana/3G8wFjRxfaPpi9t3CXrZY1JAd4CZFfZoPuZU1ggYif6i')).toBe(false);
     expect(() => loadFixtureSequence('inconnu')).toThrow('Scénario de fixtures inconnu');
   });
 

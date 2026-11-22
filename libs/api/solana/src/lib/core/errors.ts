@@ -88,3 +88,40 @@ export function toUpstreamError(source: UpstreamId, error: unknown): UpstreamErr
   if (error instanceof UpstreamError) return error;
   return new UpstreamError(source, 'network');
 }
+
+/**
+ * L'adresse n'est pas un wallet (`WALLET_INVALID`, 400) : programme exécutable, compte de token
+ * (ou multisig SPL), programme ou compte système connu, compte de plus de 2 Mo, base58 invalide.
+ */
+export class WalletInvalidError extends Error {
+  override readonly name = 'WalletInvalidError';
+  readonly code = 'WALLET_INVALID' as const;
+
+  constructor(readonly reason: 'malformed' | 'program' | 'token_account' | 'oversized_account') {
+    super('Adresse de wallet invalide.');
+  }
+}
+
+/** L'adresse est celle d'un mint (`WALLET_IS_TOKEN`, 422) : le front propose d'analyser le token. */
+export class WalletIsTokenError extends Error {
+  override readonly name = 'WalletIsTokenError';
+  readonly code = 'WALLET_IS_TOKEN' as const;
+
+  constructor() {
+    super('Adresse de token, pas de wallet.');
+  }
+}
+
+/**
+ * Plus de `wallet.maxAccounts` comptes de tokens, ou liste de plus de 2 Mo (`WALLET_TOO_LARGE`, 422).
+ * Levée avant toute collecte coûteuse (prix, verdicts).
+ */
+export class WalletTooLargeError extends Error {
+  override readonly name = 'WalletTooLargeError';
+  readonly code = 'WALLET_TOO_LARGE' as const;
+
+  /** `accountCount` : nombre de comptes lus, `null` si la réponse dépassait la taille maximale. */
+  constructor(readonly accountCount: number | null) {
+    super('Wallet trop volumineux pour un scan.');
+  }
+}

@@ -1,0 +1,275 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Programmes des propriétaires : un coffre Raydium CPMM (exclu), des wallets système.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "27rBX73212q9YsGN75DspXQQrH7YJwDmLarGhzg17mX5",
+        "2u7KcozHjvmgE2Qc3mJqZkN1Ttvckiz5NxmDEgdSWU2m",
+        "47ow4HrrxqvwYKYKp7qb1gxVm2YLDCsy4R9Rb4WvpvWi",
+        "4GRk17junxQLbTRkvZHkZQtare8WgPi3UNdRBLSxPTKr",
+        "5Fmb26dm3FhDxqErsXwRPUSUNc27zLmYmRJopZ5B3Bx9",
+        "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+        "5ndS2WKUx6X2y6pQs2LuCYyHY6tAabDS1DAfV8Vuvax",
+        "5vuY3uqygE1QHuAjRLsfNPmG6raP6rAucHmeBrgndSq8",
+        "6uVWPkp7ah2UdB84iQzx1kS96zUjGiDMoDj1MFhPmaeC",
+        "71GEDbbHCkjFfti4UeN5djKm7xfLvpidPm3ab9kdvH7U",
+        "8n1jCtUZWnejpdss2ejibq8xrgohy3mT8jofutetbfMc",
+        "AGN8PWP9XyzDrByD623orBFg2Z2bWzSEDdaMozbChwFt",
+        "BxMTfXqLt6gMwizFU7UPG6mboT181KnptjHn8b3KrBqi",
+        "C2fYkmrG51CEZEuYEevPDyyU2jtzLCF7NgoNg5r5TbPc",
+        "C6d4Cpmgbup6zxZNxbyppdqNJ9Fwtgb8eSPGi2QBXN9k",
+        "EqKpjNSModUgwrsrnNe7vyehRFtnK49WDPZGd9dE42bh",
+        "FrJ8rvavNMqubWQHqwh9wgrCgtWMarPJEx3Kkd7wBqub",
+        "H7e9xPVkdoniEmsK6J2KedeNEJdyxR33XkSjqR6vkjT",
+        "HvZAwYk4VEuCMyW5W1cDEysoKcag12FQ964P8BwNC7WX",
+        "JAuPMsjxGM37UVXv85oBemGZgyrj3LwhUK1qKGCD7Kam"
+      ],
+      {
+        "encoding": "base64",
+        "dataSlice": {
+          "offset": 0,
+          "length": 0
+        },
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": [
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 10000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        }
+      ]
+    }
+  }
+}

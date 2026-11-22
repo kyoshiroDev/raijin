@@ -31,7 +31,7 @@ export class MemoryCacheStore implements CacheStore {
 
 /**
  * Budget journalier en mémoire (jour UTC), propre au processus : plafond global et plafonds
- * optionnels par voie (la voie `watch` est comptée dans les deux).
+ * optionnels par voie (les voies `watch` et `wallet` sont comptées dans les deux).
  */
 export class MemoryCreditBudget implements CreditBudget {
   private day = '';
@@ -58,5 +58,33 @@ export class MemoryCreditBudget implements CreditBudget {
     this.used += credits;
     this.usedByLane.set(lane, laneUsed + credits);
     return true;
+  }
+}
+
+/**
+ * Compteur de crédits d'une opération (un scan de wallet) posé sur le budget partagé : chaque
+ * réservation acceptée est additionnée, chaque refus compté (budget du jour ou de la voie épuisé).
+ */
+export class MeteredCreditBudget implements CreditBudget {
+  private consumed = 0;
+  private refusals = 0;
+
+  constructor(private readonly inner: CreditBudget) {}
+
+  /** Crédits Helius effectivement réservés pendant l'opération. */
+  get credits(): number {
+    return this.consumed;
+  }
+
+  /** Réservations refusées (le budget était épuisé au moins une fois). */
+  get refused(): number {
+    return this.refusals;
+  }
+
+  async tryConsume(credits: number, lane: CreditLane): Promise<boolean> {
+    const accepted = await this.inner.tryConsume(credits, lane);
+    if (accepted) this.consumed += credits;
+    else this.refusals += 1;
+    return accepted;
   }
 }

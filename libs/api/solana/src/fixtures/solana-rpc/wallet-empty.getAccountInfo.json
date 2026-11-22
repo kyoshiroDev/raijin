@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Wallet synthétique sans SOL : compte absent (scan normal, résultat vide).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "54SpU9vgpM99H5qc91upiTYXe3i7gQ2RM78BHZoTDayp",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": null
+    }
+  }
+}

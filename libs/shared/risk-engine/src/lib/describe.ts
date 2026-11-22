@@ -60,29 +60,73 @@ export function summarizeCheck(outcome: RiskCheckOutcome): string {
   return first === undefined ? OK_SENTENCES[outcome.id] : REASON_SENTENCES[first];
 }
 
+/** Libellés courts des contrôles non évalués (phrase « contrôle rapide »). */
+const NOT_EVALUATED_LABELS: Readonly<Record<AnalysisCheckId, string>> = {
+  mint_authority: 'autorité de mint',
+  freeze_authority: 'autorité de freeze',
+  liquidity: 'liquidité',
+  holder_concentration: 'concentration',
+  sell_simulation: 'revente (honeypot)',
+  metadata_mutable: 'métadonnées',
+  token_age: 'âge',
+  creator_history: 'créateur',
+  rugcheck: 'RugCheck',
+};
+
+/** Longueur maximale d'une explication (contrat `walletTokenAssessmentSchema.explanation`, analyse). */
+export const EXPLANATION_MAX_LENGTH = 280;
+
+export interface ExplainOptions {
+  /**
+   * Contrôles non demandés par le profil (règle D3, `LIGHT_PROFILE_NOT_EVALUATED` pour le scan de
+   * wallet) : ils ne sont pas annoncés « indisponibles » et la phrase précise « contrôle rapide ».
+   */
+  readonly notEvaluated?: readonly AnalysisCheckId[];
+}
+
+function listFr(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} et ${items[items.length - 1] as string}`;
+}
+
 /**
  * Phrase d'explication du verdict (280 caractères max). Le rappel « aucun signal détecté ne veut
  * pas dire sans risque » (`SAFE_VERDICT_REMINDER`) et la mention « pas un conseil en
- * investissement » sont affichés à part par l'interface.
+ * investissement » sont affichés à part par l'interface. Avec `notEvaluated` (règle D3), la phrase
+ * se termine par « Contrôle rapide (6/9) : … non évalués. » : un Sain rapide ne dit rien du honeypot.
  */
-export function explainVerdict(assessment: RiskAssessment): string {
-  const unavailable = assessment.checks.filter((check) => check.status === 'unavailable').length;
+export function explainVerdict(assessment: RiskAssessment, options: ExplainOptions = {}): string {
+  const skipped = new Set(options.notEvaluated ?? []);
+  const missing = assessment.checks.filter((check) => check.status === 'unavailable');
+  const notEvaluated = missing.filter((check) => skipped.has(check.id));
+  const unavailable = missing.length - notEvaluated.length;
   const unavailableNote =
     unavailable > 0 ? ` ${unavailable} contrôle${unavailable > 1 ? 's' : ''} indisponible${unavailable > 1 ? 's' : ''}.` : '';
+  const lightNote =
+    skipped.size === 0
+      ? ''
+      : notEvaluated.length === 0
+        ? ` Contrôle rapide (${assessment.checks.length - missing.length}/${assessment.checks.length}).`
+        : ` Contrôle rapide (${assessment.checks.length - missing.length}/${assessment.checks.length}) : ${listFr(
+            notEvaluated.map((check) => NOT_EVALUATED_LABELS[check.id]),
+          )} non évalués.`;
 
+  let sentence: string;
   if (assessment.verdict === 'danger') {
     const critical = assessment.reasons.find((reason) => reason.critical);
-    const sentence = critical ? REASON_SENTENCES[critical.code] : '';
-    return `Signal critique détecté. ${sentence}`.trim();
-  }
-  if (assessment.verdict === 'warn') {
+    sentence = `Signal critique détecté. ${critical ? REASON_SENTENCES[critical.code] : ''}`.trim();
+  } else if (assessment.verdict === 'warn') {
     const warnings = assessment.checks.filter((check) => check.status === 'warn').length;
-    if (warnings === 0) {
-      return `Trop de contrôles n'ont pas pu être vérifiés pour conclure.${unavailableNote}`;
-    }
-    return `${warnings} contrôle${warnings > 1 ? 's' : ''} demande${warnings > 1 ? 'nt' : ''} ton attention, sans signal critique.${unavailableNote}`;
+    sentence =
+      warnings === 0
+        ? `Trop de contrôles n'ont pas pu être vérifiés pour conclure.${unavailableNote}`
+        : `${warnings} contrôle${warnings > 1 ? 's' : ''} demande${warnings > 1 ? 'nt' : ''} ton attention, sans signal critique.${unavailableNote}`;
+  } else {
+    sentence = `Aucun signal critique ni modéré sur les contrôles disponibles.${unavailableNote}`;
   }
-  return `Aucun signal critique ni modéré sur les contrôles disponibles.${unavailableNote}`;
+  const full = `${sentence}${lightNote}`;
+  // Garde-fou du contrat : la phrase du verdict d'abord, la note « contrôle rapide » coupée au besoin.
+  return full.length <= EXPLANATION_MAX_LENGTH ? full : `${full.slice(0, EXPLANATION_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 function round(value: number, digits = 2): number {

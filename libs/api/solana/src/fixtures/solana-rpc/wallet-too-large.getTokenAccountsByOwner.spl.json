@@ -1,0 +1,40 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "1 001 comptes SPL : au-delà du plafond de 1 000 (WALLET_TOO_LARGE).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenAccountsByOwner",
+    "params": [
+      "53Bmgioqf3gPGEKErmJtVaJrV8SoDf52nPVzeNALMaVW",
+      {
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      },
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": {
+        "$synthetic": "tokenAccounts",
+        "count": 1001,
+        "owner": "53Bmgioqf3gPGEKErmJtVaJrV8SoDf52nPVzeNALMaVW",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "mint": "G4dvPSMphCMMLKRji4hcz9jmQf4WXSiTqNXXxEwYM3TY",
+        "decimals": 6,
+        "seed": "too-large"
+      }
+    }
+  }
+}

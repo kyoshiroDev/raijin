@@ -1,0 +1,39 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Wallet synthétique : compte système (SOL seulement).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "HeESQ5wM9nFoXTgiNY2XWpK5PtiUfQ7kTvk3kk6ksZwf",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": {
+        "data": [
+          "",
+          "base64"
+        ],
+        "executable": false,
+        "lamports": 1250000000,
+        "owner": "11111111111111111111111111111111",
+        "rentEpoch": 18446744073709552000,
+        "space": 0
+      }
+    }
+  }
+}

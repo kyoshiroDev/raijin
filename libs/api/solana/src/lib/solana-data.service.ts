@@ -14,6 +14,13 @@ import {
   type PoolsBatchEntry,
 } from './collect/watch-collector';
 import type { HoldersSnapshot } from '@raijin/shared-contracts';
+import {
+  WalletCollector,
+  type LightFactsBatch,
+  type LightFactsBatchOptions,
+  type WalletHoldings,
+  type WalletHoldingsOptions,
+} from './collect/wallet-collector';
 import { resolveSolanaDataConfig, type SolanaDataConfig, type SolanaDataConfigInput } from './config';
 import type { UpstreamId } from './core/errors';
 import { MemoryCacheStore, MemoryCreditBudget } from './core/memory';
@@ -52,6 +59,7 @@ export class SolanaDataService {
   /** Même collecteur, crédits sur la voie `watch` (passe complète des suivis). */
   private readonly watchFactsCollector: FactsCollector;
   private readonly watchCollector: WatchCollector;
+  private readonly walletCollector: WalletCollector;
   private readonly dexscreener: DexScreenerClient;
   private readonly gates: ReadonlyMap<UpstreamId, UpstreamGate>;
   private readonly heliusKey: string | null;
@@ -63,7 +71,11 @@ export class SolanaDataService {
     const logger = options.logger ?? SILENT_LOGGER;
     const fetchFn: FetchLike = options.fetch ?? ((input, init) => fetch(input, init));
     const budget =
-      options.creditBudget ?? new MemoryCreditBudget(config.heliusDailyCreditBudget, clock, { watch: config.watchDailyCreditBudget });
+      options.creditBudget ??
+      new MemoryCreditBudget(config.heliusDailyCreditBudget, clock, {
+        watch: config.watchDailyCreditBudget,
+        wallet: config.walletDailyCreditBudget,
+      });
     const cache = options.cache ?? new MemoryCacheStore(clock);
     // Clé gardée dans une propriété privée, utilisée uniquement pour construire l'URL au moment de l'appel.
     this.heliusKey = options.heliusApiKey ?? null;
@@ -135,6 +147,16 @@ export class SolanaDataService {
     const watchRpc = rpc.withLane('watch');
     this.watchFactsCollector = new FactsCollector({ ...collectorDeps, rpc: watchRpc, das: das.withLane('watch') });
     this.watchCollector = new WatchCollector({ config, rpc: watchRpc, dexscreener: this.dexscreener, cache, clock, logger });
+    this.walletCollector = new WalletCollector({
+      config,
+      rpc: rpc.withLane('wallet'),
+      das: das.withLane('wallet'),
+      dexscreener: this.dexscreener,
+      budget,
+      cache,
+      clock,
+      logger,
+    });
   }
 
   /** Vrai si une clé Helius est configurée (l'API allonge son cache à 300 s sinon). */
@@ -195,5 +217,26 @@ export class SolanaDataService {
     } catch {
       return { mint: address, resolvedFromPair: false };
     }
+  }
+
+  /**
+   * Scan de wallet, étape 1 (ARCHITECTURE.md §12.3) : nature de l'adresse, comptes SPL + Token-2022
+   * (délégations sur **tous** les comptes), agrégation par mint, prix DexScreener, tri par valeur et
+   * sélection (`analyze` / `dust` / `over_limit`). Voie de crédits `wallet` (3 crédits avec clé).
+   * Lève `WalletInvalidError`, `WalletIsTokenError`, `WalletTooLargeError` ou `UpstreamError`
+   * (liste illisible). **Lecture seule** : aucune transaction, aucune signature.
+   */
+  listWalletHoldings(address: string, options?: WalletHoldingsOptions): Promise<WalletHoldings> {
+    return this.walletCollector.listHoldings(address, options);
+  }
+
+  /**
+   * Scan de wallet, étape 2 : faits `light` des mints sans verdict en cache (appels groupés, voie
+   * `wallet`). À évaluer avec `createRiskEngine({ notEvaluated: LIGHT_PROFILE_NOT_EVALUATED })`
+   * (règle D3). Ne lève pas : chaque mint est `ok` ou `unavailable` (`upstream`, `timeout`, `budget`,
+   * `unanalyzable`).
+   */
+  collectFactsLightBatch(mints: readonly string[], options?: LightFactsBatchOptions): Promise<LightFactsBatch> {
+    return this.walletCollector.collectLightBatch(mints, options);
   }
 }

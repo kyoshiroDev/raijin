@@ -180,6 +180,24 @@ faible car il recoupe souvent M1 (« Mutable metadata »).
 - Un signal critique l'emporte toujours (Danger même avec des données manquantes).
 - Un groupe de faits à `null` = source en panne, clé Helius absente ou profil `light` ; le contrôle passe en
   `unavailable` et le résultat est marqué `degraded`.
+- **D3** (scan de wallet, contrôle rapide, ARCHITECTURE.md §12.4) : un contrôle **non demandé par le profil de collecte**
+  est « non évalué », pas « indisponible ». Il ne compte pas pour D2, qui ne s'applique qu'aux contrôles demandés. Mise
+  en œuvre sans changer la signature `EvaluateRisk` : une seconde instance
+  `createRiskEngine({ notEvaluated: LIGHT_PROFILE_NOT_EVALUATED })` (`sell_simulation`, `creator_history`, `rugcheck` :
+  devis Jupiter, historique du créateur et RugCheck ne sont pas collectés en profil `light`).
+  - Un contrôle non évalué **sans donnée** sort en `unavailable` **sans** raison `DATA_UNAVAILABLE` ; s'il porte une raison
+    (les extensions Token-2022 non transférable / frais / hook relèvent de `sell_simulation` et viennent du compte de
+    mint), il est évalué normalement : un Danger reste un Danger. Un groupe fourni malgré tout est évalué.
+  - `mint_authority` et `freeze_authority` ne peuvent pas être déclarés non évalués (D1 inchangée : `RangeError`).
+  - Profondeur : `assessmentDepth(assessment, notEvaluated)` → `{ coverage: 'light', checksEvaluated, notEvaluated,
+    unavailable }`. Avec clé Helius et toutes les sources : **6/9** (« Sain · contrôle rapide (6/9) ») ; sans clé (ni DAS
+    ni holders) : 4/9, Sain encore possible (2 indisponibles < 3) ; un 3e indisponible → Prudence (D2).
+  - Phrase : `explainVerdict(assessment, { notEvaluated })` ne compte que les vrais indisponibles et ajoute « Contrôle
+    rapide (6/9) : revente (honeypot), créateur et RugCheck non évalués. » (280 caractères au plus, note coupée au
+    besoin). L'interface ajoute `SAFE_VERDICT_REMINDER` et le lien vers l'analyse complète.
+  - Le moteur par défaut (`notEvaluated: []`) est inchangé : même sortie pour toutes les analyses complètes, version
+    `1.0.0` conservée. Tests : `d3.spec.ts` et `libs/api/solana/src/lib/collect/wallet-collector.spec.ts` (faits
+    `light` des fixtures de wallet → Sain 6/9 avec clé, 4/9 sans, « mint actif » → Danger).
 
 ## 4. Pondération des signaux modérés
 
@@ -198,7 +216,11 @@ que la somme atteint 1. Un poids à 0 rend un signal purement informatif (le con
 | `9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump` | pump.fun de quelques minutes, ~1 700 USD de liquidité, créateur lanceur en série, RugCheck « Creator history of rugged tokens » | Prudence (L2, T1, T2, R2…) |
 | Synthétique « LP retirée » | pool listé à 12 USD | Danger (L1) |
 
-Les tests (`engine.spec.ts`, `describe.spec.ts`, `facts-collector.spec.ts`) rejouent ces scénarios ; couverture du
+Scan de wallet (profil `light`, règle D3) : jeton synthétique « Raijin Fixture Safe » `9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRew`
+(autorités révoquées, 850 k USD de liquidité, top 10 ≈ 22 % hors coffres de pool, métadonnées figées) → Sain 6/9 avec clé,
+4/9 sans ; `BL7y…azTi` (mint actif) → Danger en contrôle rapide.
+
+Les tests (`engine.spec.ts`, `describe.spec.ts`, `d3.spec.ts`, `facts-collector.spec.ts`, `wallet-collector.spec.ts`) rejouent ces scénarios ; couverture du
 moteur imposée à 90 % (lignes, branches, fonctions, instructions).
 
 ## 6. Phrases

@@ -1,3 +1,4 @@
+import { isSolanaAddress } from '@raijin/shared-util';
 import * as z from 'zod';
 import { TokenUnanalyzableError, UpstreamError } from '../core/errors';
 import type { CreditBudget, CreditLane, SolanaLogger } from '../core/ports';
@@ -39,6 +40,76 @@ const accountInfoSchema = z.object({
     })
     .nullable(),
 });
+
+/** `getAccountInfo` jsonParsed avec l'indicateur `executable` (nature d'une adresse de wallet). */
+const accountNatureSchema = z.object({
+  value: z
+    .object({
+      owner: address,
+      executable: z.boolean().optional(),
+      data: z.unknown(),
+    })
+    .nullable(),
+});
+
+/** Nature d'une adresse saisie comme wallet (ARCHITECTURE.md §12.3, étape 1). */
+export type AccountNature = 'absent' | 'mint' | 'token_account' | 'program' | 'other';
+
+const tokenAmountSchema = z.object({
+  amount: z.string().regex(/^\d{1,20}$/),
+  decimals: z.number().int().min(0).max(255),
+});
+
+const solanaAddress = z.string().refine(isSolanaAddress);
+
+/**
+ * Compte de token jsonParsed (`solana-account-decoder` : `UiTokenAccount`, champs camelCase ;
+ * `delegate` / `delegatedAmount` absents sans délégation, `state` `initialized` | `frozen`).
+ */
+const tokenAccountEntrySchema = z.object({
+  pubkey: solanaAddress,
+  account: z.object({
+    owner: z.enum([SPL_TOKEN_PROGRAM, TOKEN_2022_PROGRAM]),
+    data: z.object({
+      parsed: z.object({
+        type: z.string().max(32).optional(),
+        info: z.object({
+          mint: solanaAddress,
+          owner: solanaAddress,
+          state: z.enum(['initialized', 'frozen', 'uninitialized']),
+          tokenAmount: tokenAmountSchema,
+          delegate: solanaAddress.nullish(),
+          delegatedAmount: tokenAmountSchema.nullish(),
+        }),
+      }),
+    }),
+  }),
+});
+
+/** Compte de token d'un wallet, validé (donnée externe hostile : adresses base58, u64 bornés). */
+export interface ParsedTokenAccount {
+  readonly pubkey: string;
+  readonly program: 'spl-token' | 'token-2022';
+  readonly mint: string;
+  readonly owner: string;
+  /** Solde brut (u64 en texte). */
+  readonly amount: string;
+  readonly decimals: number;
+  readonly frozen: boolean;
+  /** Délégué actif, `null` sans délégation. */
+  readonly delegate: string | null;
+  /** Montant délégué brut (u64 en texte), `null` sans délégation. */
+  readonly delegatedAmount: string | null;
+}
+
+export interface TokenAccountsResult {
+  /** Comptes valides appartenant bien au propriétaire demandé. */
+  readonly accounts: ParsedTokenAccount[];
+  /** Nombre d'entrées reçues (valides ou non) : sert au plafond `WALLET_TOO_LARGE`. */
+  readonly received: number;
+  /** Entrées ignorées (format inattendu ou propriétaire incohérent). */
+  readonly rejected: number;
+}
 
 export type ParsedMint = z.infer<typeof parsedMintSchema>['info'] & { program: 'spl-token' | 'token-2022' };
 
@@ -117,6 +188,17 @@ export class SolanaRpcClient {
   /** Même client (mêmes files de débit), crédits décomptés sur une autre voie. */
   withLane(lane: CreditLane): SolanaRpcClient {
     return new SolanaRpcClient(this.helius, this.publicRpc, this.budget, this.logger, lane);
+  }
+
+  /** Même client, crédits réservés via `budget` (compteur d'un scan posé sur le budget partagé). */
+  withBudget(budget: CreditBudget): SolanaRpcClient {
+    return new SolanaRpcClient(this.helius, this.publicRpc, budget, this.logger, this.lane);
+  }
+
+  /** Même client (mêmes files de débit), délai par appel `timeoutMs` (listes de comptes volumineuses). */
+  withTimeout(timeoutMs: number): SolanaRpcClient {
+    const retime = (endpoint: RpcEndpoint): RpcEndpoint => ({ ...endpoint, transport: { ...endpoint.transport, timeoutMs } });
+    return new SolanaRpcClient(this.helius === null ? null : retime(this.helius), retime(this.publicRpc), this.budget, this.logger, this.lane);
   }
 
   private async call<T>(method: string, params: unknown, schema: z.ZodType<T>, signal?: AbortSignal): Promise<RpcCallResult<T>> {
@@ -209,13 +291,57 @@ export class SolanaRpcClient {
     return this.call('getSignaturesForAddress', [addressValue, options], signaturesSchema, signal);
   }
 
-  /** Réservé au scan de wallet (phase 5) : comptes de token d'un propriétaire. */
-  async getTokenAccountsByOwner(owner: string, programId: string, signal?: AbortSignal) {
-    return this.call(
+  /**
+   * Nature d'une adresse saisie comme wallet (`getAccountInfo` jsonParsed, 1 crédit) : `absent`
+   * (wallet sans SOL), `program` (exécutable), `mint`, `token_account` (compte de token ou multisig
+   * des programmes de token), `other` (wallet, PDA…). Compte de plus de 2 Mo : `UpstreamError('too_large')`.
+   */
+  async getAccountNature(addressValue: string, signal?: AbortSignal): Promise<RpcCallResult<AccountNature>> {
+    const result = await this.call('getAccountInfo', [addressValue, { encoding: 'jsonParsed', commitment: 'confirmed' }], accountNatureSchema, signal);
+    const account = result.value.value;
+    let nature: AccountNature = 'other';
+    if (account === null) nature = 'absent';
+    else if (account.executable === true) nature = 'program';
+    else if (account.owner === SPL_TOKEN_PROGRAM || account.owner === TOKEN_2022_PROGRAM) {
+      nature = toParsedMint({ owner: account.owner, data: account.data }) === null ? 'token_account' : 'mint';
+    }
+    return { value: nature, servedBy: result.servedBy };
+  }
+
+  /**
+   * Comptes de token d'un propriétaire pour un programme (`getTokenAccountsByOwner` jsonParsed,
+   * 1 crédit) : tous les comptes, vides compris, avec délégations et état gelé. Réponse de plus de
+   * 2 Mo : `UpstreamError('too_large')` (wallet hors normes).
+   */
+  async getTokenAccountsByOwner(owner: string, programId: typeof SPL_TOKEN_PROGRAM | typeof TOKEN_2022_PROGRAM, signal?: AbortSignal): Promise<RpcCallResult<TokenAccountsResult>> {
+    const result = await this.call(
       'getTokenAccountsByOwner',
       [owner, { programId }, { encoding: 'jsonParsed', commitment: 'confirmed' }],
-      z.object({ value: z.array(z.object({ pubkey: address, account: z.unknown() })).max(5_000) }),
+      z.object({ value: z.array(z.unknown()) }),
       signal,
     );
+    const accounts: ParsedTokenAccount[] = [];
+    let rejected = 0;
+    for (const entry of result.value.value) {
+      const parsed = tokenAccountEntrySchema.safeParse(entry);
+      if (!parsed.success || parsed.data.account.owner !== programId || parsed.data.account.data.parsed.info.owner !== owner) {
+        rejected += 1;
+        continue;
+      }
+      const info = parsed.data.account.data.parsed.info;
+      const delegate = info.delegate ?? null;
+      accounts.push({
+        pubkey: parsed.data.pubkey,
+        program: programId === TOKEN_2022_PROGRAM ? 'token-2022' : 'spl-token',
+        mint: info.mint,
+        owner: info.owner,
+        amount: info.tokenAmount.amount,
+        decimals: info.tokenAmount.decimals,
+        frozen: info.state === 'frozen',
+        delegate,
+        delegatedAmount: delegate === null ? null : (info.delegatedAmount?.amount ?? '0'),
+      });
+    }
+    return { value: { accounts, received: result.value.value.length, rejected }, servedBy: result.servedBy };
   }
 }
