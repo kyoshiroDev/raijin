@@ -376,6 +376,8 @@ export function loadConfig(
     vapidPublic = pair.publicKey;
     vapidPrivate = pair.privateKey;
     warn('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY absentes : paire VAPID éphémère générée pour ce démarrage (développement seulement).');
+  } else {
+    warn('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY absentes : notifications push indisponibles (alertes par e-mail seulement).');
   }
 
   const config: AppConfig = {

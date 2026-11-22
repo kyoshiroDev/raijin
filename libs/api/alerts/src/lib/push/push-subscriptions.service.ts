@@ -18,8 +18,8 @@ const notSupported = () => new ApiException('PUSH_NOT_SUPPORTED', HttpStatus.SER
 
 /**
  * Abonnements push (docs/ARCHITECTURE.md §11.7). L'endpoint (filtré par `PUSH_SERVICE_HOSTS` dans
- * le contrat) n'est jamais journalisé ni renvoyé. Un endpoint ré-abonné par un autre compte lui est
- * réattribué (appareil partagé).
+ * le contrat) n'est jamais journalisé ni renvoyé. Un endpoint ré-abonné par un autre compte avec les
+ * mêmes clés lui est réattribué (appareil partagé) ; avec d'autres clés : 409 `CONFLICT`.
  */
 @Injectable()
 export class PushSubscriptionsService {
@@ -39,6 +39,13 @@ export class PushSubscriptionsService {
     const rights = await this.plans.verifiedRights(userId);
     if (!rights.limits.pushAlerts) throw new ApiException('PUSH_PLAN_REQUIRED', HttpStatus.FORBIDDEN, WATCH_ERROR_MESSAGES.PUSH_PLAN_REQUIRED);
     const agent = userAgent ? userAgent.slice(0, USER_AGENT_MAX) : null;
+    // Endpoint déjà abonné par un autre compte : réattribué seulement si le navigateur prouve qu'il
+    // s'agit du même abonnement (mêmes clés). Sinon 409 : un endpoint connu (fuite, journal tiers)
+    // ne permet pas de détourner les notifications d'un autre compte.
+    const existing = await this.prisma.pushSubscription.findUnique({ where: { endpoint: body.endpoint }, select: { userId: true, p256dh: true, auth: true } });
+    if (existing && existing.userId !== userId && (existing.p256dh !== body.keys.p256dh || existing.auth !== body.keys.auth)) {
+      throw new ApiException('CONFLICT', HttpStatus.CONFLICT, WATCH_ERROR_MESSAGES.PUSH_SUBSCRIPTION_INVALID);
+    }
     const row = await this.prisma.pushSubscription.upsert({
       where: { endpoint: body.endpoint },
       create: { userId, endpoint: body.endpoint, p256dh: body.keys.p256dh, auth: body.keys.auth, userAgent: agent },

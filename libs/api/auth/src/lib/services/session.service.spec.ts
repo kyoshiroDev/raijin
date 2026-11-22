@@ -148,8 +148,10 @@ describe('SessionService', () => {
       where: { userId: 'u', revokedAt: null, id: { not: 'sid-keep' } },
       data: expect.objectContaining({ revokedReason: 'password_change' }),
     });
+    expect(mock.pushSubscription.deleteMany).toHaveBeenLastCalledWith({ where: { userId: 'u' } });
     await sessions.revokeAllForUser('u', 'password_reset');
     expect(mock.session.updateMany.mock.calls.at(-1)?.[0].where).toEqual({ userId: 'u', revokedAt: null });
+    expect(mock.pushSubscription.deleteMany).toHaveBeenCalledTimes(2);
   });
 });
 

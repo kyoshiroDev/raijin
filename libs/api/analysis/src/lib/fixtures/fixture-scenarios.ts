@@ -49,3 +49,24 @@ export class FixtureScenarios {
     return [...active, ...this.base];
   }
 }
+
+/** Mint du scénario « holder vendeur » (`watch-holder-sold`) : seuls les comptes de holders y sont enregistrés. */
+export const HOLDER_SOLD_MINT = '7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4';
+/** Offre brute du scénario (1 000 000 000), base des parts de chaque holder. */
+const HOLDER_SOLD_SUPPLY = '1000000000';
+
+/**
+ * Compte de mint synthétique du scénario `watch-holder-sold` (le scénario n'enregistre que le top 20
+ * et les propriétaires) : dérivé du compte de mint révoqué de `watch-mint-reactivated` (étape 0),
+ * adresse et offre remplacées. Sert à l'analyse (création du suivi) et à la lecture de l'offre par la
+ * passe holders. Ne concerne que ce mint : aucun autre verdict n'est modifié. `null` si la source manque.
+ */
+export function holderSoldMintFixture(sequences: Readonly<Record<string, readonly (readonly Fixture[])[]>>): Fixture | null {
+  const template = sequences['watch-mint-reactivated']?.[0]?.find(
+    (fixture) => fixture.source === 'solana-rpc' && fixture.request.rpcMethod === 'getAccountInfo',
+  );
+  if (!template || !Array.isArray(template.request.params)) return null;
+  const [, options] = template.request.params as [unknown, unknown];
+  const body = JSON.parse(JSON.stringify(template.body).replace(/"supply":"\d+"/g, `"supply":"${HOLDER_SOLD_SUPPLY}"`)) as unknown;
+  return { ...template, body, request: { ...template.request, params: [HOLDER_SOLD_MINT, options] } };
+}

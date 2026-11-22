@@ -174,7 +174,12 @@ describe('loadConfig', () => {
     const both = loadConfig({ ...prodEnv, VAPID_PUBLIC_KEY: pair.publicKey, VAPID_PRIVATE_KEY: pair.privateKey });
     expect(both.push).toMatchObject({ publicKey: pair.publicKey, privateKey: pair.privateKey, provider: 'webpush' });
     expect(both.services['vapid']).toBe(true);
-    expect(loadConfig(prodEnv).push).toMatchObject({ publicKey: null, privateKey: null });
+    const warnings: string[] = [];
+    expect(loadConfig(prodEnv, (message) => warnings.push(message)).push).toMatchObject({ publicKey: null, privateKey: null });
+    expect(warnings).toEqual([expect.stringContaining('notifications push indisponibles')]);
+    const silent: string[] = [];
+    loadConfig({ ...prodEnv, VAPID_PUBLIC_KEY: pair.publicKey, VAPID_PRIVATE_KEY: pair.privateKey }, (message) => silent.push(message));
+    expect(silent).toEqual([]);
     const attempt = () => loadConfig({ ...prodEnv, VAPID_PRIVATE_KEY: pair.privateKey });
     expect(attempt).toThrow(/VAPID_PUBLIC_KEY \/ VAPID_PRIVATE_KEY/);
     try {

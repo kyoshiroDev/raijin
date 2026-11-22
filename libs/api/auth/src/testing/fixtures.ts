@@ -54,6 +54,7 @@ export function createPrismaMock() {
     authToken: model(),
     auditLog: model(),
     productEvent: model(),
+    pushSubscription: model(),
     $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
   };
   return { mock, prisma: mock as unknown as PrismaService };

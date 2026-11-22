@@ -273,3 +273,37 @@ describe('API Raijin : suivis, alertes et push (jobs sur fixtures en séquence)'
     expect(purge).toEqual(expect.objectContaining({ alert: expect.any(Number), jobRun: expect.any(Number), mintWatchState: expect.any(Number) }));
   }, 60_000);
 });
+
+describe('API Raijin : holder vendeur (passe holders sur fixtures en séquence)', () => {
+  const HOLDER_MINT = '7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4';
+  let user: { client: ApiClient; email: string };
+  let watchId = '';
+
+  beforeAll(async () => {
+    user = await verifiedUser('suivi-holder');
+    expect((await user.client.post('/internal/fixtures/watch-holder-sold', { step: 0 })).status).toBe(200);
+  }, 60_000);
+
+  afterAll(async () => {
+    if (watchId) await user.client.delete(`/watches/${watchId}`);
+  });
+
+  it('référence puis holder de 10 % qui cède 40 % → holder_sold (Prudence), une seule fois', async () => {
+    expect((await user.client.post('/analyses', { input: HOLDER_MINT })).status).toBe(200);
+    const created = await user.client.post('/watches', { mint: HOLDER_MINT });
+    expect(created.status).toBe(201);
+    watchId = watchSchema.parse(created.data).id;
+
+    const [reference] = await runJob(user.client, 'watch-holders', [HOLDER_MINT]);
+    expect(reference).toMatchObject({ mints: 1, events: 0, failures: 0 });
+    expect((await user.client.post('/internal/fixtures/watch-holder-sold', { step: 1 })).status).toBe(200);
+    const [detected] = await runJob(user.client, 'watch-holders', [HOLDER_MINT]);
+    expect(detected).toMatchObject({ events: 1, alerts: 1 });
+    const [replayed] = await runJob(user.client, 'watch-holders', [HOLDER_MINT]);
+    expect(replayed).toMatchObject({ events: 0, alerts: 0 });
+
+    const page = alertListResponseSchema.parse((await user.client.get(`/alerts?types=holder_sold&mint=${HOLDER_MINT}`)).data);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({ type: 'holder_sold', severity: 'warn', payload: { beforePct: 10 } });
+  }, 60_000);
+});

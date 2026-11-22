@@ -225,6 +225,22 @@ describe('préférences et push', () => {
     expect(pro.subscriptions.publicKey()).toEqual({ publicKey: KEY });
   });
 
+  it('endpoint d’un autre compte : réattribué avec les mêmes clés, 409 avec d’autres clés', async () => {
+    const t = setup({ plan: 'PRO' });
+    const other = t.prisma.tables['user']?.[1];
+    if (other) other['plan'] = 'PRO';
+    const keys = { p256dh: KEY, auth: 'a'.repeat(22) };
+    const endpoint = 'https://fcm.googleapis.com/fcm/send/partage';
+    await t.subscriptions.subscribe(U1, { endpoint, keys }, null);
+    await expect(t.subscriptions.subscribe(U2, { endpoint, keys: { ...keys, auth: 'b'.repeat(22) } }, null)).rejects.toMatchObject({ code: 'CONFLICT', status: 409 });
+    expect(t.prisma.tables['pushSubscription']?.[0]?.['userId']).toBe(U1);
+    await t.subscriptions.subscribe(U2, { endpoint, keys }, null);
+    expect(t.prisma.tables['pushSubscription']?.[0]?.['userId']).toBe(U2);
+    // Même compte : clés renouvelées par le navigateur, mise à jour acceptée.
+    await t.subscriptions.subscribe(U2, { endpoint, keys: { ...keys, auth: 'c'.repeat(22) } }, null);
+    expect(t.prisma.tables['pushSubscription']?.[0]?.['auth']).toBe('c'.repeat(22));
+  });
+
   it('sans clés VAPID : PUSH_NOT_SUPPORTED (503)', async () => {
     const prisma = new MemoryPrisma();
     const plans = new PlanLimitsService(prisma as unknown as PrismaService, clock, testConfig());

@@ -120,11 +120,17 @@ export class SessionService {
     });
   }
 
+  /**
+   * Révoque toutes les sessions du compte (sauf `exceptSessionId`) et supprime ses abonnements push :
+   * après une réinitialisation ou un changement de mot de passe (compte peut-être compromis), un appareil
+   * resté abonné ne doit plus recevoir d'alertes. Le front se réabonne après une nouvelle connexion.
+   */
   async revokeAllForUser(userId: string, reason: RevocationReason, exceptSessionId?: string): Promise<number> {
     const result = await this.prisma.session.updateMany({
       where: { userId, revokedAt: null, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
       data: { revokedAt: new Date(), revokedReason: reason },
     });
+    await this.prisma.pushSubscription.deleteMany({ where: { userId } });
     return result.count;
   }
 }

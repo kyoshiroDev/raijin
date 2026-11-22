@@ -15,7 +15,7 @@ import Redis from 'ioredis';
 import { join } from 'node:path';
 import { AnalysisRepository } from './analysis/analysis.repository';
 import { AnalysisService } from './analysis/analysis.service';
-import { FixtureScenarios } from './fixtures/fixture-scenarios';
+import { FixtureScenarios, holderSoldMintFixture } from './fixtures/fixture-scenarios';
 import { DefaultRiskEngine, RiskEngine } from './analysis/risk-engine.provider';
 import { AnalysisController } from './http/analysis.controller';
 import { ShareController } from './http/share.controller';
@@ -41,7 +41,8 @@ export function createFixtureScenarios(config: AppConfig): FixtureScenarios | nu
   if (!config.analysis.fixtures || config.isProduction) return null;
   const dir = fixturesDir(config);
   const sequences = Object.fromEntries(fixtureSequenceNames(dir).map((name) => [name, loadFixtureSequence(name, dir)]));
-  return new FixtureScenarios(sequences, loadAllFixtures(dir));
+  const extra = holderSoldMintFixture(sequences);
+  return new FixtureScenarios(sequences, [...loadAllFixtures(dir), ...(extra ? [extra] : [])]);
 }
 
 function fixturesDir(config: AppConfig): string {
