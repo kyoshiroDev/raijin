@@ -22,7 +22,6 @@ Les noms de variables suivent `docs/ENV.md`.
 |---|---|---|---|
 | `POSTGRES_PASSWORD` (et `DATABASE_URL`) | `openssl rand -base64 32` | apps/api | [ ] |
 | `JWT_ACCESS_SECRET` | `openssl rand -base64 48` | apps/api | [ ] |
-| `JWT_REFRESH_SECRET` | `openssl rand -base64 48` (différent) | apps/api | [ ] |
 | `COOKIE_SECRET` | `openssl rand -base64 32` | apps/api | [ ] |
 | `TOTP_ENCRYPTION_KEY` | `openssl rand -base64 32` | apps/api | [ ] |
 | `VAPID_PRIVATE_KEY` (+ `VAPID_PUBLIC_KEY`) | `npx web-push generate-vapid-keys` | apps/api | [ ] |

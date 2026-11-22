@@ -28,6 +28,8 @@ dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
 | `web-feature-wallet` | `libs/web/feature-wallet` | Scan de wallet | `scope:web`, `type:feature` |
 | `web-feature-compte` | `libs/web/feature-compte` | Auth, compte, abonnement | `scope:web`, `type:feature` |
 | `api-auth` … `api-solana` | `libs/api/*` | Modules Nest (auth, users, billing, alerts, notifications, solana) | `scope:api`, `type:feature` |
+| `api-prisma` | `libs/api/prisma` | Schéma Prisma, migrations, client généré, `PrismaService` | `scope:api`, `type:data-access` |
+| `api-core` | `libs/api/core` | Socle Nest transverse : config Zod, filtre d'erreurs, Helmet, CORS, throttler, CSRF, cookies | `scope:api`, `type:util` |
 | `raijin-banc-de-test` | `apps/raijin-banc-de-test` | Front Angular 22 zoneless du banc (importé de `raijin-old`, phase 1 bis) | `scope:bench`, `type:app` |
 
 Prévus plus tard : `raijin-banc-de-test-api` (phase 8 bis), `libs/bench/*` (`scope:bench`),
@@ -188,3 +190,100 @@ artefacts de captures envoyés seulement en cas d'échec.
 ## 7. Variables d'environnement
 
 Voir `docs/ENV.md` (modèle du `.env.example`).
+
+## 8. API et auth (phase 2)
+
+### 8.1 Prisma : lib dédiée `libs/api/prisma` (`api-prisma`, `type:data-access`)
+- Schéma : `libs/api/prisma/prisma/schema.prisma`, migrations dans `libs/api/prisma/prisma/migrations/`
+  (commitées), configuration `libs/api/prisma/prisma.config.ts` (`DATABASE_URL` lue dans l'environnement).
+- Client généré dans `libs/api/prisma/src/generated/` (**ignoré par Git**) par la cible
+  `api-prisma:prisma-generate` (en cache, entrées : `schema.prisma`). `build`, `typecheck`, `test` et
+  `lint` d'`api-prisma` et de tout projet qui en dépend passent d'abord par cette cible
+  (`dependsOn` dans `nx.json`), pour que la CI fonctionne sans étape manuelle.
+- Exporte `ApiPrismaModule` (global) et `PrismaService` (connexion au démarrage, fermeture propre).
+  Seuls les modules `libs/api/*` l'importent ; jamais le front (frontière `scope:api`).
+- Pourquoi pas dans `apps/api` : l'app reste fine, et le futur `raijin-banc-de-test-api` aura sa
+  propre lib Prisma (`scope:bench`, base `raijin_bench`) sans couplage.
+- Enums Prisma alignés **à l'identique** sur les contrats : `Plan { FREE PRO }`, `Role { USER ADMIN }`
+  (le profil public `PublicUser` les réutilise sans conversion). Identifiants `uuid` (v7 si disponible).
+- Modèle phase 2 : `User` (avec `emailNormalized`, `trialStartedAt`, `trialEndsAt`, `trialStatus`,
+  `stripeCustomerId`, attribution UTM, `role`, `failedLoginCount`, `lockedUntil`), `RefreshToken`,
+  `AuthToken` (vérification / reset / lien magique : hash SHA-256, type, expiration, `usedAt`),
+  `TrialFingerprint`, `ProductEvent`, `AuditLog`. Les autres tables de PROMPT.md §5 arrivent avec leur phase.
+- Scripts d'installation (`prisma`, `@prisma/engines`, `argon2`…) : chacun tranché explicitement
+  dans `allowBuilds` (`pnpm-workspace.yaml`) avec sa justification, sinon la CI casse.
+
+### 8.2 Socle Nest `libs/api/core` (`api-core`, `type:util`)
+Configuration (schéma Zod des variables, échec au démarrage si invalide), filtre d'exceptions global
+au format `ApiError {code, message}` (codes de `@raijin/shared-contracts`, aucune stack hors
+développement), pipe de validation Zod (schémas des contrats), Helmet, CORS limité à
+`CORS_ORIGINS` avec `credentials: true`, `@nestjs/throttler` global (stockage Redis) et renforcé sur
+`/auth/*`, garde CSRF, utilitaire de cookies. `apps/api/src/main.ts` ne fait que brancher ce socle
+(et perd le `new Function(...)`, point M3 de l'audit de la phase 1).
+
+### 8.3 E-mails : interface `Mailer` dans `libs/api/notifications`
+Classe abstraite `Mailer` (`send({to, subject, html, text})`), deux implémentations choisies par
+`MAIL_PROVIDER` : `SmtpMailer` (Mailpit en dev, `SMTP_HOST`/`SMTP_PORT`) et `ResendMailer` (prod).
+Templates HTML responsive en thème clair + version texte, couleurs lues dans `libs/brand/tokens.json`
+au build (aucune couleur en dur). `api-auth` dépend de `api-notifications`.
+
+### 8.4 Sessions et cookies
+- **Access token** : JWT HS256 signé par `JWT_ACCESS_SECRET`, durée `JWT_ACCESS_TTL` (15 min), contenu
+  minimal (`sub`, `sid`, `role`) ; le plan et les quotas sont toujours relus en base.
+- **Refresh token** : **opaque** (32 octets aléatoires, base64url), stocké **haché (SHA-256)** dans
+  `RefreshToken` avec une famille (`familyId`), durée `JWT_REFRESH_TTL` (30 j). **Rotation** à chaque
+  `POST /auth/refresh` ; un refresh déjà utilisé révoque toute la famille (vol détecté) →
+  `AUTH_SESSION_EXPIRED`. Déconnexion, reset et changement de mot de passe révoquent.
+  (`JWT_REFRESH_SECRET` n'est donc plus nécessaire.)
+- **Cookies** (tous `HttpOnly`, `SameSite=Lax`, `Secure` si `COOKIE_SECURE=true`, toujours en prod) :
+
+  | Rôle | Nom prod (`COOKIE_SECURE=true`) | Nom dev | Path | Domain |
+  |---|---|---|---|---|
+  | Access | `__Host-rj_at` | `rj_at` | `/` | aucun (hôte API seul) |
+  | Refresh | `__Secure-rj_rt` | `rj_rt` | `/api/v1/auth` | aucun |
+  | CSRF | `__Host-rj_csrf` | `rj_csrf` | `/` | aucun |
+
+  Aucun jeton dans le corps des réponses ni dans le `localStorage`/`sessionStorage`.
+  `COOKIE_DOMAIN` reste vide (cookies liés à l'hôte de l'API).
+- Les jetons d'e-mail (vérification 24 h, reset 30 min, lien magique 15 min) sont opaques,
+  stockés hachés, à usage unique ; demander un nouveau jeton invalide les précédents du même type.
+- Mots de passe : argon2id (paramètres OWASP : m = 19 Mio, t = 2, p = 1), règles dans
+  `PASSWORD_RULES` (contrats). Verrouillage temporaire après échecs répétés (`AUTH_ACCOUNT_LOCKED`).
+- Réponses neutres (202 `MessageResponse`) pour inscription, mot de passe oublié, lien magique,
+  renvoi de vérification : aucune énumération des comptes.
+
+### 8.5 CSRF : SameSite=Lax + double-submit signé
+- `GET /api/v1/auth/csrf` pose le cookie CSRF (httpOnly) et renvoie le même jeton dans le corps
+  (`CsrfResponse`) ; les réponses de session (`AuthSession`) le renvoient aussi. Jeton =
+  `nonce.HMAC(COOKIE_SECRET, nonce + sid)` (lié à la session une fois connecté).
+- Le front garde le jeton **en mémoire** (signal de `web-data-access`) et l'envoie dans l'en-tête
+  `X-CSRF-Token` (`CSRF_HEADER`) sur chaque POST/PUT/PATCH/DELETE via un intercepteur. Un site tiers
+  ne peut ni lire la réponse (CORS) ni le cookie (httpOnly) : il ne peut pas forger l'en-tête.
+- La garde vérifie en plus l'en-tête `Origin` (présent et dans `CORS_ORIGINS`) sur les mutations.
+  Exemptés : `GET`/`HEAD`/`OPTIONS`, et le webhook Stripe (phase 6, signé). Refus : 403
+  `AUTH_CSRF_INVALID`. Ce schéma marche aussi entre `app.raijinshield.com` et `api.raijinshield.com`
+  (même site, origines différentes) sans cookie partagé entre sous-domaines.
+
+### 8.6 URLs locales et production
+| App | Local | Production |
+|---|---|---|
+| web (Angular) | `http://localhost:4200` (proxy dev `/api` → `http://localhost:3000`, même origine) | `https://app.raijinshield.com` |
+| api (NestJS) | `http://localhost:3000/api/v1` | `https://api.raijinshield.com/api/v1` |
+| landing (Astro) | `http://localhost:4321` | `https://raijinshield.com` |
+| Mailpit (UI / SMTP) | `http://localhost:8025` / `localhost:1025` | — (Resend) |
+| Postgres / Redis | `localhost:5432` / `localhost:6379` | réseau interne Docker |
+
+- En dev, le front appelle `API_BASE_URL = '/api/v1'` (relatif) : `apps/web/proxy.conf.json` relaie
+  vers l'API, donc pas de CORS ni de cookie inter-origines en local. En prod, `API_BASE_URL` vaut
+  `https://api.raijinshield.com/api/v1` et les requêtes partent avec `withCredentials: true`.
+- `*.localhost` (`app.localhost`, `api.localhost`) reste possible pour reproduire le schéma
+  inter-origines de la prod, mais n'est pas la configuration par défaut (pas de `Domain` sur les
+  cookies, donc rien à changer côté API).
+- Les liens des e-mails sont construits avec `APP_URL` (jamais avec l'en-tête `Host` de la requête).
+
+### 8.7 Infrastructure de dev : `docker-compose.dev.yml` (racine)
+Projet Compose `raijin-dev` : Postgres 17 (volume `pgdata`), Redis 8 (sans persistance), Mailpit.
+Ports liés à `127.0.0.1` uniquement, valeurs par défaut factices identiques à `docs/ENV.md`.
+`pnpm nx run api:dev-infra` (démarre et attend les healthchecks) ·
+`pnpm nx run api:dev-infra-stop` (arrête sans supprimer le volume).
+

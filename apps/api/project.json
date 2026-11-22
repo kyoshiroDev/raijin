@@ -92,6 +92,22 @@
         ],
         "parallel": false
       }
+    },
+    "dev-infra": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "docker compose -f docker-compose.dev.yml up -d --wait"
+      }
+    },
+    "dev-infra-stop": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "docker compose -f docker-compose.dev.yml stop"
+      }
     }
   }
 }

@@ -1,0 +1,38 @@
+{
+  "name": "api-prisma",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/prisma/src",
+  "projectType": "library",
+  "tags": [
+    "scope:api",
+    "type:data-access"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/api/prisma",
+        "tsConfig": "libs/api/prisma/tsconfig.lib.json",
+        "packageJson": "libs/api/prisma/package.json",
+        "main": "libs/api/prisma/src/index.ts",
+        "assets": [
+          "libs/api/prisma/*.md"
+        ]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "libs/api/prisma",
+        "commands": [
+          "tsc --noEmit -p tsconfig.lib.json",
+          "tsc --noEmit -p tsconfig.spec.json"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

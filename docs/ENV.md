@@ -49,14 +49,22 @@ REDIS_URL=redis://localhost:6379
 # ---------------------------------------------------------------------
 # À générer : openssl rand -base64 48
 JWT_ACCESS_SECRET=changeme-access-secret-factice
-# À générer : openssl rand -base64 48 (différent du précédent)
-JWT_REFRESH_SECRET=changeme-refresh-secret-factice
+# Durée de l'access token (JWT court, cookie httpOnly)
 JWT_ACCESS_TTL=15m
+# Durée du refresh token (opaque, haché en base, rotation à chaque usage : pas de secret JWT dédié)
 JWT_REFRESH_TTL=30d
-# À générer : openssl rand -base64 32 (signature des cookies)
+# À générer : openssl rand -base64 32 (signature HMAC des jetons CSRF double-submit)
 COOKIE_SECRET=changeme-cookie-secret-factice
-# Domaine des cookies (prod : .raijinshield.com ; dev : vide = localhost)
+# Laisser vide : cookies liés à l'hôte de l'API (préfixes __Host- / __Secure- en prod), voir docs/ARCHITECTURE.md §8.4
 COOKIE_DOMAIN=
+# Cookies Secure + préfixes __Host-/__Secure- : true en prod (HTTPS) ; false en dev sur http://localhost (WebKit/Safari refuse sinon)
+COOKIE_SECURE=false
+# Durées de validité des liens envoyés par e-mail (jetons à usage unique, hachés en base)
+EMAIL_VERIFY_TTL=24h
+PASSWORD_RESET_TTL=30m
+MAGIC_LINK_TTL=15m
+# Nombre de proxys de confiance devant l'API (IP réelle pour le rate limiting) : 1 derrière Traefik en prod, vide en dev
+TRUST_PROXY=
 # Clé de chiffrement des secrets TOTP (2FA admin), 32 octets. À générer : openssl rand -base64 32
 TOTP_ENCRYPTION_KEY=changeme-cle-totp-factice
 
