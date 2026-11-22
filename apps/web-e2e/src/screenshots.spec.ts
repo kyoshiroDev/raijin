@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
-import { PAGES, VIEWPORTS, openPage } from './support/pages';
+import { PAGES, VIEWPORTS, openDialogSettled, openPage } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
@@ -20,11 +20,12 @@ for (const { name, path } of PAGES) {
     test(`capture ${name} ${width}px`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await openPage(page, path);
-      await page.screenshot({
+      const png = await page.screenshot({
         path: join(OUT, `${name}-${width}.png`),
         fullPage: name === 'design',
         animations: 'disabled',
       });
+      expect(png.byteLength).toBeGreaterThan(1000);
     });
   }
 }
@@ -39,9 +40,9 @@ for (const [file, button] of [
       await page.setViewportSize(viewport);
       await openPage(page, '/_design');
       await page.getByRole('button', { name: button }).click();
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await page.waitForTimeout(300);
-      await page.screenshot({ path: join(OUT, `${file}-${width}.png`), animations: 'disabled' });
+      await openDialogSettled(page);
+      const png = await page.screenshot({ path: join(OUT, `${file}-${width}.png`), animations: 'disabled' });
+      expect(png.byteLength).toBeGreaterThan(1000);
     });
   }
 }

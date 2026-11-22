@@ -24,6 +24,9 @@ const baseURL = process.env['BASE_URL'] || getReadyUrl('http://localhost:4200');
  */
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './src' }),
+  // CI : 1 worker (preset Nx). En local : 3 workers au plus, pour que le serveur de dev et axe
+  // ne saturent pas la machine (timeouts aléatoires constatés avec le défaut de 50 % des cœurs).
+  workers: process.env['CI'] ? 1 : 3,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,

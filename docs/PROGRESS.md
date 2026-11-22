@@ -6,7 +6,7 @@
 
 - **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
 
-## Statut : phase 1 — Socle — en cours
+## Statut : phase 1 ter — Services en mode test via Chrome — en cours (phases 1 et 1 bis terminées)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -32,6 +32,11 @@
 
 ## Journal des phases
 
+### Phase 1 ter — Services en mode test via Chrome — en cours
+- Comptes disponibles : Helius seulement. Stripe, Resend, Google : reportés (« À brancher »).
+- Tâches : [ ] Helius : clés « raijin » et « raijin-banc-de-test » (ops-chrome) · [ ] `docs/SECRETS-CHECKLIST.md`, `docs/OPS-LOG.md`
+
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.
@@ -39,23 +44,24 @@
 - Git local : `git init -b main`, `.gitignore` (secrets, builds, caches), commit `ea411f0 chore: kit de départ Raijin Shield`.
 - Distant : https://github.com/kyoshiroDev/raijin (privé), `main` et `dev` poussées ; travail sur `dev`. Pas de protection de branche (offre payante) : `main` protégée par `.claude/settings.json`.
 
-### Phase 1 — Socle
+### Phase 1 — Socle — terminée (2026-11-22)
 - Plan (architect) : socle Nx 24 « integrated » (pnpm, sans Nx Cloud, alias `@raijin/*` dans `tsconfig.base.json`), 21 projets taggés (dont `brand`) `scope:*`/`type:*`, frontières bloquantes dans `eslint.config.mjs`, cibles lint/typecheck/test/build en cache, Tailwind 4 branché sur `libs/brand/tokens.css` via un thème unique `libs/web/ui/src/styles/theme.css`, PWA de base, route `/_design` (dev seulement, placeholder dans `libs/web/ui`), contrats Zod initiaux (`libs/shared/contracts` : adresse Solana/mint/wallet, `Verdict`, `CheckStatus`, `ApiError {code, message}`) et utilitaires (`libs/shared/util` : base58, `truncateMiddle`, montants compacts fr-FR), CI GitHub, `docs/ARCHITECTURE.md`, `docs/ENV.md`, `docs/graph.html`. Détail : `docs/ARCHITECTURE.md`.
 - Tâches :
   - [x] Workspace Nx, projets, tags, frontières, CI, thème Tailwind, PWA, contrats et utilitaires de base (architect)
   - [ ] Créer `.env.example` racine à partir du bloc de `docs/ENV.md` (bloqué pour les agents par la règle deny `.env.*` de `.claude/settings.json` : à faire par l'utilisateur ou l'orchestrateur)
   - [x] Composants de base dans `libs/web/ui` + page `/_design` remplie, tous états : Button, VerdictBadge, Card, Input + bouton Coller, AddressChip, BottomSheet, TabBar, Sidebar, Skeleton, EmptyState, Toast ; coquille de navigation (TabBar < 1024 px, Sidebar ≥ 1024 px) (ui-mobile-first). Contrats à utiliser : `Verdict`/`VERDICT_LABELS` (`@raijin/shared-contracts`), `truncateMiddle`/`formatCompactAmount` (`@raijin/shared-util`). Uniquement les utilitaires générés par les tokens (les palettes Tailwind par défaut sont désactivées).
-  - [ ] Tests : `run-many -t lint typecheck test build`, Playwright responsive de `/_design` (320 → 1920, sans scroll horizontal, cibles ≥ 44 px), axe, captures dans `docs/screenshots/phase-1/` (test-e2e)
-  - [ ] Audit de sécurité du socle (CI, dépendances, `.gitignore`, aucune donnée sensible) (security-reviewer)
-- Tests : run-many lint/typecheck/test/build vert (22 projets) ; couverture shared-util 100 % lignes / 91 % branches, shared-contracts 100 %. e2e (commit `464c284`) : 93/125, 32 échecs dus à 3 défauts web-ui (nom accessible du lien logo, cible logo 25,6 px à 320 px, line-clamp sans title) → renvoyés à ui-mobile-first, plus bordures de contrôles < 3:1 (WCAG 1.4.11) à renforcer.
-- Sécurité : audit 1 + 1 bis : 0 critique, 1 important, 6 mineurs. I1 Astro 5 vulnérable → Astro 7.4.13 (corrigé, `9153bab`, écart assumé avec « Astro 5 » de PROMPT.md) ; `pnpm audit` 39 alertes → 3 modérées transitives d'outillage. M1 Nx 24.0.6 (undici 7.30.1), M2 actions épinglées par SHA + Dependabot : corrigés. M5 longueur du collage (ui-mobile-first, en cours). Planifiés : M3 `new Function` dans apps/api/src/main.ts → phase 2 (nestjs-api) ; M4 référence projet Supabase dans legacy/vercel.json → phase 8 bis (bench-quant) ; M6 Helmet/CORS/throttler → phase 2, CSP/HSTS Traefik → phase 8. Conforme : aucun secret dans l'historique, banc isolé, allowBuilds minimal.
+  - [x] Tests : `run-many -t lint typecheck test build`, Playwright responsive de `/_design` (320 → 1920, sans scroll horizontal, cibles ≥ 44 px), axe, captures dans `docs/screenshots/phase-1/` (test-e2e)
+  - [x] Audit de sécurité du socle (CI, dépendances, `.gitignore`, aucune donnée sensible) (security-reviewer)
+- Tests : run-many lint/typecheck/test/build vert (22 projets) ; couverture shared-util 100 % lignes / 91 % branches, shared-contracts 100 %. e2e (commit `464c284`) : 93/125, 32 échecs dus à 3 défauts web-ui (nom accessible du lien logo, cible logo 25,6 px à 320 px, line-clamp sans title) → corrigés par ui-mobile-first (`61d83b5`, bordures de contrôles ≥ 3:1 via `--color-line-strong`). **Revalidation : e2e 125/125** (responsive 9 largeurs + paysage, axe 0 violation, clavier, captures `docs/screenshots/phase-1/` relues), run-many vert 22 projets. Délai axe 90 s, workers 1 en CI / 3 en local.
+- Sécurité : audit 1 + 1 bis : 0 critique, 1 important, 6 mineurs. I1 Astro 5 vulnérable → Astro 7.4.13 (corrigé, `9153bab`, écart assumé avec « Astro 5 » de PROMPT.md) ; `pnpm audit` 39 alertes → 3 modérées transitives d'outillage. M1 Nx 24.0.6 (undici 7.30.1), M2 actions épinglées par SHA + Dependabot : corrigés. M5 longueur du collage (maxlength 256) : corrigé. **Réaudit : aucun point critique ou important ouvert** (I1, M1, M2, M5 vérifiés). M7 (mineur) : 3 alertes modérées transitives d'outillage (uuid, glob, minimatch via Nx/Jest/webpack-dev-server), à suivre avec les montées de Nx. Planifiés : M3 `new Function` dans apps/api/src/main.ts → phase 2 (nestjs-api) ; M4 référence projet Supabase dans legacy/vercel.json → phase 8 bis (bench-quant) ; M6 Helmet/CORS/throttler → phase 2, CSP/HSTS Traefik → phase 8. Conforme : aucun secret dans l'historique, banc isolé, allowBuilds minimal.
 - Commits : `22e75fd` socle Nx · `6731ad1` import du banc (1 bis) · `4f00f97` composants + /_design
 - Décisions : Astro 7.4 exige Node ≥ 22.23.4 : `.nvmrc` = 24.14.0 (déjà installé via nvm). Les commandes locales tournent avec `PATH="$HOME/.nvm/versions/node/v24.14.0/bin:$PATH"` (on ne change pas le Node par défaut de la machine, utilisé par d'autres projets). CI : Node 22 dernière version.
 - Décisions : icônes via `lucide` (lucide-angular incompatible Angular 22) ; graphe Nx non commité (6 Mo, régénérable).
 - Décisions : `.env.example` : chaque variable précédée d'un commentaire avec le service et l'URL de la page où l'obtenir (ou la commande pour la générer), groupée par service (demande utilisateur, à appliquer à chaque nouvelle variable).
 - Décisions : comptes externes : seul Helius existe (réponse utilisateur) ; le reste en simulation (section 0 ter).
 
-### Phase 1 bis — Banc de test, import
+### Phase 1 bis — Banc de test, import — terminée (2026-11-22)
+- Tests et sécurité : build/lint/test du banc verts (758 tests), inclus dans le run-many global et dans l'audit de la phase 1 (aucun secret, banc isolé). Commit `6731ad1`.
 - Tâches :
   - [x] Front de `raijin-old` copié dans `apps/raijin-banc-de-test/` (src, public, ngsw-config.json ; 242 fichiers, 1,7 Mo), `supabase/` dans `legacy/supabase/` (1,9 Mo), plus `legacy/scripts/`, `legacy/docs/`, `legacy/vercel.json` en référence (`legacy/README.md`). Exclus : `.git`, `node_modules`, `.env*`, `.secrets/`, `dist`, `.angular`, `supabase/.temp`, `supabase/.branches`, `*.local.sql`, `src/environments/environment.ts` (généré, contenait la config réelle). Dépôt d'origine non modifié. (bench-quant)
   - [x] Projet Nx `raijin-banc-de-test` (tags `scope:bench`, `type:app`) : lint, typecheck, test (Vitest via `@angular/build:unit-test`), build (`@angular/build:application`, service worker en prod), serve (port 4300), `write-env`. `legacy/` n'est pas un projet Nx (`.nxignore`, `.prettierignore`). (bench-quant)

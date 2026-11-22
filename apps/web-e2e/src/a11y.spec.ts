@@ -1,8 +1,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { PAGES, openPage } from './support/pages';
+import { PAGES, openDialogSettled, openPage } from './support/pages';
 
 /** Règles WCAG 2.0/2.1/2.2 A et AA + bonnes pratiques axe. */
+/**
+ * axe met 10 à 14 s sur /_design (page longue, deux aperçus de sidebar) et davantage sur une machine
+ * chargée : délai porté à 90 s pour tout le fichier, au lieu des 30 s par défaut.
+ */
+test.describe.configure({ timeout: 90_000 });
+
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'];
 
 async function axe(page: Page) {
@@ -58,8 +64,7 @@ for (const [label, button] of [
       await page.setViewportSize(viewport);
       await openPage(page, '/_design');
       await page.getByRole('button', { name: button }).click();
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await page.waitForTimeout(300); // fin de l'animation d'entrée (220 ms)
+      await openDialogSettled(page);
       expect(await axe(page)).toEqual([]);
     });
   }

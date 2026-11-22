@@ -105,3 +105,24 @@ export function findTruncatedWithoutTitle(page: Page): Promise<string[]> {
     return out;
   });
 }
+
+/** Attend la fin des animations (entrée de la bottom sheet) dans le dialogue ouvert. */
+export async function openDialogSettled(page: Page) {
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        // Les animations infinies (skeletons, éclair) ne se terminent jamais : ignorées.
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ).then(() => undefined),
+  );
+  return dialog;
+}
+
+/** `scrollWidth - innerWidth` : > 0 signifie un scroll horizontal (PROMPT.md §3). */
+export function horizontalOverflow(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+}
