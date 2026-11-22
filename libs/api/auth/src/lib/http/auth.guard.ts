@@ -24,7 +24,10 @@ type AuthenticatedRequest = Request & { auth?: AuthContext };
 /**
  * Exige un access token valide (cookie httpOnly) et une session active en base
  * (révocation immédiate après déconnexion ou réinitialisation).
- * - aucun cookie d'access (jamais connecté, ou déconnecté) : 401 `UNAUTHORIZED` → pas de refresh ;
+ * - aucun cookie d'access : 401 `UNAUTHORIZED` → pas de refresh sur cette requête. Le front n'y arrive
+ *   pas avec un refresh valide : au démarrage, `GET /auth/session` répond 401 `AUTH_SESSION_EXPIRED`
+ *   quand seul le cookie de refresh reste (contrat `SessionState`), le front rafraîchit de façon
+ *   transparente et l'utilisateur reste connecté. Sans aucun cookie de session : visiteur anonyme ;
  * - cookie présent mais expiré, invalide ou session révoquée : 401 `AUTH_SESSION_EXPIRED` → refresh.
  */
 @Injectable()

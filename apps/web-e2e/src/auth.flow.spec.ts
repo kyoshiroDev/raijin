@@ -236,12 +236,26 @@ test('access token expiré : refresh transparent pendant une action (export)', a
   await expect(page.getByText('Connecte-toi pour continuer.')).toHaveCount(0);
 });
 
-test('cookie d’access supprimé : session considérée comme fermée, retour à la connexion', async ({ page, context }) => {
-  // Choix documenté (auth.guard.ts, interceptors.ts) : sans cookie d'access, 401 UNAUTHORIZED, pas de refresh.
+test('cookie d’access supprimé : refresh transparent, utilisateur toujours connecté', async ({ page, context }) => {
+  // Contrat SessionState (9d6535c) : cookie de refresh seul → GET /auth/session 401 AUTH_SESSION_EXPIRED,
+  // le front rafraîchit (POST /auth/refresh) et reste sur /compte.
   const { email } = await createVerifiedAccount(context, 'sans-access');
   await page.goto('/compte');
   await expectAccount(page, email);
   await context.clearCookies({ name: 'rj_at' });
+  const refresh = page.waitForResponse((res) => res.url().endsWith('/api/v1/auth/refresh') && res.request().method() === 'POST');
+  await page.reload();
+  expect((await refresh).status()).toBe(200);
+  await expect(page).toHaveURL(/\/compte$/);
+  await expectAccount(page, email);
+  expect((await context.cookies()).some((c) => c.name === 'rj_at'), 'nouveau cookie d’access posé').toBe(true);
+});
+
+test('tous les cookies d’auth supprimés : session fermée, retour à la connexion', async ({ page, context }) => {
+  const { email } = await createVerifiedAccount(context, 'sans-cookies');
+  await page.goto('/compte');
+  await expectAccount(page, email);
+  for (const name of AUTH_COOKIES) await context.clearCookies({ name });
   await page.reload();
   await expect(page).toHaveURL(/\/compte\/connexion\?redirect=%2Fcompte/);
 });
