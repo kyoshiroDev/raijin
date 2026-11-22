@@ -22,10 +22,12 @@ import {
   type WalletHoldingsOptions,
 } from './collect/wallet-collector';
 import { resolveSolanaDataConfig, type SolanaDataConfig, type SolanaDataConfigInput } from './config';
-import type { UpstreamId } from './core/errors';
+import { UPSTREAM_IDS, type UpstreamId } from './core/errors';
 import { MemoryCacheStore, MemoryCreditBudget } from './core/memory';
 import { SILENT_LOGGER, SYSTEM_CLOCK, type CacheStore, type Clock, type CreditBudget, type FetchLike, type SolanaLogger } from './core/ports';
-import { UpstreamGate } from './core/upstream-gate';
+import { UpstreamGate, type BreakerState } from './core/upstream-gate';
+import { CounterUsageRecorder, MemoryUsageCounterStore, UsageRecordingCreditBudget, type UsageCounterStore } from './core/usage';
+import { CounterUpstreamUsageReader, type UpstreamUsageReader } from './usage-reader';
 import { isSolanaAddress } from '@raijin/shared-util';
 import { QUOTE_MINTS } from './known-accounts';
 
@@ -41,6 +43,11 @@ export interface SolanaDataOptions {
   readonly logger?: SolanaLogger;
   /** Aléa de la gigue des rejeux (tests). */
   readonly random?: () => number;
+  /**
+   * Compteurs d'appels par source et par jour UTC (écran admin « Santé technique »). API : stockage Redis
+   * (`HINCRBY` / `EXPIRE` / `HGETALL`) fourni par l'hôte ; défaut : mémoire du processus.
+   */
+  readonly usageStore?: UsageCounterStore;
 }
 
 export interface ResolvedToken {
@@ -63,6 +70,8 @@ export class SolanaDataService {
   private readonly dexscreener: DexScreenerClient;
   private readonly gates: ReadonlyMap<UpstreamId, UpstreamGate>;
   private readonly heliusKey: string | null;
+  /** Lecteur des compteurs d'appels (instantané d'un jour UTC, disjoncteurs, quotas du contrat santé). */
+  readonly usage: UpstreamUsageReader;
 
   constructor(options: SolanaDataOptions = {}) {
     const config = resolveSolanaDataConfig(options.config);
@@ -70,12 +79,15 @@ export class SolanaDataService {
     const clock = options.clock ?? SYSTEM_CLOCK;
     const logger = options.logger ?? SILENT_LOGGER;
     const fetchFn: FetchLike = options.fetch ?? ((input, init) => fetch(input, init));
-    const budget =
+    const recorder = new CounterUsageRecorder(options.usageStore ?? new MemoryUsageCounterStore(clock), UPSTREAM_IDS, clock, logger);
+    const budget = new UsageRecordingCreditBudget(
       options.creditBudget ??
-      new MemoryCreditBudget(config.heliusDailyCreditBudget, clock, {
-        watch: config.watchDailyCreditBudget,
-        wallet: config.walletDailyCreditBudget,
-      });
+        new MemoryCreditBudget(config.heliusDailyCreditBudget, clock, {
+          watch: config.watchDailyCreditBudget,
+          wallet: config.walletDailyCreditBudget,
+        }),
+      recorder,
+    );
     const cache = options.cache ?? new MemoryCacheStore(clock);
     // Clé gardée dans une propriété privée, utilisée uniquement pour construire l'URL au moment de l'appel.
     this.heliusKey = options.heliusApiKey ?? null;
@@ -95,12 +107,18 @@ export class SolanaDataService {
           breakerThreshold: config.breakerThreshold,
           breakerCooldownMs: config.breakerCooldownMs,
         },
-        { clock, random: options.random },
+        { clock, random: options.random, usage: recorder },
       );
       gates.set(source, created);
       return created;
     };
     this.gates = gates;
+    this.usage = new CounterUpstreamUsageReader(
+      recorder,
+      () => Object.fromEntries([...gates.entries()].map(([id, g]) => [id, g.breakerState])) as Partial<Record<UpstreamId, BreakerState>>,
+      config,
+      clock,
+    );
 
     const rpcTransport = (source: 'helius_rpc' | 'helius_das' | 'solana_rpc', url: () => string): JsonRpcTransport => ({
       source,

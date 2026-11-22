@@ -31,11 +31,12 @@ export class GeckoTerminalClient {
   constructor(private readonly transport: RestTransport) {}
 
   async getTokenPools(mint: string, signal?: AbortSignal): Promise<GeckoPool[]> {
-    const response = await getJson(this.transport, 'token-pools', `/networks/solana/tokens/${pathSegment(mint)}/pools`, signal);
-    if (response.status === 404) return [];
-    if (response.status !== 200) throw new UpstreamError('geckoterminal', 'http_error', response.status);
-    const parsed = poolsSchema.safeParse(response.body);
-    if (!parsed.success) throw new UpstreamError('geckoterminal', 'invalid_response', response.status);
-    return parsed.data.data;
+    return getJson(this.transport, 'token-pools', `/networks/solana/tokens/${pathSegment(mint)}/pools`, signal, (response) => {
+      if (response.status === 404) return [];
+      if (response.status !== 200) throw new UpstreamError('geckoterminal', 'http_error', response.status);
+      const parsed = poolsSchema.safeParse(response.body);
+      if (!parsed.success) throw new UpstreamError('geckoterminal', 'invalid_response', response.status);
+      return parsed.data.data;
+    });
   }
 }

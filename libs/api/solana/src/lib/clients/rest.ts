@@ -21,15 +21,17 @@ export function pathSegment(value: string): string {
 /**
  * GET JSON sous la file de débit de la source. `path` commence par `/` et n'est construit qu'à
  * partir de gabarits fixes + `pathSegment(...)` ; seuls la source, le gabarit de chemin (`route`),
- * le statut et la latence sont journalisés.
+ * le statut et la latence sont journalisés. `parse` (validation Zod du client) est exécuté **dans**
+ * la tentative : une réponse hors schéma est comptée comme un échec `validation` de la source.
  */
-export function getJson(
+export function getJson<T = JsonResponse>(
   transport: RestTransport,
   route: string,
   path: string,
   signal?: AbortSignal,
+  parse: (response: JsonResponse) => T = (response) => response as T,
   maxBytes = transport.maxBytes,
-): Promise<JsonResponse> {
+): Promise<T> {
   return transport.gate.run(async () => {
     const startedAt = Date.now();
     let status: number | string = 'error';
@@ -42,7 +44,7 @@ export function getJson(
         signal,
       });
       status = response.status;
-      return response;
+      return parse(response);
     } catch (error) {
       status = (error as { kind?: string }).kind ?? 'error';
       throw error;

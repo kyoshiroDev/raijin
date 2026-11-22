@@ -2,6 +2,7 @@ import { Injectable, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ApiSolanaModule, SOLANA_DATA_OPTIONS } from './api-solana.module';
 import { SolanaDataService } from './solana-data.service';
+import { UpstreamUsageReader } from './usage-reader';
 
 @Injectable()
 class FakeConfig {
@@ -18,6 +19,7 @@ describe('ApiSolanaModule', () => {
     expect(service).toBeInstanceOf(SolanaDataService);
     expect(service.heliusConfigured).toBe(false);
     expect(service.config.collectDeadlineMs).toBe(5_000);
+    expect(moduleRef.get(UpstreamUsageReader)).toBe(service.usage);
     await moduleRef.close();
   });
 

@@ -66,6 +66,49 @@ const engine = createRiskEngine({ notEvaluated: LIGHT_PROFILE_NOT_EVALUATED });
   re-scanné avec verdicts en cache = 3. Fixtures : `WALLET_FIXTURE_ADDRESSES` de `@raijin/api-solana/testing`
   (générées par `scripts/build-wallet-fixtures.mjs`).
 
+## Compteurs d'appels par source (phase 6 bis, écran admin « Santé technique »)
+
+Chaque `UpstreamGate` compte **chaque tentative** (rejeux compris) via le port `SourceUsageRecorder` : issue
+(`success`, échecs `timeout` · `rate_limited` (429) · `server_error` (5xx) · `validation` (réponse hors schéma Zod,
+contrôlée **dans** la tentative) · `network` · `other` (4xx inattendu, erreur JSON-RPC), neutres `cancelled` ·
+`oversized`), latence ; et les refus **sans requête** (`circuit_open`, `queue_full`, `budget_exhausted`, `aborted`).
+Le budget de crédits est enveloppé (`UsageRecordingCreditBudget`) : crédits Helius acceptés et refus, par voie
+(`interactive`, `watch`, `wallet`). Aucune donnée sensible : ni URL, ni clé, ni mint, ni adresse ; jours UTC validés.
+
+Stockage : port `UsageCounterStore` (hash par clé, champs entiers), clés `upstream:calls:<source>:<AAAA-MM-JJ>` et
+`upstream:credits:<AAAA-MM-JJ>`, TTL `UPSTREAM_USAGE_TTL_S` (8 jours). Défaut : `MemoryUsageCounterStore` (par
+processus). Une panne du stockage ne fait jamais échouer un appel (avertissement `upstream_usage_*_failed` 1/min,
+lecture `status: 'unavailable'`).
+
+Lecture : `solana.usage` (ou le jeton Nest `UpstreamUsageReader`, exporté par `ApiSolanaModule`) →
+`snapshot(day?)` : `UpstreamUsageSnapshot` = par source (appels, succès, échecs par catégorie, refus, `errorRate`,
+`avgLatencyMs`, état **actuel** du disjoncteur), crédits par voie avec plafonds, `quotas` **conformes à
+`adminQuotaUsageSchema`** (ordre de `QUOTA_SERVICES` : crédits Helius total / suivis / wallet ; appels Jupiter,
+RugCheck, DexScreener, GeckoTerminal sans plafond journalier, `limit: null`) et `dailyMetrics`
+(`upstream_calls.<source>` du catalogue `DailyMetric`, Helius = RPC + DAS).
+
+**À brancher par admin-analytics** :
+1. Un adaptateur Redis (dans `api-admin` ou `api-core`) :
+   ```ts
+   class RedisUsageCounterStore implements UsageCounterStore {
+     constructor(private readonly redis: Redis) {}
+     async increment(key: string, fields: Readonly<Record<string, number>>, ttlSeconds: number) {
+       const tx = this.redis.multi();
+       for (const [field, by] of Object.entries(fields)) tx.hincrby(key, field, by);
+       await tx.expire(key, ttlSeconds).exec();
+     }
+     async read(keys: readonly string[]) {
+       const results = (await this.redis.pipeline(keys.map((k) => ['hgetall', k])).exec()) ?? [];
+       return results.map(([error, hash]) => (error ? null : (hash as Record<string, string>)));
+     }
+   }
+   ```
+2. Le passer à `SolanaDataService` : `usageStore` dans `solanaDataOptions(...)` de `api-analysis` (une ligne, hors
+   mode fixtures) — instance unique par processus, partagée par l'analyse, les suivis et le scan de wallet.
+3. `GET admin/health` : `quotas` = `(await usage.snapshot()).quotas` (alerte `quota_threshold` sur `level`) ;
+   taux d'erreur et disjoncteurs depuis `sources`. Job `metrics-aggregate` : `snapshot(J-1)` (et J-2, J-3) →
+   `dailyMetrics` ; au-delà de 8 jours les compteurs ont expiré (seule `DailyMetric` fait foi).
+
 ## Sources et limites (vérifiées le 22/11/2026)
 
 | Source | Routes | Limite retenue (configurable) | Doc |

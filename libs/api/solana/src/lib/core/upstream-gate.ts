@@ -1,5 +1,6 @@
 import { UpstreamError, toUpstreamError, type UpstreamId } from './errors';
 import { SYSTEM_CLOCK, type Clock } from './ports';
+import { NOOP_USAGE_RECORDER, classifyUpstreamError, type SourceUsageRecorder } from './usage';
 
 export interface GateOptions {
   readonly source: UpstreamId;
@@ -25,6 +26,8 @@ export interface GateDeps {
   readonly clock?: Clock;
   /** Aléa de la gigue (injectable pour des tests déterministes). */
   readonly random?: () => number;
+  /** Compteurs d'appels (chaque tentative, rejeux compris) et de refus ; aucun par défaut. */
+  readonly usage?: SourceUsageRecorder;
 }
 
 interface Waiter {
@@ -34,7 +37,7 @@ interface Waiter {
   onAbort?: () => void;
 }
 
-type BreakerState = 'closed' | 'open' | 'half_open';
+export type BreakerState = 'closed' | 'open' | 'half_open';
 
 function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
   (timer as { unref?: () => void }).unref?.();
@@ -48,6 +51,7 @@ function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
 export class UpstreamGate {
   private readonly clock: Clock;
   private readonly random: () => number;
+  private readonly usage: SourceUsageRecorder;
   private readonly capacity: number;
   private tokens: number;
   private lastRefill: number;
@@ -66,6 +70,7 @@ export class UpstreamGate {
     if (!(options.ratePerSecond > 0)) throw new RangeError('Débit invalide.');
     this.clock = deps.clock ?? SYSTEM_CLOCK;
     this.random = deps.random ?? Math.random;
+    this.usage = deps.usage ?? NOOP_USAGE_RECORDER;
     this.capacity = Math.max(1, options.burst ?? Math.ceil(options.ratePerSecond));
     this.tokens = this.capacity;
     this.lastRefill = this.clock.now();
@@ -81,18 +86,36 @@ export class UpstreamGate {
     return this.breaker;
   }
 
-  /** Exécute `task` sous la file de débit, avec rejeux et disjoncteur. */
+  /**
+   * Exécute `task` sous la file de débit, avec rejeux et disjoncteur. Chaque tentative est comptée
+   * (`usage.recordCall` : issue, latence) ; un refus avant requête l'est par `usage.recordRejection`.
+   */
   async run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const isTrial = this.enterBreaker();
+    let isTrial: boolean;
+    try {
+      isTrial = this.enterBreaker();
+    } catch (error) {
+      this.usage.recordRejection(this.source, 'circuit_open');
+      throw error;
+    }
     try {
       for (let attempt = 1; ; attempt += 1) {
-        await this.acquire(signal);
+        try {
+          await this.acquire(signal);
+        } catch (error) {
+          // Refus avant requête : file pleine ou annulation pendant l'attente.
+          this.usage.recordRejection(this.source, (error as UpstreamError).kind === 'queue_full' ? 'queue_full' : 'aborted');
+          throw error;
+        }
+        const startedAt = this.clock.now();
         try {
           const result = await task();
+          this.usage.recordCall(this.source, 'success', this.clock.now() - startedAt);
           this.onSuccess();
           return result;
         } catch (raw) {
           const error = toUpstreamError(this.source, raw);
+          this.recordError(error, this.clock.now() - startedAt);
           const canRetry = error.retryable && attempt < this.options.maxAttempts && !signal?.aborted;
           if (!canRetry) {
             if (error.countsAsFailure) this.onFailure();
@@ -104,6 +127,12 @@ export class UpstreamGate {
     } finally {
       if (isTrial) this.trialInFlight = false;
     }
+  }
+
+  private recordError(error: UpstreamError, latencyMs: number): void {
+    const classified = classifyUpstreamError(error);
+    if (classified.kind === 'call') this.usage.recordCall(this.source, classified.outcome, latencyMs);
+    else this.usage.recordRejection(this.source, classified.reason);
   }
 
   private retryDelay(error: UpstreamError, attempt: number): number {

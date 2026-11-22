@@ -1,5 +1,9 @@
 import { Module, type DynamicModule, type InjectionToken, type ModuleMetadata, type OptionalFactoryDependency } from '@nestjs/common';
 import { SolanaDataService, type SolanaDataOptions } from './solana-data.service';
+import { UpstreamUsageReader } from './usage-reader';
+
+/** `UpstreamUsageReader` = `SolanaDataService.usage` (mêmes compteurs et disjoncteurs que le processus). */
+const usageReaderProvider = { provide: UpstreamUsageReader, useFactory: (solana: SolanaDataService) => solana.usage, inject: [SolanaDataService] };
 
 export const SOLANA_DATA_OPTIONS = Symbol('SOLANA_DATA_OPTIONS');
 
@@ -29,8 +33,9 @@ export class ApiSolanaModule {
       providers: [
         { provide: SOLANA_DATA_OPTIONS, useValue: options },
         { provide: SolanaDataService, useFactory: (opts: SolanaDataOptions) => new SolanaDataService(opts), inject: [SOLANA_DATA_OPTIONS] },
+        usageReaderProvider,
       ],
-      exports: [SolanaDataService],
+      exports: [SolanaDataService, UpstreamUsageReader],
     };
   }
 
@@ -42,8 +47,9 @@ export class ApiSolanaModule {
       providers: [
         { provide: SOLANA_DATA_OPTIONS, useFactory: options.useFactory, inject: options.inject ?? [] },
         { provide: SolanaDataService, useFactory: (opts: SolanaDataOptions) => new SolanaDataService(opts), inject: [SOLANA_DATA_OPTIONS] },
+        usageReaderProvider,
       ],
-      exports: [SolanaDataService],
+      exports: [SolanaDataService, UpstreamUsageReader],
     };
   }
 }

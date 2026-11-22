@@ -36,26 +36,27 @@ export class JupiterQuoteClient {
     const query =
       `inputMint=${pathSegment(inputMint)}&outputMint=${pathSegment(outputMint)}` +
       `&amount=${amount.toString()}&slippageBps=${Math.trunc(this.slippageBps)}`;
-    const response = await getJson(this.transport, 'quote', `/quote?${query}`, signal);
-    if (response.status === 200) {
-      const parsed = quoteSchema.safeParse(response.body);
-      if (!parsed.success || !Number.isFinite(parsed.data.priceImpactPct)) {
-        throw new UpstreamError('jupiter', 'invalid_response', 200);
+    return getJson(this.transport, 'quote', `/quote?${query}`, signal, (response) => {
+      if (response.status === 200) {
+        const parsed = quoteSchema.safeParse(response.body);
+        if (!parsed.success || !Number.isFinite(parsed.data.priceImpactPct)) {
+          throw new UpstreamError('jupiter', 'invalid_response', 200);
+        }
+        return {
+          routeFound: true,
+          inAmount: BigInt(parsed.data.inAmount),
+          outAmount: BigInt(parsed.data.outAmount),
+          priceImpactPct: parsed.data.priceImpactPct,
+          hops: parsed.data.routePlan.length,
+        };
       }
-      return {
-        routeFound: true,
-        inAmount: BigInt(parsed.data.inAmount),
-        outAmount: BigInt(parsed.data.outAmount),
-        priceImpactPct: parsed.data.priceImpactPct,
-        hops: parsed.data.routePlan.length,
-      };
-    }
-    if (response.status === 400 || response.status === 404) {
-      const parsed = quoteErrorSchema.safeParse(response.body);
-      if (parsed.success && parsed.data.errorCode !== undefined && NO_ROUTE_CODES.has(parsed.data.errorCode)) {
-        return { routeFound: false };
+      if (response.status === 400 || response.status === 404) {
+        const parsed = quoteErrorSchema.safeParse(response.body);
+        if (parsed.success && parsed.data.errorCode !== undefined && NO_ROUTE_CODES.has(parsed.data.errorCode)) {
+          return { routeFound: false };
+        }
       }
-    }
-    throw new UpstreamError('jupiter', 'http_error', response.status);
+      throw new UpstreamError('jupiter', 'http_error', response.status);
+    });
   }
 }

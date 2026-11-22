@@ -5,6 +5,8 @@ export * from './lib/core/errors';
 export * from './lib/core/ports';
 export * from './lib/core/memory';
 export * from './lib/core/upstream-gate';
+export * from './lib/core/usage';
+export * from './lib/usage-reader';
 export type { CollectOptions, CollectProfile, CollectedFacts, SourceReport, SourceStatus } from './lib/collect/facts-collector';
 export {
   RPC_BATCH_MAX,

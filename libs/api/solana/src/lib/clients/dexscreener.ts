@@ -51,12 +51,13 @@ export class DexScreenerClient {
 
   /** Pools du token sur Solana (jusqu'à 30, route `token-pairs/v1`). */
   async getTokenPairs(mint: string, signal?: AbortSignal): Promise<DexPair[]> {
-    const response = await getJson(this.transport, 'token-pairs', `/token-pairs/v1/solana/${pathSegment(mint)}`, signal);
-    if (response.status === 404) return [];
-    if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
-    const parsed = pairsArraySchema.safeParse(response.body);
-    if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
-    return parsed.data.filter((pair) => pair.chainId === 'solana');
+    return getJson(this.transport, 'token-pairs', `/token-pairs/v1/solana/${pathSegment(mint)}`, signal, (response) => {
+      if (response.status === 404) return [];
+      if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
+      const parsed = pairsArraySchema.safeParse(response.body);
+      if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
+      return parsed.data.filter((pair) => pair.chainId === 'solana');
+    });
   }
 
   /**
@@ -64,32 +65,35 @@ export class DexScreenerClient {
    * principale par token, réserves `liquidity.base` / `liquidity.quote`). Passe rapide des suivis.
    */
   async getTokensPairs(mints: readonly string[], signal?: AbortSignal): Promise<DexPair[]> {
-    const response = await getJson(this.transport, 'tokens', `/tokens/v1/solana/${batchSegment(mints)}`, signal);
-    if (response.status === 404) return [];
-    if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
-    const parsed = pairsArraySchema.safeParse(response.body);
-    if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
-    return parsed.data.filter((pair) => pair.chainId === 'solana');
+    return getJson(this.transport, 'tokens', `/tokens/v1/solana/${batchSegment(mints)}`, signal, (response) => {
+      if (response.status === 404) return [];
+      if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
+      const parsed = pairsArraySchema.safeParse(response.body);
+      if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
+      return parsed.data.filter((pair) => pair.chainId === 'solana');
+    });
   }
 
   /** Paires par adresse (≤ 30, `latest/dex/pairs`) : relecture des pools déjà suivis. */
   async getPairs(pairAddresses: readonly string[], signal?: AbortSignal): Promise<DexPair[]> {
-    const response = await getJson(this.transport, 'pairs', `/latest/dex/pairs/solana/${batchSegment(pairAddresses)}`, signal);
-    if (response.status === 404) return [];
-    if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
-    const parsed = pairLookupSchema.safeParse(response.body);
-    if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
-    const wanted = new Set(pairAddresses);
-    return (parsed.data.pairs ?? []).filter((pair) => pair.chainId === 'solana' && wanted.has(pair.pairAddress));
+    return getJson(this.transport, 'pairs', `/latest/dex/pairs/solana/${batchSegment(pairAddresses)}`, signal, (response) => {
+      if (response.status === 404) return [];
+      if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
+      const parsed = pairLookupSchema.safeParse(response.body);
+      if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
+      const wanted = new Set(pairAddresses);
+      return (parsed.data.pairs ?? []).filter((pair) => pair.chainId === 'solana' && wanted.has(pair.pairAddress));
+    });
   }
 
   /** Paire par adresse (résolution d'un lien DexScreener de paire vers le mint). `null` si inconnue. */
   async getPair(pairAddress: string, signal?: AbortSignal): Promise<DexPair | null> {
-    const response = await getJson(this.transport, 'pairs', `/latest/dex/pairs/solana/${pathSegment(pairAddress)}`, signal);
-    if (response.status === 404) return null;
-    if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
-    const parsed = pairLookupSchema.safeParse(response.body);
-    if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
-    return parsed.data.pairs?.find((pair) => pair.chainId === 'solana' && pair.pairAddress === pairAddress) ?? null;
+    return getJson(this.transport, 'pairs', `/latest/dex/pairs/solana/${pathSegment(pairAddress)}`, signal, (response) => {
+      if (response.status === 404) return null;
+      if (response.status !== 200) throw new UpstreamError('dexscreener', 'http_error', response.status);
+      const parsed = pairLookupSchema.safeParse(response.body);
+      if (!parsed.success) throw new UpstreamError('dexscreener', 'invalid_response', response.status);
+      return parsed.data.pairs?.find((pair) => pair.chainId === 'solana' && pair.pairAddress === pairAddress) ?? null;
+    });
   }
 }

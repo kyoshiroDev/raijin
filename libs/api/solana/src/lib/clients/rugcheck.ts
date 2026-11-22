@@ -74,11 +74,12 @@ export class RugCheckClient {
   }
 
   private async fetchReport(route: string, path: string, complete: boolean, signal?: AbortSignal): Promise<RugCheckReport | null> {
-    const response = await getJson(this.transport, route, path, signal);
-    if (response.status === 404) return null;
-    if (response.status !== 200) throw new UpstreamError('rugcheck', 'http_error', response.status);
-    const parsed = reportSchema.safeParse(response.body);
-    if (!parsed.success) throw new UpstreamError('rugcheck', 'invalid_response', 200);
-    return { ...parsed.data, complete };
+    return getJson(this.transport, route, path, signal, (response) => {
+      if (response.status === 404) return null;
+      if (response.status !== 200) throw new UpstreamError('rugcheck', 'http_error', response.status);
+      const parsed = reportSchema.safeParse(response.body);
+      if (!parsed.success) throw new UpstreamError('rugcheck', 'invalid_response', 200);
+      return { ...parsed.data, complete };
+    });
   }
 }
