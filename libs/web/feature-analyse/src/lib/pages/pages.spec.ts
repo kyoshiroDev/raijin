@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Meta, Title } from '@angular/platform-browser';
 import { ANALYSIS_DISCLAIMER, ANALYSIS_ERROR_MESSAGES } from '@raijin/shared-contracts';
 import { FAKE_MINTS, fakeAnalysis, fakeAnalysisResponse, fakeQuota } from '@raijin/web-data-access';
-import { API, button, query, queryAll, root, settle, setupFeature, submitForm, typeInput, waitFor } from '../testing/harness';
+import { API, button, expectRequest, query, queryAll, root, settle, setupFeature, submitForm, typeInput, waitFor } from '../testing/harness';
 import { NavigationStart } from '@angular/router';
 import { AnalysePage, quotaText } from './analyse.page';
 import { publicPageMeta } from './public-token.page';
@@ -22,7 +22,8 @@ describe('AnalysePage', () => {
   async function open(url = '/analyse') {
     const setup = await setupFeature();
     await setup.harness.navigateByUrl(url);
-    setup.ctrl.expectOne(`${API}/analyses/quota`).flush(fakeQuota());
+    // Le quota part après le rendu, à l'inactivité, et seulement sans analyse en cours.
+    if (url === '/analyse') (await expectRequest(setup.ctrl, `${API}/analyses/quota`)).flush(fakeQuota());
     await settle();
     setup.harness.detectChanges();
     return setup;

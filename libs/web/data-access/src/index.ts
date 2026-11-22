@@ -17,3 +17,5 @@ export * from './lib/contracts';
 export * from './lib/analysis/analysis-api';
 export * from './lib/analysis/analysis.store';
 export * from './lib/testing/analysis-fixtures';
+export * from './lib/util/idle';
+export * from './lib/startup-prefetch';

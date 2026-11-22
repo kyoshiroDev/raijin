@@ -43,9 +43,11 @@ export interface FormattedMetric {
 }
 
 const NBSP = '\u00a0';
-const exactNumber = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
+/** Créé au premier usage : ce module est dans le bundle initial (pas d'`Intl` au chargement). */
+let exactNumber: Intl.NumberFormat | null = null;
 
 function plain(value: number): string {
+  exactNumber ??= new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
   return exactNumber.format(value).replace(/\u202f/g, NBSP);
 }
 

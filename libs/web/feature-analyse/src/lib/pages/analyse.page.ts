@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router, RouterLink } from '@angular/router';
 import type { QuotaInfo } from '@raijin/shared-contracts';
 import { extractSolanaAddress, isSolanaAddress, truncateMiddle, type AddressInputSource } from '@raijin/shared-util';
-import { AnalysisStore, AuthStore } from '@raijin/web-data-access';
+import { AnalysisStore, AuthStore, runAfterRenderWhenIdle } from '@raijin/web-data-access';
 import { RjButton, RjCard, RjEmptyState, RjErrorState, RjIcon, RjInputField } from '@raijin/web-ui';
 import { RjAnalysisLoading } from '../analysis/analysis-loading';
 import { RjAnalysisResult } from '../analysis/analysis-result';
@@ -99,9 +99,8 @@ function errorTitle(code: string): string {
               }
             }
           </p>
-          @if (store.quota(); as quota) {
-            <p class="shrink-0 text-label text-ink-muted sm:pt-0.5 sm:text-right" data-quota>{{ quotaLabel() }}</p>
-          }
+          <!-- Ligne réservée (une ligne de texte) : le quota arrive après l'affichage, sans décaler l'écran. -->
+          <p class="min-h-lh shrink-0 text-label text-ink-muted sm:pt-0.5 sm:text-right" data-quota>{{ quotaLabel() }}</p>
         </div>
       </div>
 
@@ -222,7 +221,11 @@ export class AnalysePage {
   });
 
   constructor() {
-    void this.store.refreshQuota();
+    // Quota : information d'appoint, demandée après l'affichage (hors chemin du LCP). Inutile si
+    // une analyse est en cours (`/analyse/<mint>`) : sa réponse porte le quota.
+    runAfterRenderWhenIdle(() => {
+      if (!this.store.loading() && !this.store.quota()) void this.store.refreshQuota();
+    });
     bindPageTitle(
       computed(() => {
         const result = this.store.result();

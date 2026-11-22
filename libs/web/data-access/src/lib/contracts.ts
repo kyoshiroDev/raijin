@@ -8,6 +8,18 @@ export type Contracts = typeof import('./contracts-chunk');
 let loading: Promise<Contracts> | null = null;
 
 export function loadContracts(): Promise<Contracts> {
-  loading ??= import('./contracts-chunk');
+  // Un échec (réseau coupé) n'est pas mémorisé : le prochain appel retente le chargement.
+  loading ??= import('./contracts-chunk').catch((error: unknown) => {
+    loading = null;
+    throw error;
+  });
   return loading;
+}
+
+/**
+ * Lance le chargement des contrats sans l'attendre (en parallèle d'une requête dont la réponse
+ * sera validée). Un échec est remonté par la validation elle-même, pas ici.
+ */
+export function prefetchContracts(): void {
+  loadContracts().catch(() => undefined);
 }

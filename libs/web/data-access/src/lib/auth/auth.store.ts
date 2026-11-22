@@ -54,7 +54,14 @@ export class AuthStore {
     if (!this.ready || force) {
       this.currentStatus.set('loading');
       this.ready = firstValueFrom(this.api.getSession()).then(
-        (session) => this.applySession(session),
+        (state) => {
+          // 200 dans les deux cas : `{ authenticated: false }` pour un visiteur sans cookie de session.
+          if (state.authenticated) {
+            this.applySession(state);
+          } else {
+            this.clear();
+          }
+        },
         (error: unknown) => {
           const status = error instanceof HttpErrorResponse ? error.status : -1;
           // 401/403 : pas de session valide (le refresh a déjà été tenté par l'intercepteur).

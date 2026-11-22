@@ -4,7 +4,7 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { provideRaijinAuth } from '@raijin/web-data-access';
+import { provideRaijinAuth, provideStartupPrefetch } from '@raijin/web-data-access';
 import { appRoutes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -13,5 +13,11 @@ export const appConfig: ApplicationConfig = {
     provideZonelessChangeDetection(),
     provideRouter(appRoutes, withComponentInputBinding()),
     provideRaijinAuth(),
+    // Pages d'arrivée par mint : `/analyse/<mint>` envoie `POST analyses` (jeton CSRF), et les deux
+    // valident une analyse (contrats) dès l'ouverture. Demandés au démarrage, en parallèle.
+    provideStartupPrefetch({
+      csrf: [/^\/analyse\/[^/]+\/?$/],
+      contracts: [/^\/(analyse|t)\/[^/]+\/?$/],
+    }),
   ],
 };

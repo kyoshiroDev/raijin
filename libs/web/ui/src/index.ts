@@ -14,6 +14,7 @@ export * from './lib/navigation/nav-item';
 export * from './lib/navigation/tab-bar';
 export * from './lib/navigation/sidebar';
 export * from './lib/navigation/app-shell';
+export * from './lib/navigation/desktop-viewport';
 export * from './lib/skeleton/skeleton';
 export * from './lib/states/empty-state';
 export * from './lib/states/error-state';

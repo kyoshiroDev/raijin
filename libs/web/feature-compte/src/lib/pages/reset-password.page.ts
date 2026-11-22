@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, ElementRef, Injector, OnInit, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { PASSWORD_HINT, PASSWORD_RULES, newPasswordSchema, opaqueTokenSchema } from '@raijin/shared-contracts';
+import { PASSWORD_HINT, PASSWORD_RULES, opaqueTokenSchema, resetPasswordRequestSchema } from '@raijin/shared-contracts';
 import { AuthStore, toClientError, type ClientError } from '@raijin/web-data-access';
 import { RjButton, RjInputField } from '@raijin/web-ui';
-import * as z from 'zod';
 import { RjAuthLayout } from '../shared/auth-layout';
 import { injectStripToken } from '../shared/strip-token';
 import { focusFirstInvalid, focusPageTitle } from '../shared/focus';
@@ -15,7 +14,7 @@ import { zodForm } from '../shared/zod-form';
 type Phase = 'form' | 'done' | 'invalid';
 
 /** Le jeton est gardé en mémoire (retiré de l'URL) : le formulaire ne valide que le mot de passe. */
-const passwordOnlySchema = z.object({ password: newPasswordSchema });
+const passwordOnlySchema = resetPasswordRequestSchema.pick({ password: true });
 
 /**
  * Réinitialisation du mot de passe depuis le lien de l'e-mail. Succès : Rai bravo, toutes les

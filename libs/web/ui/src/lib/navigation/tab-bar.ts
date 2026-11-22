@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { RjIcon } from '../icon/icon';
-import { badgeText, type RjNavItem } from './nav-item';
+import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-item';
 
 /**
  * Barre d'onglets mobile (< 1024 px) : 4 entrées maximum, icône + libellé, cibles de 56 px,
@@ -9,24 +9,23 @@ import { badgeText, type RjNavItem } from './nav-item';
  */
 @Component({
   selector: 'rj-tab-bar',
-  imports: [RjIcon, RouterLink, RouterLinkActive],
+  imports: [RjIcon, RouterLink],
   template: `
     <nav [attr.aria-label]="label()" [class]="classes()">
       <ul class="mx-auto flex max-w-lg">
         @for (item of visibleItems(); track item.path) {
+          @let active = isActive(item, path());
           <li class="min-w-0 flex-1">
             <a
               [routerLink]="item.path"
-              routerLinkActive
-              #rla="routerLinkActive"
-              ariaCurrentWhenActive="page"
+              [attr.aria-current]="active ? 'page' : null"
               class="flex h-14 flex-col items-center justify-center gap-0.5 px-1 text-label font-medium transition-colors duration-150 ease-raijin focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
-              [class.text-ink]="rla.isActive"
-              [class.text-ink-muted]="!rla.isActive"
+              [class.text-ink]="active"
+              [class.text-ink-muted]="!active"
             >
               <span
                 class="relative inline-flex h-7 w-14 items-center justify-center rounded-full transition-colors duration-200 ease-raijin"
-                [class.bg-surface-raised]="rla.isActive"
+                [class.bg-surface-raised]="active"
               >
                 <rj-icon [name]="item.icon" [size]="20" />
                 @if (badge(item); as count) {
@@ -55,6 +54,8 @@ export class RjTabBar {
   readonly label = input('Navigation principale');
   readonly mode = input<'fixed' | 'inline'>('fixed');
 
+  protected readonly path = currentPath();
+  protected readonly isActive = isNavItemActive;
   protected readonly visibleItems = computed(() => this.items().slice(0, 4));
   protected readonly classes = computed(() =>
     this.mode() === 'fixed'

@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/testing';
 import { ANALYSIS_DISCLAIMER, SAFE_VERDICT_REMINDER, type AnalysisCheck, type AnalysisResult } from '@raijin/shared-contracts';
 import { fakeAnalysis } from '@raijin/web-data-access';
 import { RjAnalysisResult } from './analysis-result';
@@ -10,11 +10,17 @@ function checkAt(index: number): AnalysisCheck {
   return check;
 }
 
-async function renderResult(result: AnalysisResult, mode: 'private' | 'public' = 'private') {
+/** Rendu du résultat ; `checks: false` laisse les 9 contrôles sur leur placeholder (`@defer`). */
+async function renderResult(result: AnalysisResult, mode: 'private' | 'public' = 'private', checks = true) {
+  TestBed.configureTestingModule({ deferBlockBehavior: DeferBlockBehavior.Manual });
   const fixture = TestBed.createComponent(RjAnalysisResult);
   fixture.componentRef.setInput('result', result);
   fixture.componentRef.setInput('mode', mode);
   await fixture.whenStable();
+  if (checks) {
+    for (const block of await fixture.getDeferBlocks()) await block.render(DeferBlockState.Complete);
+    await fixture.whenStable();
+  }
   return { fixture, host: fixture.nativeElement as HTMLElement };
 }
 
@@ -100,6 +106,16 @@ describe('RjAnalysisResult', () => {
     expect(host.textContent).toContain(SAFE_VERDICT_REMINDER);
     expect(host.querySelector('[data-disclaimer]')?.textContent).toBe(ANALYSIS_DISCLAIMER);
     expect(host.querySelectorAll('rj-check-item')).toHaveLength(9);
+  });
+
+  it('verdict d’abord : les 9 contrôles attendent l’inactivité derrière un placeholder de 9 lignes', async () => {
+    const { host } = await renderResult(fakeAnalysis('safe'), 'private', false);
+    expect(host.querySelector('[data-verdict-block]')?.textContent).toContain('Sain');
+    expect(host.querySelectorAll('rj-check-item')).toHaveLength(0);
+    const placeholder = host.querySelector('[data-checks-placeholder]') as HTMLElement;
+    expect(placeholder.getAttribute('aria-busy')).toBe('true');
+    expect(placeholder.querySelectorAll('li')).toHaveLength(9);
+    expect(placeholder.querySelector('li')?.className).toContain('min-h-16');
   });
 
   it('Danger : pas de rappel Sain, phrase d’explication', async () => {

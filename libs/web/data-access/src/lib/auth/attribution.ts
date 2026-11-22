@@ -25,7 +25,16 @@ export class AttributionTracker {
    * validation puis écriture ensuite. Ne remplace jamais une attribution déjà retenue.
    */
   capture(): Promise<void> {
-    if (this.readRaw() !== null) return Promise.resolve();
+    return this.commit(this.snapshot());
+  }
+
+  /**
+   * Relevé **synchrone** de l'URL d'arrivée (UTM, provenance, page), sans validation ni contrats :
+   * appelé au démarrage, avant que la navigation initiale ne réécrive l'URL. `null` si rien à
+   * retenir (aucun signal, ou attribution déjà retenue).
+   */
+  snapshot(): Record<string, string> | null {
+    if (this.readRaw() !== null) return null;
     const location = this.document.location;
     const params = new URLSearchParams(location.search);
     const candidate: Record<string, string> = {};
@@ -38,8 +47,14 @@ export class AttributionTracker {
     add('referrer', this.externalReferrer(), MAX_URL);
     add('landingPath', location.pathname, 512);
     if (!candidate['utmSource'] && !candidate['utmMedium'] && !candidate['utmCampaign'] && !candidate['referrer']) {
-      return Promise.resolve();
+      return null;
     }
+    return candidate;
+  }
+
+  /** Valide (contrats chargés à la demande) puis retient un relevé de `snapshot()`. */
+  commit(candidate: Record<string, string> | null): Promise<void> {
+    if (candidate === null || this.readRaw() !== null) return Promise.resolve();
     return loadContracts().then(({ signupAttributionSchema }) => {
       // Champ par champ : une valeur invalide est ignorée sans perdre les autres.
       const clean: SignupAttribution = {};

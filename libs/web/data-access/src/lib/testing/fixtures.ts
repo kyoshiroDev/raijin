@@ -1,4 +1,4 @@
-import { type AuthSession, type PublicUser } from '@raijin/shared-contracts';
+import { type AuthSession, type PublicUser, type SessionState } from '@raijin/shared-contracts';
 
 /** Données de test conformes aux contrats (utilisées par les specs de data-access et des features). */
 export function fakeUser(overrides: Partial<PublicUser> = {}): PublicUser {
@@ -20,6 +20,11 @@ export function fakeSession(overrides: Partial<PublicUser> = {}, csrfToken = 'cs
     accessTokenExpiresAt: '2026-11-22T12:15:00.000Z',
     csrfToken,
   };
+}
+
+/** Réponse de `GET /auth/session` (contrat `SessionState`) : connecté par défaut, `null` = anonyme. */
+export function fakeSessionState(session: AuthSession | null = fakeSession()): SessionState {
+  return session ? { ...session, authenticated: true } : { authenticated: false };
 }
 
 export const CSRF_ANON = 'csrf-anonymous-token-0123456789abcdef';

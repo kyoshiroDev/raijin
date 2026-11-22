@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import type { AnalysisCheckId, AnalysisResult } from '@raijin/shared-contracts';
-import { RjAddressChip, RjBottomSheet, RjButton, RjCard, RjIcon, RjToastService } from '@raijin/web-ui';
+import { RjAddressChip, RjBottomSheet, RjButton, RjCard, RjIcon, RjSkeleton, RjToastService } from '@raijin/web-ui';
 import { CHECK_HELP } from './check-help';
 import { CHECK_STATUS_DISPLAY, statusCounts } from './check-display';
 import { RjCheckItem } from './check-item';
@@ -13,13 +13,18 @@ const VERDICT_TONES = {
   danger: 'border-danger/40 bg-danger/10 text-danger',
 } as const;
 
-const DATE = new Intl.DateTimeFormat('fr-FR', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
+/** Formateur créé au premier usage (un `Intl.DateTimeFormat` coûte au chargement du module). */
+let dateFormat: Intl.DateTimeFormat | null = null;
+function formatDate(iso: string): string {
+  dateFormat ??= new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return dateFormat.format(new Date(iso)).replace(/\u202f/g, '\u00a0');
+}
 
 /**
  * Résultat d'une analyse, partagé par l'écran d'analyse et la page publique `/t/<mint>`.
@@ -30,7 +35,7 @@ const DATE = new Intl.DateTimeFormat('fr-FR', {
  */
 @Component({
   selector: 'rj-analysis-result',
-  imports: [RjAddressChip, RjBottomSheet, RjButton, RjCard, RjCheckItem, RjIcon],
+  imports: [RjAddressChip, RjBottomSheet, RjButton, RjCard, RjCheckItem, RjIcon, RjSkeleton],
   template: `
     <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       <section class="flex min-w-0 flex-col lg:sticky lg:top-20" aria-label="Verdict">
@@ -125,13 +130,35 @@ const DATE = new Intl.DateTimeFormat('fr-FR', {
             <h2 id="rj-checks-title" class="font-display text-h3 text-ink">Les 9 contrôles</h2>
             <p class="text-body-sm text-ink-muted">Touche un contrôle pour voir le détail.</p>
           </div>
-          <ul class="flex flex-col divide-y divide-line">
-            @for (check of result().checks; track check.id) {
-              <li>
-                <rj-check-item [check]="check" (learnMore)="openHelp(check.id)" />
-              </li>
-            }
-          </ul>
+          <!-- Verdict d'abord : les 9 contrôles sont rendus dans une tâche à part, à l'inactivité
+               du navigateur (premier rendu plus court). Le placeholder reprend la hauteur des lignes. -->
+          @defer (on idle) {
+            <ul class="flex flex-col divide-y divide-line">
+              @for (check of result().checks; track check.id) {
+                <li>
+                  <rj-check-item [check]="check" (learnMore)="openHelp(check.id)" />
+                </li>
+              }
+            </ul>
+          } @placeholder {
+            <ul class="flex flex-col divide-y divide-line" aria-busy="true" aria-label="Chargement des contrôles" data-checks-placeholder>
+              @for (check of result().checks; track check.id) {
+                <li class="flex min-h-16 items-start gap-3 py-3">
+                  <rj-skeleton shape="block" class="mt-0.5 size-9 shrink-0" />
+                  <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span class="flex h-6 items-center justify-between gap-2">
+                      <rj-skeleton class="h-4 w-2/5" />
+                      <rj-skeleton class="h-4 w-16" />
+                    </span>
+                    <span class="flex h-5 items-center"><rj-skeleton class="h-3 w-full" /></span>
+                    <!-- Résumés sur deux lignes sur mobile, une seule dès 768 px (même hauteur que les lignes réelles). -->
+                    <span class="flex h-5 items-center md:hidden"><rj-skeleton class="h-3 w-3/5" /></span>
+                  </span>
+                  <span class="mt-2 size-5 shrink-0"></span>
+                </li>
+              }
+            </ul>
+          }
         </rj-card>
       </section>
     </div>
@@ -190,7 +217,7 @@ export class RjAnalysisResult {
   protected readonly verdictLabel = computed(() => VERDICT_LABELS[this.result().verdict]);
   protected readonly tone = computed(() => VERDICT_TONES[this.result().verdict]);
   protected readonly counts = computed(() => statusCounts(this.result().checks));
-  protected readonly analyzedAt = computed(() => DATE.format(new Date(this.result().analyzedAt)).replace(/\u202f/g, '\u00a0'));
+  protected readonly analyzedAt = computed(() => formatDate(this.result().analyzedAt));
   protected readonly unavailableText = computed(() => {
     const count = this.result().checks.filter((check) => check.status === 'unavailable').length;
     return count > 1 ? `${count} contrôles n’ont pas pu être vérifiés` : count === 1 ? '1 contrôle n’a pas pu être vérifié' : 'certaines données manquent';

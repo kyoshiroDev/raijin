@@ -86,4 +86,64 @@ describe('Navigation', () => {
     expect(host.querySelector('rj-tab-bar')).not.toBeNull();
     expect(host.querySelector('rj-sidebar')).not.toBeNull();
   });
+
+  describe('AppShell : une seule navigation créée selon la largeur', () => {
+    let listeners: ((event: MediaQueryListEvent) => void)[] = [];
+    function mockWidth(desktop: boolean) {
+      listeners = [];
+      const matchMedia = vi.fn(
+        (query: string) =>
+          ({
+            matches: desktop,
+            media: query,
+            addEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) => listeners.push(listener),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList,
+      );
+      Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: matchMedia });
+    }
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    afterEach(() => {
+      if (original) Object.defineProperty(window, 'matchMedia', original);
+      else delete (window as { matchMedia?: unknown }).matchMedia;
+    });
+
+    it('mobile : barre d’onglets et logo du header, pas de barre latérale', async () => {
+      mockWidth(false);
+      const fixture = TestBed.createComponent(RjAppShell);
+      fixture.componentRef.setInput('items', ITEMS.slice(0, 4));
+      await fixture.whenStable();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(window.matchMedia).toHaveBeenCalledWith('(min-width: 64rem)');
+      expect(host.querySelector('rj-tab-bar')).not.toBeNull();
+      expect(host.querySelector('rj-sidebar')).toBeNull();
+      expect(host.querySelector('header a[aria-label="Raijin Shield, accueil"]')).not.toBeNull();
+    });
+
+    it('desktop : barre latérale seule, puis bascule au redimensionnement', async () => {
+      mockWidth(true);
+      const fixture = TestBed.createComponent(RjAppShell);
+      fixture.componentRef.setInput('items', ITEMS.slice(0, 4));
+      await fixture.whenStable();
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('rj-sidebar')).not.toBeNull();
+      expect(host.querySelector('rj-tab-bar')).toBeNull();
+      expect(host.querySelector('header a[aria-label="Raijin Shield, accueil"]')).toBeNull();
+      listeners.forEach((listener) => listener({ matches: false } as MediaQueryListEvent));
+      await fixture.whenStable();
+      expect(host.querySelector('rj-sidebar')).toBeNull();
+      expect(host.querySelector('rj-tab-bar')).not.toBeNull();
+    });
+  });
+});
+
+describe('isNavItemActive', () => {
+  it('même chemin ou sous-chemin, jamais un simple préfixe de texte', async () => {
+    const { isNavItemActive } = await import('./nav-item');
+    const compte = { label: 'Compte', path: '/compte', icon: 'compte' } as const;
+    expect(isNavItemActive(compte, '/compte')).toBe(true);
+    expect(isNavItemActive(compte, '/compte/securite')).toBe(true);
+    expect(isNavItemActive(compte, '/comptes')).toBe(false);
+    expect(isNavItemActive(compte, '/analyse')).toBe(false);
+  });
 });

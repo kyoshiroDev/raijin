@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { RjIcon } from '../icon/icon';
 import { RjLogo } from '../logo/logo';
-import { badgeText, type RjNavItem } from './nav-item';
+import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-item';
 
 /**
  * Barre latérale desktop (≥ 1024 px) : 240 px, repliable à 72 px. Repliée, les libellés restent
@@ -10,7 +10,7 @@ import { badgeText, type RjNavItem } from './nav-item';
  */
 @Component({
   selector: 'rj-sidebar',
-  imports: [RjIcon, RjLogo, RouterLink, RouterLinkActive],
+  imports: [RjIcon, RjLogo, RouterLink],
   template: `
     <aside [class]="classes()">
       <div class="flex h-14 shrink-0 items-center border-b border-line" [class.px-5]="!collapsed()" [class.justify-center]="collapsed()">
@@ -27,19 +27,18 @@ import { badgeText, type RjNavItem } from './nav-item';
           @if (group.length) {
             <ul class="flex flex-col gap-1" [class.border-t]="$index > 0" [class.border-line]="$index > 0" [class.pt-4]="$index > 0">
               @for (item of group; track item.path) {
+                @let active = isActive(item, path());
                 <li>
                   <a
                     [routerLink]="item.path"
-                    routerLinkActive
-                    #rla="routerLinkActive"
-                    ariaCurrentWhenActive="page"
+                    [attr.aria-current]="active ? 'page' : null"
                     [attr.title]="collapsed() ? item.label : null"
                     class="relative flex min-h-11 items-center gap-3 rounded-md text-body font-medium transition-colors duration-150 ease-raijin hover:bg-surface-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
                     [class.px-3]="!collapsed()"
                     [class.justify-center]="collapsed()"
-                    [class.bg-surface-raised]="rla.isActive"
-                    [class.text-ink]="rla.isActive"
-                    [class.text-ink-muted]="!rla.isActive"
+                    [class.bg-surface-raised]="active"
+                    [class.text-ink]="active"
+                    [class.text-ink-muted]="!active"
                   >
                     <rj-icon [name]="item.icon" [size]="20" />
                     <span [class.sr-only]="collapsed()" [attr.title]="collapsed() ? null : item.label" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
@@ -89,6 +88,8 @@ export class RjSidebar {
   readonly label = input('Navigation principale');
   readonly mode = input<'fixed' | 'inline'>('fixed');
 
+  protected readonly path = currentPath();
+  protected readonly isActive = isNavItemActive;
   protected readonly groups = computed(() => [this.items(), this.secondaryItems()]);
   protected readonly classes = computed(() =>
     [

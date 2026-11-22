@@ -1,5 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting, type TestRequest } from '@angular/common/http/testing';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
@@ -64,6 +64,16 @@ export function submitForm(harness: RouterTestingHarness): void {
   const form = query<HTMLFormElement>(harness, 'form');
   if (!form) throw new Error('Formulaire introuvable');
   form.dispatchEvent(new Event('submit', { cancelable: true }));
+}
+
+/** Attend qu'une requête parte (tâches lancées à l'inactivité du navigateur), puis la renvoie. */
+export async function expectRequest(ctrl: HttpTestingController, url: string, attempts = 50): Promise<TestRequest> {
+  for (let i = 0; i < attempts; i++) {
+    const [request] = ctrl.match(url);
+    if (request) return request;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return ctrl.expectOne(url);
 }
 
 export async function waitFor(condition: () => boolean, attempts = 50): Promise<void> {

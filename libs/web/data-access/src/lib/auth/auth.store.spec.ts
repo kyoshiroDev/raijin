@@ -3,7 +3,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { AUTH_INTERCEPTORS } from '../http/interceptors';
-import { CSRF_ANON, fakeSession, fakeUser } from '../testing/fixtures';
+import { CSRF_ANON, fakeSession, fakeSessionState, fakeUser } from '../testing/fixtures';
 import { AuthStore } from './auth.store';
 import { CsrfToken } from './csrf-token';
 
@@ -30,7 +30,7 @@ describe('AuthStore', () => {
     expect(store.isLoading()).toBe(true);
     const ready = store.init();
     expect(store.status()).toBe('loading');
-    ctrl.expectOne(`${API}/auth/session`).flush(fakeSession({ emailVerified: false }));
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSessionState(fakeSession({ emailVerified: false })));
     await ready;
     expect(store.isAuthenticated()).toBe(true);
     expect(store.user()?.email).toBe('kenji@exemple.fr');
@@ -41,7 +41,26 @@ describe('AuthStore', () => {
     expect(store.whenReady()).toBe(ready);
   });
 
-  it('visiteur jamais connecté (UNAUTHORIZED) : anonyme sans tenter de refresh', async () => {
+  it('visiteur sans cookie de session : 200 { authenticated: false }, anonyme sans refresh ni erreur', async () => {
+    const { store, ctrl, csrf } = setup();
+    const ready = store.whenReady();
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSessionState(null));
+    await ready;
+    expect(store.status()).toBe('anonymous');
+    expect(store.user()).toBeNull();
+    expect(csrf.token()).toBeNull();
+    ctrl.expectNone(`${API}/auth/refresh`);
+  });
+
+  it('réponse de session hors contrat (sans `authenticated`) : état error', async () => {
+    const { store, ctrl } = setup();
+    const ready = store.init();
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSession());
+    await ready;
+    expect(store.status()).toBe('error');
+  });
+
+  it('visiteur jamais connecté (UNAUTHORIZED, ancienne API) : anonyme sans tenter de refresh', async () => {
     const { store, ctrl } = setup();
     const ready = store.whenReady();
     ctrl.expectOne(`${API}/auth/session`).flush({ code: 'UNAUTHORIZED', message: 'x' }, unauthorized);
@@ -71,7 +90,7 @@ describe('AuthStore', () => {
     await flushMicrotasks();
     ctrl.expectOne(`${API}/auth/refresh`).flush(fakeSession());
     await flushMicrotasks();
-    ctrl.expectOne(`${API}/auth/session`).flush(fakeSession());
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSessionState());
     await ready;
     expect(store.isAuthenticated()).toBe(true);
   });
@@ -83,7 +102,7 @@ describe('AuthStore', () => {
     await ready;
     expect(store.status()).toBe('error');
     const retry = store.init(true);
-    ctrl.expectOne(`${API}/auth/session`).flush(fakeSession());
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSessionState());
     await retry;
     expect(store.isAuthenticated()).toBe(true);
   });
@@ -172,7 +191,7 @@ describe('AuthStore', () => {
     localStorage.clear();
     sessionStorage.clear();
     const ready = store.init();
-    ctrl.expectOne(`${API}/auth/session`).flush(fakeSession());
+    ctrl.expectOne(`${API}/auth/session`).flush(fakeSessionState());
     await ready;
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);

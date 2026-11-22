@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { RjIcon } from '../icon/icon';
 import { RjLogo } from '../logo/logo';
 import { RjToastHost } from '../toast/toast';
+import { desktopViewport } from './desktop-viewport';
 import { badgeText, type RjNavItem } from './nav-item';
 import { RjSidebar } from './sidebar';
 import { RjTabBar } from './tab-bar';
@@ -12,7 +13,7 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
 
 /**
  * Coquille de l'app : header compact (logo, notifications), barre d'onglets en bas sous 1024 px,
- * barre latérale au-delà, contenu centré (1200 px max, marges 16/24/32), 100dvh et safe areas.
+ * barre latérale au-delà (chacune créée seulement à sa largeur), contenu centré (1200 px max, marges 16/24/32), 100dvh et safe areas.
  */
 @Component({
   selector: 'rj-app-shell',
@@ -24,17 +25,21 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
       (click)="skipToMain($event)"
       >Aller au contenu</a
     >
-    <rj-sidebar [items]="items()" [secondaryItems]="secondaryItems()" [(collapsed)]="collapsed" />
+    @if (desktop() !== false) {
+      <rj-sidebar [items]="items()" [secondaryItems]="secondaryItems()" [(collapsed)]="collapsed" />
+    }
     <div [class]="columnClasses()">
       <header class="sticky top-0 z-20 border-b border-line bg-base pt-safe">
         <div class="mx-auto flex h-14 max-w-reading items-center gap-3 px-4 md:px-6 lg:px-8">
-          <a
-            routerLink="/"
-            class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring lg:hidden"
-            aria-label="Raijin Shield, accueil"
-          >
-            <rj-logo [decorative]="true" />
-          </a>
+          @if (desktop() !== true) {
+            <a
+              routerLink="/"
+              class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring lg:hidden"
+              aria-label="Raijin Shield, accueil"
+            >
+              <rj-logo [decorative]="true" />
+            </a>
+          }
           <button
             type="button"
             class="relative ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-muted transition-colors duration-150 ease-raijin hover:bg-surface-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
@@ -56,7 +61,9 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
         <ng-content />
       </main>
     </div>
-    <rj-tab-bar [items]="items()" />
+    @if (desktop() !== true) {
+      <rj-tab-bar [items]="items()" />
+    }
     <rj-toast-host />
   `,
   host: { class: 'block min-h-dvh bg-base pl-safe pr-safe' },
@@ -72,6 +79,11 @@ export class RjAppShell {
   readonly notificationCount = input(0);
   readonly notifications = output<void>();
 
+  /**
+   * Seule la navigation de la largeur courante est créée (premier rendu plus court sur mobile) ;
+   * les classes `lg:` restent, pour un rendu identique si `matchMedia` manque (CLS 0).
+   */
+  protected readonly desktop = desktopViewport();
   protected readonly collapsed = signal(this.readCollapsed());
   protected readonly notificationBadge = computed(() => badgeText(this.notificationCount()));
   protected readonly notificationsLabel = computed(() => {
