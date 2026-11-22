@@ -167,6 +167,9 @@
 - Commits :
 - Décisions : landing (consentement, GA4, attribution) faite en 6 bis ; Consent Mode v2 **basique** (aucun script Google avant acceptation) ; conversions inscription / abonnement mesurées en interne (Measurement Protocol écarté) ; `sessionStorage` d'attribution de l'app **conservé** (premier niveau, onglet, finalité interne, mention dans la politique de confidentialité en phase 7) ; non-admin = 404 sur `admin/*` ; codes de session admin en 403 ; session admin portée par `Session` (pas de cookie de plus) ; TOTP et accès Google sans dépendance ; `DailyMetric` en jours UTC, purge conditionnée à l'agrégation (m6) ; `GET health/config` retiré (M3) ; Pro offert = `User.proGrantedUntil` (source `gift`) ; suspension sans résiliation Stripe automatique ; essai `ineligible` non prolongeable (passer par le Pro offert).
 
+- Avancement (orchestrateur) : [x] T1a nestjs-api (`8950294`) : libs api-admin/api-analytics, migration 20261123020000_admin ; AuditService + curseur (`66ce851`). [x] T4 solana-data (`f2b597e`) : SourceUsageRecorder, UsageCounterStore, snapshot conforme au contrat santé. [x] T5 seo-astro (`64bcea7`) : bannière CNIL, GA4 Consent Mode v2 après accord (aucune requête Google avant), attribution utm/rj_ref/rj_lp, polices auto-hébergées, docs/ANALYTICS.md. [ ] T1b–g nestjs-api en cours. [ ] T2 admin-analytics en cours. [ ] T3 ui-mobile-first en cours (+ AttributionTracker lit rj_ref/rj_lp). [ ] T6/T7 test-e2e. [ ] T8 audit.
+- Points pour la phase 7 : `data-app-link`/`appHref()` et `data-track` à poser sur les pages, politique de confidentialité citant rj_consent, rj_attr, _ga et sessionStorage ; canonical en `/index.html` (build.format: 'file') à corriger. Les variables publiques de la landing (GA4_MEASUREMENT_ID, GOOGLE_SITE_VERIFICATION, APP_URL) sont lues au build : infra/deploy.sh devra les exporter.
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.
@@ -207,6 +210,7 @@
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
 
 ## Blocages
+- ~~CI rouge sur `8950294`~~ : corrigée par `66ce851` (run 45054867280 vert) ; cause supplémentaire : un `git mv` indexé par un agent embarqué dans un commit d'intégration → commits désormais par chemins explicites.
 - ~~CI rouge sur `6b51330`~~ : corrigée par `ccb8c8e` (run 45024211188 vert).
 - ~~CI rouge sur dev depuis ad912a8~~ : corrigée (`10c8d7c`, run 45017043102 vert).
 - **Lighthouse mobile Performance < 95 sur 2 pages** (référence runner GitHub, run 44998259705) : /analyse/<mint> 88 (LCP 3,0 s : JS → démarrage Angular → CSRF → POST en série), /t/<mint> 87 (TBT 520 ms : démarrage Angular + rendu). /analyse 96 ✓ ; Access./BP/SEO 100 partout. 5 itérations (architect ×2, ui-mobile-first ×3). Pistes restantes, à arbitrer en phase 9 (polish) : (1) ~~dispense de CSRF pour un POST /analyses sans cookie~~ **refusée par security-reviewer** (amplification cross-site du quota anonyme et des crédits Helius ; Origin seul insuffisant) ; (2) réduire le chunk framework Angular (inventaire esbuild, providers/forms/HttpClient hors premier rendu) ; (3) zod/mini. Mesure : `gh workflow run ci.yml --ref dev -f runs=3`.
