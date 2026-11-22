@@ -1,14 +1,74 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, request, type Page } from '@playwright/test';
+import { APP_ORIGIN, PASSWORD, createVerifiedAccount, loginViaApi, uniqueEmail } from './auth';
+
+export interface PageEntry {
+  name: string;
+  path: string;
+  /** Titre `h1` attendu (null : pas de titre stable). */
+  heading: string | null;
+  /** Écran de compte connecté : un compte vérifié est créé (API réelle) puis connecté avant l'ouverture. */
+  auth?: boolean;
+  /** Action à jouer après l'ouverture pour atteindre l'état testé (ex. « vérifie ta boîte »). */
+  act?: (page: Page) => Promise<void>;
+}
+
+/** Jeton factice bien formé : l'écran de réinitialisation n'interroge l'API qu'à l'envoi du formulaire. */
+const FAKE_TOKEN = 'a'.repeat(43);
 
 /** Pages testées (routes de l'app + page de référence visuelle, servie uniquement en dev). */
-export const PAGES = [
+export const PAGES: readonly PageEntry[] = [
   { name: 'analyse', path: '/analyse', heading: 'Analyser' },
   { name: 'suivis', path: '/suivis', heading: 'Suivis' },
   { name: 'alertes', path: '/alertes', heading: null },
-  { name: 'compte', path: '/compte', heading: 'Compte' },
+  { name: 'compte', path: '/compte', heading: 'Compte', auth: true },
   { name: 'wallet', path: '/wallet', heading: 'Scan de wallet' },
   { name: 'design', path: '/_design', heading: 'Design — Raijin' },
-] as const;
+  // Écrans d'auth (phase 2), visiteur non connecté.
+  { name: 'connexion', path: '/compte/connexion', heading: 'Connexion' },
+  { name: 'inscription', path: '/compte/inscription', heading: 'Créer ton compte' },
+  {
+    name: 'inscription-envoyee',
+    path: '/compte/inscription',
+    heading: 'Vérifie ta boîte mail',
+    act: async (page) => {
+      await page.getByLabel('Adresse e-mail').fill(uniqueEmail('responsive'));
+      await page.getByLabel('Mot de passe', { exact: true }).fill(PASSWORD);
+      await page.getByRole('checkbox').check();
+      await page.getByRole('button', { name: 'Créer mon compte' }).click();
+      await expect(page.getByRole('heading', { level: 1, name: 'Vérifie ta boîte mail' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  { name: 'verifier-email', path: '/compte/verifier-email', heading: 'Vérifie ta boîte mail' },
+  { name: 'mot-de-passe-oublie', path: '/compte/mot-de-passe-oublie', heading: 'Mot de passe oublié' },
+  { name: 'reinitialiser', path: `/compte/reinitialiser-mot-de-passe?token=${FAKE_TOKEN}`, heading: 'Nouveau mot de passe' },
+  { name: 'lien-magique', path: '/compte/lien-magique', heading: 'Connexion sans mot de passe' },
+];
+
+let sharedAccount: Promise<{ email: string; password: string }> | undefined;
+
+/** Compte vérifié partagé par les tests d'un même worker (créé une fois via l'API réelle et Mailpit). */
+export function sharedVerifiedAccount(): Promise<{ email: string; password: string }> {
+  sharedAccount ??= (async () => {
+    const api = await request.newContext({ baseURL: APP_ORIGIN });
+    try {
+      return await createVerifiedAccount(api, 'partage');
+    } finally {
+      await api.dispose();
+    }
+  })();
+  return sharedAccount;
+}
+
+/** Ouvre l'écran d'une entrée de `PAGES` dans l'état testé (connexion préalable, action). */
+export async function openEntry(page: Page, entry: PageEntry): Promise<void> {
+  if (entry.auth) {
+    const { email, password } = await sharedVerifiedAccount();
+    await loginViaApi(page.context().request, email, password);
+  }
+  await openPage(page, entry.path);
+  if (entry.act) await entry.act(page);
+  if (entry.heading) await expect(page.locator('main h1').first()).toHaveText(entry.heading);
+}
 
 /** Largeurs imposées par PROMPT.md §3, avec une hauteur réaliste en portrait. */
 export const VIEWPORTS = [
@@ -63,10 +123,16 @@ export function findSmallTargets(page: Page, min: number): Promise<TargetIssue[]
     for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       const style = getComputedStyle(el);
       if (style.visibility === 'hidden' || style.display === 'none') continue;
-      const rect = el.getBoundingClientRect();
+      let rect: { width: number; height: number } = el.getBoundingClientRect();
       // Masqué visuellement (sr-only : 1 px, clip) ou hors rendu.
       if (rect.width <= 1 || rect.height <= 1) continue;
       if (el.closest('[aria-hidden="true"], [inert]')) continue;
+      // Case à cocher / bouton radio : le <label> qui l'englobe active aussi le contrôle,
+      // il fait partie de la cible (WCAG 2.5.5 / 2.5.8). Seul le label englobant est retenu.
+      if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) {
+        const wrapping = Array.from(el.labels ?? []).find((label) => label.contains(el));
+        if (wrapping) rect = wrapping.getBoundingClientRect();
+      }
       if (rect.width < minSize - 0.5 || rect.height < minSize - 0.5) {
         const text = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40);
         const id = el.id ? `#${el.id}` : '';

@@ -33,15 +33,34 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
-  // Serveur de dev, y compris en CI : la page /_design (référence visuelle testée en responsive et par axe)
+  // Serveurs de dev, y compris en CI : la page /_design (référence visuelle testée en responsive et par axe)
   // n'existe qu'en développement (retirée des builds de production).
-  webServer: {
-    command: 'pnpm exec nx run web:serve',
-    timeout: 180_000,
-    url: getReadyUrl('http://localhost:4200'),
-    reuseExistingServer: true,
-    cwd: workspaceRoot,
-  },
+  // L'API NestJS réelle sert les parcours d'auth (auth.flow.spec.ts) et les écrans de compte connecté.
+  // Préalable : `pnpm nx run api:dev-infra` (Postgres 5433, Redis 6380, Mailpit 1026/8026, projet `raijin-dev`)
+  // et `pnpm nx run api-prisma:migrate-deploy`. Si l'API tourne déjà, elle est réutilisée : la lancer alors avec
+  // les mêmes variables que ci-dessous (JWT_ACCESS_TTL=20s pour tester l'expiration réelle du JWT, limites hautes
+  // pour éviter les 429 sur une suite qui crée des dizaines de comptes depuis la même IP).
+  webServer: [
+    {
+      command: 'pnpm exec nx run api:serve',
+      timeout: 180_000,
+      url: 'http://localhost:3100/api/v1/health',
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+      env: {
+        JWT_ACCESS_TTL: process.env['JWT_ACCESS_TTL'] ?? '20s',
+        RATE_LIMIT_AUTH_PER_MINUTE: process.env['RATE_LIMIT_AUTH_PER_MINUTE'] ?? '1000',
+        RATE_LIMIT_PER_MINUTE: process.env['RATE_LIMIT_PER_MINUTE'] ?? '10000',
+      },
+    },
+    {
+      command: 'pnpm exec nx run web:serve',
+      timeout: 180_000,
+      url: getReadyUrl('http://localhost:4200'),
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+    },
+  ],
   // Chromium uniquement (CI GitHub Free) ; les largeurs responsives sont ajoutées par test-e2e.
   projects: [
     {

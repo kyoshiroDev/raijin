@@ -1,25 +1,30 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
-import { PAGES, VIEWPORTS, openDialogSettled, openPage } from './support/pages';
+import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
+import { PAGES, VIEWPORTS, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
  * dans docs/screenshots/<phase>/. Pages de l'app : hauteur d'écran ; /_design : page entière
  * (référence visuelle des composants).
  */
-const PHASE = process.env['SCREENSHOT_PHASE'] ?? 'phase-1';
+const PHASE = process.env['SCREENSHOT_PHASE'] ?? 'phase-2';
 const OUT = join(workspaceRoot, 'docs', 'screenshots', PHASE);
 const WIDTHS = [320, 390, 768, 1024, 1440];
 
 test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
 
-for (const { name, path } of PAGES) {
+/** Phase 1 : coquille et /_design ; phase 2 (et suivantes) : écrans de compte et d'auth. */
+const SHOTS = PHASE === 'phase-1' ? PAGES.filter((p) => !p.path.startsWith('/compte/')) : PAGES.filter((p) => p.path.startsWith('/compte'));
+
+for (const entry of SHOTS) {
+  const { name } = entry;
   for (const width of WIDTHS) {
     const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
     test(`capture ${name} ${width}px`, async ({ page }) => {
       await page.setViewportSize(viewport);
-      await openPage(page, path);
+      await openEntry(page, entry);
       const png = await page.screenshot({
         path: join(OUT, `${name}-${width}.png`),
         fullPage: name === 'design',
@@ -30,10 +35,12 @@ for (const { name, path } of PAGES) {
   }
 }
 
-for (const [file, button] of [
-  ['sheet', 'Ouvrir (modale)'],
-  ['panel', 'Ouvrir (panneau)'],
-] as const) {
+for (const [file, button] of PHASE === 'phase-1'
+  ? ([
+      ['sheet', 'Ouvrir (modale)'],
+      ['panel', 'Ouvrir (panneau)'],
+    ] as const)
+  : []) {
   for (const width of [390, 1440]) {
     const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
     test(`capture ${file} ${width}px`, async ({ page }) => {
@@ -44,5 +51,86 @@ for (const [file, button] of [
       const png = await page.screenshot({ path: join(OUT, `${file}-${width}.png`), animations: 'disabled' });
       expect(png.byteLength).toBeGreaterThan(1000);
     });
+  }
+}
+
+/** États d'auth obtenus avec l'API réelle (erreurs, bottom sheets du compte, liens invalides). */
+const STATES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: 'connexion-erreurs',
+    open: async (page) => {
+      await openPage(page, '/compte/connexion');
+      await page.getByLabel('Adresse e-mail').fill(uniqueEmail('capture'));
+      await page.getByLabel('Mot de passe', { exact: true }).fill('mauvais mot de passe');
+      await page.getByRole('button', { name: 'Se connecter' }).click();
+      await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'inscription-validation',
+    open: async (page) => {
+      await openPage(page, '/compte/inscription');
+      await page.getByLabel('Adresse e-mail').fill('kenji@');
+      await page.getByLabel('Mot de passe', { exact: true }).fill('court');
+      await page.getByRole('button', { name: 'Créer mon compte' }).click();
+    },
+  },
+  {
+    name: 'reinitialiser-invalide',
+    open: async (page) => {
+      await openPage(page, '/compte/reinitialiser-mot-de-passe');
+      await expect(page.getByRole('heading', { name: 'Lien expiré ou déjà utilisé' })).toBeVisible();
+    },
+  },
+  {
+    name: 'lien-magique-echec',
+    open: async (page) => {
+      await page.goto(`/compte/lien-magique?token=${'b'.repeat(43)}`);
+      await expect(page.getByRole('heading', { name: 'Connexion impossible' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'email-verifie',
+    open: async (page) => {
+      const { link } = await registerViaApi(page.context().request, 'capture-verif');
+      await page.goto(link);
+      await expect(page.getByRole('heading', { name: 'Adresse confirmée' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'compte-mot-de-passe',
+    open: async (page) => {
+      const { email, password } = await sharedVerifiedAccount();
+      await loginViaApi(page.context().request, email, password);
+      await openPage(page, '/compte');
+      await page.getByRole('button', { name: 'Changer le mot de passe' }).click();
+      await openDialogSettled(page);
+    },
+  },
+  {
+    name: 'compte-suppression',
+    open: async (page) => {
+      const { email, password } = await sharedVerifiedAccount();
+      await loginViaApi(page.context().request, email, password);
+      await openPage(page, '/compte');
+      await page.getByRole('button', { name: 'Supprimer le compte' }).click();
+      const dialog = await openDialogSettled(page);
+      await dialog.getByLabel('Ton mot de passe, pour confirmer').fill('mon mot de passe');
+    },
+  },
+];
+
+if (PHASE !== 'phase-1') {
+  for (const { name, open } of STATES) {
+    for (const width of WIDTHS) {
+      const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
+      test(`capture ${name} ${width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await open(page);
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
+        const png = await page.screenshot({ path: join(OUT, `${name}-${width}.png`), animations: 'disabled' });
+        expect(png.byteLength).toBeGreaterThan(1000);
+      });
+    }
   }
 }

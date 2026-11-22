@@ -17,6 +17,10 @@
         ],
         "parallel": false
       }
+    },
+    "e2e": {
+      "parallelism": true
     }
-  }
+  },
+  "// e2e": "Le plugin @nx/playwright passe parallelism à false quand webServer est un tableau (API + web) ; or e2e dépend du serveur continu web:serve, ce que Nx refuse sans parallélisme. Valeur d'origine rétablie (les deux serveurs ont des ports fixes et reuseExistingServer)."
 }

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { PAGES, openDialogSettled, openPage } from './support/pages';
+import { loginViaApi } from './support/auth';
+import { PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
 /** Règles WCAG 2.0/2.1/2.2 A et AA + bonnes pratiques axe. */
 /**
@@ -39,14 +40,15 @@ function focusInfo(page: Page) {
   });
 }
 
-for (const { name, path } of PAGES) {
+for (const entry of PAGES) {
+  const { name } = entry;
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 1440, height: 900 },
   ]) {
     test(`axe ${name} ${viewport.width}px : zéro violation`, async ({ page }) => {
       await page.setViewportSize(viewport);
-      await openPage(page, path);
+      await openEntry(page, entry);
       expect(await axe(page)).toEqual([]);
     });
   }
@@ -133,5 +135,94 @@ for (const viewport of [
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
     expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
+  });
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+]) {
+  test(`clavier ${viewport.width}px : formulaire de connexion (ordre, focus visible, Entrée, erreurs)`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openPage(page, '/compte/connexion');
+    const email = page.getByLabel('Adresse e-mail');
+    const password = page.getByLabel('Mot de passe', { exact: true });
+    await email.focus();
+    const expected = [
+      'Mot de passe',
+      'Afficher le mot de passe',
+      'Mot de passe oublié ?',
+      'Se connecter',
+      'Recevoir un lien de connexion',
+      'Créer un compte',
+    ];
+    const seen: string[] = [];
+    for (let i = 0; i < expected.length; i++) {
+      await page.keyboard.press('Tab');
+      const info = await focusInfo(page);
+      expect(info?.visible, `« ${info?.label} » visible au focus`).toBe(true);
+      expect(info?.indicator, `« ${info?.label} » a un indicateur de focus`).toBe(true);
+      const label = await page.evaluate(() => {
+        const el = document.activeElement as HTMLInputElement | null;
+        if (!el) return '';
+        const byLabel = el.labels?.[0]?.textContent;
+        return (el.getAttribute('aria-label') || byLabel || el.textContent || '').trim().replace(/\s+/g, ' ');
+      });
+      seen.push(label.replace(/\u00a0/g, ' ').replace(/ \*$/, ''));
+    }
+    expect(seen).toEqual(expected);
+
+    // Entrée sur un formulaire vide : le focus va au premier champ en erreur.
+    await email.focus();
+    await page.keyboard.press('Enter');
+    await expect(email).toBeFocused();
+    await expect(email).toHaveAttribute('aria-invalid', 'true');
+
+    // Saisie et envoi au clavier : l'erreur serveur est annoncée (role=alert).
+    await page.keyboard.type('inconnu-clavier@exemple.fr');
+    await page.keyboard.press('Tab');
+    await expect(password).toBeFocused();
+    await page.keyboard.type('mauvais mot de passe clavier');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alert')).toContainText('E-mail ou mot de passe incorrect.', { timeout: 15_000 });
+  });
+
+  test(`clavier ${viewport.width}px : bottom sheet de suppression du compte (focus piégé, Échap, retour)`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const { email, password } = await sharedVerifiedAccount();
+    await loginViaApi(page.context().request, email, password);
+    await openPage(page, '/compte');
+    const trigger = page.getByRole('button', { name: 'Supprimer le compte' });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Supprimer ton compte' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect.poll(() => dialog.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press('Tab');
+      expect(await dialog.evaluate((d) => d.contains(document.activeElement)), `Tab n°${i + 1} reste dans le panneau`).toBe(true);
+      const info = await focusInfo(page);
+      expect(info?.indicator, `« ${info?.label} » a un indicateur de focus`).toBe(true);
+    }
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press('Shift+Tab');
+      expect(await dialog.evaluate((d) => d.contains(document.activeElement)), `Shift+Tab n°${i + 1} reste dans le panneau`).toBe(true);
+    }
+    // Le champ caché `username` (gestionnaires de mots de passe) n'est jamais focalisable.
+    expect(await dialog.locator('input[name="username"]').evaluate((el) => el === document.activeElement)).toBe(false);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
+  test(`axe bottom sheet suppression du compte ${viewport.width}px : zéro violation`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const { email, password } = await sharedVerifiedAccount();
+    await loginViaApi(page.context().request, email, password);
+    await openPage(page, '/compte');
+    await page.getByRole('button', { name: 'Supprimer le compte' }).click();
+    await openDialogSettled(page);
+    expect(await axe(page)).toEqual([]);
   });
 }
