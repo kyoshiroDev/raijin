@@ -1,7 +1,7 @@
 import { ANALYSIS_CHECK_IDS, riskFactsSchema } from '@raijin/shared-contracts';
 import { evaluateRisk } from '@raijin/shared-risk-engine';
 import { resolveSolanaDataConfig } from '../config';
-import { TokenNotFoundError, UpstreamError } from '../core/errors';
+import { TokenNotFoundError, TokenUnanalyzableError, UpstreamError } from '../core/errors';
 import { MemoryCacheStore } from '../core/memory';
 import type { CacheStore, Clock, LogFields, SolanaLogger } from '../core/ports';
 import { SolanaDataService, type SolanaDataOptions } from '../solana-data.service';
@@ -286,7 +286,7 @@ describe('collectFacts : scénarios synthétiques', () => {
     expect(calls).toEqual([{ source: 'solana_rpc', route: 'getAccountInfo' }]);
   });
 
-  it('compte de plus de 2 Mo (file d’événements…) : TokenNotFound, un seul appel même avec Helius', async () => {
+  it('compte de plus de 2 Mo (Token-2022 volumineux, file d’événements…) : TokenUnanalyzable, un seul appel même avec Helius', async () => {
     const credits: number[] = [];
     const { svc, calls } = service({
       heliusApiKey: TEST_KEY,
@@ -296,9 +296,13 @@ describe('collectFacts : scénarios synthétiques', () => {
           ? new Response('{}', { headers: { 'content-type': 'application/json', 'content-length': '3000000' } })
           : undefined,
     });
-    await expect(svc.collectFacts(MINTS.bonk)).rejects.toBeInstanceOf(TokenNotFoundError);
+    const error = await svc.collectFacts(MINTS.bonk).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TokenUnanalyzableError);
+    expect(error).toMatchObject({ code: 'TOKEN_UNANALYZABLE' });
     expect(calls).toEqual([{ source: 'helius_rpc', route: 'getAccountInfo' }]);
     expect(credits).toEqual([1]);
+    // m1 : une réponse trop volumineuse n'est pas une panne du fournisseur.
+    expect(svc.breakerStates()['helius_rpc']).toBe('closed');
   });
 
   it('autre erreur inattendue du RPC : réemballée en UpstreamError', async () => {

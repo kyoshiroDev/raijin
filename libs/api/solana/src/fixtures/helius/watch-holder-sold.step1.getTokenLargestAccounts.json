@@ -1,0 +1,56 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "H1 cède 40 % de sa position (10 % → 6 %).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenLargestAccounts",
+    "params": [
+      "7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4",
+      {
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472400100
+      },
+      "value": [
+        {
+          "address": "Ggj78tCHjpGMQbUK61nceWDJZzQCRoci7uadp3LZi9Em",
+          "amount": "300000000",
+          "decimals": 0,
+          "uiAmount": 300000000,
+          "uiAmountString": "300000000"
+        },
+        {
+          "address": "8sprw45KXwHSKnsWyX1u3VpVXKQiBaoWbAc86gCac5ah",
+          "amount": "60000000",
+          "decimals": 0,
+          "uiAmount": 60000000,
+          "uiAmountString": "60000000"
+        },
+        {
+          "address": "kWv2Xjint8N2AmTAEXfQdR5qXDmhtRXnTKkhuXbhsCL",
+          "amount": "60000000",
+          "decimals": 0,
+          "uiAmount": 60000000,
+          "uiAmountString": "60000000"
+        },
+        {
+          "address": "aozDba5TLto7jGwZ1x4p4ZNownoh59rY8c48KDxug76",
+          "amount": "40000000",
+          "decimals": 0,
+          "uiAmount": 40000000,
+          "uiAmountString": "40000000"
+        }
+      ]
+    }
+  }
+}

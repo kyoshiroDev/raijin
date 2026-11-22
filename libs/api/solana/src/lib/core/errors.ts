@@ -47,9 +47,13 @@ export class UpstreamError extends Error {
     return RETRYABLE.has(this.kind) || (this.kind === 'http_error' && this.status !== null && this.status >= 500);
   }
 
-  /** Compte comme un échec pour le disjoncteur (panne du fournisseur, pas une donnée absente). */
+  /**
+   * Compte comme un échec pour le disjoncteur (panne du fournisseur, pas une donnée absente).
+   * `too_large` n'en est pas un : c'est une propriété du compte demandé (plusieurs Mo), le
+   * fournisseur répond normalement (mineur m1 de la phase 3).
+   */
   get countsAsFailure(): boolean {
-    return this.retryable || this.kind === 'invalid_response' || this.kind === 'too_large';
+    return this.retryable || this.kind === 'invalid_response';
   }
 }
 
@@ -60,6 +64,22 @@ export class TokenNotFoundError extends Error {
 
   constructor() {
     super('Token introuvable.');
+  }
+}
+
+/**
+ * Le compte existe mais ne peut pas être analysé (`TOKEN_UNANALYZABLE`, 422) : réponse de plus de
+ * `maxResponseBytes` (2 Mo) pour un compte demandé comme mint. Sans lire le compte, on ne peut pas
+ * savoir à coût nul s'il s'agit d'un mint Token-2022 aux extensions volumineuses ou d'un autre
+ * compte (file d'événements, carnet d'ordres) : les deux cas donnent cette erreur (le message
+ * « ce compte existe, mais Raijin ne sait pas l'analyser » est exact dans les deux cas).
+ */
+export class TokenUnanalyzableError extends Error {
+  override readonly name = 'TokenUnanalyzableError';
+  readonly code = 'TOKEN_UNANALYZABLE' as const;
+
+  constructor() {
+    super('Compte non analysable.');
   }
 }
 

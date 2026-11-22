@@ -223,3 +223,59 @@ fournit les valeurs chiffrées (USD, %, heures/jours, nombres, adresse du créat
 - **Émetteurs connus** : liste fermée de 3 stablecoins ; tout autre token à freeze actif sort en Danger.
 - Les seuils sont des points de départ : le banc (PROMPT.md §4.8) mesure précision et rappel et teste des variantes
   (`createRiskEngine({ version: '1.0.0-variante.a', … })`) avant toute modification, qui change la version du moteur.
+
+## 8. Événements de suivi
+
+Fonctions pures de `@raijin/shared-risk-engine` (`lib/watch.ts`), version des règles **1.0.0** (`WATCH_RULES_VERSION`),
+seuils dans `WATCH_EVENT_THRESHOLDS` (configurables pour le banc). Contrats : `WatchSnapshot` v1 (`watch/snapshot.ts`) et
+`WatchEvent` (`alerts/events.ts`). Aucune horloge : `detectedAt` = `observedAt` du groupe qui déclenche.
+
+Flux d'une passe (par mint, côté API) : `next = mergeWatchSnapshot(previous, observation)` puis
+`events = detectWatchEvents(previous, next)`. Dans `observation`, un groupe absent (non collecté par cette passe) ou
+`null` (source indisponible) **garde le groupe précédent** : aucune comparaison, donc **jamais de fausse alerte quand une
+source tombe**. Une observation plus ancienne que le groupe stocké (passe rejouée) est ignorée. La **première
+observation** d'un groupe sert de référence (aucune alerte à la création d'un suivi).
+
+| Règle | Déclencheur | Gravité | Clé anti-doublon |
+|---|---|---|---|
+| `verdict_degraded` | rang du verdict plus grave (Sain < Prudence < Danger) entre deux passes complètes ; même version **majeure** du moteur (sinon nouvelle référence sans alerte) | `danger` si → Danger, sinon `warn` | `verdict_degraded:<from>><to>:<analysisId>` (à défaut `observedAt`) |
+| `mint_reactivated` | autorité de mint révoquée → active | `danger` | `mint_reactivated:<observedAt>` |
+| `freeze_reactivated` | autorité de freeze révoquée → active | `danger` | `freeze_reactivated:<observedAt>` |
+| `lp_removed` | √(base × quote) du **pool suivi** en baisse de **plus de 30 %** (`lpDropPct`) par rapport à la référence | `danger` | `lp_removed:<pool>:<referenceAt>` |
+| `holder_sold` | holder ≥ **5 %** de l'offre (`holderMinPct`) qui cède ≥ **25 %** de sa position (`holderSellMinPositionPct`) **ou** ≥ **1 point** d'offre (`holderSellMinSupplyPts`), ou qui sort du top 20 | `warn` | `holder_sold:<owner>:<observedAt précédent>` |
+
+Justification et détails :
+
+- **√(base × quote)** : invariant d'un pool à produit constant ; un swap ne le fait pas baisser (frais compris, il
+  monte légèrement), un retrait de liquidité si. Il ne dépend pas du prix, contrairement à la liquidité USD (une chute
+  de prix de 50 % réduit la liquidité USD d'environ 29 % sans aucun retrait). Pour les pools concentrés (CLMM, DLMM,
+  Whirlpool), les réserves publiées par DexScreener ne suivent pas exactement cet invariant : approximation assumée,
+  le seuil de 30 % absorbe ce bruit.
+- **Référence LP** : plus haut de √k mémorisé (`peakSqrtK`, `peakAt`) s'il date de moins de **6 h**
+  (`lpReferenceWindowHours`), sinon la dernière mesure (un seul instantané est gardé : plus haut glissant approché). Après
+  une alerte, la référence est remise au niveau courant (une même baisse n'alerte qu'une fois ; une nouvelle baisse de
+  plus de 30 % donne une nouvelle clé).
+- **Pool suivi** : le pool principal (plus forte liquidité USD) de la première observation. La passe rapide relit ce
+  pool par son adresse s'il n'est plus le principal : un retrait sur le pool suivi alerte même si un autre pool devient
+  principal ; on bascule sur le nouveau principal (nouvelle référence, sans alerte) quand le pool suivi n'a pas baissé
+  et pèse moins que lui, ou n'est plus listé.
+- **Courbes de liaison** (`bondingCurveDexIds` : `pumpfun`, `launchlab`, `moonshot`) : réserves qui bougent à chaque
+  achat ou vente et migration qui vide la courbe : **aucune règle LP** ; on suit le pool principal après la migration.
+- **Holders** : top 20 hors pools, programmes AMM et comptes connus (mêmes exclusions que la concentration), montants
+  bruts u64 **agrégés par propriétaire** (un transfert entre deux comptes du même wallet n'alerte pas). Hors du top 20,
+  la position est bornée par le plus petit compte encore listé (estimation prudente, `afterPct: null`). Un top vide
+  après un top non vide est traité comme une lecture douteuse (aucune alerte). On ne lit pas les transactions : « vente
+  ou transfert ».
+- **5 % / 25 % / 1 point** : 5 % reprend le seuil de concentration d'un gros holder sans bruit sur les petits comptes ;
+  25 % de la position ou 1 point d'offre est un mouvement significatif pour le prix ; en dessous, les ajustements de
+  market makers et de CEX déclencheraient trop d'alertes. À mesurer par le banc.
+- **Ordre** des événements d'une passe : verdict, mint, freeze, LP, holders.
+- Hors moteur (API, ARCHITECTURE.md §11.6) : délai de grâce `ALERT_COOLDOWN_MINUTES` par mint et type, idempotence en
+  base (`@@unique([mint, dedupeKey])`), diffusion aux suivis actifs.
+
+Collecte (`@raijin/api-solana`, voie de crédits `watch`, plafond `WATCH_DAILY_CREDIT_BUDGET` = 12 000/jour) :
+`collectAuthoritiesBatch` (lots de 100, 1 crédit), `collectPoolsBatch` (DexScreener `tokens/v1` et `latest/dex/pairs`,
+lots de 30, gratuit), `collectHolders` (≈ 1,2 crédit avec le cache 24 h des propriétaires ; `null` sans clé Helius),
+`collectFacts(mint, { profile: 'full', lane: 'watch' })` pour le verdict. Fixtures en séquence :
+`src/fixtures/<source>/<scénario>.step<N>[.<détail>].json` (`watch-lp-removed`, `watch-mint-reactivated` — qui sert aussi
+au verdict dégradé Prudence → Danger —, `watch-holder-sold`), rejouées par `createFixtureSequence`.

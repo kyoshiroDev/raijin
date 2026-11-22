@@ -17,8 +17,8 @@ import type { JupiterQuoteClient } from '../clients/jupiter';
 import type { RugCheckClient } from '../clients/rugcheck';
 import type { ParsedMint, RpcCallResult, SolanaRpcClient } from '../clients/solana-rpc';
 import type { SolanaDataConfig } from '../config';
-import { TokenNotFoundError, UpstreamError, type UpstreamErrorKind } from '../core/errors';
-import type { CacheStore, Clock, SolanaLogger } from '../core/ports';
+import { TokenNotFoundError, TokenUnanalyzableError, UpstreamError, type UpstreamErrorKind } from '../core/errors';
+import type { CacheStore, Clock, CreditLane, SolanaLogger } from '../core/ports';
 import { KNOWN_AMM_PROGRAMS, KNOWN_EXCLUDED_OWNERS, USDC_MINT, WSOL_MINT } from '../known-accounts';
 import { sourceRef } from '../source-links';
 import {
@@ -42,6 +42,11 @@ export type CollectProfile = 'full' | 'light';
 
 export interface CollectOptions {
   readonly profile: CollectProfile;
+  /**
+   * Voie de crédits Helius (défaut `interactive`) : la passe complète d'un suivi utilise `watch`
+   * (ARCHITECTURE.md §11.4).
+   */
+  readonly lane?: CreditLane;
 }
 
 export type SourceStatus = 'ok' | 'error' | 'skipped';
@@ -136,7 +141,8 @@ function cleanName(value: unknown, max: number): string | null {
 /**
  * Agrégateur des faits d'un mint (ARCHITECTURE.md §9.1) : appels parallèles sous une échéance
  * globale, chaque source en échec donnant un groupe `null` (contrôle « indisponible ») plutôt
- * qu'une erreur. Seul un mint inexistant lève `TokenNotFoundError`.
+ * qu'une erreur. Seul un mint inexistant lève `TokenNotFoundError` (compte de plus de 2 Mo :
+ * `TokenUnanalyzableError`).
  */
 export class FactsCollector {
   constructor(private readonly deps: FactsCollectorDeps) {}
@@ -163,7 +169,8 @@ export class FactsCollector {
       try {
         mintResult = await this.deps.rpc.getMint(mint, signal);
       } catch (error) {
-        throw error instanceof UpstreamError ? error : new UpstreamError(rpcFallback === 'helius' ? 'helius_rpc' : 'solana_rpc', 'network');
+        if (error instanceof UpstreamError || error instanceof TokenUnanalyzableError) throw error;
+        throw new UpstreamError(rpcFallback === 'helius' ? 'helius_rpc' : 'solana_rpc', 'network');
       }
       if (mintResult.value === null) throw new TokenNotFoundError();
       tracker.markOk(mintResult.servedBy, clock.now() - mintStartedAt);

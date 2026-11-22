@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { UpstreamError } from '../core/errors';
-import type { CreditBudget } from '../core/ports';
+import type { CreditBudget, CreditLane } from '../core/ports';
 import { callJsonRpc, type JsonRpcTransport } from './json-rpc';
 
 /** Coût d'un appel DAS (doc Helius « Credits » : 10 crédits). */
@@ -31,7 +31,13 @@ export class HeliusDasClient {
   constructor(
     private readonly transport: JsonRpcTransport | null,
     private readonly budget: CreditBudget,
+    readonly lane: CreditLane = 'interactive',
   ) {}
+
+  /** Même client, crédits décomptés sur une autre voie. */
+  withLane(lane: CreditLane): HeliusDasClient {
+    return new HeliusDasClient(this.transport, this.budget, lane);
+  }
 
   get configured(): boolean {
     return this.transport !== null;
@@ -39,7 +45,10 @@ export class HeliusDasClient {
 
   async getAsset(mint: string, signal?: AbortSignal): Promise<DasAsset> {
     if (this.transport === null) throw new UpstreamError('helius_das', 'not_configured');
-    if (!(await this.budget.tryConsume(DAS_CREDITS_PER_CALL))) throw new UpstreamError('helius_das', 'budget_exhausted');
-    return callJsonRpc(this.transport, 'getAsset', { id: mint }, assetSchema, signal);
+    // Crédits décomptés à chaque tentative (rejeux compris).
+    const consume = async () => {
+      if (!(await this.budget.tryConsume(DAS_CREDITS_PER_CALL, this.lane))) throw new UpstreamError('helius_das', 'budget_exhausted');
+    };
+    return callJsonRpc(this.transport, 'getAsset', { id: mint }, assetSchema, signal, consume);
   }
 }

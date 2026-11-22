@@ -26,6 +26,13 @@ export interface SolanaDataConfig {
   readonly limits: Readonly<Record<UpstreamId, SourceLimits>>;
   /** Crédits Helius par jour UTC (API 22 000, banc 10 000). */
   readonly heliusDailyCreditBudget: number;
+  /**
+   * Plafond journalier de la voie `watch` (passes de suivi), compté dans le budget global
+   * (ARCHITECTURE.md §11.4 : 12 000 sur 22 000, les analyses à la demande gardent au moins 10 000).
+   */
+  readonly watchDailyCreditBudget: number;
+  /** Durée de cache des propriétaires de comptes de token et de leur programme (passe holders, s). */
+  readonly holderOwnersCacheTtlSeconds: number;
   readonly maxResponseBytes: number;
   readonly maxAttempts: number;
   readonly backoffBaseMs: number;
@@ -69,6 +76,8 @@ export const DEFAULT_SOLANA_DATA_CONFIG: SolanaDataConfig = {
     rugcheck: { ratePerSecond: 1, maxQueue: 6, timeoutMs: 3_000 },
   },
   heliusDailyCreditBudget: 22_000,
+  watchDailyCreditBudget: 12_000,
+  holderOwnersCacheTtlSeconds: 86_400,
   maxResponseBytes: 2_000_000,
   maxAttempts: 2,
   backoffBaseMs: 200,
@@ -128,6 +137,7 @@ const envSchema = z.object({
   HELIUS_RPC_RPS: rateSchema.optional(),
   HELIUS_DAS_RPS: rateSchema.optional(),
   HELIUS_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).optional(),
+  WATCH_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).optional(),
   SOLANA_RPC_RPS: rateSchema.optional(),
 });
 
@@ -173,6 +183,7 @@ export function loadSolanaDataConfig(env: Readonly<Record<string, string | undef
     jupiterBaseUrl: e.JUPITER_API_URL ?? base.jupiterBaseUrl,
     rugcheckBaseUrl: e.RUGCHECK_API_URL ?? base.rugcheckBaseUrl,
     heliusDailyCreditBudget: e.HELIUS_DAILY_CREDIT_BUDGET ?? base.heliusDailyCreditBudget,
+    watchDailyCreditBudget: e.WATCH_DAILY_CREDIT_BUDGET ?? base.watchDailyCreditBudget,
     limits: {
       helius_rpc: { ratePerSecond: e.HELIUS_RPC_RPS ?? base.limits.helius_rpc.ratePerSecond },
       helius_das: { ratePerSecond: e.HELIUS_DAS_RPS ?? base.limits.helius_das.ratePerSecond },

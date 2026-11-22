@@ -1,0 +1,36 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "dexscreener",
+  "synthetic": true,
+  "note": "Swap : réserves déplacées, √(base × quote) inchangé.",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/v1/solana/3G8wFjRxfaPpi9t3CXrZY1JAd4CZFfZoPuZU1ggYif6i",
+    "params": {}
+  },
+  "status": 200,
+  "body": [
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "4FGEXFU34RFsd9PStZFAoezXMVHujobgZ8h6fdhTzQMx",
+      "baseToken": {
+        "address": "3G8wFjRxfaPpi9t3CXrZY1JAd4CZFfZoPuZU1ggYif6i",
+        "name": "Suivi LP",
+        "symbol": "SLP"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceUsd": "0.09375",
+      "liquidity": {
+        "usd": 150000,
+        "base": 800000,
+        "quote": 625
+      },
+      "pairCreatedAt": 1763000000000
+    }
+  ]
+}

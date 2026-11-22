@@ -7,6 +7,13 @@ import type { RestTransport } from './clients/rest';
 import { RugCheckClient } from './clients/rugcheck';
 import { SolanaRpcClient } from './clients/solana-rpc';
 import { FactsCollector, type CollectOptions, type CollectedFacts } from './collect/facts-collector';
+import {
+  WatchCollector,
+  type AuthoritiesBatchEntry,
+  type CollectHoldersOptions,
+  type PoolsBatchEntry,
+} from './collect/watch-collector';
+import type { HoldersSnapshot } from '@raijin/shared-contracts';
 import { resolveSolanaDataConfig, type SolanaDataConfig, type SolanaDataConfigInput } from './config';
 import type { UpstreamId } from './core/errors';
 import { MemoryCacheStore, MemoryCreditBudget } from './core/memory';
@@ -42,6 +49,9 @@ export interface ResolvedToken {
 export class SolanaDataService {
   readonly config: SolanaDataConfig;
   private readonly collector: FactsCollector;
+  /** Même collecteur, crédits sur la voie `watch` (passe complète des suivis). */
+  private readonly watchFactsCollector: FactsCollector;
+  private readonly watchCollector: WatchCollector;
   private readonly dexscreener: DexScreenerClient;
   private readonly gates: ReadonlyMap<UpstreamId, UpstreamGate>;
   private readonly heliusKey: string | null;
@@ -52,7 +62,8 @@ export class SolanaDataService {
     const clock = options.clock ?? SYSTEM_CLOCK;
     const logger = options.logger ?? SILENT_LOGGER;
     const fetchFn: FetchLike = options.fetch ?? ((input, init) => fetch(input, init));
-    const budget = options.creditBudget ?? new MemoryCreditBudget(config.heliusDailyCreditBudget, clock);
+    const budget =
+      options.creditBudget ?? new MemoryCreditBudget(config.heliusDailyCreditBudget, clock, { watch: config.watchDailyCreditBudget });
     const cache = options.cache ?? new MemoryCacheStore(clock);
     // Clé gardée dans une propriété privée, utilisée uniquement pour construire l'URL au moment de l'appel.
     this.heliusKey = options.heliusApiKey ?? null;
@@ -108,7 +119,7 @@ export class SolanaDataService {
     const das = new HeliusDasClient(this.heliusKey === null ? null : rpcTransport('helius_das', heliusUrl), budget);
     this.dexscreener = new DexScreenerClient(rest('dexscreener', config.dexscreenerBaseUrl));
 
-    this.collector = new FactsCollector({
+    const collectorDeps = {
       config,
       rpc,
       das,
@@ -119,7 +130,11 @@ export class SolanaDataService {
       cache,
       clock,
       logger,
-    });
+    };
+    this.collector = new FactsCollector(collectorDeps);
+    const watchRpc = rpc.withLane('watch');
+    this.watchFactsCollector = new FactsCollector({ ...collectorDeps, rpc: watchRpc, das: das.withLane('watch') });
+    this.watchCollector = new WatchCollector({ config, rpc: watchRpc, dexscreener: this.dexscreener, cache, clock, logger });
   }
 
   /** Vrai si une clé Helius est configurée (l'API allonge son cache à 300 s sinon). */
@@ -132,9 +147,34 @@ export class SolanaDataService {
     return Object.fromEntries([...this.gates.entries()].map(([id, gate]) => [id, gate.breakerState]));
   }
 
-  /** Faits normalisés d'un mint (validé en amont par `mintAddressSchema`). */
+  /**
+   * Faits normalisés d'un mint (validé en amont par `mintAddressSchema`). Lève `TokenNotFoundError`
+   * (mint inexistant) ou `TokenUnanalyzableError` (compte de plus de 2 Mo). `lane: 'watch'` pour la
+   * passe complète d'un suivi.
+   */
   collectFacts(mint: string, options: CollectOptions = { profile: 'full' }): Promise<CollectedFacts> {
-    return this.collector.collect(mint, options);
+    return (options.lane === 'watch' ? this.watchFactsCollector : this.collector).collect(mint, options);
+  }
+
+  /**
+   * Passe rapide des suivis : autorités mint / freeze par lots de 100 (1 crédit le lot, voie `watch`).
+   * Ne lève pas : chaque mint est `ok`, `not_found`, `unanalyzable` ou `unavailable`.
+   */
+  collectAuthoritiesBatch(mints: readonly string[]): Promise<AuthoritiesBatchEntry[]> {
+    return this.watchCollector.collectAuthoritiesBatch(mints);
+  }
+
+  /**
+   * Passe rapide des suivis : pool principal (et pool déjà suivi, `trackedPools[mint]`) par lots
+   * de 30, DexScreener (gratuit). Ne lève pas : `pool: null` = indisponible.
+   */
+  collectPoolsBatch(mints: readonly string[], trackedPools?: Readonly<Record<string, string | null | undefined>>): Promise<PoolsBatchEntry[]> {
+    return this.watchCollector.collectPoolsBatch(mints, trackedPools);
+  }
+
+  /** Passe holders d'un mint (top 20, voie `watch`). `null` = indisponible (ou pas de clé Helius). */
+  collectHolders(mint: string, options?: CollectHoldersOptions): Promise<HoldersSnapshot | null> {
+    return this.watchCollector.collectHolders(mint, options);
   }
 
   /**

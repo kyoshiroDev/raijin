@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { DEFAULT_SOLANA_DATA_CONFIG, type SolanaDataConfig } from '../config';
 import type { FetchLike } from '../core/ports';
 
@@ -37,9 +37,44 @@ export function loadFixture(source: string, scenario: string): Fixture {
   return JSON.parse(readFileSync(join(FIXTURES_DIR, source, `${scenario}.json`), 'utf8')) as Fixture;
 }
 
-/** Toutes les fixtures d'un dossier (défaut : celles de la lib ; un bundle passe son propre chemin). */
+/** Fixture d'une séquence : `<scénario>.step<N>[.<détail>].json` (rejouée à l'étape N et suivantes). */
+const STEP_FILE = /^(.+?)\.step(\d{1,3})(?:\.[^/]+)?\.json$/;
+
+function readFixture(file: string): Fixture {
+  return JSON.parse(readFileSync(file, 'utf8')) as Fixture;
+}
+
+/**
+ * Toutes les fixtures d'un dossier (défaut : celles de la lib ; un bundle passe son propre chemin),
+ * **hors séquences** (`*.step<N>*.json`, chargées par `loadFixtureSequence`).
+ */
 export function loadAllFixtures(dir = FIXTURES_DIR): Fixture[] {
-  return fixtureFiles(dir).map((file) => JSON.parse(readFileSync(file, 'utf8')) as Fixture);
+  return fixtureFiles(dir)
+    .filter((file) => !STEP_FILE.test(basename(file)))
+    .map(readFixture);
+}
+
+/** Noms des scénarios en séquence disponibles (`watch-lp-removed`, …). */
+export function fixtureSequenceNames(dir = FIXTURES_DIR): string[] {
+  const names = fixtureFiles(dir).flatMap((file) => {
+    const match = STEP_FILE.exec(basename(file));
+    return match ? [match[1] as string] : [];
+  });
+  return [...new Set(names)].sort();
+}
+
+/** Fixtures d'un scénario en séquence, par étape (index = N ; étape sans fichier = liste vide). */
+export function loadFixtureSequence(scenario: string, dir = FIXTURES_DIR): Fixture[][] {
+  const steps: Fixture[][] = [];
+  for (const file of fixtureFiles(dir)) {
+    const match = STEP_FILE.exec(basename(file));
+    if (!match || match[1] !== scenario) continue;
+    const step = Number(match[2]);
+    for (let index = steps.length; index <= step; index += 1) steps.push([]);
+    (steps[step] as Fixture[]).push(readFixture(file));
+  }
+  if (steps.length === 0) throw new Error(`Scénario de fixtures inconnu : ${scenario}.`);
+  return steps;
 }
 
 /** Paramètres ignorés à la comparaison (montant du devis : dépend du prix au moment de l'enregistrement). */
@@ -73,7 +108,7 @@ function sameJson(a: unknown, b: unknown): boolean {
  * message **contient l'URL** (comme undici) : sert à vérifier que la lib ne la propage jamais.
  */
 export function createFixtureFetch(
-  fixtures: readonly Fixture[] = loadAllFixtures(),
+  fixtureSource: readonly Fixture[] | (() => readonly Fixture[]) = loadAllFixtures(),
   config: SolanaDataConfig = DEFAULT_SOLANA_DATA_CONFIG,
   overrides: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined = () => undefined,
 ): FixtureFetch {
@@ -81,6 +116,7 @@ export function createFixtureFetch(
   const urls: string[] = [];
 
   const fetchFn: FetchLike = async (url, init) => {
+    const fixtures = typeof fixtureSource === 'function' ? fixtureSource() : fixtureSource;
     urls.push(url);
     const override = await overrides(url, init);
 
@@ -128,4 +164,50 @@ export function createFixtureFetch(
   };
 
   return { fetch: fetchFn, calls, urls };
+}
+
+export interface FixtureSequence extends FixtureFetch {
+  /** Étape courante (0 au départ). */
+  readonly step: number;
+  /** Nombre d'étapes du scénario. */
+  readonly steps: number;
+  /** Passe à l'étape suivante (bloquée sur la dernière). */
+  advance(): void;
+  goTo(step: number): void;
+}
+
+/**
+ * Rejeu d'un scénario en séquence (t0, t1…) : à l'étape N, une requête est servie par la fixture
+ * de l'étape la plus récente ≤ N qui la connaît, sinon par les fixtures de base. Sert à tester les
+ * transitions des suivis (LP retirée, mint réactivé, holder vendeur, verdict dégradé), y compris
+ * depuis l'API (job déclenché sur fixtures).
+ */
+export function createFixtureSequence(
+  scenario: string,
+  options: {
+    readonly base?: readonly Fixture[];
+    readonly config?: SolanaDataConfig;
+    readonly overrides?: Parameters<typeof createFixtureFetch>[2];
+    readonly dir?: string;
+  } = {},
+): FixtureSequence {
+  const sequence = loadFixtureSequence(scenario, options.dir);
+  const base = options.base ?? loadAllFixtures(options.dir);
+  let step = 0;
+  const current = () => [...sequence.slice(0, step + 1).reverse().flat(), ...base];
+  const fixtureFetch = createFixtureFetch(current, options.config, options.overrides);
+  return {
+    ...fixtureFetch,
+    get step() {
+      return step;
+    },
+    steps: sequence.length,
+    advance() {
+      step = Math.min(step + 1, sequence.length - 1);
+    },
+    goTo(target: number) {
+      if (!Number.isInteger(target) || target < 0 || target >= sequence.length) throw new RangeError('Étape inconnue.');
+      step = target;
+    },
+  };
 }

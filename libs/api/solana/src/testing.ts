@@ -5,10 +5,14 @@
 export {
   FIXTURES_DIR,
   createFixtureFetch,
+  createFixtureSequence,
   fixtureFiles,
+  fixtureSequenceNames,
   loadAllFixtures,
   loadFixture,
+  loadFixtureSequence,
   type Fixture,
   type FixtureFetch,
+  type FixtureSequence,
   type RecordedCall,
 } from './lib/testing/fixture-fetch';

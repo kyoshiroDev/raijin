@@ -1,0 +1,82 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Programmes : wallets (System Program) et un compte du programme Raydium CPMM (exclu).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+        "4dmbSBLrLWApA5gSequ9BEjq5hfojCSLHku9pc1CDY6B",
+        "C6uxwopMh9D9gmWqFzL9rEXEns5vUckjP3JSmRuhtyXC",
+        "2oP5LGYsKi4ANxL7ajCLonS3eWCvFph6VKk36FATAqeg"
+      ],
+      {
+        "encoding": "base64",
+        "dataSlice": {
+          "offset": 0,
+          "length": 0
+        },
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472400102
+      },
+      "value": [
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 1000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 0,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 1000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 0,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 1000000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 0,
+          "space": 0
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 1000000,
+          "owner": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+          "rentEpoch": 0,
+          "space": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Propriétaires : autorité Raydium (exclue), H1, H2, compte de programme AMM.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "Ggj78tCHjpGMQbUK61nceWDJZzQCRoci7uadp3LZi9Em",
+        "kWv2Xjint8N2AmTAEXfQdR5qXDmhtRXnTKkhuXbhsCL",
+        "8sprw45KXwHSKnsWyX1u3VpVXKQiBaoWbAc86gCac5ah",
+        "aozDba5TLto7jGwZ1x4p4ZNownoh59rY8c48KDxug76"
+      ],
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472400101
+      },
+      "value": [
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "owner": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+                "mint": "7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4",
+                "isNative": false,
+                "state": "initialized"
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 0,
+          "space": 165
+        },
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "owner": "4dmbSBLrLWApA5gSequ9BEjq5hfojCSLHku9pc1CDY6B",
+                "mint": "7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4",
+                "isNative": false,
+                "state": "initialized"
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 0,
+          "space": 165
+        },
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "owner": "C6uxwopMh9D9gmWqFzL9rEXEns5vUckjP3JSmRuhtyXC",
+                "mint": "7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4",
+                "isNative": false,
+                "state": "initialized"
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 0,
+          "space": 165
+        },
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "owner": "2oP5LGYsKi4ANxL7ajCLonS3eWCvFph6VKk36FATAqeg",
+                "mint": "7kyyXC5ZbjLDGucQA2ucEHb6wrq8fiWxDRCcf2HWzQu4",
+                "isNative": false,
+                "state": "initialized"
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 0,
+          "space": 165
+        }
+      ]
+    }
+  }
+}

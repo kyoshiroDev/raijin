@@ -1,6 +1,6 @@
 import * as z from 'zod';
-import { UpstreamError } from '../core/errors';
-import type { CreditBudget, SolanaLogger } from '../core/ports';
+import { TokenUnanalyzableError, UpstreamError } from '../core/errors';
+import type { CreditBudget, CreditLane, SolanaLogger } from '../core/ports';
 import { callJsonRpc, type JsonRpcTransport } from './json-rpc';
 
 /** Programmes de token reconnus. */
@@ -41,6 +41,18 @@ const accountInfoSchema = z.object({
 });
 
 export type ParsedMint = z.infer<typeof parsedMintSchema>['info'] & { program: 'spl-token' | 'token-2022' };
+
+/** Compte jsonParsed → mint SPL / Token-2022, `null` si absent ou si ce n'est pas un mint. */
+function toParsedMint(value: { owner: string; data: unknown } | null): ParsedMint | null {
+  if (value === null || (value.owner !== SPL_TOKEN_PROGRAM && value.owner !== TOKEN_2022_PROGRAM)) return null;
+  const data = value.data;
+  const parsed =
+    typeof data === 'object' && data !== null && !Array.isArray(data) && 'parsed' in data
+      ? parsedMintSchema.safeParse((data as { parsed: unknown }).parsed)
+      : null;
+  if (parsed === null || !parsed.success) return null;
+  return { ...parsed.data.info, program: value.owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'spl-token' };
+}
 
 const largestAccountsSchema = z.object({
   value: z
@@ -94,55 +106,69 @@ export class SolanaRpcClient {
     private readonly publicRpc: RpcEndpoint,
     private readonly budget: CreditBudget,
     private readonly logger: SolanaLogger,
+    /** Voie de crédits décomptée par ce client (`withLane` pour les passes de suivi). */
+    readonly lane: CreditLane = 'interactive',
   ) {}
 
   get heliusConfigured(): boolean {
     return this.helius !== null;
   }
 
+  /** Même client (mêmes files de débit), crédits décomptés sur une autre voie. */
+  withLane(lane: CreditLane): SolanaRpcClient {
+    return new SolanaRpcClient(this.helius, this.publicRpc, this.budget, this.logger, lane);
+  }
+
   private async call<T>(method: string, params: unknown, schema: z.ZodType<T>, signal?: AbortSignal): Promise<RpcCallResult<T>> {
     if (this.helius !== null) {
-      if (await this.budget.tryConsume(1)) {
-        try {
-          return { value: await callJsonRpc(this.helius.transport, method, params, schema, signal), servedBy: 'helius' };
-        } catch (error) {
-          if (signal?.aborted) throw error;
-          // Réponse trop volumineuse : propriété du compte, pas une panne ; le RPC public dirait pareil.
-          if (error instanceof UpstreamError && error.kind === 'too_large') throw error;
-          const kind = error instanceof UpstreamError ? error.kind : 'network';
-          this.logger.warn('helius_fallback_public_rpc', { method, kind });
-        }
-      } else {
-        this.logger.warn('helius_budget_exhausted', { method });
+      // 1 crédit par tentative (rejeux compris, mineur m2) ; budget épuisé → RPC public.
+      const consume = async () => {
+        if (!(await this.budget.tryConsume(1, this.lane))) throw new UpstreamError('helius_rpc', 'budget_exhausted');
+      };
+      try {
+        return { value: await callJsonRpc(this.helius.transport, method, params, schema, signal, consume), servedBy: 'helius' };
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        // Réponse trop volumineuse : propriété du compte, pas une panne ; le RPC public dirait pareil.
+        if (error instanceof UpstreamError && error.kind === 'too_large') throw error;
+        const kind = error instanceof UpstreamError ? error.kind : 'network';
+        if (kind === 'budget_exhausted') this.logger.warn('helius_budget_exhausted', { method, lane: this.lane });
+        else this.logger.warn('helius_fallback_public_rpc', { method, kind });
       }
     }
     return { value: await callJsonRpc(this.publicRpc.transport, method, params, schema, signal), servedBy: 'solana_rpc' };
   }
 
-  /** Compte de mint (jsonParsed). `null` si le compte n'existe pas ou n'est pas un mint. */
+  /**
+   * Compte de mint (jsonParsed). `null` si le compte n'existe pas ou n'est pas un mint.
+   * Réponse de plus de 2 Mo : `TokenUnanalyzableError` (le compte existe ; `dataSlice` est
+   * incompatible avec jsonParsed, on ne peut pas savoir à coût nul si c'est un mint, mineur m4).
+   */
   async getMint(mint: string, signal?: AbortSignal): Promise<RpcCallResult<ParsedMint | null>> {
     let result: RpcCallResult<z.infer<typeof accountInfoSchema>>;
     try {
       result = await this.call('getAccountInfo', [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }], accountInfoSchema, signal);
     } catch (error) {
-      // Un compte de mint pèse quelques Ko (Token-2022 avec métadonnées compris) : un compte de plusieurs
-      // Mo (file d'événements, carnet d'ordres…) n'est pas un mint. (`dataSlice` est incompatible avec jsonParsed.)
-      if (error instanceof UpstreamError && error.kind === 'too_large') {
-        return { value: null, servedBy: this.helius === null ? 'solana_rpc' : 'helius' };
-      }
+      if (error instanceof UpstreamError && error.kind === 'too_large') throw new TokenUnanalyzableError();
       throw error;
     }
-    const value = result.value.value;
-    if (value === null || (value.owner !== SPL_TOKEN_PROGRAM && value.owner !== TOKEN_2022_PROGRAM)) {
-      return { value: null, servedBy: result.servedBy };
-    }
-    const data = value.data;
-    const parsed = typeof data === 'object' && !Array.isArray(data) ? parsedMintSchema.safeParse(data.parsed) : null;
-    if (parsed === null || !parsed.success) return { value: null, servedBy: result.servedBy };
-    return {
-      value: { ...parsed.data.info, program: value.owner === TOKEN_2022_PROGRAM ? 'token-2022' : 'spl-token' },
-      servedBy: result.servedBy,
-    };
+    return { value: toParsedMint(result.value.value), servedBy: result.servedBy };
+  }
+
+  /**
+   * Comptes de mint par lot (≤ 100, `getMultipleAccounts` jsonParsed, 1 crédit). Index aligné sur
+   * `mints`, `null` si absent ou pas un mint. Réponse trop volumineuse : `UpstreamError('too_large')`
+   * (l'appelant coupe le lot).
+   */
+  async getMints(mints: readonly string[], signal?: AbortSignal): Promise<RpcCallResult<Array<ParsedMint | null>>> {
+    const result = await this.call(
+      'getMultipleAccounts',
+      [mints, { encoding: 'jsonParsed', commitment: 'confirmed' }],
+      multipleAccountsSchema,
+      signal,
+    );
+    if (result.value.value.length !== mints.length) throw new UpstreamError(result.servedBy === 'helius' ? 'helius_rpc' : 'solana_rpc', 'invalid_response');
+    return { value: result.value.value.map((account) => toParsedMint(account)), servedBy: result.servedBy };
   }
 
   /** 20 plus gros comptes de token (souvent refusé par le RPC public : 429). */

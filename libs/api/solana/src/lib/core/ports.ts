@@ -17,10 +17,21 @@ export interface Clock {
   now(): number;
 }
 
+/**
+ * Voie de crédits (ARCHITECTURE.md §11.4) : `interactive` = analyses à la demande ; `watch` = passes
+ * de suivi (plafond propre `WATCH_DAILY_CREDIT_BUDGET`, compté aussi dans le budget global).
+ */
+export type CreditLane = 'interactive' | 'watch';
+export const CREDIT_LANES: readonly CreditLane[] = ['interactive', 'watch'];
+
 /** Budget journalier de crédits Helius (compté dans Redis par l'API, en mémoire par défaut). */
 export interface CreditBudget {
-  /** Réserve `credits` ; `false` si le budget du jour est épuisé (repli RPC public ou « indisponible »). */
-  tryConsume(credits: number): Promise<boolean>;
+  /**
+   * Réserve `credits` sur la voie `lane` (appelé à **chaque tentative** d'appel Helius, rejeux
+   * compris) ; `false` si le budget du jour (global ou de la voie) est épuisé : repli RPC public
+   * ou contrôle « indisponible », jamais d'erreur.
+   */
+  tryConsume(credits: number, lane: CreditLane): Promise<boolean>;
 }
 
 /** Valeurs journalisables : jamais d'URL, d'en-tête ni de clé (source, méthode, statut, latence). */

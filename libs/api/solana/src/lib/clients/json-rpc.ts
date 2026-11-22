@@ -20,6 +20,7 @@ export interface JsonRpcTransport {
 /**
  * Appel JSON-RPC 2.0 validé par un schéma Zod. Les erreurs RPC sont réduites à un type
  * (`rate_limited` pour -32429 / 429, `rpc_error` sinon) : le message du fournisseur n'est pas repris.
+ * `beforeAttempt` est appelé avant chaque tentative ; une `UpstreamError` qu'il lève arrête l'appel.
  */
 export async function callJsonRpc<T>(
   transport: JsonRpcTransport,
@@ -27,8 +28,11 @@ export async function callJsonRpc<T>(
   params: unknown,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
+  beforeAttempt?: () => Promise<void>,
 ): Promise<T> {
   return transport.gate.run(async () => {
+    // Exécuté à chaque tentative (rejeux compris) : décompte des crédits Helius (mineur m2).
+    if (beforeAttempt) await beforeAttempt();
     const startedAt = Date.now();
     let status: number | string = 'error';
     try {
