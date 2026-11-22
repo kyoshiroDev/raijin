@@ -69,7 +69,7 @@ jobs:
       - run: pnpm nx affected -t lint typecheck test build --parallel=3
 
   e2e:
-    name: e2e Playwright (PR vers main ou lancement manuel)
+    name: e2e ${{ matrix.id }} (PR vers main ou lancement manuel)
     if: >-
       !cancelled() && (
         (github.event_name == 'workflow_dispatch' && inputs.suite == 'e2e') ||
@@ -77,7 +77,20 @@ jobs:
       )
     needs: verifier
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Matrice de 5 lots en parallèle (une suite web-e2e de plus de 800 tests dépassait 30 min sur un seul
+    # runner). Lots équilibrés sur la durée par E2E_LOT (playwright.config.mts) ; responsive, nombreux mais
+    # rapides, est coupé en deux par E2E_SHARD ; api-e2e tourne dans le lot le plus léger. Chaque lot a ses
+    # propres services et sa propre API : aucun état partagé entre lots. Détail et coût : ARCHITECTURE.md §6.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: responsive-1, lot: responsive, shard: '1/2', api: false }
+          - { id: responsive-2, lot: responsive, shard: '2/2', api: false }
+          - { id: visuel, lot: visuel, shard: '', api: false }
+          - { id: parcours, lot: parcours, shard: '', api: false }
+          - { id: reste, lot: reste, shard: '', api: true }
     # Mêmes ports hôte que docker-compose.dev.yml (5433, 6380, 1026, 8026) : la configuration de
     # développement de l'API et des suites e2e s'applique telle quelle. Identifiants factices, non secrets.
     services:
@@ -126,6 +139,11 @@ jobs:
       MAIL_PROVIDER: smtp
       # Les suites e2e font plusieurs inscriptions par minute : limites relevées pour le test uniquement.
       RATE_LIMIT_AUTH_PER_MINUTE: '100'
+      # Lot et part lus par apps/web-e2e/playwright.config.mts (entrées du cache Nx de web-e2e:e2e).
+      E2E_LOT: ${{ matrix.lot }}
+      E2E_SHARD: ${{ matrix.shard }}
+      # Nom de blob propre au lot : les blobs des 5 lots sont fusionnés sans collision par e2e-rapport.
+      PLAYWRIGHT_BLOB_OUTPUT_NAME: report-${{ matrix.id }}.zip
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -143,9 +161,26 @@ jobs:
 
       - uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4.4.0
 
+      # Suites e2e affectées (même règle que l'ancien `nx affected -t e2e`) : un lot sans rien à tester
+      # s'arrête ici, avant Chromium, les migrations et les builds.
+      - name: Suites e2e affectées
+        id: affected
+        env:
+          WITH_API: ${{ matrix.api }}
+        run: |
+          projects="$(pnpm -s nx show projects --affected -t e2e --json)"
+          echo "Suites e2e affectées : $projects"
+          web=false; api=false
+          if grep -q '"web-e2e"' <<<"$projects"; then web=true; fi
+          if [ "$WITH_API" = "true" ] && grep -q '"api-e2e"' <<<"$projects"; then api=true; fi
+          run=false
+          if [ "$web" = "true" ] || [ "$api" = "true" ]; then run=true; fi
+          { echo "web=$web"; echo "api=$api"; echo "run=$run"; } >> "$GITHUB_OUTPUT"
+
       # Secrets éphémères propres à ce job (aucun secret GitHub) : l'API les générerait sinon à chaque
       # démarrage ; ici une seule valeur, masquée dans les journaux, pour les deux suites.
       - name: Secrets de test éphémères
+        if: steps.affected.outputs.run == 'true'
         run: |
           for name in JWT_ACCESS_SECRET COOKIE_SECRET; do
             value="$(openssl rand -base64 48 | tr -d '\n=+/')"
@@ -153,7 +188,10 @@ jobs:
             echo "$name=$value" >> "$GITHUB_ENV"
           done
 
+      # Clé commune aux 5 lots : le premier qui termine l'enregistre, les autres la relisent au
+      # lancement suivant (builds api et web en cache).
       - name: Cache Nx
+        if: steps.affected.outputs.run == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .nx/cache
@@ -162,10 +200,12 @@ jobs:
             nx-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Version de Playwright
+        if: steps.affected.outputs.run == 'true'
         id: playwright
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Cache des navigateurs Playwright
+        if: steps.affected.outputs.run == 'true'
         id: playwright-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -173,33 +213,81 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Chromium (téléchargement + dépendances système)
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.affected.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Chromium (dépendances système seules, navigateur en cache)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        if: steps.affected.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
       - name: Migrations Prisma
+        if: steps.affected.outputs.run == 'true'
         run: pnpm nx run api-prisma:migrate-deploy
+
+      # Builds de production api + web en parallèle avant Playwright, qui démarre ses serveurs l'un après
+      # l'autre : ses `nx run api:build` et `nx run web:build` deviennent des lectures du cache local.
+      - name: Builds api et web (production)
+        if: steps.affected.outputs.web == 'true'
+        run: pnpm nx run-many -t build -p api web --parallel=2
 
       # Deux passes séparées : api-e2e démarre l'API via api:serve (TTL JWT par défaut), web-e2e la
       # relance via le webServer Playwright (JWT_ACCESS_TTL=20s, limites hautes). Une seule commande
       # laisserait Playwright réutiliser l'API de la première suite, avec le mauvais TTL.
-      - name: e2e API (si affectée)
-        run: pnpm nx affected -t e2e --exclude=web-e2e --parallel=1
+      - name: e2e API
+        if: steps.affected.outputs.api == 'true'
+        run: pnpm nx run api-e2e:e2e
 
-      - name: e2e web (si affectée)
-        run: pnpm nx affected -t e2e --exclude=api-e2e --parallel=1
+      - name: e2e web (lot ${{ matrix.id }})
+        if: steps.affected.outputs.web == 'true'
+        run: pnpm nx run web-e2e:e2e
 
-      - name: Captures et rapport (uniquement en cas d'échec)
+      # Blob du lot (traces et captures comprises), fusionné en un rapport HTML unique par e2e-rapport.
+      - name: Blob Playwright du lot (uniquement en cas d'échec)
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: playwright-echecs
-          path: |
-            dist/.playwright/**
-            apps/*-e2e/test-output/**
+          name: e2e-blob-${{ matrix.id }}
+          path: dist/.playwright/apps/web-e2e/blob-report/*.zip
+          retention-days: 1
+          if-no-files-found: ignore
+
+  e2e-rapport:
+    name: Rapport e2e fusionné (uniquement en cas d'échec)
+    needs: e2e
+    if: ${{ !cancelled() && needs.e2e.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: e2e-blob-*
+          merge-multiple: true
+          path: blob-reports
+
+      - name: Fusion des blobs en un rapport HTML
+        run: |
+          if ! compgen -G "blob-reports/*.zip" > /dev/null; then
+            echo "Aucun blob Playwright : l'échec a eu lieu avant les tests web (voir le journal du lot)." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          pnpm exec playwright merge-reports --reporter html ./blob-reports
+
+      - name: Rapport HTML fusionné (artefact)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-rapport
+          path: playwright-report/**
           retention-days: 7
           if-no-files-found: ignore
 

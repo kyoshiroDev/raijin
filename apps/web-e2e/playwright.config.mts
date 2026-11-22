@@ -8,6 +8,38 @@ const baseURL = process.env['BASE_URL'] || getReadyUrl('http://localhost:4200');
 /** Serveur du build de production (apps/web-e2e/scripts/serve-prod.mjs). */
 const PROD_ORIGIN = process.env['PROD_ORIGIN'] ?? 'http://127.0.0.1:4310';
 
+const preset = nxE2EPreset(import.meta.dirname, { testDir: './src' });
+
+/**
+ * Lots de la CI (job `e2e` en matrice, docs/ARCHITECTURE.md §6) : `E2E_LOT` restreint la suite à un groupe
+ * de fichiers, équilibré à la main sur la durée (un `--shard` seul coupe par nombre de tests, et les parcours,
+ * dix fois plus lents qu'un test responsive, tomberaient presque tous dans le premier lot). `reste` prend tout
+ * fichier non listé : un nouveau spec est exécuté sans retoucher la CI. Sans `E2E_LOT`, toute la suite.
+ */
+const E2E_LOTS: Readonly<Record<string, readonly string[]>> = {
+  responsive: ['responsive.spec.ts'],
+  visuel: ['a11y.spec.ts', 'screenshots.spec.ts'],
+  parcours: ['analysis.flow.spec.ts', 'auth.flow.spec.ts', 'billing.flow.spec.ts'],
+};
+
+function lotFilter(lot: string | undefined): { testMatch?: string[]; testIgnore?: string[] } {
+  if (!lot) return {};
+  if (lot === 'reste') return { testIgnore: Object.values(E2E_LOTS).flat().map((file) => `**/${file}`) };
+  const files = E2E_LOTS[lot];
+  if (!files) throw new Error(`E2E_LOT inconnu : « ${lot} » (attendu : ${[...Object.keys(E2E_LOTS), 'reste'].join(', ')})`);
+  return { testMatch: files.map((file) => `**/${file}`) };
+}
+
+/** `E2E_SHARD=i/n` : découpe le lot en n parts (équivalent de `--shard=i/n`, sans passer d'argument par Nx). */
+function shardFromEnv(value: string | undefined): { current: number; total: number } | null {
+  if (!value) return null;
+  const match = /^(\d+)\/(\d+)$/.exec(value);
+  const current = Number(match?.[1]);
+  const total = Number(match?.[2]);
+  if (!match || current < 1 || current > total) throw new Error(`E2E_SHARD invalide : « ${value} » (attendu : i/n)`);
+  return { current, total };
+}
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -25,10 +57,16 @@ const PROD_ORIGIN = process.env['PROD_ORIGIN'] ?? 'http://127.0.0.1:4310';
  * (.ts/.js/.mts/.mjs/.cts/.cjs).
  */
 export default defineConfig({
-  ...nxE2EPreset(import.meta.dirname, { testDir: './src' }),
-  // CI : 1 worker (preset Nx). En local : 3 workers au plus, pour que le serveur de dev et axe
-  // ne saturent pas la machine (timeouts aléatoires constatés avec le défaut de 50 % des cœurs).
-  workers: process.env['CI'] ? 1 : Number(process.env['E2E_WORKERS'] ?? 3),
+  ...preset,
+  ...lotFilter(process.env['E2E_LOT']),
+  shard: shardFromEnv(process.env['E2E_SHARD']),
+  // CI : 1 worker par défaut (runner 2 vCPU qui fait tourner aussi l'API, le serveur de dev et le build servi ;
+  // les parcours partagent l'état global de l'API : scénarios de fixtures, passes de jobs). En local : 3 workers
+  // au plus, pour que le serveur de dev et axe ne saturent pas la machine. `E2E_WORKERS` force la valeur.
+  workers: Number(process.env['E2E_WORKERS'] ?? (process.env['CI'] ? 1 : 3)),
+  // CI : progression test par test (durées dans le journal du job), en plus du rapport HTML et du blob du preset
+  // (le blob de chaque lot est fusionné par le job `e2e-rapport` en cas d'échec).
+  reporter: process.env['CI'] ? [['list'], ...preset.reporter] : preset.reporter,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,

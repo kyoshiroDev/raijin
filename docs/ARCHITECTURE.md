@@ -185,10 +185,47 @@ annulation des exécutions obsolètes. E2E Playwright et Lighthouse uniquement s
   (`DATABASE_URL` factice, `REDIS_URL`, `SMTP_*`, `MAILPIT_URL`) ; `JWT_ACCESS_SECRET` et
   `COOKIE_SECRET` tirés au hasard dans le job et masqués (aucun secret GitHub). Étapes :
   `api-prisma:migrate-deploy`, Chromium seul (navigateurs en cache, clé = version de
-  Playwright), puis `nx affected -t e2e` en deux passes (api-e2e, puis web-e2e) pour que
+  Playwright), puis api-e2e et web-e2e en deux passes pour que
   Playwright démarre sa propre API avec `JWT_ACCESS_TTL=20s` et des limites hautes au lieu de
-  réutiliser celle de la première suite. Rapport HTML et captures (`dist/.playwright/**`)
-  envoyés en artefact (7 jours) uniquement en cas d'échec.
+  réutiliser celle de la première suite.
+- **Matrice e2e (depuis le 2026-11-22)** : avec 833 tests web (dont 574 responsive et 126 axe), le job
+  unique dépassait ses 30 min (run 45043971090 annulé après 27 min de web-e2e, après ~3 min de mise en
+  place et 1 min 45 d'api-e2e). Le job `e2e` est désormais une matrice de **5 lots en parallèle**
+  (`fail-fast: false`, timeout 25 min chacun), chacun avec ses propres services, sa propre API et sa
+  base vide : aucun état partagé entre lots.
+  - Lots (`E2E_LOT`, lu par `apps/web-e2e/playwright.config.mts`) : `responsive` coupé en deux par
+    `E2E_SHARD=1/2` et `2/2` (287 tests chacun), `visuel` (a11y + captures, 186), `parcours`
+    (analysis, auth, billing : 43 parcours lents), `reste` (tout fichier non listé : socle, trial,
+    wallet, watch, et **tout nouveau spec** sans retoucher la CI) + api-e2e. Un `--shard=i/5` natif
+    aurait été plus simple mais coupe par nombre de tests, dans l'ordre des fichiers : le premier lot
+    aurait reçu a11y et presque tous les parcours (> 20 min), les autres seulement du responsive.
+    Rééquilibrer = déplacer un fichier dans `E2E_LOTS` (config Playwright) ; les durées par test sont
+    dans le journal (reporter `list` en CI). `E2E_LOT` et `E2E_SHARD` sont des entrées du cache Nx de
+    `web-e2e:e2e` (`apps/web-e2e/project.json`) : un lot ne rejoue jamais le résultat d'un autre.
+  - **1 worker par lot** (pas 2) : le runner privé a 2 vCPU et fait déjà tourner l'API, le serveur de
+    dev Angular et le build servi ; les parcours partagent l'état global de l'API (scénarios de
+    fixtures, passes de jobs de watch.flow). `E2E_WORKERS` permet d'essayer 2 sur un lot sans toucher
+    la config. Les fichiers en série (`mode: 'serial'`) restent entiers dans un même lot.
+  - **Build par lot plutôt qu'en artefact** : une étape `nx run-many -t build -p api web --parallel=2`
+    (~1,5 min, souvent en cache Nx) précède Playwright, dont les `nx run api:build` / `web:build`
+    deviennent des lectures du cache local. Un job de build partagé ajouterait ~3 min de mise en place
+    en série avant les lots et un aller-retour d'artefact pour un gain d'environ 1 min par lot, et le
+    serveur de dev compile de toute façon sur chaque runner.
+  - **Serveur de dev conservé** pour la base `http://localhost:4200` : `/_design` (responsive et a11y)
+    n'existe qu'en développement. Le build servi (4310) reste réservé aux tests qui le visent.
+  - Une étape « Suites e2e affectées » (`nx show projects --affected -t e2e`) arrête un lot sans rien
+    à tester avant Chromium, migrations et builds (même règle qu'avant avec `nx affected`).
+  - **Rapports** : chaque lot en échec envoie son blob Playwright (`e2e-blob-<lot>`, 1 jour, nommé par
+    `PLAYWRIGHT_BLOB_OUTPUT_NAME`) ; le job `e2e-rapport`, lancé **seulement si un lot a échoué**, les
+    fusionne (`playwright merge-reports --reporter html`) en un artefact `playwright-rapport` (7 jours,
+    traces et captures comprises). Rien n'est envoyé quand tout est vert.
+  - **Coût estimé** (minutes facturées, arrondies à la minute par job ; durées de tests estimées, à
+    recaler sur le premier run grâce au reporter `list`) : avant, ≥ 30 min perdues par lancement
+    (annulé), ~55-60 min s'il avait abouti en un seul job ; après, 5 lots de ~13-17 min (mise en place
+    ~3-4 min + tests ~9-13 min) soit **~70-80 min par lancement**, ~17 min d'attente au lieu de > 30,
+    +1-2 min pour `e2e-rapport` en cas d'échec. Avec Lighthouse (~10 min), une PR vers `main` coûte
+    ~90 min : environ 20 lancements complets par mois tiennent dans les 2 000 min de GitHub Free privé,
+    à réserver aux PR vers `main` et aux lancements manuels `-f suite=e2e`.
 - **Job `lighthouse`** (PR vers `main`, après le job principal et en parallèle de `e2e` ; ou lancement
   manuel `workflow_dispatch`) : mêmes services et secrets éphémères que `e2e`, migrations, Chromium de
   Playwright (même cache), puis `pnpm nx run web-e2e:lighthouse --args="--runs 3 --phase phase-3"`
@@ -207,7 +244,8 @@ annulation des exécutions obsolètes. E2E Playwright et Lighthouse uniquement s
 - **E2E en local** : `pnpm nx run api:dev-infra` (Postgres, Redis, Mailpit), puis
   `pnpm nx run api-prisma:migrate-deploy` au premier lancement, puis `pnpm nx e2e api-e2e`
   et `pnpm nx e2e web-e2e` (une API déjà lancée est réutilisée par Playwright : la lancer alors
-  avec `JWT_ACCESS_TTL=20s`). Arrêt : `pnpm nx run api:dev-infra-stop`.
+  avec `JWT_ACCESS_TTL=20s`). Arrêt : `pnpm nx run api:dev-infra-stop`. Rejouer un lot de la CI :
+  `E2E_LOT=parcours pnpm nx e2e web-e2e` (ou `E2E_LOT=responsive E2E_SHARD=1/2`).
 
 - pnpm : version imposée par `packageManager` du `package.json` (lue par `pnpm/action-setup`),
   Node 22 (au moins 22.23.4, exigé par Astro 7 ; `engines` du `package.json`),
@@ -1024,6 +1062,20 @@ Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (répon
   `stripeCustomerId` ; inconnu → marqué traité, journalisé (code), 200.
 - **Effets de bord après commit** : e-mails (reçu sur `invoice.paid`, échec sur `invoice.payment_failed`) en file BullMQ
   `notify` avec `jobId` = id de facture (aucun doublon) ; `resumePlanLimited` / `enforcePlanLimit` dans la transaction.
+  Implémentation : job `billing-email` déclaré dans le `JobRegistry` d'`api-alerts` (réessais BullMQ ; le traitement
+  relit l'adresse en base et le montant chez le prestataire) ; jobs désactivés (tests, dev sans Redis) : envoi direct,
+  un échec est alors journalisé et l'e-mail perdu (Stripe peut aussi envoyer ses propres reçus).
+- **Suppression du compte** (audit phase 6, I1) : `BillingAccountCloser.closeForUser(userId)` (exporté par
+  `api-billing`, branché par `apps/api` dans `api-users`) résilie immédiatement, sans prorata, tout abonnement
+  `active` / `trialing` / `past_due` connu de Stripe ou de la base, puis supprime le client Stripe ; échec du
+  prestataire (ou Stripe non configuré alors qu'un client existe) → `BillingAccountCloseError` (503), compte conservé.
+  Idempotent (client détaché du compte une fois clôturé).
+- Rattachement : une `metadata.userId` est ignorée si le client Stripe de l'événement appartient à un autre compte.
+- Checkout : refusé (`ALREADY_SUBSCRIBED`) si Stripe connaît déjà un abonnement Pro pour ce client (webhook pas
+  encore reçu) ; client Stripe créé hors transaction (clé d'idempotence `customer:<userId>`), rattaché par
+  `UPDATE … WHERE stripeCustomerId IS NULL`. Portail affiché seulement s'il existe ou a existé un abonnement.
+- `BILLING_PROVIDER=fake` refusé en production **et** si `APP_URL` n'est pas locale (localhost, 127.0.0.1,
+  `*.localhost`). Routes `internal/billing/*` enregistrées seulement avec `JOBS_TEST_TRIGGER=1` hors production.
 - Événements traités : `STRIPE_WEBHOOK_EVENT_TYPES` (les 4 de PROMPT.md + `invoice.paid` pour les reçus) ; les autres
   → 200 ignorés.
 
