@@ -1,0 +1,57 @@
+{
+  "recordedAt": "2026-11-22T03:20:32.217Z",
+  "source": "jupiter",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "outputMint": "So11111111111111111111111111111111111111112",
+      "amount": "100020004",
+      "slippageBps": "500"
+    }
+  },
+  "status": 200,
+  "body": {
+    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "inAmount": "100020004",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "outAmount": "1443318093",
+    "otherAmountThreshold": "1371152189",
+    "swapMode": "ExactIn",
+    "slippageBps": 500,
+    "platformFee": null,
+    "priceImpactPct": "0",
+    "routePlan": [
+      {
+        "swapInfo": {
+          "ammKey": "7yD7gfXv49SFxhx9uTc11dEd7Nj98rGWeYMdZJgheZbG",
+          "label": "Kipseli",
+          "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "outputMint": "So11111111111111111111111111111111111111112",
+          "inAmount": "100020004",
+          "outAmount": "1443318093",
+          "updateContextSlot": "472387966"
+        },
+        "percent": 100,
+        "bps": null
+      }
+    ],
+    "contextSlot": 472387967,
+    "timeTaken": 0.00100987,
+    "swapUsdValue": "99.950244309380719265886",
+    "mostReliableAmmsQuoteReport": {
+      "info": {
+        "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "100220249",
+        "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "1442913424"
+      }
+    },
+    "longtailMarketQuoteReport": null,
+    "useIncurredSlippageForQuoting": null,
+    "useRewards": null,
+    "otherRoutePlans": null,
+    "loadedLongtailToken": false,
+    "instructionVersion": null,
+    "transactionVersion": 0
+  }
+}

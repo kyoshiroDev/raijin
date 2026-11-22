@@ -1,0 +1,49 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Réponse Solana RPC (format de la doc officielle) reconstruite à partir du topHolders réel de RugCheck (le RPC public renvoie 429 sur cette méthode).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenLargestAccounts",
+    "params": [
+      "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+      {
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472388100
+      },
+      "value": [
+        {
+          "address": "38WfiSBuqQF4XSdzziptraFG2KL9SEC7Vefd7tCh9zVe",
+          "amount": "999791829744143",
+          "decimals": 6,
+          "uiAmount": 999791829.744143,
+          "uiAmountString": "999791829.744143"
+        },
+        {
+          "address": "JCTtPehXUcPXbow6ysPG9ahqQftxhUoXwkvNjSXYALSR",
+          "amount": "208170255857",
+          "decimals": 6,
+          "uiAmount": 208170.255857,
+          "uiAmountString": "208170.255857"
+        },
+        {
+          "address": "6wTbF5uFzMYAGSs9qTbq7UkzRopvTSwBxfWEUqC7KZCo",
+          "amount": "0",
+          "decimals": 6,
+          "uiAmount": 0.0,
+          "uiAmountString": "0.0"
+        }
+      ]
+    }
+  }
+}

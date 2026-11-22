@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "rugcheck",
+  "synthetic": true,
+  "note": "Limite de débit RugCheck.",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/cnUfXtVipDb1Kg1R6XM4Unk5tEwoZAinRPUfuPh1vSw/report",
+    "params": {}
+  },
+  "status": 429,
+  "body": null
+}

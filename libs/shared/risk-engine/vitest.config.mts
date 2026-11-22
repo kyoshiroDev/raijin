@@ -16,6 +16,12 @@ export default defineConfig(() => ({
     coverage: {
       reportsDirectory: '../../../coverage/libs/shared/risk-engine',
       provider: 'v8' as const,
+      // Seuil imposé (docs/SCORING.md) : le moteur décide du verdict, il doit être testé à fond.
+      enabled: true,
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.spec.ts', 'src/**/testing/**', 'src/index.ts', 'src/lib/contract.ts'],
+      reporter: ['text-summary', 'text'],
+      thresholds: { lines: 90, branches: 90, functions: 90, statements: 90 },
     },
   },
 }));

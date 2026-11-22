@@ -1,6 +1,6 @@
 /**
  * Moteur de verdict pur de Raijin (TypeScript sans dépendance Node ni Deno).
- * Partagé par l'API Raijin et le banc de test. Les règles de scoring arrivent en phase 3
- * (agent solana-data) et sont documentées dans docs/SCORING.md.
+ * Partagé par l'API Raijin et le banc de test. Règles documentées dans docs/SCORING.md.
+ * Toute modification d'une règle ou d'un seuil par défaut change cette version (semver).
  */
-export const RISK_ENGINE_VERSION = '0.1.0';
+export const RISK_ENGINE_VERSION = '1.0.0';

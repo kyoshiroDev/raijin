@@ -1,0 +1,18 @@
+{
+  "recordedAt": "2026-11-22T03:21:37.372Z",
+  "source": "geckoterminal",
+  "request": {
+    "method": "GET",
+    "path": "/networks/solana/tokens/3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa/pools",
+    "params": {}
+  },
+  "status": 404,
+  "body": {
+    "errors": [
+      {
+        "status": "404",
+        "title": "Not Found"
+      }
+    ]
+  }
+}

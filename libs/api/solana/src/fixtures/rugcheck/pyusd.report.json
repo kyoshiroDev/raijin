@@ -1,0 +1,195 @@
+{
+  "recordedAt": "2026-11-22T03:20:48.659Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo/report",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "creator": "5gUuDFHswKi2QMA1qJHf6FEVhNCrHnyAdfWniMaUUPE4",
+    "creatorBalance": 0,
+    "token": {
+      "mintAuthority": "DRXA1H9SjZPyPCEeuAWpfwk8GqVW6dZsKFAtdfpFwApX",
+      "supply": 722736248270048,
+      "decimals": 6,
+      "isInitialized": true,
+      "freezeAuthority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk"
+    },
+    "token_extensions": {
+      "nonTransferable": false,
+      "transferFeeConfig": {
+        "transferFeeConfigAuthority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "withdrawWithheldAuthority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "withheldAmount": 0,
+        "olderTransferFee": {
+          "epoch": 605,
+          "maximumFee": 0,
+          "transferFeeBasisPoints": 0
+        },
+        "newerTransferFee": {
+          "epoch": 605,
+          "maximumFee": 0,
+          "transferFeeBasisPoints": 0
+        }
+      },
+      "defaultAccountState": null,
+      "permanentDelegate": {
+        "delegate": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk"
+      },
+      "metadataPointer": {
+        "authority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "metadataAddress": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
+      },
+      "groupPointer": null,
+      "groupMemberPointer": null,
+      "tokenMetadata": {
+        "authority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD",
+        "uri": "https://token-metadata.paxos.com/pyusd_metadata/prod/solana/pyusd_metadata.json",
+        "additionalMetadata": {}
+      },
+      "mintCloseAuthority": {
+        "closeAuthority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk"
+      },
+      "confidentialTransferMint": {
+        "authority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "autoApproveNewAccounts": false,
+        "auditorElgamalPubkey": null
+      },
+      "interestBearingConfig": null,
+      "transferHook": {
+        "authority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "programId": null
+      },
+      "confidentialTransferFeeConfig": {
+        "authority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+        "withdrawWithheldAuthorityElgamalPubkey": "HDfmQztzBN2Cc3rkDZuL88SfWw5sSajVMyiz5QaQHFc=",
+        "harvestToMintEnabled": true,
+        "withheldAmount": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      },
+      "tokenGroup": null,
+      "tokenGroupMember": null,
+      "scaledUiAmountConfig": null,
+      "pausableConfig": null
+    },
+    "tokenMeta": {
+      "name": "PayPal USD",
+      "symbol": "PYUSD",
+      "uri": "https://token-metadata.paxos.com/pyusd_metadata/prod/solana/pyusd_metadata.json",
+      "mutable": true,
+      "updateAuthority": "11111111111111111111111111111111"
+    },
+    "topHolders": null,
+    "freezeAuthority": {
+      "lamports": 59206283,
+      "owner": "11111111111111111111111111111111",
+      "data": [
+        "",
+        "base64"
+      ],
+      "executable": false,
+      "rentEpoch": null,
+      "space": 0
+    },
+    "mintAuthority": {
+      "lamports": 2453640,
+      "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+      "data": [
+        "AQYBF4UyYe9quFMqZ/BThlqtMSk/zwfPEgq1uaFXBlSNwCsjwfxOSRzU9jIfFn4AGEKSPf280QgPAQIx8Az5Ab/kUJ5yuSpBXtTy01awwaV2oDJLAaK7i5AMANAwEsZpjMNTkyucCQxDwLWxwvI6aB20Sg3YYpChjShcGWmgi7EWTcr1BdeUF0RUO+v0Wp48bgNzvKD8mhRogrFXOWsXhBTZEXS+8m1sgMYm5x0F+wuaIL/0sE5AhcFxkHLWDaO0TEfKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        "base64"
+      ],
+      "executable": false,
+      "rentEpoch": 18446744073709552000,
+      "space": 355
+    },
+    "risks": [],
+    "score": 1,
+    "score_normalised": 1,
+    "fileMeta": {
+      "description": "",
+      "name": "PayPal USD",
+      "symbol": "PYUSD",
+      "image": ""
+    },
+    "lockerOwners": {},
+    "lockers": {},
+    "lockerScanStatus": "none",
+    "markets": null,
+    "totalMarketLiquidity": 0,
+    "totalStableLiquidity": 0,
+    "totalLPProviders": 0,
+    "totalHolders": 0,
+    "price": 0,
+    "rugged": false,
+    "tokenType": "",
+    "transferFee": {
+      "pct": 0,
+      "maxAmount": 0,
+      "authority": "11111111111111111111111111111111"
+    },
+    "knownAccounts": {
+      "5gUuDFHswKi2QMA1qJHf6FEVhNCrHnyAdfWniMaUUPE4": {
+        "name": "Creator",
+        "type": "CREATOR"
+      }
+    },
+    "events": [
+      {
+        "event": 0,
+        "oldValue": "AxJkHRY3puoofyj7Pn512M1SGBgWroXMkEdNPQypkzbu",
+        "newValue": "DRXA1H9SjZPyPCEeuAWpfwk8GqVW6dZsKFAtdfpFwApX",
+        "createdAt": "2026-11-20T19:35:40.014403834Z"
+      },
+      {
+        "event": 0,
+        "oldValue": "8Jornc27vtAYPkwDzsZVgLQchAYyC8nD7aCNPCDV8Qk2",
+        "newValue": "AxJkHRY3puoofyj7Pn512M1SGBgWroXMkEdNPQypkzbu",
+        "createdAt": "2026-10-08T15:36:28.231342576Z"
+      },
+      {
+        "event": 0,
+        "oldValue": "22mKJkKjGEQ3rampp5YKaSsaYZ52BUkcnUN6evXGsXzz",
+        "newValue": "8Jornc27vtAYPkwDzsZVgLQchAYyC8nD7aCNPCDV8Qk2",
+        "createdAt": "2026-04-15T13:23:18.810552122Z"
+      },
+      {
+        "event": 0,
+        "oldValue": "5gUuDFHswKi2QMA1qJHf6FEVhNCrHnyAdfWniMaUUPE4",
+        "newValue": "22mKJkKjGEQ3rampp5YKaSsaYZ52BUkcnUN6evXGsXzz",
+        "createdAt": "2024-11-12T03:11:37.791010044Z"
+      },
+      {
+        "event": 2,
+        "oldValue": "5000293020000",
+        "newValue": "45000293020000",
+        "createdAt": "2024-05-31T05:10:34.305202625Z"
+      }
+    ],
+    "verification": {
+      "mint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+      "payer": "",
+      "name": "PayPal USD",
+      "symbol": "pyusd",
+      "description": "",
+      "jup_verified": true,
+      "jup_strict": true,
+      "validated": false,
+      "links": []
+    },
+    "validation": {
+      "validated": false
+    },
+    "graphInsidersDetected": 0,
+    "insiderNetworks": null,
+    "detectedAt": "2024-05-29T13:55:39.553474617Z",
+    "creatorTokens": null,
+    "launchpad": null,
+    "deployPlatform": ""
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "recordedAt": "2026-11-22T03:21:17.608Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getSignaturesForAddress",
+    "params": [
+      "BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi",
+      {
+        "limit": 1000,
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "signature": "cnoD99chcKndG8ueLjzS6fwdPAKAN1x7RfkLE3Xe65R5W3YJvEWTVupPUwUVUgYn2yrLB6KDWvjbBV4JzXioAoR",
+        "slot": 472387254,
+        "blockTime": 1795317477,
+        "err": null
+      }
+    ],
+    "id": 1
+  }
+}

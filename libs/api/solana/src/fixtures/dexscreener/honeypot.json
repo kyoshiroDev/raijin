@@ -1,0 +1,11 @@
+{
+  "recordedAt": "2026-11-22T03:23:17.389Z",
+  "source": "dexscreener",
+  "request": {
+    "method": "GET",
+    "path": "/token-pairs/v1/solana/3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa",
+    "params": {}
+  },
+  "status": 200,
+  "body": []
+}

@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-11-22T03:21:29.208Z",
+  "source": "jupiter",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "1000000000",
+      "slippageBps": "500"
+    }
+  },
+  "status": 400,
+  "body": {
+    "error": "The token BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi is not tradable",
+    "errorCode": "TOKEN_NOT_TRADABLE"
+  }
+}

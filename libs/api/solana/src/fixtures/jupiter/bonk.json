@@ -1,0 +1,57 @@
+{
+  "recordedAt": "2026-11-22T03:20:14.322Z",
+  "source": "jupiter",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "4970178926441",
+      "slippageBps": "500"
+    }
+  },
+  "status": 200,
+  "body": {
+    "inputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    "inAmount": "4970178926441",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outAmount": "100051500",
+    "otherAmountThreshold": "95048925",
+    "swapMode": "ExactIn",
+    "slippageBps": 500,
+    "platformFee": null,
+    "priceImpactPct": "0.0008176042746924995855830367",
+    "routePlan": [
+      {
+        "swapInfo": {
+          "ammKey": "5ZWCKP2E8LqTUmo98xhq1YELjcqvxpNsv4xfzVbKGswc",
+          "label": "Scorch",
+          "inputMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+          "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "inAmount": "4970178926441",
+          "outAmount": "100051500",
+          "updateContextSlot": "472387886"
+        },
+        "percent": 100,
+        "bps": null
+      }
+    ],
+    "contextSlot": 472387886,
+    "timeTaken": 0.005320143,
+    "swapUsdValue": "99.9768466777098562665",
+    "mostReliableAmmsQuoteReport": {
+      "info": {
+        "8B8KYcFPMjZyDtJ1BENsqhW3fEmMrB4ekoEQJiM6z3SC": "TesseraV has been paused...",
+        "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "100034332"
+      }
+    },
+    "longtailMarketQuoteReport": null,
+    "useIncurredSlippageForQuoting": null,
+    "useRewards": null,
+    "otherRoutePlans": null,
+    "loadedLongtailToken": false,
+    "instructionVersion": null,
+    "transactionVersion": 0
+  }
+}

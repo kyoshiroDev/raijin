@@ -1,0 +1,57 @@
+{
+  "recordedAt": "2026-11-22T03:20:52.523Z",
+  "source": "jupiter",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "99995500",
+      "slippageBps": "500"
+    }
+  },
+  "status": 200,
+  "body": {
+    "inputMint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+    "inAmount": "99995500",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outAmount": "99998789",
+    "otherAmountThreshold": "94998850",
+    "swapMode": "ExactIn",
+    "slippageBps": 500,
+    "platformFee": null,
+    "priceImpactPct": "0.0000120531044181417729887193",
+    "routePlan": [
+      {
+        "swapInfo": {
+          "ammKey": "GVJfHJsvrsWZmVj2JVQ3KyY1n7azyi8Z2FdBPxucUe58",
+          "label": "Manifest",
+          "inputMint": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+          "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "inAmount": "99995500",
+          "outAmount": "99998789",
+          "updateContextSlot": "472388060"
+        },
+        "percent": 100,
+        "bps": null
+      }
+    ],
+    "contextSlot": 472388063,
+    "timeTaken": 0.000988785,
+    "swapUsdValue": "99.9253794189996455825",
+    "mostReliableAmmsQuoteReport": {
+      "info": {
+        "GVJfHJsvrsWZmVj2JVQ3KyY1n7azyi8Z2FdBPxucUe58": "99998789",
+        "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "99976592"
+      }
+    },
+    "longtailMarketQuoteReport": null,
+    "useIncurredSlippageForQuoting": null,
+    "useRewards": null,
+    "otherRoutePlans": null,
+    "loadedLongtailToken": false,
+    "instructionVersion": null,
+    "transactionVersion": 0
+  }
+}
