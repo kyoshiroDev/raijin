@@ -6,7 +6,7 @@ import { RjButton, RjInputField } from '@raijin/web-ui';
 import { z } from 'zod';
 import { RjAuthLayout } from '../shared/auth-layout';
 import { injectStripToken } from '../shared/strip-token';
-import { focusFirstInvalid } from '../shared/focus';
+import { focusFirstInvalid, focusPageTitle } from '../shared/focus';
 import { RjFormAlert } from '../shared/form-alert';
 import { TEXT_LINK } from '../shared/links';
 import { RjResultPanel } from '../shared/result-panel';
@@ -111,10 +111,12 @@ export class ResetPasswordPage implements OnInit {
       await this.store.resetPassword({ token: this.resetToken, password: body.password });
       this.resetToken = null;
       this.phase.set('done');
+      focusPageTitle(this.host, this.injector);
     } catch (error) {
       const clientError = toClientError(error);
       if (clientError.code === 'AUTH_TOKEN_INVALID') {
         this.phase.set('invalid');
+        focusPageTitle(this.host, this.injector);
       } else if (clientError.code === 'AUTH_PASSWORD_REJECTED') {
         this.form.setServerError('password', 'Ce mot de passe est refusé : évite ton adresse e-mail et choisis une phrase plus longue.');
         focusFirstInvalid(this.host, this.injector);

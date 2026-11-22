@@ -1,2 +1,4 @@
-/* Styles globaux de l'app : uniquement le thème partagé (libs/web/ui/src/styles/theme.css). */
+/* Styles globaux de l'app : thème partagé (libs/web/ui/src/styles/theme.css), puis polices
+   auto-hébergées (fonts.css). Les @import Google Fonts sont retirés par tools/postcss. */
 @import '../../../libs/web/ui/src/styles/theme.css';
+@import './fonts.css';

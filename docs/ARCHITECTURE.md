@@ -124,8 +124,20 @@ Code d'origine importé tel quel pour ne pas modifier le comportement des calcul
   `text-ink`, `text-ink-muted`, `bg-thunder`, `text-on-thunder`, `text-safe|warn|danger|info`,
   `border-line`, `rounded-sm|md|lg`, `font-display|sans|mono`, `text-display|h1|h2|h3|body|body-sm|label|metric|data`,
   `shadow-card`, `shadow-glow`. **Aucune valeur de couleur, taille ou rayon en dur.**
-- Polices : Space Grotesk, Inter, JetBrains Mono, chargées par l'`@import` Google Fonts
-  (`display=swap`) de `tokens.css`, avec préconnexion dans `apps/web/src/index.html` et le layout Astro.
+- Polices (app Angular) : Space Grotesk 600/700, Inter 400/500/600, JetBrains Mono 500/600
+  **auto-hébergées** (audit M7 : aucune IP envoyée à Google sans consentement, CSP `'self'`).
+  Fichiers woff2 du sous-ensemble latin des paquets `@fontsource/*` (aucun script d'installation),
+  copiés au build vers `/fonts` (assets de `apps/web/project.json`) ; `@font-face` (`font-display:
+  swap`) dans `apps/web/src/fonts.css`, importé après le thème par `apps/web/src/styles.css` ;
+  préchargement d'Inter 400 et Space Grotesk 600 dans `apps/web/src/index.html`.
+- L'`@import` Google Fonts de `libs/brand/tokens.css` (fichier de la charte, non modifié) n'a
+  jamais d'effet une fois inliné par Tailwind (un `@import` placé après des règles est ignoré) ;
+  le plugin PostCSS `tools/postcss/strip-remote-font-imports.cjs` (déclaré dans
+  `apps/web/.postcssrc.json`, entrée `sharedGlobals` de `nx.json`) le retire du CSS construit :
+  le build web ne référence plus `fonts.googleapis.com` ni `fonts.gstatic.com`.
+- Landing Astro : elle ne dépend pas de l'`@import` de `tokens.css` mais charge encore Google
+  Fonts par un `<link>` dans `apps/landing/src/layouts/Base.astro` (à auto-héberger de la même
+  façon par seo-astro).
 - PWA : `apps/web/public/manifest.webmanifest` (« Raijin Shield » / « Raijin », `#07090d`,
   standalone) ; les icônes sont copiées au build depuis `libs/brand/icons` (aucune copie dans le dépôt).
 - `/_design` : route déclarée seulement si `isDevMode()` (absente des builds de production),
@@ -225,7 +237,7 @@ Voir `docs/ENV.md` (modèle du `.env.example`).
   (le profil public `PublicUser` les réutilise sans conversion). Identifiants `uuid` (v7 si disponible).
 - Modèle (migration `init`, toutes les tables de PROMPT.md §5 posées dès la phase 2) : `User` (avec
   `emailNormalized`, `trialStartedAt`, `trialEndsAt`, `trialStatus`, `stripeCustomerId`, attribution
-  UTM, `role`, `failedLoginCount`, `lockedUntil`), `Session` (= famille de refresh, son `id` est le
+  UTM, `role` ; `failedLoginCount` / `lockedUntil` réservés, le verrouillage vivant dans Redis), `Session` (= famille de refresh, son `id` est le
   `sid` du JWT) + `RefreshToken` (hash SHA-256, `usedAt`), `AuthToken` (vérification / reset / lien
   magique : hash SHA-256, type, expiration, `usedAt`, `redirectPath`), `TotpSecret`, `TrialFingerprint`,
   `ProductEvent`, `DailyMetric`, `JobRun`, `Subscription`, `StripeEvent`, `TokenAnalysis`, `Watch`,
@@ -276,13 +288,19 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
   Aucun jeton dans le corps des réponses ni dans le `localStorage`/`sessionStorage`. Le cookie
   d'access vit aussi longtemps que la session (le JWT, lui, expire après 15 min) : son `sid` signé
   reste lisible pour la garde CSRF de `POST /auth/refresh`. Un refresh réutilisé dans les 10 s
-  (onglets concurrents) est refusé sans révoquer la famille ; au-delà, toute la famille est révoquée.
+  (onglets concurrents) reçoit 409 `CONFLICT` sans révoquer la famille ni effacer les cookies (le
+  front rejoue sa requête) ; au-delà, toute la famille est révoquée (401 `AUTH_SESSION_EXPIRED`).
+  Sans cookie (jamais connecté, déconnecté) : 401 `UNAUTHORIZED`, le front ne tente pas de refresh.
   La garde d'auth vérifie en base que la session n'est pas révoquée (déconnexion immédiate).
   `COOKIE_DOMAIN` reste vide (cookies liés à l'hôte de l'API).
 - Les jetons d'e-mail (vérification 24 h, reset 30 min, lien magique 15 min) sont opaques,
   stockés hachés, à usage unique ; demander un nouveau jeton invalide les précédents du même type.
 - Mots de passe : argon2id (paramètres OWASP : m = 19 Mio, t = 2, p = 1), règles dans
-  `PASSWORD_RULES` (contrats). Verrouillage temporaire après échecs répétés (`AUTH_ACCOUNT_LOCKED`).
+  `PASSWORD_RULES` (contrats). Verrouillage temporaire après échecs répétés : compteur Redis par
+  HMAC(`emailNormalized`), adresses sans compte comprises, partagé par la connexion et les
+  confirmations par mot de passe (changement, suppression). argon2 tourne toujours (vrai hash ou
+  factice) et la réponse reste 401 `AUTH_INVALID_CREDENTIALS` : ni l'existence du compte ni le
+  verrouillage ne sont révélés (`AUTH_ACCOUNT_LOCKED` n'est plus renvoyé).
 - Réponses neutres (202 `MessageResponse`) pour inscription, mot de passe oublié, lien magique,
   renvoi de vérification : aucune énumération des comptes.
 
@@ -293,6 +311,9 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
 - Le front garde le jeton **en mémoire** (signal de `web-data-access`) et l'envoie dans l'en-tête
   `X-CSRF-Token` (`CSRF_HEADER`) sur chaque POST/PUT/PATCH/DELETE via un intercepteur. Un site tiers
   ne peut ni lire la réponse (CORS) ni le cookie (httpOnly) : il ne peut pas forger l'en-tête.
+- Dès qu'un `sid` est lu (access token signé, même expiré), seul un jeton lié à ce `sid` est accepté ;
+  le jeton anonyme ne vaut qu'en l'absence de session. `GET /auth/csrf` émet donc un jeton lié au
+  `sid` de l'access token signé, même expiré (flux `auth/csrf` → `auth/refresh`).
 - La garde vérifie en plus l'en-tête `Origin` (présent et dans `CORS_ORIGINS`) sur les mutations.
   Exemptés : `GET`/`HEAD`/`OPTIONS`, et le webhook Stripe (phase 6, signé). Refus : 403
   `AUTH_CSRF_INVALID`. Ce schéma marche aussi entre `app.raijinshield.com` et `api.raijinshield.com`

@@ -14,7 +14,7 @@ import { AuthStore, safeRedirect, toClientError, type ClientError } from '@raiji
 import { RjButton, RjInputField, RjToastService } from '@raijin/web-ui';
 import { RjAuthLayout } from '../shared/auth-layout';
 import { RjEmailSent } from '../shared/email-sent';
-import { focusFirstInvalid } from '../shared/focus';
+import { focusFirstInvalid, focusPageTitle } from '../shared/focus';
 import { RjFormAlert } from '../shared/form-alert';
 import { TEXT_LINK } from '../shared/links';
 import { zodForm } from '../shared/zod-form';
@@ -96,6 +96,7 @@ export class MagicLinkPage {
     try {
       await this.send(body.email);
       this.sentTo.set(body.email);
+      focusPageTitle(this.host, this.injector);
     } catch (error) {
       this.serverError.set(toClientError(error));
     }

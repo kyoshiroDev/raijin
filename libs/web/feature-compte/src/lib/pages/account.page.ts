@@ -22,6 +22,7 @@ export function trialText(user: PublicUser): string {
 /**
  * Écran Compte : profil, plan, sécurité (mot de passe, déconnexion), données (export, suppression).
  * Skeleton pendant la récupération de la session, Rai alerte si l'API ne répond pas.
+ * Boutons des cartes : côte à côte s'ils tiennent en entier, sinon empilés (jamais tronqués).
  * Aucune action jaune sur l'écran lui-même : chaque bottom sheet porte sa propre action principale.
  */
 @Component({
@@ -90,18 +91,18 @@ export function trialText(user: PublicUser): string {
           <rj-card>
             <h2 class="font-display text-h3 text-ink">Sécurité</h2>
             <p class="text-body text-ink-muted">Change ton mot de passe ou ferme ta session sur cet appareil.</p>
-            <div rjCardFooter class="flex flex-col gap-2 sm:flex-row md:flex-col xl:flex-row">
-              <button type="button" rjButton="secondary" icon="key" class="sm:flex-1" (click)="passwordOpen.set(true)">Changer le mot de passe</button>
-              <button type="button" rjButton="ghost" icon="logout" class="sm:flex-1" [loading]="loggingOut()" (click)="logout()">Se déconnecter</button>
+            <div rjCardFooter class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button type="button" rjButton="secondary" icon="key" class="sm:shrink-0 sm:grow" (click)="passwordOpen.set(true)">Changer le mot de passe</button>
+              <button type="button" rjButton="ghost" icon="logout" class="sm:shrink-0 sm:grow" [loading]="loggingOut()" (click)="logout()">Se déconnecter</button>
             </div>
           </rj-card>
 
           <rj-card>
             <h2 class="font-display text-h3 text-ink">Tes données</h2>
             <p class="text-body text-ink-muted">Télécharge une copie de tes données (JSON) ou supprime ton compte définitivement.</p>
-            <div rjCardFooter class="flex flex-col gap-2 sm:flex-row md:flex-col xl:flex-row">
-              <button type="button" rjButton="secondary" icon="download" class="sm:flex-1" [loading]="exporting()" (click)="exportData()">Exporter</button>
-              <button type="button" rjButton="danger" icon="trash" class="sm:flex-1" (click)="deleteOpen.set(true)">Supprimer le compte</button>
+            <div rjCardFooter class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button type="button" rjButton="secondary" icon="download" class="sm:shrink-0 sm:grow" [loading]="exporting()" (click)="exportData()">Exporter</button>
+              <button type="button" rjButton="danger" icon="trash" class="sm:shrink-0 sm:grow" (click)="deleteOpen.set(true)">Supprimer le compte</button>
             </div>
           </rj-card>
         </div>

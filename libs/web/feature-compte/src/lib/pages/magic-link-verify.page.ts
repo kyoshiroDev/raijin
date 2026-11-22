@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, OnInit, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { opaqueTokenSchema } from '@raijin/shared-contracts';
 import { AuthStore, safeRedirect, toClientError } from '@raijin/web-data-access';
 import { RjButton, RjSkeleton } from '@raijin/web-ui';
 import { RjAuthLayout } from '../shared/auth-layout';
+import { focusPageTitle } from '../shared/focus';
 import { injectStripToken } from '../shared/strip-token';
 import { RjResultPanel } from '../shared/result-panel';
 
@@ -36,6 +37,8 @@ export class MagicLinkVerifyPage implements OnInit {
   private readonly store = inject(AuthStore);
   private readonly router = inject(Router);
   private readonly stripToken = injectStripToken();
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
 
   readonly token = input<string>();
   readonly redirect = input<string>();
@@ -65,6 +68,7 @@ export class MagicLinkVerifyPage implements OnInit {
           ? 'Ce lien a expiré ou a déjà servi. Chaque lien n’est valable qu’une fois, pendant 15 minutes.'
           : clientError.message,
       );
+      focusPageTitle(this.host, this.injector);
     }
   }
 }

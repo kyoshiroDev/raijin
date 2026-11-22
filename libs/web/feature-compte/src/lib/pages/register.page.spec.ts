@@ -50,6 +50,9 @@ describe('RegisterPage', () => {
     await settle();
     await harness.fixture.whenStable();
     expect(query(harness, 'h1')?.textContent).toContain('Vérifie ta boîte mail');
+    // Changement d'état majeur : le focus va sur le nouveau titre (atteignable en programme seulement).
+    expect(query(harness, 'h1')?.getAttribute('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(query(harness, 'h1'));
     expect(harness.routeNativeElement?.textContent).toContain('kenji@exemple.fr');
     const resend = queryAll(harness, 'button').find((b) => b.textContent?.includes('Renvoyer'));
     expect(resend?.hasAttribute('disabled')).toBe(true);

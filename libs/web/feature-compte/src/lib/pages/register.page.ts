@@ -14,7 +14,7 @@ import { AttributionTracker, AuthStore, safeRedirect, toClientError, type Client
 import { RjButton, RjCheckbox, RjInputField, RjToastService } from '@raijin/web-ui';
 import { RjAuthLayout } from '../shared/auth-layout';
 import { RjEmailSent } from '../shared/email-sent';
-import { focusFirstInvalid } from '../shared/focus';
+import { focusFirstInvalid, focusPageTitle } from '../shared/focus';
 import { RjFormAlert } from '../shared/form-alert';
 import { DISCLAIMER, LEGAL_LINKS, TEXT_LINK } from '../shared/links';
 import { zodForm } from '../shared/zod-form';
@@ -75,18 +75,22 @@ import { zodForm } from '../shared/zod-form';
             (valueChange)="form.set('password', $event)"
             (blurred)="form.touch('password')"
           />
-          <rj-checkbox
-            name="acceptTerms"
-            [required]="true"
-            [checked]="form.value().acceptTerms"
-            [error]="form.errors().acceptTerms ?? ''"
-            (checkedChange)="form.set('acceptTerms', $event)"
-          >
-            J’accepte les
-            <a [href]="legal.terms" target="_blank" rel="noopener" class="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">conditions d’utilisation</a>
-            et la
-            <a [href]="legal.privacy" target="_blank" rel="noopener" class="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">politique de confidentialité</a>.
-          </rj-checkbox>
+          <div class="flex flex-col">
+            <rj-checkbox
+              name="acceptTerms"
+              [required]="true"
+              [checked]="form.value().acceptTerms"
+              [error]="form.errors().acceptTerms ?? ''"
+              (checkedChange)="form.set('acceptTerms', $event)"
+            >
+              J’accepte les conditions d’utilisation et la politique de confidentialité de Raijin.
+            </rj-checkbox>
+            <!-- Liens hors du libellé : chacun a sa propre cible de 44 px, sans chevaucher la case. -->
+            <ul class="flex flex-wrap gap-x-5 gap-y-2 pl-8 text-body-sm" aria-label="Documents à lire">
+              <li><a [href]="legal.terms" target="_blank" rel="noopener" [class]="link">Conditions d’utilisation</a></li>
+              <li><a [href]="legal.privacy" target="_blank" rel="noopener" [class]="link">Politique de confidentialité</a></li>
+            </ul>
+          </div>
           <button type="submit" rjButton="primary" size="lg" [block]="true" [loading]="pending()">Créer mon compte</button>
           <p class="text-label text-ink-muted">{{ disclaimer }}</p>
         </form>
@@ -137,6 +141,7 @@ export class RegisterPage {
       const attribution = await this.attribution.read();
       await this.store.register(attribution ? { ...body, attribution } : body);
       this.sentTo.set(body.email);
+      focusPageTitle(this.host, this.injector);
     } catch (error) {
       const clientError = toClientError(error);
       if (clientError.code === 'AUTH_PASSWORD_REJECTED') {

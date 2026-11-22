@@ -16,10 +16,9 @@
     <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Polices de la charte : chargées ici car l'@import de tokens.css est ignoré une fois inliné par Tailwind. -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@600;700&display=swap" />
+    <!-- Polices auto-hébergées (apps/web/src/fonts.css) : préchargement des deux fichiers critiques. -->
+    <link rel="preload" href="fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="fonts/space-grotesk-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <rj-root></rj-root>

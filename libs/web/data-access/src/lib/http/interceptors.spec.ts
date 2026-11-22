@@ -140,6 +140,40 @@ describe('sessionRefreshInterceptor', () => {
     expect(csrf.token()).toBeNull();
   });
 
+  it('refresh en 409 CONFLICT (autre onglet) : pas de déconnexion, rejeu unique avec un nouveau jeton CSRF', async () => {
+    const { http, ctrl, store } = setup();
+    store.applySession(fakeSession({}, 'ancien-jeton-0123456789abcdefghijklmn'));
+    const result = firstValueFrom(http.post(`${API}/suivis`, { mint: 'x' }));
+    ctrl.expectOne(`${API}/suivis`).flush(expired, { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/refresh`).flush({ code: 'CONFLICT', message: 'x' }, { status: 409, statusText: 'Conflict' });
+    await flushMicrotasks();
+    expect(store.isAuthenticated()).toBe(true);
+    // Le jeton lié à l'ancienne session est oublié : un nouveau est demandé (cookies déjà à jour).
+    ctrl.expectOne(`${API}/auth/csrf`).flush({ csrfToken: CSRF_ANON });
+    await flushMicrotasks();
+    const retry = ctrl.expectOne(`${API}/suivis`);
+    expect(retry.request.headers.get(CSRF_HEADER)).toBe(CSRF_ANON);
+    retry.flush({ ok: true });
+    await expect(result).resolves.toEqual({ ok: true });
+    ctrl.expectNone(`${API}/auth/refresh`);
+  });
+
+  it('après un refresh refusé, la mutation suivante redemande un jeton CSRF anonyme', async () => {
+    const { http, ctrl, store, csrf } = setup();
+    store.applySession(fakeSession({}, 'ancien-jeton-0123456789abcdefghijklmn'));
+    const me = firstValueFrom(http.get(`${API}/users/me`));
+    ctrl.expectOne(`${API}/users/me`).flush(expired, { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/refresh`).flush(expired, { status: 401, statusText: 'Unauthorized' });
+    await expect(me).rejects.toMatchObject({ status: 401 });
+    expect(csrf.token()).toBeNull();
+    http.post(`${API}/auth/login`, {}).subscribe();
+    ctrl.expectOne(`${API}/auth/csrf`).flush({ csrfToken: CSRF_ANON });
+    await flushMicrotasks();
+    expect(ctrl.expectOne(`${API}/auth/login`).request.headers.get(CSRF_HEADER)).toBe(CSRF_ANON);
+  });
+
   it('pas de refresh pour un mauvais mot de passe ni pour les appels d’auth', async () => {
     const { http, ctrl, csrf } = setup();
     csrf.set(CSRF_ANON);
@@ -162,6 +196,36 @@ describe('sessionRefreshInterceptor', () => {
     await flushMicrotasks();
     ctrl.expectNone(`${API}/auth/refresh`);
     ctrl.expectNone(`${API}/auth/csrf`);
+  });
+
+  it('rafraîchit aussi quand le corps d’erreur arrive en Blob (export des données)', async () => {
+    const { http, ctrl, csrf } = setup();
+    csrf.set(CSRF_ANON);
+    const result = firstValueFrom(http.get(`${API}/users/me/export`, { responseType: 'blob' }));
+    const blobBody = new Blob([JSON.stringify(expired)], { type: 'application/json' });
+    ctrl.expectOne(`${API}/users/me/export`).flush(blobBody, { status: 401, statusText: 'Unauthorized' });
+    // Lecture asynchrone du Blob (FileReader sous jsdom) : on attend que le refresh parte.
+    const refresh = await vi.waitFor(() => ctrl.expectOne(`${API}/auth/refresh`));
+    refresh.flush(fakeSession());
+    await flushMicrotasks();
+    const retry = ctrl.expectOne(`${API}/users/me/export`);
+    retry.flush(new Blob(['{"ok":true}'], { type: 'application/json' }));
+    await expect(result).resolves.toBeInstanceOf(Blob);
+  });
+
+  it('erreur Blob : le code est exposé en objet, un corps non JSON reste intact', async () => {
+    const { http, ctrl } = setup();
+    const forbidden = firstValueFrom(http.get(`${API}/users/me/export`, { responseType: 'blob' }));
+    ctrl
+      .expectOne(`${API}/users/me/export`)
+      .flush(new Blob([JSON.stringify({ code: 'FORBIDDEN', message: 'x' })]), { status: 403, statusText: 'Forbidden' });
+    await expect(forbidden).rejects.toMatchObject({ status: 403, error: { code: 'FORBIDDEN' } });
+    const garbage = firstValueFrom(http.get(`${API}/users/me/export`, { responseType: 'blob' }));
+    ctrl.expectOne(`${API}/users/me/export`).flush(new Blob(['<html>']), { status: 502, statusText: 'Bad Gateway' });
+    const error: unknown = await garbage.catch((e: unknown) => e);
+    expect(error).toMatchObject({ status: 502 });
+    expect((error as { error: unknown }).error).toBeInstanceOf(Blob);
+    ctrl.expectNone(`${API}/auth/refresh`);
   });
 
   it('ignore les 401 d’une autre origine', async () => {

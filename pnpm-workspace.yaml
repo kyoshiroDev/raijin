@@ -26,3 +26,8 @@ allowBuilds:
   # (moteur WebAssembly) ; la CLI télécharge le schema engine à la demande pour `migrate`.
   prisma: false
   '@prisma/engines': false
+
+# Correctifs de sécurité des dépendances transitives (pnpm audit).
+overrides:
+  # effect ≤ 3.22.0 (vulnérabilité haute), épinglé en 3.20.0 par @prisma/config 7.10.1 (CLI Prisma, dev).
+  'effect@<3.22.1': ^3.22.1

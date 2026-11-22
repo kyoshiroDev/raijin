@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, OnInit, inject, input, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { emailSchema, opaqueTokenSchema } from '@raijin/shared-contracts';
@@ -7,6 +7,7 @@ import { RjButton, RjIcon, RjInputField, RjSkeleton, RjToastService } from '@rai
 import { RjAuthLayout } from '../shared/auth-layout';
 import { injectStripToken } from '../shared/strip-token';
 import { createCooldown } from '../shared/cooldown';
+import { focusPageTitle } from '../shared/focus';
 import { TEXT_LINK } from '../shared/links';
 import { RjResultPanel } from '../shared/result-panel';
 
@@ -114,6 +115,8 @@ export class VerifyEmailPage implements OnInit {
   protected readonly store = inject(AuthStore);
   private readonly stripToken = injectStripToken();
   private readonly toasts = inject(RjToastService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
 
   readonly token = input<string>();
 
@@ -145,6 +148,7 @@ export class VerifyEmailPage implements OnInit {
     } catch {
       this.phase.set('invalid');
     }
+    focusPageTitle(this.host, this.injector);
   }
 
   protected async resend(event: Event): Promise<void> {
@@ -175,8 +179,12 @@ export class VerifyEmailPage implements OnInit {
     this.checking.set(true);
     try {
       await this.store.reloadUser();
-      if (this.store.emailVerified()) this.phase.set('verified');
-      else this.toasts.show('Ton adresse n’est pas encore confirmée. Ouvre le lien reçu par e-mail.');
+      if (this.store.emailVerified()) {
+        this.phase.set('verified');
+        focusPageTitle(this.host, this.injector);
+      } else {
+        this.toasts.show('Ton adresse n’est pas encore confirmée. Ouvre le lien reçu par e-mail.');
+      }
     } catch (error) {
       this.toasts.show(toClientError(error).message, { tone: 'error' });
     } finally {
