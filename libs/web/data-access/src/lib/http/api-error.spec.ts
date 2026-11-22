@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { AUTH_ERROR_MESSAGES, CSRF_HEADER } from '@raijin/shared-contracts';
+import { ADMIN_ERROR_MESSAGES, AUTH_ERROR_MESSAGES, CSRF_HEADER } from '@raijin/shared-contracts';
 import { CSRF_HEADER_NAME, hasErrorCode, rawErrorCode } from './error-code';
 import { apiErrorCode, isAuthError, toClientError } from './api-error';
 import { isApiUrl, isMutation } from './api-url';
@@ -22,6 +22,12 @@ describe('toClientError', () => {
     expect(toClientError(httpError(503)).code).toBe('UPSTREAM_UNAVAILABLE');
     expect(toClientError(httpError(404)).code).toBe('NOT_FOUND');
     expect(toClientError(httpError(422)).code).toBe('VALIDATION_ERROR');
+  });
+
+  it('traduit les codes de l’espace admin (403 de session admin, sans refresh)', () => {
+    const error = toClientError(httpError(403, { code: 'ADMIN_SESSION_EXPIRED', message: 'x' }));
+    expect(error).toEqual({ code: 'ADMIN_SESSION_EXPIRED', message: ADMIN_ERROR_MESSAGES.ADMIN_SESSION_EXPIRED, status: 403 });
+    expect(isAuthError('ADMIN_2FA_REQUIRED')).toBe(false);
   });
 
   it('gère une erreur non HTTP', () => {

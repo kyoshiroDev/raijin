@@ -1,4 +1,5 @@
 import * as z from './zod';
+import { ADMIN_ERROR_CODES } from './admin/errors';
 import { ANALYSIS_ERROR_CODES } from './analysis/errors';
 import { BILLING_ERROR_CODES } from './billing/errors';
 import { WALLET_ERROR_CODES } from './wallet/errors';
@@ -43,7 +44,7 @@ export const AUTH_ERROR_CODES = [
   'AUTH_ACCOUNT_LOCKED',
 ] as const;
 
-/** Codes d'erreur standard de l'API : génériques + authentification + analyse + suivis/alertes/push + scan de wallet + abonnement/essai. */
+/** Codes d'erreur standard de l'API : génériques + authentification + analyse + suivis/alertes/push + scan de wallet + abonnement/essai + admin. */
 export const apiErrorCodeSchema = z.enum([
   ...GENERIC_ERROR_CODES,
   ...AUTH_ERROR_CODES,
@@ -51,6 +52,7 @@ export const apiErrorCodeSchema = z.enum([
   ...WATCH_ERROR_CODES,
   ...WALLET_ERROR_CODES,
   ...BILLING_ERROR_CODES,
+  ...ADMIN_ERROR_CODES,
 ]);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 

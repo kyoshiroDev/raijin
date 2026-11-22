@@ -1,5 +1,7 @@
 export * from './lib/address';
+export * from './lib/admin';
 export * from './lib/alerts';
+export * from './lib/analytics';
 export * from './lib/analysis';
 export * from './lib/auth';
 export * from './lib/billing';

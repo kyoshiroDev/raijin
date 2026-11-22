@@ -78,7 +78,10 @@ AUTH_LOCKOUT_DURATION=15m
 #   0 si l'API est exposée sans proxy. Jamais plus que le nombre réel de proxys (IP falsifiable).
 #   Vide en dev.
 TRUST_PROXY=
-# Clé de chiffrement des secrets TOTP (2FA admin), 32 octets. À générer : openssl rand -base64 32
+# Raijin — clé AES-256-GCM des secrets TOTP de la 2FA admin (32 octets en base64). À générer : openssl rand -base64 32
+#   OBLIGATOIRE en production (l'API refuse de démarrer si absente, factice ou ≠ 32 octets) ; vide en dev = clé éphémère
+#   (2FA à réactiver après chaque redémarrage). La perdre en production = réactiver la 2FA :
+#   pnpm nx run api:admin-reset-2fa --email=ton@email (docs/ARCHITECTURE.md §14.2).
 TOTP_ENCRYPTION_KEY=changeme-cle-totp-factice
 
 # ---------------------------------------------------------------------
@@ -306,19 +309,60 @@ WALLET_TOKEN_VERDICT_TTL_S=3600
 WALLET_REUSE_ANALYSIS_MAX_AGE_S=3600
 
 # ---------------------------------------------------------------------
-# Google — (optionnel en dev : simulation locale, intégrations désactivées si vide)
+# Google — (optionnel en dev : simulation locale, intégrations désactivées si vide ; docs/ARCHITECTURE.md §14.6)
 # ---------------------------------------------------------------------
 # GA4 — https://analytics.google.com/ → Administration → Flux de données → ton flux web (« G-XXXXXXX »)
+#   Lu par la LANDING au build (valeur publique) ; vide = ni GA4 ni bannière de consentement sur la landing.
 GA4_MEASUREMENT_ID=
 # GA4 — https://analytics.google.com/ → Administration → Paramètres de la propriété (« ID de propriété », numérique)
+#   Lu par l'API (écrans Trafic, Vue d'ensemble, Acquisition de l'admin).
 GA4_PROPERTY_ID=
 # Google Cloud — https://console.cloud.google.com/iam-admin/serviceaccounts → compte de service → Clés → JSON
-# Colle le JSON sur une seule ligne (ou en base64 : base64 -w0 cle.json). Jamais commité.
+#   APIs à activer : https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com
+#                    https://console.cloud.google.com/apis/library/searchconsole.googleapis.com
+#   Accès en LECTURE seule : GA4 → Administration → Gestion des accès à la propriété → e-mail du compte de service,
+#   rôle « Lecteur » ; Search Console → Paramètres → Utilisateurs et autorisations → « Restreint ».
+#   Portées demandées par l'API : analytics.readonly et webmasters.readonly (rien d'autre).
+#   Colle le JSON sur une seule ligne (ou en base64 : base64 -w0 cle.json). Jamais commité, jamais journalisé.
 GOOGLE_SERVICE_ACCOUNT_JSON=
 # Search Console — https://search.google.com/search-console (propriété, ex. sc-domain:raijinshield.com)
 SEARCH_CONSOLE_SITE_URL=
 # Search Console — https://search.google.com/search-console → Ajouter une propriété → Balise HTML (valeur de content)
+#   Lu par la LANDING au build (balise meta google-site-verification) ; inutile avec une propriété de domaine (DNS).
 GOOGLE_SITE_VERIFICATION=
+# Raijin — google (lecture réelle, si GOOGLE_SERVICE_ACCOUNT_JSON est fourni) ou fake (données simulées déterministes,
+#   dev et tests e2e ; REFUSÉ en production). Vide = google si le JSON est fourni, sinon « Non connecté ».
+ANALYTICS_PROVIDER=
+# Raijin — durée du cache Redis des réponses Google, en secondes (PROMPT.md §4.7 : 1 h) ; erreurs gardées 5 min
+ANALYTICS_CACHE_TTL_S=3600
+
+# ---------------------------------------------------------------------
+# Espace admin (rôle ADMIN par CLI, 2FA TOTP, agrégats, alertes ; docs/ARCHITECTURE.md §14)
+# ---------------------------------------------------------------------
+# Raijin — rôle ADMIN : jamais depuis l'interface. pnpm nx run api:make-admin --email=ton@email (--revoke pour retirer)
+# Raijin — session admin : expiration après N minutes sans activité admin, et durée maximale après la saisie du code
+ADMIN_SESSION_IDLE_MINUTES=30
+ADMIN_SESSION_MAX_HOURS=8
+# Raijin — nom affiché dans l'application d'authentification (Google Authenticator, 1Password, Aegis…)
+ADMIN_TOTP_ISSUER="Raijin Shield"
+# Raijin — codes 2FA faux tolérés avant blocage temporaire (compteur Redis par compte), durée du blocage
+ADMIN_TOTP_MAX_ATTEMPTS=5
+ADMIN_TOTP_LOCKOUT_MINUTES=15
+# Raijin — agrégats nocturnes DailyMetric (cron UTC, file maintenance) : AVANT la purge (PURGE_CRON), qui ne supprime
+#   les événements d'un jour qu'une fois ce jour agrégé
+METRICS_CRON="15 2 * * *"
+# Raijin — vérification des alertes admin (cron UTC) : job en échec N fois de suite, quota au-delà du ratio
+ADMIN_ALERTS_CRON="*/10 * * * *"
+ADMIN_ALERT_JOB_FAILURES=3
+ADMIN_ALERT_QUOTA_RATIO=0.8
+# Jupiter — plafond d'appels de devis par jour UTC pour le calcul du ratio (sans clé : 0,5 req/s,
+#   https://developers.jup.ag/docs/api-rate-limit) ; vide = appels comptés sans ratio ni alerte
+JUPITER_DAILY_CALL_BUDGET=40000
+# RugCheck — plafond d'appels par jour UTC (limite publique non documentée, https://api.rugcheck.xyz/swagger/index.html) ;
+#   vide = appels comptés sans ratio ni alerte
+RUGCHECK_DAILY_CALL_BUDGET=
+# Raijin — conservation du journal d'audit (AuditLog), en jours
+AUDIT_LOG_RETENTION_DAYS=365
 
 # ---------------------------------------------------------------------
 # Seed de développement (pnpm nx run api-prisma:seed) — optionnel
@@ -355,5 +399,9 @@ SENTRY_ENVIRONMENT=development
   api-server.ts`) sur le port 3200 avec `ANALYSIS_FIXTURES=1`, `JOBS_TEST_TRIGGER=1`, `PUSH_PROVIDER=fake`,
   `ALERT_EMAIL_BATCH_DELAY_S=1`, `ALERT_COOLDOWN_MINUTES=0`, `BULLMQ_PREFIX=raijin-e2e` ; journal dans
   `dist/api-e2e/api.log`.
-- `GET /api/v1/health/config` répond `configured` / `not_configured` par service, sans aucune valeur.
+- Phase 6 bis : en production, l'API refuse aussi de démarrer si `TOTP_ENCRYPTION_KEY` est absente, factice ou ne
+  décode pas 32 octets, ou si `ANALYTICS_PROVIDER=fake`. Un `GOOGLE_SERVICE_ACCOUNT_JSON` illisible ne bloque pas le
+  démarrage : l'admin affiche l'erreur `auth_failed`.
+- L'état `configured` / `not_configured` des services (ex-`GET /api/v1/health/config`, public) n'est plus servi que
+  par `GET /api/v1/admin/health` (champ `services`), sans aucune valeur (phase 6 bis, mineur M3).
 

@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+  ADMIN_ERROR_MESSAGES,
   ANALYSIS_ERROR_MESSAGES,
   AUTH_ERROR_MESSAGES,
   BILLING_ERROR_MESSAGES,
@@ -43,6 +44,7 @@ export const GENERIC_ERROR_MESSAGES: Readonly<Record<Exclude<ClientErrorCode, ke
   ...WATCH_ERROR_MESSAGES,
   ...WALLET_ERROR_MESSAGES,
   ...BILLING_ERROR_MESSAGES,
+  ...ADMIN_ERROR_MESSAGES,
 };
 
 const ERROR_MESSAGES: Readonly<Record<ClientErrorCode, string>> = {

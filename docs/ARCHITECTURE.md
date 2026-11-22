@@ -1145,3 +1145,226 @@ Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (répon
 - Webhook : exempté de CSRF (déjà prévu §8.5) et de session, throttler large, corps ≤ 1 Mo, aucune lecture de
   l'utilisateur depuis la requête. Routes de simulation et `internal/*` : 404 hors simulation, refusées en production.
 - `idempotencyKey` Stripe sur la création de client et de session (`checkout:<userId>:<interval>:<minute>`).
+
+## 14. Admin et analytics (phase 6 bis)
+
+### 14.1 Découpage et propriété des fichiers (aucun fichier touché par deux agents)
+- **Contrats** (`@raijin/shared-contracts`, posés par architect) : `admin/` (`errors`, `common` : périodes, KPI,
+  variations, séries, répartitions, textes externes ; `google` : état « Non connecté » / erreur ; `google-reports` :
+  Trafic GA4, SEO ; `business-reports` : Acquisition, Revenus, Essais, Produit ; `health` : jobs, quotas, alertes admin ;
+  `metrics` : catalogue `DailyMetric` ; `security` : 2FA ; `users` : liste, fiche, actions ; `audit`) et `analytics/ga4.ts`
+  (événements GA4, consentement, paramètres d'attribution ; sans Zod). `planSourceSchema` gagne `gift`,
+  `BillingAccount.giftEndsAt` (facultatif). Codes `ADMIN_*` + `ACCOUNT_SUSPENDED` ajoutés à `apiErrorCodeSchema` et à
+  la table de `web-data-access/http/api-error.ts`.
+- **Libs à générer** (générateurs Nx, tags `scope:*` / `type:feature`, cible `typecheck` comme `api-trial` /
+  `web-feature-wallet`, alias `@raijin/...`) : `api-admin` (`libs/api/admin`) et `api-analytics` (`libs/api/analytics`)
+  par **nestjs-api** dès T1 ; `web-feature-admin` (`libs/web/feature-admin`) par **ui-mobile-first** dès T3.
+  Les générer une seule fois, par un seul agent, avant tout travail parallèle dans ces dossiers.
+- **nestjs-api** : migration Prisma unique de la phase (§14.4), `libs/api/auth/src/lib/admin-security/**` (TOTP,
+  codes de secours, `AdminGuard`, `@AdminRoute()`, session admin, routes `admin/security/*`), `AuditService`
+  (`libs/api/auth/src/lib/audit/**`), CLI (`apps/api/src/cli.ts` mince + logique dans `api-auth`), suspension et Pro
+  offert dans `api-auth` / `api-core` (`resolvePlanPolicy`) / `api-trial` (fin du Pro offert), `libs/api/admin/src/lib/users/**`
+  (liste, fiche, actions, journal), retrait de `GET health/config`, `GET admin/trial-conversion` passé sous `AdminGuard`.
+- **admin-analytics** : `libs/api/analytics/**` (clients GA4 Data API et Search Console, simulation), le reste de
+  `libs/api/admin/src/lib/**` (`overview`, `traffic`, `seo`, `acquisition`, `revenue`, `trials`, `product`, `health`,
+  `metrics` : job `metrics-aggregate`, `alerts` : job `admin-alerts`), `api-admin.module.ts` (racine, il importe le
+  `AdminUsersModule` exporté par nestjs-api), le module d'e-mail d'alerte admin (template dans `api-notifications`,
+  dossier `templates/admin-alert*` seulement), `libs/web/feature-admin/src/lib/pages/**` (9 écrans) et
+  `libs/web/data-access/src/lib/admin/*.ts` (API et stores des écrans, hors `security/`).
+- **ui-mobile-first** : `libs/web/feature-admin/src/lib/{shell,ui,security}/**` (coque admin, `rj-chart`, `rj-kpi-card`,
+  grille de KPI, tableau → cartes, bottom sheet de filtres, état « Non connecté », écrans d'enrôlement / saisie du code /
+  codes de secours / session expirée), `lib.routes.ts` de la feature (les pages s'y branchent par une ligne chacune),
+  `libs/web/data-access/src/lib/admin/security/**` (`AdminSecurityApi`, `AdminSessionStore`, intercepteur des 403
+  admin), `apps/web` (route `/admin` lazy + garde), lien « Espace admin » dans `feature-compte` (admins seulement),
+  libellé `gift` dans `feature-compte/abonnement`.
+- **solana-data** : compteurs d'appels par source et par jour UTC dans `libs/api/solana` (`UpstreamGate`, Redis
+  `upstream:calls:<source>:<jour>`, TTL 8 jours) + lecteur `UpstreamUsageReader` exporté.
+- **seo-astro** : `apps/landing/src/{components/consent,lib/analytics}/**`, `Base.astro` (meta de vérification, bannière,
+  lien « Gérer les cookies »), `docs/ANALYTICS.md`.
+- `index.ts` des libs partagées (`web-data-access`) : chaque agent n'ajoute que ses lignes d'export, dans son bloc commenté.
+- Dépendances : `admin → auth, analytics, trial, billing (lecture), alerts (lecture), notifications, core, prisma, solana
+  (UpstreamUsageReader)` ; `analytics → core` seulement (aucune base). Aucun cycle ; `auth` ne dépend jamais d'`admin`.
+
+### 14.2 2FA TOTP du compte admin
+- RFC 6238 implémentée avec `node:crypto` (HMAC-SHA1, 6 chiffres, pas de 30 s, fenêtre ±1 pas) et un encodeur base32
+  local : **aucune dépendance** (`otplib`, `speakeasy` écartés). Secret de 20 octets aléatoires (`randomBytes`).
+- Rejeu impossible : `TotpSecret.lastUsedStep` ; un code dont le pas est ≤ au dernier pas utilisé est refusé.
+- **Chiffrement du secret** : AES-256-GCM, clé `TOTP_ENCRYPTION_KEY` (32 octets en base64, obligatoire en production),
+  IV 12 octets aléatoires par chiffrement, **AAD = `totp:<userId>`** (un secret copié sur une autre ligne ne se déchiffre
+  pas). Format `v1.<iv>.<tag>.<ciphertext>` (base64url) : le préfixe de version permet une rotation de clé future.
+  Le secret clair n'existe qu'en mémoire, le temps d'un calcul ; jamais journalisé ni renvoyé après l'enrôlement.
+- Enrôlement : `POST admin/security/enrollment` écrit le secret chiffré avec `enabledAt = null` (remplace un enrôlement
+  inachevé), valable `ADMIN_ENROLLMENT_TTL_SECONDS` (10 min) ; l'URI `otpauth://totp/<issuer>:<email>?secret=…&issuer=…`
+  est rendue en **QR SVG côté API** (paquet `uqr`, zéro dépendance ; repli `qrcode-generator` si `uqr` pose un problème
+  d'ESM/CJS ; vérifier licence, `pnpm audit --prod`, absence de script d'installation) et renvoyée en data URI.
+  `…/confirm` vérifie le code, pose `enabledAt`, génère 10 codes de secours et vérifie la session dans la foulée.
+- **Codes de secours** : 10 codes `XXXXX-XXXXX` (base32, 50 bits), stockés en **HMAC-SHA256** (clé dérivée de
+  `TOTP_ENCRYPTION_KEY` par HKDF, info `raijin-recovery-codes`), usage unique (`usedAt`), régénération (invalide les
+  anciens) sur code TOTP frais. Le front les montre une fois, avec copie et téléchargement `.txt`.
+- **Anti-force brute** : `ADMIN_TOTP_MAX_ATTEMPTS` (5) codes faux par compte en `ADMIN_TOTP_LOCKOUT_MINUTES` (15) →
+  429 `ADMIN_2FA_LOCKED` ; compteur Redis par `userId` (même script Lua atomique et même repli mémoire que §8.4).
+  Chaque échec est audité (`admin.2fa_failed`), chaque succès aussi (`admin.2fa_verified`, `admin.recovery_code_used`).
+- Perte du téléphone et des codes : `pnpm nx run api:admin-reset-2fa --email=…` (CLI, auditée), jamais depuis l'interface.
+
+### 14.3 Rôle ADMIN, garde et session admin
+- **Rôle par CLI uniquement** : `pnpm nx run api:make-admin --email=… [--revoke]` (cible `run-commands` de `api` qui lance
+  `dist/apps/api/cli.js`, entrée secondaire du build ; logique dans `api-auth`, `apps/api/src/cli.ts` ne fait que
+  l'appeler). E-mail validé par `emailSchema`, compte existant et vérifié exigé, audit `admin.role_granted` /
+  `admin.role_revoked` (`actorKind: cli`). Le retrait révoque les sessions admin. En production : commande
+  `docker compose exec` documentée dans `docs/DEPLOY.md` (l'utilisateur la lance, jamais l'agent).
+- **`@AdminRoute()`** = `AuthGuard` → `AdminGuard`, sur **chaque** contrôleur `admin/*` :
+  1. rôle **relu en base** ; pas ADMIN → **404 `NOT_FOUND`** (espace invisible ; remplace le 403 de
+     `GET admin/trial-conversion`) ;
+  2. 2FA non activée → 403 `ADMIN_2FA_ENROLLMENT_REQUIRED` (sauf `admin/security/status|enrollment*`) ;
+  3. session non vérifiée → 403 `ADMIN_2FA_REQUIRED` ; vérifiée mais `now − adminLastSeenAt > ADMIN_SESSION_IDLE_MINUTES`
+     (30) ou `now − adminVerifiedAt > ADMIN_SESSION_MAX_HOURS` (8) → 403 `ADMIN_SESSION_EXPIRED` (colonnes remises à null) ;
+  4. sinon `adminLastSeenAt` mis à jour (au plus une écriture par minute : `UPDATE … WHERE adminLastSeenAt < now − 60 s`).
+- État porté par la ligne `Session` (`adminVerifiedAt`, `adminLastSeenAt`) : la déconnexion, le changement de mot de passe,
+  la réutilisation d'un refresh et le retrait du rôle le font tomber avec la session ; aucun nouveau cookie.
+- Codes en **403** (jamais 401) : l'intercepteur de refresh de l'app n'intervient pas ; l'intercepteur admin
+  (`data-access/admin/security`) redirige vers l'écran de saisie du code avec retour à la page courante et vide les
+  stores admin. Le front arme aussi un minuteur d'inactivité aligné sur `idleTimeoutSeconds` qui masque les données.
+- Toutes les réponses `admin/*` : `Cache-Control: no-store` ; throttler `admin` 120 requêtes/min/utilisateur ;
+  CSRF sur toutes les mutations (inchangé).
+
+### 14.4 Modèle (migration unique, nestjs-api, au début de la phase)
+- `Session.adminVerifiedAt DateTime?`, `Session.adminLastSeenAt DateTime?`.
+- `AdminRecoveryCode { id, userId → User (Cascade), codeHash @unique, usedAt?, createdAt }`, index `userId`.
+- `User.suspendedAt DateTime?` (index) ; `User.proGrantedUntil DateTime?` (Pro offert).
+- `AuditLog` : index `actorId` et `(userId, createdAt)` ; colonne `actorKind String @default("user")`.
+- `AdminAlert { id, kind, subject, level, dedupeKey @unique, details Json, createdAt, notifiedAt?, resolvedAt? }`, index
+  `(resolvedAt, createdAt)`.
+- `TokenAnalysis.durationMs Int?` **si absent** (temps de réponse de l'écran Produit ; vérifier d'abord le schéma).
+- Pas de colonne d'agrégat ailleurs : `DailyMetric` existe déjà (`@@unique([date, key])`).
+
+### 14.5 Agrégats `DailyMetric` et ordre agrégation → purge (clôt le mineur m6 de la phase 4)
+- Catalogue fermé : `DAILY_METRICS` + familles `checks.<source>`, `checks_unavailable.<source>`, `upstream_calls.<source>`
+  (`admin/metrics.ts`) ; une clé hors catalogue est refusée. **Aucune donnée personnelle** : comptes, sommes, moyennes,
+  instantanés ; aucun identifiant, e-mail, IP, mint saisi par un anonyme.
+- Job **`metrics-aggregate`** (file `maintenance`, `METRICS_CRON` = 02:15 UTC, verrou Redis, `JobRun`) : calcule J-1 et
+  **recalcule J-2 et J-3** (événements tardifs, webhooks rejoués) par `upsert` idempotent ; au premier passage (table vide),
+  rattrapage de tous les jours encore présents (≤ `RETENTION_DAYS`). Sources : `User`, `ProductEvent`, `TokenAnalysis`,
+  `Subscription`, `Alert`, `Watch`, `PushSubscription`, `AuditLog` (`account.deleted`), compteurs Redis journaliers
+  (requêtes et 5xx de l'API, e-mails envoyés / en échec, crédits Helius, appels par source, TTL 8 jours) et
+  `pg_database_size`. Les instantanés (`last`) sont pris au passage du job et datés J-1.
+- **Ordre** : `METRICS_CRON` (02:15) précède `PURGE_CRON` (03:30). La purge ne supprime les `ProductEvent` et
+  `TokenAnalysis` d'un jour que si un `JobRun` `metrics-aggregate` en succès couvre ce jour (`details.through`) ; sinon elle
+  saute ces deux tables, l'écrit dans son `JobRun` (`skippedUnaggregated`) et l'alerte « job en échec » finit par prévenir.
+- Jour en cours : calculé en direct sur les tables sources (cache Redis 60 s). Périodes passées : `DailyMetric` seule.
+  Acquisition : calculée en direct sur `User` (petit volume, cache 5 min), pas de dimension libre dans `DailyMetric`.
+- `DailyMetric` est conservée sans limite (≈ 60 lignes par jour). `AuditLog` : `AUDIT_LOG_RETENTION_DAYS` (365) dans la purge.
+
+### 14.6 Accès Google (`libs/api/analytics`)
+- **Compte de service**, JSON dans `GOOGLE_SERVICE_ACCOUNT_JSON` (brut ou base64), jamais commité ni journalisé.
+  Portées **en lecture seule** : `https://www.googleapis.com/auth/analytics.readonly` et
+  `https://www.googleapis.com/auth/webmasters.readonly`. Accès « Lecteur » GA4 et « Restreint » Search Console.
+- **Aucun SDK Google** (`googleapis` pèse des dizaines de Mo) : JWT RS256 signé avec `node:crypto`, échange sur
+  `https://oauth2.googleapis.com/token`, jeton gardé en mémoire jusqu'à 5 min avant expiration ; appels REST en `fetch`
+  vers des hôtes fixes (pas de SSRF) : `https://analyticsdata.googleapis.com/v1beta/properties/{GA4_PROPERTY_ID}:batchRunReport`
+  et `https://searchconsole.googleapis.com/webmasters/v3/sites/{site}/searchAnalytics/query`. Délai 10 s, une reprise.
+- **Cache Redis** `analytics:v1:<service>:<sha256(requête)>`, TTL `ANALYTICS_CACHE_TTL_S` (1 h) ; erreurs gardées 5 min
+  (pas de martèlement). `fetchedAt` / `cachedUntil` renvoyés au front.
+- **Search Console** : `dataState: final`, `dataThrough` = dernier jour présent, `lagDays` affiché (« données jusqu'au … ,
+  décalage de 2 à 3 jours ») ; opportunités = positions 5 à 20 triées par impressions.
+- **Sans compte Google** (cas actuel) : `not_connected`, jamais de 5xx ; l'écran affiche « Non connecté » et le lien vers
+  `docs/DEPLOY.md`. `ANALYTICS_PROVIDER=fake` (dev, e2e ; refusé en production) sert des fixtures déterministes
+  (`libs/api/analytics/src/testing/fixtures`) et marque `simulated: true`.
+- Erreurs Google traduites en `auth_failed | permission_denied | quota_exceeded | unavailable` ; journaux : code HTTP et
+  code interne seulement (jamais le corps de Google, le JSON ni le jeton).
+
+### 14.7 Alertes admin
+- Job **`admin-alerts`** (`ADMIN_ALERTS_CRON`, toutes les 10 min) : (1) chaque job dont les `ADMIN_ALERT_JOB_FAILURES` (3)
+  derniers `JobRun` sont en échec ; (2) chaque quota de `QUOTA_SERVICES` dont `used / limit ≥ ADMIN_ALERT_QUOTA_RATIO` (0,8)
+  (Helius global et voies : compteurs existants ; Jupiter et RugCheck : `*_DAILY_CALL_BUDGET`, sans plafond = pas d'alerte).
+- Déduplication par `AdminAlert.dedupeKey` (`job_failing:<job>:<id du premier échec>`, `quota:<service>:<jour>`) : une
+  alerte par incident ; résolue au prochain succès du job ou au jour UTC suivant.
+- Canal : **e-mail** (thème clair, `api-notifications`) à chaque compte ADMIN + **push** à ses abonnements (sans condition
+  de plan pour ce type) ; `notifiedAt` posé après envoi, nouvel essai au passage suivant sinon. Contenu : job ou service,
+  compteurs, code d'erreur ; jamais de secret, d'URL d'API ni de donnée utilisateur. Le job `admin-alerts` apparaît
+  lui-même dans la santé technique.
+
+### 14.8 Audit, actions utilisateurs et RGPD
+- `AuditService.record(tx, { action, actorKind, actorId, userId, metadata })` dans **la même transaction** que la
+  modification ; `metadata` validé par `auditMetadataSchema` (avant / après = champs modifiés seulement, motif, détails).
+  Jamais d'e-mail, d'IP en clair, de secret, de code TOTP ni de hash dans `metadata`.
+- Actions (`POST admin/users/:id/actions`, union discriminée `type`) : motif obligatoire (sauf renvoi de vérification) ;
+  **suspendre** et **supprimer** exigent de recopier l'e-mail du compte (`ADMIN_CONFIRMATION_MISMATCH`), **supprimer** exige
+  en plus un code TOTP frais (compte dans l'anti-force brute). Interdites sur un compte ADMIN et sur soi-même
+  (`ADMIN_ACTION_NOT_ALLOWED`). Le front ouvre une confirmation (bottom sheet sur mobile, dialogue sur desktop) résumant
+  l'effet avant l'envoi.
+  - `extend_trial` (1 à 14 j) : essai actif → `trialEndsAt += j` ; essai terminé sans abonnement → réouvert jusqu'à
+    `now + j` (drapeaux d'e-mails d'essai remis à zéro) ; `none` / `ineligible` / abonné → 409.
+  - `grant_pro_month` : `proGrantedUntil = max(now, actuel) + 30 j`, au plus `now + 365 j` ; refusé avec un abonnement Pro
+    en cours. `resolvePlanPolicy` : subscription > trial > gift > free (source `gift`). À l'échéance, le job horaire
+    d'essai applique la même limite de suivis qu'en fin d'essai (e-mail neutre, pas d'urgence).
+  - `suspend` : `suspendedAt`, toutes les sessions révoquées (`revokedReason: suspended`), alertes et e-mails non envoyés ;
+    connexion, lien magique et refresh → 403 `ACCOUNT_SUSPENDED` **seulement après des identifiants valides** (pas
+    d'énumération). L'abonnement Stripe n'est pas résilié automatiquement : la fiche le signale. `reactivate` l'annule.
+  - `resend_verification` : compte non vérifié seulement, même service que `POST auth/verify-email/resend`.
+  - `delete` : même service que `DELETE users/me` (résiliation Stripe, cascade, `SetNull` de l'audit) ; l'entrée d'audit
+    est écrite avant la suppression et survit sans e-mail.
+- **Pas d'usurpation** : aucune route ni action « se connecter en tant que » ; un test e2e vérifie qu'aucune route admin
+  ne pose de cookie de session.
+- **Consultation de données personnelles auditée** : recherche par e-mail (`admin.user_searched`, `details` = nombre de
+  résultats et HMAC du texte cherché, jamais le texte) et ouverture d'une fiche (`admin.user_viewed`, une entrée par
+  admin et par fiche toutes les 10 min). Recherche : fragment ≥ 3 caractères, `%`, `_` et `\` échappés.
+- L'export RGPD de l'utilisateur (`GET users/me/export`) inclut les entrées le visant, auteur réduit à « admin ».
+- Agrégats et écrans statistiques : aucune donnée personnelle ; seuls l'écran Utilisateurs et le journal en montrent.
+
+### 14.9 Graphiques : Chart.js 4 (complète §5)
+- Dépendance `chart.js` (4.x) ajoutée au seul usage de `web-feature-admin` ; vérifier l'absence de script d'installation
+  et `pnpm audit --prod`. Chargée par **import dynamique** dans `rj-chart` (chunk séparé, rien dans le bundle initial).
+- Enregistrement modulaire : `LineController`, `LineElement`, `PointElement`, `BarController`, `BarElement`,
+  `DoughnutController`, `ArcElement`, `CategoryScale`, `LinearScale`, `Tooltip`, `Filler`. Pas d'échelle `time` (pas
+  d'adaptateur de dates) : axe catégoriel avec dates formatées par `Intl.DateTimeFormat('fr-FR')`. Pas de `Legend`
+  Chart.js : légende HTML (icône + texte, jamais la couleur seule).
+- Thème : couleurs, police mono des chiffres, grilles et textes lus dans les variables CSS des tokens
+  (`getComputedStyle`) au rendu et au changement de thème ; `thunder` = série principale, `info` = comparaison,
+  `safe | warn | danger` = verdicts. Aucune valeur en dur.
+- **Accessibilité** : `<canvas role="img" aria-label="résumé chiffré">` + bouton « Voir les données » qui affiche un
+  `<table>` équivalent (aussi lisible au clavier et par les lecteurs d'écran) ; `prefers-reduced-motion` → aucune animation.
+- 360 px : `maxTicksLimit` 4 à 6, infobulle au toucher, hauteur fixée par un token ; pas de scroll horizontal.
+- Mobile first : KPI en grille de 2 (`rj-kpi-card`, chiffres mono, variation avec flèche + signe + couleur), graphiques
+  pleine largeur, tableaux en cartes < 768 px, filtres en bottom sheet < 1024 px. Coque admin : sidebar des 9 écrans
+  ≥ 1024 px ; en dessous, barre du haut avec menu des écrans en bottom sheet et bouton « Quitter l'admin ».
+
+### 14.10 Landing : consentement, GA4, attribution (fait dès cette phase, par seo-astro)
+- **Pourquoi maintenant** : PROMPT.md §10 range « GA4 + consentement sur la landing, attribution UTM » dans la phase 6 bis,
+  la chaîne d'attribution landing → app → `User` doit être testée de bout en bout avec l'écran Acquisition, et ces
+  composants ne dépendent pas du design des pages. La phase 7 branche les événements (`guide_lu`, `faq_ouverte`…) sur les
+  pages qu'elle construit, avec le module `track()` livré ici.
+- **Consent Mode v2, mode basique** : avant le choix, **aucun script Google n'est chargé** (pas de ping sans cookie) ;
+  au clic sur « Tout accepter » : `gtag('consent','default',{…denied})` puis `update` `analytics_storage: granted`
+  (`ad_storage`, `ad_user_data`, `ad_personalization` toujours `denied`), chargement de `gtag.js`,
+  `allow_google_signals: false`. Refus : rien n'est chargé. Sans `GA4_MEASUREMENT_ID` : ni GA4 ni bannière.
+- Bannière maison (bottom sheet < 768 px, encart en bas à gauche au-delà) : « Tout accepter » et « Tout refuser » au
+  même niveau visuel, « Personnaliser » (un interrupteur « Mesure d'audience »). Choix dans le cookie `rj_consent`
+  (`v1.granted|denied.<date>`, 182 jours, `SameSite=Lax`, `Secure`) ; lien « Gérer les cookies » dans le footer.
+  Script module groupé (pas de script inline, CSP), budget ≤ 4 ko gzip ; focus géré, Échap ne vaut jamais acceptation.
+- `track(name, params)` typé par `Ga4EventName` / `Ga4EventParams` (`import type`, aucun Zod dans la landing) ; sans
+  consentement, aucun envoi ni file d'attente.
+- **Attribution** : à la première visite, UTM, référent externe et page d'arrivée relevés ; gardés en `sessionStorage`
+  sans consentement, dans le cookie `rj_attr` (90 jours) après consentement ; les liens vers l'app sont complétés au clic
+  avec `ATTRIBUTION_QUERY_PARAMS` (`utm_*`, `rj_ref`, `rj_lp`). L'app (`AttributionTracker`) lit ces paramètres en priorité.
+  Un test de la landing compare ses constantes à celles des contrats.
+- **RGPD (décision sur le `sessionStorage` de l'app, phase 2)** : conservé. Stockage de premier niveau, limité à l'onglet,
+  non partagé, lu uniquement pour l'envoyer à l'inscription, finalité d'attribution interne sans outil tiers : mentionné
+  dans la politique de confidentialité (phase 7). Le cookie durable de la landing, lui, reste soumis au consentement.
+- Conversions : l'inscription confirmée et l'abonnement ont lieu dans l'app (sans GA4) : mesurés en interne et reliés
+  aux sources dans l'écran Acquisition ; dans GA4, `inscription_debut` et `cta_essai_clic` sont les événements clés
+  (écart assumé, Measurement Protocol écarté : il exigerait un secret et un identifiant GA transmis à l'app).
+- `GOOGLE_SITE_VERIFICATION` et `GA4_MEASUREMENT_ID` lus au build par `astro:env` (publics) ; CSP de la landing :
+  `script-src 'self' https://www.googletagmanager.com`, `connect-src` / `img-src` `https://*.google-analytics.com
+  https://*.analytics.google.com https://www.googletagmanager.com` (posée en phase 8 côté Traefik, documentée ici).
+
+### 14.11 Sécurité (synthèse pour security-reviewer)
+- 404 pour tout non-admin ; rôle relu en base ; 2FA obligatoire ; session admin 30 min / 8 h ; codes 403 sans refresh.
+- Secret TOTP chiffré (AES-256-GCM + AAD), codes de secours hachés, rejeu et force brute bloqués, tout audité.
+- Aucune usurpation ; confirmations renforcées ; audit avant / après dans la transaction ; actions interdites sur un admin
+  et sur soi-même ; motif obligatoire.
+- `no-store` sur `admin/*` ; aucune donnée admin dans `localStorage` ; stores vidés à l'expiration.
+- Textes Google, UTM, symboles : hostiles, bornés par les contrats, affichés par interpolation (jamais `innerHTML`) ;
+  QR en `<img>` data URI produit par l'API.
+- `GET health/config` retiré (404) ; état des services dans `GET admin/health`.
+- `GOOGLE_SERVICE_ACCOUNT_JSON`, `TOTP_ENCRYPTION_KEY` : jamais journalisés ; portées Google en lecture seule ; hôtes Google
+  fixes ; `ANALYTICS_PROVIDER=fake` refusé en production.

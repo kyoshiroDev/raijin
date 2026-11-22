@@ -49,8 +49,11 @@ export const subscriptionSchema = z.object({
 });
 export type Subscription = z.infer<typeof subscriptionSchema>;
 
-/** Origine du plan effectif. */
-export const planSourceSchema = z.enum(['free', 'trial', 'subscription']);
+/**
+ * Origine du plan effectif. `gift` (phase 6 bis) : mois de Pro offert par l'admin (`User.proGrantedUntil`), calculé
+ * par `resolvePlanPolicy` ; priorité : subscription > trial > gift > free.
+ */
+export const planSourceSchema = z.enum(['free', 'trial', 'subscription', 'gift']);
 export type PlanSource = z.infer<typeof planSourceSchema>;
 
 export const billingAccountSchema = z.object({
@@ -61,6 +64,8 @@ export const billingAccountSchema = z.object({
   /** Dernier abonnement connu ; `null` si jamais abonné. */
   subscription: subscriptionSchema.nullable(),
   trial: trialDetailsSchema,
+  /** Fin du mois de Pro offert par l'admin (phase 6 bis) ; absent ou `null` si aucun en cours. */
+  giftEndsAt: z.iso.datetime().nullable().optional(),
   /** Paiement en échec (`past_due`) : bandeau neutre avec le lien vers le portail. */
   paymentIssue: z.boolean(),
   /** Un compte de facturation existe (portail ouvrable). */
