@@ -1,6 +1,6 @@
 import { ApiException, sha256, testConfig } from '@raijin/api-core';
 import { createPrismaMock } from '../../testing/fixtures';
-import { AuditService } from './audit.service';
+import { AuditService } from '../audit/audit.service';
 import { AuthTokenService } from './auth-token.service';
 import { REFRESH_REUSE_GRACE_MS, SessionService } from './session.service';
 

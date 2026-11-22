@@ -9,7 +9,7 @@ import type {
   RegisterRequest,
 } from '@raijin/shared-contracts';
 import { AccessTokenService } from './access-token.service';
-import { AuditService } from './audit.service';
+import { AuditService } from '../audit/audit.service';
 import { AuthTokenService } from './auth-token.service';
 import type { ClientInfo } from './client-info';
 import { normalizeEmail } from './email-normalizer';

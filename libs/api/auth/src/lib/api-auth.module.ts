@@ -5,7 +5,7 @@ import { ApiNotificationsModule } from '@raijin/api-notifications';
 import { AuthController } from './http/auth.controller';
 import { AuthGuard, OptionalAuthGuard } from './http/auth.guard';
 import { AccessTokenService } from './services/access-token.service';
-import { AuditService } from './services/audit.service';
+import { AuditService } from './audit/audit.service';
 import { AuthTokenService } from './services/auth-token.service';
 import { AuthService } from './services/auth.service';
 import { LoginAttemptsService } from './services/login-attempts.service';

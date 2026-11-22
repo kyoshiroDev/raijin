@@ -4,7 +4,7 @@ export * from './lib/http/roles.guard';
 export * from './lib/trial/disposable-domains';
 export * from './lib/trial/trial-eligibility.service';
 export * from './lib/services/access-token.service';
-export * from './lib/services/audit.service';
+export * from './lib/audit/audit.service';
 export * from './lib/services/auth.service';
 export * from './lib/services/client-info';
 export * from './lib/services/email-normalizer';

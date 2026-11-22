@@ -4,7 +4,7 @@ import type { AuthMailService } from '@raijin/api-notifications';
 import { Prisma } from '@raijin/api-prisma';
 import { createPrismaMock, userFixture } from '../../testing/fixtures';
 import { AccessTokenService } from './access-token.service';
-import type { AuditService } from './audit.service';
+import type { AuditService } from '../audit/audit.service';
 import type { AuthTokenService } from './auth-token.service';
 import { AuthService, NEUTRAL_MESSAGES } from './auth.service';
 import { LoginAttemptsService, MemoryAttemptStore } from './login-attempts.service';

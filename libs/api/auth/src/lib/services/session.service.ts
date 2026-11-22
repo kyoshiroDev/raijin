@@ -1,7 +1,7 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { APP_CONFIG, ApiException, randomToken, sha256, type AppConfig } from '@raijin/api-core';
 import { PrismaService, type Session } from '@raijin/api-prisma';
-import { AuditService } from './audit.service';
+import { AuditService } from '../audit/audit.service';
 import type { ClientInfo } from './client-info';
 
 /**
