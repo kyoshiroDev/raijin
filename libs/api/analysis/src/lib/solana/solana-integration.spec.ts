@@ -1,4 +1,5 @@
 import { DEFAULT_SOLANA_DATA_CONFIG, SolanaDataService, TokenNotFoundError } from '@raijin/api-solana';
+import { createFixtureFetch, loadAllFixtures } from '@raijin/api-solana/testing';
 import { testConfig } from '@raijin/api-core';
 import { analysisResultSchema } from '@raijin/shared-contracts';
 import { join } from 'node:path';
@@ -8,11 +9,10 @@ import { DefaultRiskEngine } from '../analysis/risk-engine.provider';
 import { SystemClock } from '../ports/facts-collector';
 import type { QuotaService } from '../quota/quota.service';
 import { MemoryKeyValueStore } from '../store/key-value-store';
-import { createFixtureReplayFetch, loadFixtures } from './fixture-replay-fetch';
 import { CONSUME_CREDITS_SCRIPT, RedisCreditBudget, SolanaCacheStore } from './redis-ports';
 import { SolanaFactsCollector } from './solana-facts-collector';
 
-const FIXTURES = loadFixtures(join(__dirname, '../../../../solana/src/fixtures'));
+const FIXTURES = loadAllFixtures(join(__dirname, '../../../../solana/src/fixtures'));
 const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 const BONK_PAIR = '5zpyutJu9ee6jFymDGoK7F6S5Kczqtc9FomP3ueKuyA9';
 const MINT_ACTIVE = 'BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi';
@@ -21,7 +21,7 @@ const MISSING = 'Y3Pg4fGfK1jz4exHgF2duMUhZvjAa1FdBuJYMsyZfWD';
 
 function collector(): SolanaFactsCollector {
   return new SolanaFactsCollector(
-    new SolanaDataService({ heliusApiKey: null, fetch: createFixtureReplayFetch(FIXTURES, DEFAULT_SOLANA_DATA_CONFIG) }),
+    new SolanaDataService({ heliusApiKey: null, fetch: createFixtureFetch(FIXTURES, DEFAULT_SOLANA_DATA_CONFIG).fetch }),
   );
 }
 
@@ -30,7 +30,7 @@ function service(): AnalysisService {
   const quota = {
     resolvePolicy: async () => policy,
     reserve: async () => ({ policy, day: 'd', counted: true, used: 1, seenKey: null }),
-    refund: jest.fn(async () => undefined),
+    settleFailure: jest.fn(async () => undefined),
     info: async () => ({ kind: 'analysis', subject: 'anonymous', plan: null, limit: 3, used: 1, remaining: 2, resetsAt: '2026-11-23T00:00:00.000Z' }),
   };
   const repository = { save: async () => undefined, findLatest: async () => null, recordEvent: async () => undefined };

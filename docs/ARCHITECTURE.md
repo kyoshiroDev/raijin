@@ -519,11 +519,16 @@ fixtures, pages : `/analyse` (vide), `/analyse/<mint>` (résultat), `/t/<mint>`.
   `RedisCreditBudget` (compteur `helius:credits:<jour>`, script Lua INCRBY + EXPIRE + annulation au-delà du budget ;
   repli mémoire si Redis tombe). Cache des résultats 60 s avec clé Helius (`heliusConfigured`), 300 s sinon.
 - **Mode fixtures** (`ANALYSIS_FIXTURES=1`, refusé en production) : `SolanaDataService` sans clé Helius, `fetch`
-  qui rejoue `libs/api/solana/src/fixtures` (`ANALYSIS_FIXTURES_DIR`). Utilisé par `api:serve-e2e` (avec
+  de rejeu `createFixtureFetch(loadAllFixtures(dir))` de `@raijin/api-solana/testing`, appelé
+  seulement dans ce mode (`ANALYSIS_FIXTURES_DIR`, défaut `libs/api/solana/src/fixtures`). Utilisé par `api:serve-e2e` (avec
   `TRUST_PROXY=1` pour simuler une IP par test via `X-Forwarded-For`).
 - **Quota** : `QuotaService.resolvePolicy` (relu en base : Gratuit, essai actif, Pro ; seul point à étendre en phase 6)
-  → `reserve` (`INSERT … ON CONFLICT … DO UPDATE … WHERE count < limit RETURNING count`) → `refund` sur toute
-  erreur. Empreinte d'IP : HMAC(`IP_HASH_SECRET`) tronqué, IPv6 regroupée par /64. Throttler `analysis`
+  → `reserve` (`INSERT … ON CONFLICT … DO UPDATE … WHERE count < limit RETURNING count`) → `settleFailure` en cas
+  d'erreur : panne des sources (`UPSTREAM_UNAVAILABLE`) toujours remboursée ; autres échecs (token inexistant…)
+  comptés (`UsageCounter.kind = analysis_failure`) et remboursés jusqu'à `ANALYSIS_FAILED_DAILY_LIMIT` (20) par
+  sujet et par jour, au-delà consommés, et le sujet reçoit 429 `QUOTA_EXCEEDED` jusqu'à minuit UTC (chaque échec
+  coûte des crédits Helius). Throttlers : clé = IP ramenée à son préfixe (`ipBucket`, IPv6 par /64).
+  À faire en phase 4 (jobs) : purge à 90 jours de `TokenAnalysis`, `ProductEvent` et des `UsageCounter` anonymes. Empreinte d'IP : HMAC(`IP_HASH_SECRET`) tronqué, IPv6 regroupée par /64. Throttler `analysis`
   (`@AnalysisThrottle()`, `RATE_LIMIT_ANALYSIS_PER_MINUTE`) appliqué à tout `POST analyses`. Auth facultative
   (`OptionalAuthGuard`) : cookie d'access invalide → 401 `AUTH_SESSION_EXPIRED` (pas de bascule silencieuse en anonyme).
 - **Persistance** : `TokenAnalysis` (+ `token` Json : métadonnées nettoyées pour la page publique, `durationMs`) ;

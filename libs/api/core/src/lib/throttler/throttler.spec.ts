@@ -1,5 +1,5 @@
 import type { ThrottlerStorage } from '@nestjs/throttler';
-import { createThrottlerStorage, ResilientThrottlerStorage } from './throttler';
+import { createThrottlerStorage, ResilientThrottlerStorage, throttleTracker } from './throttler';
 
 describe('ResilientThrottlerStorage', () => {
   it('utilise le stockage principal quand il répond', async () => {
@@ -34,5 +34,15 @@ describe('createThrottlerStorage avec Redis injoignable', () => {
     const record = await storage.increment('k', 60_000, 5, 0, 'default');
     expect(record.totalHits).toBe(1);
     storage.onApplicationShutdown();
+  });
+});
+
+describe('throttleTracker', () => {
+  it('IPv6 regroupée par /64 (rotation d’adresse sans effet), IPv4 mappée ramenée à l’IPv4', () => {
+    expect(throttleTracker({ ip: '2001:db8:abcd:12::1' })).toBe(throttleTracker({ ip: '2001:db8:abcd:12:ffff::42' }));
+    expect(throttleTracker({ ip: '2001:db8:abcd:12::1' })).not.toBe(throttleTracker({ ip: '2001:db8:abcd:13::1' }));
+    expect(throttleTracker({ ip: '::ffff:198.51.100.4' })).toBe('198.51.100.4');
+    expect(throttleTracker({ ip: '198.51.100.4' })).toBe('198.51.100.4');
+    expect(throttleTracker({})).toBe('unknown');
   });
 });

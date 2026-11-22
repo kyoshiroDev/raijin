@@ -9,6 +9,7 @@ export * from './lib/http/setup-app';
 export * from './lib/security/cookies';
 export * from './lib/security/crypto';
 export * from './lib/security/csrf';
+export * from './lib/security/ip-bucket';
 export * from './lib/throttler/throttler';
 export * from './lib/validation/zod-validation.pipe';
 export * from './testing/test-config';

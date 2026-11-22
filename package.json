@@ -57,6 +57,7 @@
     "jiti": "2.4.2",
     "jsdom": "^27.1.0",
     "jsonc-eslint-parser": "^2.1.0",
+    "lighthouse": "13.6.0",
     "ng-packagr": "~22.2.0",
     "nx": "24.0.6",
     "postcss": "^8.5.33",

@@ -118,6 +118,9 @@ IP_HASH_SECRET=changeme-ip-hash-secret-factice
 ANON_ANALYSIS_DAILY_LIMIT=3
 FREE_ANALYSIS_DAILY_LIMIT=5
 TRIAL_ANALYSIS_DAILY_LIMIT=50
+# Raijin — analyses en échec (token inexistant…) remboursées par jour UTC et par sujet (utilisateur ou empreinte d'IP) ;
+#   au-delà, l'échec reste décompté et le sujet reçoit 429 QUOTA_EXCEEDED jusqu'à minuit (protège les crédits Helius)
+ANALYSIS_FAILED_DAILY_LIMIT=20
 # Raijin — limite par IP et par minute sur POST /analyses, en plus du quota (vide = 10 en production, 60 en dev/test)
 RATE_LIMIT_ANALYSIS_PER_MINUTE=
 # Raijin — durée du cache Redis d'un résultat d'analyse, en secondes (avec clé Helius / sans clé, RPC public lent)

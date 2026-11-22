@@ -47,6 +47,12 @@ export interface AppConfig {
     readonly anonDailyLimit: number;
     readonly freeDailyLimit: number;
     readonly trialDailyLimit: number;
+    /**
+     * Analyses en échec par jour et par sujet (token inexistant…) remboursées sur le quota ; au-delà,
+     * l'échec n'est plus remboursé et le sujet est refusé (429) jusqu'à minuit UTC : chaque échec
+     * coûte des crédits Helius.
+     */
+    readonly failedDailyLimit: number;
     /** Durée de cache d'un résultat (s) ; portée à `cacheTtlNoKeyS` sans clé Helius. */
     readonly cacheTtlS: number;
     readonly cacheTtlNoKeyS: number;
@@ -112,6 +118,7 @@ const envSchema = z.object({
   ANON_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(3),
   FREE_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(5),
   TRIAL_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(50),
+  ANALYSIS_FAILED_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
   ANALYSIS_CACHE_TTL_S: z.coerce.number().int().min(5).max(3_600).default(60),
   ANALYSIS_CACHE_TTL_NO_KEY_S: z.coerce.number().int().min(5).max(3_600).default(300),
   WEB_INDEX_HTML_PATH: optionalString,
@@ -291,6 +298,7 @@ export function loadConfig(
       anonDailyLimit: e.ANON_ANALYSIS_DAILY_LIMIT,
       freeDailyLimit: e.FREE_ANALYSIS_DAILY_LIMIT,
       trialDailyLimit: e.TRIAL_ANALYSIS_DAILY_LIMIT,
+      failedDailyLimit: e.ANALYSIS_FAILED_DAILY_LIMIT,
       cacheTtlS: e.ANALYSIS_CACHE_TTL_S,
       cacheTtlNoKeyS: e.ANALYSIS_CACHE_TTL_NO_KEY_S,
       webIndexHtmlPath: e.WEB_INDEX_HTML_PATH ?? null,

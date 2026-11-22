@@ -122,7 +122,8 @@
         "env": {
           "ANALYSIS_FIXTURES": "1",
           "TRUST_PROXY": "1",
-          "NODE_ENV": "development"
+          "NODE_ENV": "development",
+          "API_PORT": "3200"
         }
       }
     }

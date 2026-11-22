@@ -18,6 +18,7 @@ import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
 import { ApiException } from '../errors/api-exception';
 import { errorCode } from '../errors/error-code';
+import { ipBucket } from '../security/ip-bucket';
 
 type StorageRecord = Awaited<ReturnType<ThrottlerStorage['increment']>>;
 
@@ -110,11 +111,19 @@ export function createThrottlerStorage(redisUrl: string | null): ResilientThrott
   return storage;
 }
 
+/**
+ * Clé de suivi d'une requête : IP réelle (selon `trust proxy`) ramenée à son préfixe, IPv6 regroupée
+ * par /64 (sinon changer d'adresse dans son propre /64 suffirait à remettre les limites à zéro).
+ */
+export function throttleTracker(req: Record<string, unknown>): string {
+  return ipBucket(typeof req['ip'] === 'string' ? req['ip'] : null);
+}
+
 /** Garde de rate limiting globale : 429 au format `{code: 'RATE_LIMITED', message}`. */
 @Injectable()
 export class ApiThrottlerGuard extends ThrottlerGuard {
   protected override async getTracker(req: Record<string, unknown>): Promise<string> {
-    return typeof req['ip'] === 'string' ? req['ip'] : 'unknown';
+    return throttleTracker(req);
   }
 
   protected override async throwThrottlingException(): Promise<void> {

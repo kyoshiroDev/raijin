@@ -90,7 +90,7 @@ export class AnalysisService {
       }
       analysis = await this.getOrCompute(mint, userId);
     } catch (failure) {
-      await this.quota.refund(reservation);
+      await this.quota.settleFailure(reservation, failure);
       throw failure;
     }
     const durationMs = performance.now() - started;

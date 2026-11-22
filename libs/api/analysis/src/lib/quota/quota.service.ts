@@ -31,6 +31,9 @@ export interface QuotaReservation {
   readonly seenKey: string | null;
 }
 
+/** Compteur interne des analyses en échec (colonne `UsageCounter.kind`, jamais exposé au front). */
+export const FAILURE_KIND = 'analysis_failure';
+
 /** Une même analyse (sujet + mint) répétée dans ce délai ne recompte pas. */
 export const QUOTA_DEDUP_TTL_MS = 10 * 60_000;
 const UNLIMITED = 2_147_483_647;
@@ -85,17 +88,41 @@ export class QuotaService {
    */
   async reserve(policy: QuotaPolicy, mint: string): Promise<QuotaReservation> {
     const day = this.today();
+    // Trop d'échecs aujourd'hui (tokens inexistants en rafale) : refus avant toute collecte.
+    if ((await this.used(policy, day, FAILURE_KIND)) >= this.config.analysis.failedDailyLimit) {
+      throw new ApiException('QUOTA_EXCEEDED', HttpStatus.TOO_MANY_REQUESTS, ANALYSIS_ERROR_MESSAGES.QUOTA_EXCEEDED);
+    }
     const seenKey = `quota:seen:${policy.kind}:${this.subjectKey(policy)}:${mint}`;
     const fresh = await this.store.setIfAbsent(seenKey, '1', QUOTA_DEDUP_TTL_MS);
     if (fresh === false) {
       return { policy, day, counted: false, used: await this.used(policy, day), seenKey: null };
     }
-    const used = await this.increment(policy, day);
+    const used = await this.increment(policy, day, policy.limit, policy.kind);
     if (used === null) {
       if (fresh) await this.store.delete(seenKey);
       throw new ApiException('QUOTA_EXCEEDED', HttpStatus.TOO_MANY_REQUESTS, ANALYSIS_ERROR_MESSAGES.QUOTA_EXCEEDED);
     }
     return { policy, day, counted: true, used, seenKey: fresh ? seenKey : null };
+  }
+
+  /**
+   * Analyse échouée : panne des sources (`UPSTREAM_UNAVAILABLE`, notre fait) toujours remboursée ;
+   * autre échec (token inexistant…) compté et remboursé jusqu'à `ANALYSIS_FAILED_DAILY_LIMIT` par
+   * jour, au-delà l'unité reste consommée. Ne lève jamais.
+   */
+  async settleFailure(reservation: QuotaReservation, failure: unknown): Promise<void> {
+    if (failure instanceof ApiException && failure.code === 'UPSTREAM_UNAVAILABLE') {
+      await this.refund(reservation);
+      return;
+    }
+    let failures: number;
+    try {
+      failures = (await this.increment(reservation.policy, reservation.day, null, FAILURE_KIND)) ?? Number.MAX_SAFE_INTEGER;
+    } catch (error) {
+      this.logger.error(`Comptage d'échec impossible (${errorCode(error)})`);
+      return;
+    }
+    if (failures <= this.config.analysis.failedDailyLimit) await this.refund(reservation);
   }
 
   /** Rembourse une réservation (analyse échouée). Ne lève jamais. */
@@ -134,20 +161,20 @@ export class QuotaService {
     return policy.userId ? Prisma.sql`"userId" = ${policy.userId}::uuid` : Prisma.sql`"ipHash" = ${policy.ipHash}`;
   }
 
-  /** Incrément atomique sous la limite ; `null` si la limite est atteinte. */
-  private async increment(policy: QuotaPolicy, day: string): Promise<number | null> {
-    const limit = policy.limit ?? UNLIMITED;
+  /** Incrément atomique sous la limite (`null` : illimité) ; renvoie `null` si la limite est atteinte. */
+  private async increment(policy: QuotaPolicy, day: string, max: number | null, kind: string): Promise<number | null> {
+    const limit = max ?? UNLIMITED;
     const id = randomUUID();
     const rows = policy.userId
       ? await this.prisma.$queryRaw<{ count: number }[]>`
           INSERT INTO "UsageCounter" ("id", "userId", "ipHash", "kind", "day", "count")
-          VALUES (${id}::uuid, ${policy.userId}::uuid, NULL, ${policy.kind}, ${day}::date, 1)
+          VALUES (${id}::uuid, ${policy.userId}::uuid, NULL, ${kind}, ${day}::date, 1)
           ON CONFLICT ("userId", "kind", "day")
           DO UPDATE SET "count" = "UsageCounter"."count" + 1 WHERE "UsageCounter"."count" < ${limit}
           RETURNING "count"`
       : await this.prisma.$queryRaw<{ count: number }[]>`
           INSERT INTO "UsageCounter" ("id", "userId", "ipHash", "kind", "day", "count")
-          VALUES (${id}::uuid, NULL, ${policy.ipHash}, ${policy.kind}, ${day}::date, 1)
+          VALUES (${id}::uuid, NULL, ${policy.ipHash}, ${kind}, ${day}::date, 1)
           ON CONFLICT ("ipHash", "kind", "day")
           DO UPDATE SET "count" = "UsageCounter"."count" + 1 WHERE "UsageCounter"."count" < ${limit}
           RETURNING "count"`;
@@ -155,10 +182,10 @@ export class QuotaService {
     return count === undefined ? null : Number(count);
   }
 
-  private async used(policy: QuotaPolicy, day: string): Promise<number> {
+  private async used(policy: QuotaPolicy, day: string, kind: string = policy.kind): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ count: number }[]>`
       SELECT "count" FROM "UsageCounter"
-      WHERE ${this.subjectWhere(policy)} AND "kind" = ${policy.kind} AND "day" = ${day}::date`;
+      WHERE ${this.subjectWhere(policy)} AND "kind" = ${kind} AND "day" = ${day}::date`;
     return Number(rows[0]?.count ?? 0);
   }
 

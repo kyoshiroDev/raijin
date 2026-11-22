@@ -23,7 +23,7 @@ function fakeQuota() {
       used += 1;
       return { policy, day: '2026-11-22', counted: true, used, seenKey: null };
     }),
-    refund: jest.fn(async () => {
+    settleFailure: jest.fn(async () => {
       used -= 1;
     }),
     info: jest.fn(async (_policy: QuotaPolicy, count?: number) => ({
@@ -84,7 +84,7 @@ describe('AnalysisService : orchestration', () => {
     expect(repository.recordEvent).toHaveBeenCalledWith(
       expect.objectContaining({ mint: FIXTURE_MINTS.safe, verdict: 'safe', cached: false, subject: 'anonymous', userId: null }),
     );
-    expect(quota.refund).not.toHaveBeenCalled();
+    expect(quota.settleFailure).not.toHaveBeenCalled();
   });
 
   it('liens de sources construits par Raijin (https, liste blanche), jamais fournis par une source', async () => {
@@ -216,7 +216,7 @@ describe('AnalysisService : erreurs et remboursement du quota', () => {
   it('mint inexistant : TOKEN_NOT_FOUND, quota remboursé, cache négatif', async () => {
     const { service, quota, collector } = setup();
     await expect(service.analyze(FIXTURE_MINTS.notFound, ANON)).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND', status: 404 });
-    expect(quota.refund).toHaveBeenCalledTimes(1);
+    expect(quota.settleFailure).toHaveBeenCalledTimes(1);
     expect(quota.used).toBe(0);
     await expect(service.analyze(FIXTURE_MINTS.notFound, ANON)).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND' });
     expect((collector as FixtureFactsCollector).calls).toBe(1);
@@ -225,7 +225,7 @@ describe('AnalysisService : erreurs et remboursement du quota', () => {
   it('sources indispensables en panne : UPSTREAM_UNAVAILABLE (503), quota remboursé', async () => {
     const { service, quota, repository } = setup();
     await expect(service.analyze(FIXTURE_MINTS.down, ANON)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503 });
-    expect(quota.refund).toHaveBeenCalledTimes(1);
+    expect(quota.settleFailure).toHaveBeenCalledTimes(1);
     expect(repository.save).not.toHaveBeenCalled();
   });
 
@@ -240,14 +240,14 @@ describe('AnalysisService : erreurs et remboursement du quota', () => {
     } as unknown as FactsCollector;
     const { service, quota } = setup({ collector });
     await expect(service.analyze(FIXTURE_MINTS.warn, ANON)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
-    expect(quota.refund).toHaveBeenCalled();
+    expect(quota.settleFailure).toHaveBeenCalled();
   });
 
   it('erreur inattendue du collecteur : propagée, quota remboursé', async () => {
     const collector = { resolveMint: async () => null, collectFacts: async () => Promise.reject(new Error('bug')) } as unknown as FactsCollector;
     const { service, quota } = setup({ collector });
     await expect(service.analyze(FIXTURE_MINTS.safe, ANON)).rejects.toThrow('bug');
-    expect(quota.refund).toHaveBeenCalled();
+    expect(quota.settleFailure).toHaveBeenCalled();
   });
 
   it('quota épuisé : erreur propagée, aucune collecte', async () => {

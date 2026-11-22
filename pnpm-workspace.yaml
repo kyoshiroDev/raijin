@@ -31,3 +31,5 @@ allowBuilds:
 overrides:
   # effect ≤ 3.22.0 (vulnérabilité haute), épinglé en 3.20.0 par @prisma/config 7.10.1 (CLI Prisma, dev).
   'effect@<3.22.1': ^3.22.1
+  # fflate < 0.7.5 (GHSA-px8p-9vwx-vf98), épinglé en 0.7.3 par satori (image Open Graph de l'API).
+  'fflate@<0.7.5': '>=0.7.5'

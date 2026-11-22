@@ -12,4 +12,3 @@ export * from './lib/share/share-page.service';
 export * from './lib/store/key-value-store';
 export * from './lib/solana/redis-ports';
 export * from './lib/solana/solana-facts-collector';
-export * from './lib/solana/fixture-replay-fetch';

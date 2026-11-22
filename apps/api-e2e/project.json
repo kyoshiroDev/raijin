@@ -16,7 +16,10 @@
         "api:serve-e2e"
       ],
       "options": {
-        "cwd": "apps/api-e2e"
+        "cwd": "apps/api-e2e",
+        "env": {
+          "API_PORT": "3200"
+        }
       }
     },
     "typecheck": {

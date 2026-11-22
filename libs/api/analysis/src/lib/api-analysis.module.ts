@@ -2,6 +2,7 @@ import { Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ApiAuthModule } from '@raijin/api-auth';
 import { APP_CONFIG, errorCode, type AppConfig } from '@raijin/api-core';
 import { loadSolanaDataConfig, MemoryCacheStore, SolanaDataService, type SolanaDataOptions } from '@raijin/api-solana';
+import { createFixtureFetch, loadAllFixtures } from '@raijin/api-solana/testing';
 import Redis from 'ioredis';
 import { join } from 'node:path';
 import { AnalysisRepository } from './analysis/analysis.repository';
@@ -13,7 +14,6 @@ import { OgImageService } from './og/og-image.service';
 import { AnalysisClock, FactsCollector, SystemClock } from './ports/facts-collector';
 import { QuotaService } from './quota/quota.service';
 import { SharePageService } from './share/share-page.service';
-import { createFixtureReplayFetch, loadFixtures } from './solana/fixture-replay-fetch';
 import { RedisCreditBudget, SolanaCacheStore } from './solana/redis-ports';
 import { NestSolanaLogger, SolanaFactsCollector } from './solana/solana-facts-collector';
 import { KeyValueStore, MemoryKeyValueStore, RedisKeyValueStore } from './store/key-value-store';
@@ -47,10 +47,12 @@ export function solanaDataOptions(config: AppConfig, store: KeyValueStore, redis
   const logger = new NestSolanaLogger();
   if (config.analysis.fixtures && !config.isProduction) {
     const dir = config.analysis.fixturesDir ?? join(process.cwd(), 'libs', 'api', 'solana', 'src', 'fixtures');
+    // Rejeu appelé uniquement dans ce mode (import statique imposé par les frontières Nx : une lib ne
+    // peut pas être importée à la fois statiquement et à la demande) ; aucun fichier lu sinon.
     return {
       config: solanaConfig,
       heliusApiKey: null,
-      fetch: createFixtureReplayFetch(loadFixtures(dir), solanaConfig),
+      fetch: createFixtureFetch(loadAllFixtures(dir), solanaConfig).fetch,
       cache: new MemoryCacheStore(),
       logger,
     };
