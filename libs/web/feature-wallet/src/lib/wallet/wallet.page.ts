@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
@@ -34,11 +34,16 @@ type InputState =
   | { readonly kind: 'mint'; readonly address: string }
   | { readonly kind: 'valid'; readonly address: string };
 
+/** Phrase de récupération collée ou tapée par erreur (12 mots ou plus). */
+export function looksLikeSeedPhrase(raw: string): boolean {
+  return raw.trim().split(/\s+/).length >= 12;
+}
+
 /** Analyse la saisie : adresse de wallet, mint ou programme connu, phrase de récupération collée par erreur. */
 export function readWalletInput(raw: string): InputState {
   const value = raw.trim();
   if (!value) return { kind: 'empty' };
-  if (value.split(/\s+/).length >= 12) return { kind: 'seed' };
+  if (looksLikeSeedPhrase(value)) return { kind: 'seed' };
   const known = knownNonWalletKind(value);
   if (known === 'mint') return { kind: 'mint', address: value };
   if (known === 'program') return { kind: 'program' };
@@ -51,7 +56,7 @@ const INPUT_MESSAGES = {
   invalid: 'Adresse invalide : une adresse Solana fait 32 à 44 caractères (sans 0, O, I ni l).',
   program: 'C’est l’adresse d’un programme Solana, pas celle d’un wallet.',
   mint: 'C’est l’adresse d’un token, pas celle d’un wallet.',
-  seed: 'Ne colle jamais ta phrase de récupération : Raijin n’en a pas besoin. Efface-la et colle seulement ton adresse publique.',
+  seed: 'On ne te demande jamais ta phrase de récupération. Ne la colle nulle part : Raijin a effacé le champ.',
 } as const;
 
 /** Quota du jour, en texte discret. */
@@ -125,7 +130,7 @@ type View = 'loading' | 'auth-error' | 'signed-out' | 'plan' | 'access-error' | 
               </p>
             </div>
             <div class="border-t border-line pt-4"><ng-container *ngTemplateOutlet="featureList" /></div>
-            <div rjCardFooter class="grid grid-cols-1 gap-2 pt-1 xs:grid-cols-2 sm:flex sm:flex-wrap">
+            <div rjCardFooter class="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
               <a rjButton="primary" routerLink="/compte/inscription" [queryParams]="redirect" icon="compte">Créer un compte</a>
               <a rjButton="secondary" routerLink="/compte/connexion" [queryParams]="redirect">Se connecter</a>
             </div>
@@ -160,7 +165,8 @@ type View = 'loading' | 'auth-error' | 'signed-out' | 'plan' | 'access-error' | 
                 [mono]="true"
                 [pasteable]="true"
                 [maxlength]="128"
-                [(value)]="input"
+                [value]="input()"
+                (valueChange)="onInput($event)"
                 [error]="inputError()"
                 [hint]="hint()"
                 (pasted)="submitted.set(false)"
@@ -351,6 +357,7 @@ export class WalletPage {
   protected readonly auth = inject(AuthStore);
   protected readonly service = inject(WalletScanService);
   private readonly field = viewChild<RjInputField>('field');
+  private readonly fieldHost = viewChild('field', { read: ElementRef<HTMLElement> });
 
   protected readonly readOnlyNotice = WALLET_SCAN_READ_ONLY_NOTICE;
   protected readonly disclaimer = ANALYSIS_DISCLAIMER;
@@ -365,6 +372,8 @@ export class WalletPage {
   protected readonly input = signal('');
   protected readonly submitted = signal(false);
   protected readonly touched = signal(false);
+  /** Une phrase de récupération vient d'être effacée du champ (seul le fait est gardé, jamais la valeur). */
+  protected readonly seedRejected = signal(false);
   protected readonly retrying = signal(false);
   /** Dernière adresse envoyée (mémoire seulement : Réessayer, « Analyser ce token »). */
   protected readonly lastAddress = signal('');
@@ -377,6 +386,7 @@ export class WalletPage {
   protected readonly shortAddress = computed(() => truncateMiddle(this.address(), 6, 6));
 
   protected readonly inputError = computed(() => {
+    if (this.seedRejected()) return INPUT_MESSAGES.seed;
     const state = this.state();
     switch (state.kind) {
       case 'seed':
@@ -493,6 +503,25 @@ export class WalletPage {
         if (authenticated && this.service.access() === 'unknown') void this.service.checkAccess();
       });
     });
+  }
+
+  /**
+   * Saisie (frappe ou Coller). Une phrase de récupération n'est jamais conservée : le champ et
+   * le signal sont vidés aussitôt, avant tout calcul dérivé ou envoi.
+   */
+  protected onInput(value: string): void {
+    if (looksLikeSeedPhrase(value)) {
+      this.input.set('');
+      this.field()?.value.set('');
+      // Le rendu ne voit pas de changement ('' → '') : on vide aussi l'élément natif.
+      const native = this.fieldHost()?.nativeElement.querySelector('input');
+      if (native) native.value = '';
+      this.submitted.set(false);
+      this.seedRejected.set(true);
+      return;
+    }
+    this.seedRejected.set(false);
+    this.input.set(value);
   }
 
   protected async submit(event: Event): Promise<void> {

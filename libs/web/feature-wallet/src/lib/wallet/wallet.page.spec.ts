@@ -86,9 +86,30 @@ describe('WalletPage', () => {
     submitForm(harness);
     ctrl.expectNone(SCANS);
 
-    typeInput(harness, 'abandon '.repeat(12));
+  });
+
+  it('phrase de récupération : champ et signal vidés aussitôt, message clair, valeur conservée nulle part', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const { harness, ctrl, router } = await openPro();
+    const seed = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
+    typeInput(harness, seed);
     await stable(harness);
-    expect(root(harness).textContent).toContain('Ne colle jamais ta phrase de récupération');
+    const field = query<HTMLInputElement>(harness, 'input[name="wallet"]');
+    expect(field?.value).toBe('');
+    expect(root(harness).textContent).toContain('On ne te demande jamais ta phrase de récupération. Ne la colle nulle part');
+    expect(root(harness).textContent).not.toContain('sausage');
+    expect(root(harness).innerHTML).not.toContain('sausage');
+    expect(router.url).toBe('/wallet');
+    expect(window.history.state ? JSON.stringify(window.history.state) : '').not.toContain('sausage');
+    for (const call of setItem.mock.calls) expect(call.join(' ')).not.toContain('sausage');
+    submitForm(harness);
+    ctrl.expectNone(SCANS);
+    setItem.mockRestore();
+
+    typeInput(harness, WALLET);
+    await stable(harness);
+    expect(root(harness).textContent).not.toContain('On ne te demande jamais');
+    expect(root(harness).textContent).toContain('Adresse reconnue');
   });
 
   it('scan : adresse dans le corps du POST seulement, jamais dans l’URL ni dans le stockage du navigateur', async () => {
