@@ -2,7 +2,8 @@
 
 ## ACTION REQUISE (vide si rien)
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
-- **Helius (phase 1 ter)** : ops-chrome créera les clés « raijin » et « raijin-banc-de-test » dans ton tableau de bord Helius ; tu devras copier toi-même la clé dans `.env` (`HELIUS_API_KEY`). Prépare une session Chrome connectée à Helius.
+- **Helius : clés à copier dans ton `.env`** (https://dashboard.helius.dev → API Keys → bouton copier) : ligne « raijin-api » → `HELIUS_API_KEY` ; ligne « raijin-banc-de-test » → `BENCH_HELIUS_API_KEY`. Coche ensuite `docs/SECRETS-CHECKLIST.md`.
+- **Question Helius** : la clé existante « Raijin » (créée le 21/11) a été utilisée le 22/11 vers 1 h 15 : sert-elle à l'ancien scanner en production ? (on n'y touche pas). Veux-tu renommer le projet auto-nommé « Singerrag » en « raijin » ? La clé inutilisée « Llamasage » peut être supprimée par toi si tu veux.
 
 - **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
 
@@ -26,15 +27,16 @@
 | Domaine raijinshield.com | — | achat OVH (utilisateur) | acheter, puis phase 8 ter (DNS via ops-chrome) |
 | Stripe | — | compte (mode test) | créer le compte, puis phase 1 ter |
 | Resend | — | compte + domaine | créer le compte ; dev via Mailpit |
-| Helius | compte créé | projet + clés (phase 1 ter), clé à copier dans `.env` par l'utilisateur | ops-chrome en phase 1 ter ; en attendant, RPC public + fixtures |
+| Helius | compte (plan Free : 1 M crédits/mois, RPC 10 req/s, DAS 2 req/s, partagés entre les 2 clés) ; clés « raijin-api » et « raijin-banc-de-test » créées | copie des clés dans `.env` par l'utilisateur ; restriction IP du VPS | copier les clés ; phase 8 ter : API Keys → Access control (IP/CIDR du VPS) |
 | Google (GA4, GSC, Cloud) | — | compte dédié | créer le compte ; services désactivés sans variables |
 | Zoho, B2, UptimeRobot, Sentry | — | comptes | avant la mise en ligne (phase 8 ter) |
 
 ## Journal des phases
 
-### Phase 1 ter — Services en mode test via Chrome — en cours
-- Comptes disponibles : Helius seulement. Stripe, Resend, Google : reportés (« À brancher »).
-- Tâches : [ ] Helius : clés « raijin » et « raijin-banc-de-test » (ops-chrome) · [ ] `docs/SECRETS-CHECKLIST.md`, `docs/OPS-LOG.md`
+### Phase 1 ter — Services en mode test via Chrome — terminée pour Helius (2026-11-22)
+- Comptes disponibles : Helius seulement. Stripe, Resend, Google : reportés (« À brancher »), à reprendre dès que les comptes existent.
+- Tâches : [x] Helius : clés « raijin-api » (nommée ainsi pour ne pas confondre avec la clé existante « Raijin ») et « raijin-banc-de-test », sans restriction pour l'instant (ops-chrome) · [x] `docs/SECRETS-CHECKLIST.md`, `docs/OPS-LOG.md`
+- Décisions : URL RPC `https://mainnet.helius-rpc.com/?api-key=…` → ne jamais journaliser l'URL complète ; quota 10 req/s partagé entre API Raijin et banc (à répartir dans le rate limiter, phase 3). Variable `BENCH_HELIUS_API_KEY` à ajouter à docs/ENV.md (bench-quant, phase 8 bis).
 
 
 ### Phase 0 — Amorçage — terminée (2026-11-21)
