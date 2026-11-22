@@ -14,3 +14,6 @@ export * from './lib/provide-auth';
 export * from './lib/testing/fixtures';
 export * from './lib/http/error-code';
 export * from './lib/contracts';
+export * from './lib/analysis/analysis-api';
+export * from './lib/analysis/analysis.store';
+export * from './lib/testing/analysis-fixtures';

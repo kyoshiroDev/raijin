@@ -27,6 +27,12 @@ export const appRoutes: Route[] = [
       import('@raijin/web-feature-analyse').then((m) => m.webFeatureAnalyseRoutes),
   },
   {
+    // Page publique d'une analyse (partage, image Open Graph injectée par l'API).
+    path: 't',
+    loadChildren: () =>
+      import('@raijin/web-feature-analyse').then((m) => m.webFeaturePublicTokenRoutes),
+  },
+  {
     path: 'suivis',
     title: 'Suivis — Raijin',
     loadChildren: () =>

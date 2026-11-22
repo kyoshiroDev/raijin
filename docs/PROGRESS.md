@@ -80,6 +80,10 @@
 - Commits :
 - Décisions : voir `docs/ARCHITECTURE.md` §9. `api-solana` en `scope:solana` (partage avec le banc sans dépendance vers `scope:api`) ; aucune dépendance pour la file de débit (maison) ; satori + resvg-wasm pour l'OG (pas de binaire natif) ; balises OG de `/t/<mint>` injectées par l'API dans l'`index.html` du build web (pas de SSR Angular) ; aucune image de token en v1 ; faits du moteur persistés pour le banc ; quota réservé puis remboursé en cas d'échec.
 
+- Avancement (orchestrateur) : [x] T1+T2 solana-data (`9553c52`) : 6 clients (Helius RPC/DAS, RPC public, DexScreener, GeckoTerminal, Jupiter quote, RugCheck), collectFacts full/light, moteur déterministe + docs/SCORING.md ; couverture api-solana 99,75 % lignes / 89,4 % branches, risk-engine 100 % / 99 %. Fixtures réelles (BONK, USDC, PYUSD, pump.fun récent, mint actif, freeze actif) + synthétiques (DAS Helius, LP retirée, Token-2022 5 %). [ ] T3 nestjs-api en cours. [ ] T4 ui-mobile-first en cours (répare d'abord TS2739 du build web). [ ] T5/T6 test-e2e. [ ] T7 audit.
+- Décisions : stablecoins régulés (USDC/USDT/PYUSD) → Prudence ; critère « LP brûlée » ignoré pour pool > 30 j (pools concentrés sans jeton LP) ; jamais Sain si autorités inconnues ou ≥ 3 contrôles indisponibles ; token pump.fun non routé par Jupiter → revente « indisponible » (pas honeypot).
+- Risques : sans clé Helius, getTokenLargestAccounts refusé par le RPC public (concentration via RugCheck) ; GeckoTerminal 10 appels/min (souvent ignoré en charge) ; API Jupiter Metis (/swap/v1) dépréciée → URL configurable `JUPITER_API_URL`, migration v2 à prévoir.
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.

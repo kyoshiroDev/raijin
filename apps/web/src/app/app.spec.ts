@@ -31,7 +31,7 @@ describe('App', () => {
   it('déclare les routes lazy des features et /_design en dev', () => {
     const paths = appRoutes.map((route) => route.path);
     expect(paths).toEqual(
-      expect.arrayContaining(['analyse', 'suivis', 'alertes', 'wallet', 'compte', '_design']),
+      expect.arrayContaining(['analyse', 't', 'suivis', 'alertes', 'wallet', 'compte', '_design']),
     );
     expect(appRoutes.find((r) => r.path === 'analyse')?.loadChildren).toBeDefined();
   });

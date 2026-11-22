@@ -39,6 +39,11 @@
   bottom: calc(var(--spacing) * 18 + env(safe-area-inset-bottom));
 }
 
+/* Action collée juste au-dessus de la barre d'onglets mobile (56 px + safe area). */
+@utility bottom-tabbar-edge {
+  bottom: calc(var(--spacing) * 14 + env(safe-area-inset-bottom));
+}
+
 @layer base {
   body {
     min-height: 100dvh;

@@ -1,0 +1,119 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+import type { AnalysisResult, QuotaInfo } from '@raijin/shared-contracts';
+import { firstValueFrom } from 'rxjs';
+import type { ClientError } from '../http/api-error';
+import { AnalysisApi } from './analysis-api';
+
+/**
+ * - `idle` : rien de demandé (état vide de l'écran) ;
+ * - `loading` : analyse ou lecture en cours ;
+ * - `ready` : résultat disponible ;
+ * - `error` : échec, `error()` porte le code et le message à afficher.
+ */
+export type AnalysisStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+/**
+ * Store d'une analyse (signals). Fourni au niveau des routes : l'écran d'analyse et la page
+ * publique ont chacun le leur. Une réponse arrivée après une demande plus récente est ignorée.
+ * Aucun import de valeur depuis les contrats : les schémas Zod restent hors du chemin critique
+ * (validation via `loadContracts`, traduction des erreurs chargée à la demande).
+ */
+@Injectable()
+export class AnalysisStore {
+  private readonly api = inject(AnalysisApi);
+  private sequence = 0;
+
+  private readonly currentStatus = signal<AnalysisStatus>('idle');
+  private readonly currentResult = signal<AnalysisResult | null>(null);
+  private readonly currentError = signal<ClientError | null>(null);
+  private readonly currentQuota = signal<QuotaInfo | null>(null);
+
+  readonly status = this.currentStatus.asReadonly();
+  readonly result = this.currentResult.asReadonly();
+  readonly error = this.currentError.asReadonly();
+  readonly quota = this.currentQuota.asReadonly();
+  readonly loading = computed(() => this.currentStatus() === 'loading');
+  /** Quota épuisé (réponse `QUOTA_EXCEEDED` ou quota connu à 0). */
+  readonly quotaExhausted = computed(
+    () => this.currentError()?.code === 'QUOTA_EXCEEDED' || this.currentQuota()?.remaining === 0,
+  );
+
+  /** Lance l'analyse d'une saisie (mint ou lien). Résout `true` si un résultat est arrivé. */
+  async analyze(input: string): Promise<boolean> {
+    const id = this.begin();
+    try {
+      const response = await firstValueFrom(this.api.analyze({ input: input.trim() }));
+      if (id !== this.sequence) return false;
+      this.currentQuota.set(response.quota);
+      this.succeed(response.analysis);
+      return true;
+    } catch (error) {
+      if (id !== this.sequence) return false;
+      await this.fail(error, id);
+      return false;
+    }
+  }
+
+  /** Lit la dernière analyse publiée d'un mint (page publique `/t/<mint>`, sans quota). */
+  async loadLatest(mint: string): Promise<boolean> {
+    const id = this.begin();
+    try {
+      const result = await firstValueFrom(this.api.latest(mint));
+      if (id !== this.sequence) return false;
+      this.succeed(result);
+      return true;
+    } catch (error) {
+      if (id !== this.sequence) return false;
+      await this.fail(error, id);
+      return false;
+    }
+  }
+
+  /** Rafraîchit le quota restant (discret : un échec n'affiche rien). */
+  async refreshQuota(): Promise<void> {
+    try {
+      this.currentQuota.set(await firstValueFrom(this.api.quota()));
+    } catch {
+      // Le quota est une information d'appoint : l'API le renverra avec la prochaine analyse.
+    }
+  }
+
+  /** Affiche une erreur locale sans appel réseau (ex. adresse invalide dans l'URL). */
+  setLocalError(error: ClientError): void {
+    this.sequence++;
+    this.currentResult.set(null);
+    this.currentError.set(error);
+    this.currentStatus.set('error');
+  }
+
+  /** Retour à l'état vide (nouvelle saisie). */
+  reset(): void {
+    this.sequence++;
+    this.currentResult.set(null);
+    this.currentError.set(null);
+    this.currentStatus.set('idle');
+  }
+
+  private begin(): number {
+    this.currentError.set(null);
+    this.currentStatus.set('loading');
+    return ++this.sequence;
+  }
+
+  private succeed(result: AnalysisResult): void {
+    this.currentResult.set(result);
+    this.currentStatus.set('ready');
+  }
+
+  private async fail(error: unknown, id: number): Promise<void> {
+    const { toAnalysisError } = await import('./analysis-errors');
+    if (id !== this.sequence) return;
+    const clientError = toAnalysisError(error);
+    if (clientError.code === 'QUOTA_EXCEEDED') {
+      this.currentQuota.update((quota) => (quota ? { ...quota, remaining: 0, used: quota.limit ?? quota.used } : quota));
+    }
+    this.currentResult.set(null);
+    this.currentError.set(clientError);
+    this.currentStatus.set('error');
+  }
+}

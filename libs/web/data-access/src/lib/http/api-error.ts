@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+  ANALYSIS_ERROR_MESSAGES,
   AUTH_ERROR_MESSAGES,
   apiErrorSchema,
   authErrorCodeSchema,
@@ -31,6 +32,9 @@ export const GENERIC_ERROR_MESSAGES: Readonly<Record<Exclude<ClientErrorCode, ke
   QUOTA_EXCEEDED: 'Tu as atteint la limite de ton plan pour aujourd’hui.',
   UPSTREAM_UNAVAILABLE: 'Un service source est indisponible. Réessaie dans un instant.',
   INTERNAL_ERROR: 'Une erreur est survenue de notre côté. Réessaie dans un instant.',
+  MINT_INVALID: ANALYSIS_ERROR_MESSAGES.MINT_INVALID,
+  TOKEN_NOT_FOUND: ANALYSIS_ERROR_MESSAGES.TOKEN_NOT_FOUND,
+  ANALYSIS_NOT_FOUND: ANALYSIS_ERROR_MESSAGES.ANALYSIS_NOT_FOUND,
 };
 
 const ERROR_MESSAGES: Readonly<Record<ClientErrorCode, string>> = {
