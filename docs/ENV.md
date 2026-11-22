@@ -25,9 +25,9 @@ APP_URL=http://localhost:4200
 # URL publique de la landing Astro (prod : https://raijinshield.com)
 LANDING_URL=http://localhost:4321
 # URL publique de l'API (prod : https://api.raijinshield.com)
-API_URL=http://localhost:3000
-# Port d'écoute de l'API (si 3000 est déjà pris sur ta machine : API_PORT=3100 et API_URL en conséquence)
-API_PORT=3000
+API_URL=http://localhost:3100
+# Port d'écoute de l'API en dev (3100 par défaut : 3000 est pris par d'autres projets sur la machine)
+API_PORT=3100
 # Origines autorisées par CORS (web + landing), séparées par des virgules
 CORS_ORIGINS=http://localhost:4200,http://localhost:4321
 
@@ -109,7 +109,7 @@ BILLING_PROVIDER=fake
 # Stripe — https://dashboard.stripe.com/test/apikeys (clé secrète « sk_test_… »)
 STRIPE_SECRET_KEY=sk_test_factice
 # Stripe — https://dashboard.stripe.com/test/webhooks (secret de signature de l'endpoint)
-# En local : la commande « stripe listen --forward-to localhost:3000/api/v1/billing/webhook » l'affiche.
+# En local : la commande « stripe listen --forward-to localhost:3100/api/v1/billing/webhook » l'affiche.
 STRIPE_WEBHOOK_SECRET=whsec_factice
 # Stripe — https://dashboard.stripe.com/test/apikeys (clé publiable « pk_test_… », seule clé autorisée côté front)
 STRIPE_PUBLISHABLE_KEY=pk_test_factice

@@ -57,6 +57,10 @@
 - Commits :
 - Décisions : voir `docs/ARCHITECTURE.md` §8. Refresh opaque haché (pas de JWT), CSRF double-submit signé avec jeton en mémoire côté front (pas de cookie lisible inter-sous-domaines), proxy dev Angular (même origine en local), enums `Plan`/`Role` en majuscules identiques Prisma ↔ contrats, mot de passe NIST (12 à 128 caractères, sans règle de composition), CGU acceptées explicitement à l'inscription (`acceptTerms: true`).
 
+- Avancement (orchestrateur) : [x] T1–T4 nestjs-api (`f52de6a`) : Prisma complet + migration init, socle HTTP (Helmet, CORS, throttler Redis, erreurs {code,message}, M3 corrigé via createRequire), Mailer (Mailpit dev / Resend prod), auth complète + RGPD. Couverture api-auth 100 % lignes / 86 % branches ; e2e API 8/8 ; parcours curl inscription → Mailpit → vérif → login → me → refresh → logout OK. allowBuilds : argon2 autorisé, prisma/@prisma/engines/@scarf refusés.
+- Décisions : port API de dev 3100 (3000 occupé localement). Écarts acceptés : AUTH_EMAIL_LINK_PATHS, deleteAccountRequestSchema, magicLinkSessionSchema ; refresh réutilisé < 10 s toléré (onglets concurrents), au-delà révocation de famille ; cookie d'access aligné sur la session (JWT 15 min).
+- Ouverts : api-e2e hors CI (nécessite Postgres/Mailpit) ; purge des sessions/refresh expirés (job, phase 4) ; /health/config public (restreindre en phase 6 bis) ; PNG de Rai pour les e-mails (bienvenue, alerte) à produire ; verrouillage de compte = faible énumération (atténuée par throttling).
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.

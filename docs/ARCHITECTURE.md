@@ -284,8 +284,8 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
 ### 8.6 URLs locales et production
 | App | Local | Production |
 |---|---|---|
-| web (Angular) | `http://localhost:4200` (proxy dev `/api` → `http://localhost:3000`, même origine) | `https://app.raijinshield.com` |
-| api (NestJS) | `http://localhost:3000/api/v1` | `https://api.raijinshield.com/api/v1` |
+| web (Angular) | `http://localhost:4200` (proxy dev `/api` → `http://localhost:3100`, même origine) | `https://app.raijinshield.com` |
+| api (NestJS) | `http://localhost:3100/api/v1` (port de dev par défaut, 3000 étant pris sur la machine) | `https://api.raijinshield.com/api/v1` |
 | landing (Astro) | `http://localhost:4321` | `https://raijinshield.com` |
 | Mailpit (UI / SMTP) | `http://localhost:8026` / `localhost:1026` | — (Resend) |
 | Postgres / Redis | `localhost:5433` / `localhost:6380` | réseau interne Docker |
@@ -305,8 +305,7 @@ Postgres **5433**, Redis **6380**, Mailpit SMTP **1026** / interface **8026**. V
 factices identiques à `docs/ENV.md`.
 `pnpm nx run api:dev-infra` (démarre et attend les healthchecks) ·
 `pnpm nx run api:dev-infra-stop` (`docker compose -p raijin-dev stop`, sans supprimer le volume) ·
-`pnpm nx run api-prisma:migrate-deploy` · `pnpm nx e2e api-e2e` (parcours d'auth complets via Mailpit ;
-si le port 3000 est pris : `API_PORT=3100 API_URL=http://localhost:3100`).
+`pnpm nx run api-prisma:migrate-deploy` · `pnpm nx e2e api-e2e` (parcours d'auth complets via Mailpit).
 
 
 ### 8.8 Routes livrées (`/api/v1`)

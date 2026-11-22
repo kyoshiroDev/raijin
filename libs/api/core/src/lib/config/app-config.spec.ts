@@ -32,7 +32,7 @@ describe('loadConfig', () => {
     const warnings: string[] = [];
     const config = loadConfig({}, (message) => warnings.push(message));
     expect(config.env).toBe('development');
-    expect(config.port).toBe(3000);
+    expect(config.port).toBe(3100);
     expect(config.databaseUrl).toContain('localhost:5433');
     expect(config.redisUrl).toBe('redis://localhost:6380');
     expect(config.auth.accessSecret.length).toBeGreaterThanOrEqual(32);

@@ -65,10 +65,10 @@ const urlString = z.url({ protocol: /^https?$/ });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  API_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
   APP_URL: urlString.default('http://localhost:4200'),
   LANDING_URL: urlString.default('http://localhost:4321'),
-  API_URL: urlString.default('http://localhost:3000'),
+  API_URL: urlString.default('http://localhost:3100'),
   CORS_ORIGINS: optionalString,
   DATABASE_URL: optionalString,
   REDIS_URL: optionalString,
