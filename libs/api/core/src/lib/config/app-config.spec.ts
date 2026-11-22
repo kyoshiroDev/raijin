@@ -14,6 +14,7 @@ const prodEnv = {
   IP_HASH_SECRET: `${strong}y`,
   COOKIE_SECURE: 'true',
   TRUST_PROXY: '1',
+  TOTP_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString('base64'),
 };
 
 describe('parseDuration', () => {
@@ -43,7 +44,7 @@ describe('loadConfig', () => {
     expect(config.mail.provider).toBe('smtp');
     expect(config.mail.smtpPort).toBe(1026);
     expect(config.mail.logoUrl).toBe('http://localhost:4200/icons/icon-192.png');
-    expect(warnings).toHaveLength(4); // 3 secrets + paire VAPID éphémère
+    expect(warnings).toHaveLength(5); // 3 secrets + paire VAPID éphémère + clé TOTP éphémère
     expect(warnings.join(' ')).not.toContain(config.auth.accessSecret);
   });
 
@@ -227,5 +228,52 @@ describe('loadConfig', () => {
     const resend = loadConfig({ NODE_ENV: 'test', MAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_vraie' });
     expect(resend.mail.provider).toBe('resend');
     expect(resend.services['resend']).toBe(true);
+  });
+});
+
+describe('loadConfig — espace admin (phase 6 bis)', () => {
+  it('valeurs par défaut de docs/ENV.md « Espace admin »', () => {
+    const config = loadConfig({ NODE_ENV: 'test' });
+    expect(config.admin).toMatchObject({
+      totpIssuer: 'Raijin Shield',
+      totpMaxAttempts: 5,
+      totpLockoutMs: 15 * 60_000,
+      sessionIdleMs: 30 * 60_000,
+      sessionMaxMs: 8 * 3_600_000,
+      perMinute: 120,
+      metricsCron: '15 2 * * *',
+      alertsCron: '*/10 * * * *',
+      alertJobFailures: 3,
+      alertQuotaRatio: 0.8,
+      auditLogRetentionDays: 365,
+      jupiterDailyCallBudget: null,
+      rugcheckDailyCallBudget: null,
+    });
+    expect(config.admin.totpEncryptionKey).toHaveLength(32);
+    expect(config.analytics).toEqual({ provider: 'none', ga4PropertyId: null, searchConsoleSiteUrl: null, serviceAccountJson: null, cacheTtlS: 3600 });
+  });
+
+  it('clé TOTP : obligatoire en production (absente, factice ou ≠ 32 octets), éphémère en dev avec avertissement', () => {
+    const withoutKey: Record<string, string> = { ...prodEnv };
+    delete withoutKey['TOTP_ENCRYPTION_KEY'];
+    expect(() => loadConfig(withoutKey)).toThrow(/TOTP_ENCRYPTION_KEY/);
+    expect(() => loadConfig({ ...prodEnv, TOTP_ENCRYPTION_KEY: 'changeme-cle-totp-factice' })).toThrow(/TOTP_ENCRYPTION_KEY/);
+    expect(() => loadConfig({ ...prodEnv, TOTP_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') })).toThrow(/TOTP_ENCRYPTION_KEY/);
+    expect(loadConfig(prodEnv).admin.totpEncryptionKey.equals(Buffer.alloc(32, 5))).toBe(true);
+    const warnings: string[] = [];
+    loadConfig({ NODE_ENV: 'development' }, (message) => warnings.push(message));
+    expect(warnings.join('\n')).toContain('TOTP_ENCRYPTION_KEY');
+    expect(() => loadConfig({ NODE_ENV: 'development', TOTP_ENCRYPTION_KEY: 'YWJj' })).toThrow(/TOTP_ENCRYPTION_KEY/);
+    expect(loadConfig(prodEnv).services['totpKey']).toBe(true);
+  });
+
+  it('ANALYTICS_PROVIDER : fake refusé en production ; google seulement avec le JSON ; jamais de valeur dans les erreurs', () => {
+    expect(() => loadConfig({ ...prodEnv, ANALYTICS_PROVIDER: 'fake' })).toThrow(/ANALYTICS_PROVIDER/);
+    expect(loadConfig({ NODE_ENV: 'test', ANALYTICS_PROVIDER: 'fake' }).analytics.provider).toBe('fake');
+    expect(loadConfig({ NODE_ENV: 'test', ANALYTICS_PROVIDER: 'google' }).analytics.provider).toBe('none');
+    const google = loadConfig({ NODE_ENV: 'test', GOOGLE_SERVICE_ACCOUNT_JSON: '{"type":"service_account"}', GA4_PROPERTY_ID: '123456', SEARCH_CONSOLE_SITE_URL: 'sc-domain:raijinshield.com' });
+    expect(google.analytics).toMatchObject({ provider: 'google', ga4PropertyId: '123456', searchConsoleSiteUrl: 'sc-domain:raijinshield.com' });
+    expect(() => loadConfig({ NODE_ENV: 'test', GA4_PROPERTY_ID: 'G-ABC' })).toThrow(/GA4_PROPERTY_ID/);
+    expect(loadConfig({ NODE_ENV: 'test', GA4_PROPERTY_ID: '', JUPITER_DAILY_CALL_BUDGET: '', RUGCHECK_DAILY_CALL_BUDGET: '500' }).admin).toMatchObject({ jupiterDailyCallBudget: null, rugcheckDailyCallBudget: 500 });
   });
 });

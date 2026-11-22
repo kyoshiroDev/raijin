@@ -16,6 +16,7 @@ export const E2E_API_ENV: Readonly<Record<string, string>> = {
   ALERT_EMAIL_BATCH_DELAY_S: '1',
   BULLMQ_PREFIX: 'raijin-e2e',
   ALERT_COOLDOWN_MINUTES: '0',
+  ANALYTICS_PROVIDER: 'fake',
 };
 
 const READY = 'API Raijin';

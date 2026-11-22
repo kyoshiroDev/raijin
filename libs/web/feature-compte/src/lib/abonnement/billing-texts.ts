@@ -76,6 +76,10 @@ export function planStatus(account: BillingAccount): PlanStatus {
     const left = days <= 1 ? 'Il se termine aujourd’hui.' : `Il reste ${days} jours.`;
     return { title: 'Essai Pro', detail: `Toutes les fonctions Pro jusqu’au ${formatDate(trial.endsAt)}. ${left}`, tone: 'info' };
   }
+  if (account.source === 'gift') {
+    const end = account.giftEndsAt ? ` jusqu’au ${formatDate(account.giftEndsAt)}` : '';
+    return { title: 'Pro offert', detail: `Toutes les fonctions Pro te sont offertes${end}. Aucun paiement ne t’est demandé.`, tone: 'safe' };
+  }
   if (trial.notice) return { title: 'Gratuit', detail: trial.notice, tone: 'info' };
   if (trial.status === 'ended') return { title: 'Gratuit', detail: 'Ton essai Pro est terminé. Tu peux passer à Pro quand tu veux.', tone: 'info' };
   return { title: 'Gratuit', detail: 'Tu utilises la formule gratuite de Raijin.', tone: 'info' };

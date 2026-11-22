@@ -7,7 +7,7 @@ import {
   toPublicUser,
   type ClientInfo,
 } from '@raijin/api-auth';
-import { PrismaService } from '@raijin/api-prisma';
+import { PrismaService, type Prisma } from '@raijin/api-prisma';
 import type { PublicUser } from '@raijin/shared-contracts';
 import { AccountBillingCloser } from './account-billing-closer';
 
@@ -50,6 +50,8 @@ export class UsersService {
         trialDayMinus2MailAt: true,
         trialEndMailAt: true,
         trialEndScreenSeenAt: true,
+        suspendedAt: true,
+        proGrantedUntil: true,
         notifyEmailAlerts: true,
         notifyPushAlerts: true,
         notifyWeeklyDigest: true,
@@ -78,14 +80,23 @@ export class UsersService {
         pushSubscriptions: { select: { userAgent: true, createdAt: true } },
         usageCounters: { select: { kind: true, day: true, count: true } },
         productEvents: { select: { type: true, properties: true, createdAt: true } },
-        auditLogs: { select: { action: true, userAgent: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
+        // Entrées visant le compte ; l'auteur d'une action admin est réduit à son type (« admin »), jamais identifié.
+        auditLogs: { select: { action: true, actorKind: true, userAgent: true, createdAt: true }, orderBy: { createdAt: 'desc' } },
       },
     });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
     await this.audit.record('account.exported', userId, client);
     // Identifiant du client de paiement jamais exporté brut : seulement son existence.
-    const { stripeCustomerId, ...account } = user;
-    return { exportedAt: new Date().toISOString(), format: 'raijin-export-v1', account: { ...account, hasPaymentCustomer: stripeCustomerId !== null } };
+    const { stripeCustomerId, auditLogs, ...account } = user;
+    // Action d'un admin ou de la CLI : ni l'identité ni le navigateur de l'auteur.
+    const audit = auditLogs.map((entry) =>
+      entry.actorKind === 'user' ? entry : { action: entry.action, actorKind: entry.actorKind, userAgent: null, createdAt: entry.createdAt },
+    );
+    return {
+      exportedAt: new Date().toISOString(),
+      format: 'raijin-export-v1',
+      account: { ...account, auditLogs: audit, hasPaymentCustomer: stripeCustomerId !== null },
+    };
   }
 
   /** Suppression définitive, confirmée par le mot de passe. Les journaux d'audit sont anonymisés. */
@@ -94,7 +105,20 @@ export class UsersService {
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
     // Même compteur d'échecs que la connexion (verrouillage) ; échecs audités (account.delete_failed).
     await this.auth.confirmPassword(user, password, client, 'account.delete');
-    // Abonnement résilié chez le prestataire AVANT toute suppression ; en cas d'échec, le compte est conservé.
+    await this.deleteAccount(userId, client);
+  }
+
+  /**
+   * Flux de suppression commun (`DELETE users/me` et action admin `delete`, docs/ARCHITECTURE.md §14.8) :
+   * abonnement résilié chez le prestataire **avant** toute suppression (échec = compte conservé), sessions révoquées,
+   * puis, dans une même transaction, entrées d'audit (`account.deleted`, plus celle de l'appelant via `beforeDelete`)
+   * et suppression. Les entrées d'audit survivent sans lien vers le compte (`SetNull`), jamais avec l'e-mail.
+   */
+  async deleteAccount(
+    userId: string,
+    client: ClientInfo | null,
+    options: { actorKind?: 'user' | 'admin'; actorId?: string | null; beforeDelete?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
+  ): Promise<void> {
     try {
       await this.billing.closeForUser(userId);
     } catch (error) {
@@ -104,9 +128,18 @@ export class UsersService {
       throw new ApiException('UPSTREAM_UNAVAILABLE', HttpStatus.SERVICE_UNAVAILABLE);
     }
     await this.sessions.revokeAllForUser(userId, 'account_deleted');
-    await this.audit.record('account.deleted', userId, client);
-    // Cascade : sessions, jetons, suivis, alertes, abonnements push, quotas, TOTP.
+    // Cascade : sessions, jetons, suivis, alertes, abonnements push, quotas, TOTP, codes de secours.
     // SetNull : audit, événements produit, analyses, empreintes d'essai (anti-abus, purgées à 90 j).
-    await this.prisma.user.delete({ where: { id: userId } });
+    await this.prisma.$transaction(async (tx) => {
+      if (options.beforeDelete) await options.beforeDelete(tx);
+      await this.audit.recordInTx(tx, {
+        action: 'account.deleted',
+        actorKind: options.actorKind ?? 'user',
+        actorId: options.actorId === undefined ? userId : options.actorId,
+        userId,
+        client,
+      });
+      await tx.user.delete({ where: { id: userId } });
+    });
   }
 }

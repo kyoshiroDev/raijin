@@ -5,6 +5,9 @@ import { ApiNotificationsModule } from '@raijin/api-notifications';
 import { AuthController } from './http/auth.controller';
 import { AuthGuard, OptionalAuthGuard } from './http/auth.guard';
 import { AccessTokenService } from './services/access-token.service';
+import { AdminGuard } from './admin-security/admin.guard';
+import { AdminSecurityController, AdminSecurityInternalController } from './admin-security/admin-security.controller';
+import { AdminSecurityService } from './admin-security/admin-security.service';
 import { AuditService } from './audit/audit.service';
 import { AuthTokenService } from './services/auth-token.service';
 import { AuthService } from './services/auth.service';
@@ -21,9 +24,11 @@ import { TrialEligibilityService } from './trial/trial-eligibility.service';
 @Module({
   // Secret et options passés à chaque appel (AccessTokenService) : rien de global ici.
   imports: [JwtModule.register({}), ApiNotificationsModule],
-  controllers: [AuthController],
+  controllers: [AuthController, AdminSecurityController, AdminSecurityInternalController],
   providers: [
     AccessTokenService,
+    AdminGuard,
+    AdminSecurityService,
     AuditService,
     AuthGuard,
     OptionalAuthGuard,
@@ -37,6 +42,8 @@ import { TrialEligibilityService } from './trial/trial-eligibility.service';
   ],
   exports: [
     AccessTokenService,
+    AdminGuard,
+    AdminSecurityService,
     AuditService,
     AuthGuard,
     OptionalAuthGuard,

@@ -240,9 +240,10 @@ describe('Abonnement (e2e, Stripe non configuré)', () => {
     await stopApi(api);
   });
 
-  it('mode unavailable, routes de simulation absentes, santé « not_configured »', async () => {
+  it('mode unavailable, routes de simulation absentes, plus de santé publique de la configuration', async () => {
     expect((await http.get('/billing/plans')).data).toMatchObject({ mode: 'unavailable' });
-    expect((await http.get('/health/config')).data.services).toMatchObject({ stripe: 'not_configured' });
+    // GET health/config retiré (M3) : l'état « non configuré » de Stripe est lu dans GET admin/health (espace admin).
+    expect((await http.get('/health/config')).status).toBe(404);
     const client = new ApiClient();
     const origin = axios.defaults.baseURL;
     axios.defaults.baseURL = `http://localhost:${PORT}`;

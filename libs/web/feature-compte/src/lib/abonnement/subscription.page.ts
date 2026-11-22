@@ -142,7 +142,7 @@ export const REDIRECT_REFUSED_MESSAGE = 'Raijin n’a pas pu ouvrir la page de p
                 <p class="text-body-sm text-ink-muted" data-price-detail>{{ priceDetail() }}</p>
               </div>
               <rj-plan-features [lines]="proLines()" />
-              @if (currentPlan() !== 'PRO' || account()?.source === 'trial') {
+              @if (currentPlan() !== 'PRO' || account()?.source === 'trial' || account()?.source === 'gift') {
                 <div rjCardFooter class="flex flex-col gap-2 pt-1">
                   @if (!auth.isAuthenticated()) {
                     <a rjButton="primary" size="lg" [block]="true" routerLink="/compte/inscription" [queryParams]="{ redirect: '/abonnement' }" data-checkout>Créer un compte</a>
@@ -203,7 +203,10 @@ export class SubscriptionPage {
     return account ? planStatus(account) : null;
   });
   protected readonly currentPlan = computed(() => this.billing.account()?.plan ?? null);
-  protected readonly proTag = computed(() => (this.billing.account()?.source === 'trial' ? 'Essai en cours' : 'Ton plan actuel'));
+  protected readonly proTag = computed(() => {
+    const source = this.billing.account()?.source;
+    return source === 'trial' ? 'Essai en cours' : source === 'gift' ? 'Pro offert' : 'Ton plan actuel';
+  });
   protected readonly unavailable = computed(() => this.billing.mode() === 'unavailable');
   protected readonly needsVerification = computed(() => this.auth.isAuthenticated() && !this.auth.emailVerified());
   protected readonly canCheckout = computed(() => {

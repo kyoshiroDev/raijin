@@ -36,7 +36,12 @@ function setup(env: Record<string, string> = { JOBS_TEST_TRIGGER: '1' }) {
   const queue = new RecordingJobQueue();
   const registry = new JobRegistry();
   const store = new MemoryKeyValueStore();
-  const mail = { sendDay1: jest.fn(async () => undefined), sendDayMinus2: jest.fn(async () => undefined), sendEnded: jest.fn(async () => undefined) };
+  const mail = {
+    sendDay1: jest.fn(async () => undefined),
+    sendDayMinus2: jest.fn(async () => undefined),
+    sendEnded: jest.fn(async () => undefined),
+    sendGiftEnded: jest.fn(async () => undefined),
+  };
   const recaps = { recap: jest.fn(async () => RECAP) };
   const config = testConfig(env);
   const service = new TrialLifecycleService(
@@ -257,5 +262,39 @@ describe('écran de fin et conversion', () => {
   it('routes de l’horloge simulée : 404 hors JOBS_TEST_TRIGGER ou en production', () => {
     expect(() => setup().service.assertTestClock()).not.toThrow();
     expect(() => setup({}).service.assertTestClock()).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
+  });
+});
+
+describe('TrialLifecycleService — fin du Pro offert (phase 6 bis)', () => {
+  it('échéance : proGrantEndedAt posé, limite Gratuite appliquée, gift_expired, e-mail neutre une seule fois', async () => {
+    const { service, db, queue, watches } = setup();
+    const user = db.addUser({ proGrantedUntil: at(DAY) });
+    expect(await service.tick(at(DAY - 1))).toMatchObject({ giftsEnded: 0 });
+    expect(await service.tick(at(DAY + 60_000))).toMatchObject({ giftsEnded: 1, pausedWatches: 2 });
+    expect(db.user.rows[0]).toMatchObject({ proGrantEndedAt: at(DAY + 60_000) });
+    expect(watches.enforcePlanLimitInTx).toHaveBeenCalledWith(db, user['id']);
+    expect(db.productEvent.rows).toEqual([expect.objectContaining({ type: 'gift_expired', properties: { pausedWatches: 2 } })]);
+    const gift = queue.jobs.filter((job) => job.data['kind'] === 'giftEnded');
+    expect(gift).toEqual([expect.objectContaining({ name: 'trial-email', data: { userId: user['id'], kind: 'giftEnded', pausedWatches: 2 } })]);
+    expect(await service.tick(at(2 * DAY))).toMatchObject({ giftsEnded: 0 });
+  });
+
+  it('abonné Pro ou compte suspendu : fin traitée sans e-mail', async () => {
+    const { service, db, queue } = setup();
+    db.addUser({ proGrantedUntil: at(DAY), plan: 'PRO' });
+    db.addUser({ proGrantedUntil: at(DAY), suspendedAt: START });
+    expect(await service.tick(at(DAY + 60_000))).toMatchObject({ giftsEnded: 2 });
+    expect(queue.jobs.filter((job) => job.data['kind'] === 'giftEnded')).toHaveLength(0);
+  });
+
+  it('envoi : e-mail neutre seulement si le compte est toujours en Gratuit sans nouveau Pro offert', async () => {
+    const { service, db, mail } = setup();
+    const user = db.addUser({ proGrantedUntil: at(-DAY) });
+    await expect(service.sendEmail(user['id'] as string, 'giftEnded', START, 2)).resolves.toEqual({ sent: true });
+    expect(mail.sendGiftEnded).toHaveBeenCalledWith(user['email'], 2, expect.objectContaining({ maxActiveWatches: 3 }));
+    const regifted = db.addUser({ proGrantedUntil: at(DAY) });
+    await expect(service.sendEmail(regifted['id'] as string, 'giftEnded', START, 0)).resolves.toEqual({ sent: false });
+    const suspended = db.addUser({ proGrantedUntil: at(-DAY), suspendedAt: START });
+    await expect(service.sendEmail(suspended['id'] as string, 'giftEnded', START, 0)).resolves.toEqual({ sent: false });
   });
 });

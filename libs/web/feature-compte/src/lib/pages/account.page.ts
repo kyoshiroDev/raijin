@@ -39,9 +39,15 @@ export function trialText(user: PublicUser): string {
       />
     } @else if (store.user(); as user) {
       <div class="flex flex-col gap-6 md:gap-8">
-        <header class="flex flex-col gap-1">
-          <h1 class="font-display text-h2 text-ink md:text-h1">Compte</h1>
-          <p class="text-body text-ink-muted">Ton profil, tes notifications, ta sécurité et tes données.</p>
+        <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+          <div class="flex flex-col gap-1">
+            <h1 class="font-display text-h2 text-ink md:text-h1">Compte</h1>
+            <p class="text-body text-ink-muted">Ton profil, tes notifications, ta sécurité et tes données.</p>
+          </div>
+          @if (user.role === 'ADMIN') {
+            <!-- Admins seulement (affichage) : l'API refuse l'espace admin à tout autre compte. -->
+            <a rjButton="secondary" icon="key" routerLink="/admin" class="self-start sm:self-auto" data-admin-link>Espace admin</a>
+          }
         </header>
 
         @if (!user.emailVerified) {

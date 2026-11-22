@@ -161,7 +161,37 @@ export interface AppConfig {
     /** URL de base des images des e-mails (Rai en PNG 2x), sans `/` final. */
     readonly assetsBaseUrl: string;
   };
-  /** Services externes configurés ou non (jamais la valeur) : GET /health/config. */
+  /** Espace admin (phase 6 bis, docs/ARCHITECTURE.md §14) : 2FA, session admin, agrégats, alertes, audit. */
+  readonly admin: {
+    /** Clé AES-256-GCM des secrets TOTP (32 octets) ; éphémère en développement si absente. Jamais journalisée. */
+    readonly totpEncryptionKey: Buffer;
+    readonly totpIssuer: string;
+    readonly totpMaxAttempts: number;
+    readonly totpLockoutMs: number;
+    /** Session admin : inactivité maximale et durée absolue après la saisie du code. */
+    readonly sessionIdleMs: number;
+    readonly sessionMaxMs: number;
+    /** Throttler `admin` : requêtes par minute et par utilisateur sur `admin/*`. */
+    readonly perMinute: number;
+    readonly metricsCron: string;
+    readonly alertsCron: string;
+    readonly alertJobFailures: number;
+    readonly alertQuotaRatio: number;
+    readonly auditLogRetentionDays: number;
+    /** Plafonds d'appels journaliers (ratio des alertes de quota) ; `null` = sans plafond. */
+    readonly jupiterDailyCallBudget: number | null;
+    readonly rugcheckDailyCallBudget: number | null;
+  };
+  /** Lecture GA4 / Search Console (docs/ARCHITECTURE.md §14.6). `none` : « Non connecté ». */
+  readonly analytics: {
+    readonly provider: 'google' | 'fake' | 'none';
+    readonly ga4PropertyId: string | null;
+    readonly searchConsoleSiteUrl: string | null;
+    /** JSON du compte de service (brut ou base64), jamais journalisé ; `null` si absent. */
+    readonly serviceAccountJson: string | null;
+    readonly cacheTtlS: number;
+  };
+  /** Services externes configurés ou non (jamais la valeur) : écran Santé de l'admin (`GET admin/health`). */
   readonly services: Readonly<Record<string, boolean>>;
 }
 
@@ -276,7 +306,39 @@ const envSchema = z.object({
     .default('mailto:support@raijinshield.com'),
   PUSH_PROVIDER: z.enum(['webpush', 'fake']).default('webpush'),
   MAINTENANCE_MODE: optionalString,
-  // Services consultés seulement pour /health/config (présence, jamais la valeur).
+  // Espace admin (docs/ENV.md « Espace admin », docs/ARCHITECTURE.md §14).
+  TOTP_ENCRYPTION_KEY: optionalString,
+  ADMIN_SESSION_IDLE_MINUTES: z.coerce.number().int().min(1).max(240).default(30),
+  ADMIN_SESSION_MAX_HOURS: z.coerce.number().int().min(1).max(24).default(8),
+  ADMIN_TOTP_ISSUER: z.string().trim().min(1).max(64).regex(/^[^:]+$/, { message: 'sans « : »' }).default('Raijin Shield'),
+  ADMIN_TOTP_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
+  ADMIN_TOTP_LOCKOUT_MINUTES: z.coerce.number().int().min(1).max(1_440).default(15),
+  RATE_LIMIT_ADMIN_PER_MINUTE: z.coerce.number().int().min(10).max(10_000).default(120),
+  METRICS_CRON: z
+    .string()
+    .trim()
+    .regex(/^(?:[0-9*/,-]+\s+){4}[0-9*/,-]+$/, { message: 'cron à 5 champs attendu (ex. 15 2 * * *)' })
+    .default('15 2 * * *'),
+  ADMIN_ALERTS_CRON: z
+    .string()
+    .trim()
+    .regex(/^(?:[0-9*/,-]+\s+){4}[0-9*/,-]+$/, { message: 'cron à 5 champs attendu (ex. */10 * * * *)' })
+    .default('*/10 * * * *'),
+  ADMIN_ALERT_JOB_FAILURES: z.coerce.number().int().min(1).max(50).default(3),
+  ADMIN_ALERT_QUOTA_RATIO: z.coerce.number().min(0.1).max(1).default(0.8),
+  AUDIT_LOG_RETENTION_DAYS: z.coerce.number().int().min(30).max(3_650).default(365),
+  JUPITER_DAILY_CALL_BUDGET: z.coerce.number().int().min(1).max(100_000_000).optional().or(z.literal('').transform(() => undefined)),
+  RUGCHECK_DAILY_CALL_BUDGET: z.coerce.number().int().min(1).max(100_000_000).optional().or(z.literal('').transform(() => undefined)),
+  ANALYTICS_PROVIDER: z.enum(['google', 'fake', '']).optional(),
+  ANALYTICS_CACHE_TTL_S: z.coerce.number().int().min(60).max(86_400).default(3_600),
+  GA4_PROPERTY_ID: z.string().trim().regex(/^\d{1,20}$/, { message: 'identifiant numérique attendu' }).optional().or(z.literal('').transform(() => undefined)),
+  SEARCH_CONSOLE_SITE_URL: z
+    .string()
+    .trim()
+    .regex(/^(?:sc-domain:[a-z0-9.-]{1,253}|https:\/\/[^\s]{1,253})$/, { message: 'sc-domain:… ou https://… attendu' })
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  // Services consultés seulement pour l'écran Santé de l'admin (présence, jamais la valeur).
   HELIUS_API_KEY: optionalString,
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
@@ -446,6 +508,24 @@ export function loadConfig(
     warn('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY absentes : notifications push indisponibles (alertes par e-mail seulement).');
   }
 
+  // Clé TOTP : 32 octets en base64. Obligatoire en production ; éphémère en développement (2FA à refaire).
+  let totpEncryptionKey: Buffer;
+  const rawTotpKey = isReal(e.TOTP_ENCRYPTION_KEY) ? e.TOTP_ENCRYPTION_KEY : undefined;
+  const decodedTotpKey = rawTotpKey && /^[A-Za-z0-9+/_-]+={0,2}$/.test(rawTotpKey) ? Buffer.from(rawTotpKey, 'base64') : null;
+  if (decodedTotpKey && decodedTotpKey.length === 32) {
+    totpEncryptionKey = decodedTotpKey;
+  } else {
+    if (isProduction) problems.push('TOTP_ENCRYPTION_KEY : absente, factice ou ne décode pas 32 octets (openssl rand -base64 32)');
+    else if (rawTotpKey) problems.push('TOTP_ENCRYPTION_KEY : 32 octets en base64 attendus (openssl rand -base64 32)');
+    else warn('TOTP_ENCRYPTION_KEY absente ou factice : clé TOTP éphémère générée pour ce démarrage (développement seulement).');
+    totpEncryptionKey = randomBytes(32);
+  }
+
+  const serviceAccountJson = isReal(e.GOOGLE_SERVICE_ACCOUNT_JSON) ? e.GOOGLE_SERVICE_ACCOUNT_JSON : null;
+  if (isProduction && e.ANALYTICS_PROVIDER === 'fake') problems.push('ANALYTICS_PROVIDER : fake interdit en production (données simulées)');
+  // Vide = google si le JSON est fourni, sinon « Non connecté » ; google sans JSON = « Non connecté ».
+  const analyticsProvider: 'google' | 'fake' | 'none' = e.ANALYTICS_PROVIDER === 'fake' ? 'fake' : serviceAccountJson ? 'google' : 'none';
+
   const config: AppConfig = {
     env: e.NODE_ENV,
     isProduction,
@@ -556,6 +636,29 @@ export function loadConfig(
       subject: e.VAPID_SUBJECT,
     },
     maintenance: parseBoolean(e.MAINTENANCE_MODE, false),
+    admin: {
+      totpEncryptionKey,
+      totpIssuer: e.ADMIN_TOTP_ISSUER,
+      totpMaxAttempts: e.ADMIN_TOTP_MAX_ATTEMPTS,
+      totpLockoutMs: e.ADMIN_TOTP_LOCKOUT_MINUTES * 60_000,
+      sessionIdleMs: e.ADMIN_SESSION_IDLE_MINUTES * 60_000,
+      sessionMaxMs: e.ADMIN_SESSION_MAX_HOURS * 3_600_000,
+      perMinute: e.RATE_LIMIT_ADMIN_PER_MINUTE,
+      metricsCron: e.METRICS_CRON,
+      alertsCron: e.ADMIN_ALERTS_CRON,
+      alertJobFailures: e.ADMIN_ALERT_JOB_FAILURES,
+      alertQuotaRatio: e.ADMIN_ALERT_QUOTA_RATIO,
+      auditLogRetentionDays: e.AUDIT_LOG_RETENTION_DAYS,
+      jupiterDailyCallBudget: e.JUPITER_DAILY_CALL_BUDGET ?? null,
+      rugcheckDailyCallBudget: e.RUGCHECK_DAILY_CALL_BUDGET ?? null,
+    },
+    analytics: {
+      provider: analyticsProvider,
+      ga4PropertyId: e.GA4_PROPERTY_ID ?? null,
+      searchConsoleSiteUrl: e.SEARCH_CONSOLE_SITE_URL ?? null,
+      serviceAccountJson,
+      cacheTtlS: e.ANALYTICS_CACHE_TTL_S,
+    },
     services: {
       database: !!databaseUrl,
       redis: redisUrl !== null,
@@ -565,7 +668,8 @@ export function loadConfig(
       stripe: isReal(e.STRIPE_SECRET_KEY) && isReal(e.STRIPE_WEBHOOK_SECRET),
       vapid: isReal(e.VAPID_PRIVATE_KEY) && isReal(e.VAPID_PUBLIC_KEY),
       ga4: isReal(e.GA4_MEASUREMENT_ID),
-      googleServiceAccount: isReal(e.GOOGLE_SERVICE_ACCOUNT_JSON),
+      googleServiceAccount: serviceAccountJson !== null,
+      totpKey: decodedTotpKey !== null && decodedTotpKey.length === 32,
       sentry: isReal(e.SENTRY_DSN_API),
     },
   };

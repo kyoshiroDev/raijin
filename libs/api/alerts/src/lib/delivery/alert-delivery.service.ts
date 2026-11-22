@@ -84,11 +84,12 @@ export class AlertDeliveryService {
 
   /** E-mail groupé des alertes en attente d'un utilisateur. */
   async deliverEmail(userId: string): Promise<{ sent: boolean; alerts: number; skipped: number }> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true, notifyEmailAlerts: true } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true, notifyEmailAlerts: true, suspendedAt: true } });
     if (!user) return { sent: false, alerts: 0, skipped: 0 };
     const now = this.clock.now();
     const since = new Date(now.getTime() - EMAIL_MAX_AGE_MS);
-    if (!user.emailVerifiedAt || !user.notifyEmailAlerts) {
+    // Compte suspendu par un admin (phase 6 bis) : aucun e-mail, alertes marquées non envoyées.
+    if (!user.emailVerifiedAt || !user.notifyEmailAlerts || user.suspendedAt) {
       const skipped = await this.prisma.alert.updateMany({ where: { userId, emailedAt: null, emailSkipped: false }, data: { emailSkipped: true } });
       return { sent: false, alerts: 0, skipped: skipped.count };
     }

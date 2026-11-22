@@ -25,10 +25,10 @@ describe('API Raijin : santé', () => {
     expect(res.data).toEqual({ status: 'ok', service: 'raijin-api', database: 'up' });
   });
 
-  it('GET /health/config : états seulement', async () => {
-    const res = await new ApiClient().get<{ services: Record<string, string> }>('/health/config');
-    expect(res.status).toBe(200);
-    for (const state of Object.values(res.data.services)) expect(['configured', 'not_configured']).toContain(state);
+  it('GET /health/config retiré (phase 6 bis, M3) : 404, l’état des services est dans GET admin/health', async () => {
+    const res = await new ApiClient().get('/health/config');
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.data)).not.toMatch(/configured/);
   });
 });
 

@@ -1,4 +1,5 @@
 import { Logger, Module, OnApplicationShutdown } from '@nestjs/common';
+import { RedisUsageCounterStore } from '@raijin/api-analytics';
 import { ApiAuthModule } from '@raijin/api-auth';
 import { APP_CONFIG, errorCode, type AppConfig } from '@raijin/api-core';
 import {
@@ -120,6 +121,7 @@ export function solanaDataOptions(
     heliusApiKey,
     cache: new SolanaCacheStore(store),
     creditBudget,
+    ...(redis ? { usageStore: new RedisUsageCounterStore(redis) } : {}),
     logger,
   };
 }

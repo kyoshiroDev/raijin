@@ -108,6 +108,9 @@ export class MemoryDb {
       trialDayMinus2MailAt: null,
       trialEndMailAt: null,
       trialEndScreenSeenAt: null,
+      suspendedAt: null,
+      proGrantedUntil: null,
+      proGrantEndedAt: null,
       ...overrides,
     };
     this.user.rows.push(row);

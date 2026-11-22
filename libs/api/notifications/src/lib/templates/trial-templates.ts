@@ -192,3 +192,48 @@ export function trialEndedTemplate(ctx: WatchMailContext, recap: TrialMailRecap,
     ]),
   };
 }
+
+export const GIFT_ENDED_SUBJECT = 'Ton mois de Pro offert est terminé';
+
+/**
+ * Fin du Pro offert par l'équipe (phase 6 bis, docs/ARCHITECTURE.md §14.8) : information neutre, sans urgence ni Rai.
+ * `pausedWatches` : suivis mis en pause pour respecter la limite du plan Gratuit (jamais supprimés).
+ */
+export function giftEndedTemplate(ctx: WatchMailContext, pausedWatches: number, free: Entitlements): RenderedMail {
+  const subject = GIFT_ENDED_SUBJECT;
+  const intro = 'La période de Pro qui t’avait été offerte est terminée : ton compte est en plan Gratuit.';
+  const changes = 'Avec le plan Gratuit :';
+  const paused =
+    pausedWatches > 0
+      ? `${plural(pausedWatches, 'suivi a été mis', 'suivis ont été mis')} en pause pour respecter la limite du plan Gratuit. Rien n’est supprimé : tu peux choisir les ${plural(free.maxActiveWatches, 'token', 'tokens')} à garder.`
+      : null;
+  const keep = 'Tu peux passer à Pro quand tu veux depuis la page Abonnement.';
+  const subscription = url(ctx, SUBSCRIPTION_PATH);
+  const watches = url(ctx, TRIAL_WATCHES_PATH);
+  const body = [
+    paragraph(intro),
+    paragraph(changes),
+    list(freePlanLines(free)),
+    paused ? paragraph(paused) : '',
+    paused
+      ? `<p style="margin:0 0 16px;font-family:${FONT};font-size:14px;line-height:21px;"><a href="${escapeHtml(watches)}" style="color:${EMAIL_THEME['thunder-ink']};">Choisir mes suivis</a></p>`
+      : '',
+    paragraph(keep),
+    button('Voir les plans', subscription),
+    paragraph('Tu reçois cet e-mail parce que ta période de Pro offerte vient de se terminer : il informe sur l’état de ton compte.', true),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    subject,
+    html: renderLayout({ title: subject, preheader: 'Ton compte reste actif en Gratuit.', body, logoUrl: ctx.logoUrl, appUrl: ctx.appUrl }),
+    text: renderText([
+      intro,
+      changes,
+      ...freePlanLines(free).map((line) => `- ${line}`),
+      ...(paused ? [paused, `Choisir mes suivis : ${watches}`] : []),
+      keep,
+      `Voir les plans : ${subscription}`,
+    ]),
+  };
+}

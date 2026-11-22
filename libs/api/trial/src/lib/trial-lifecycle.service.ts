@@ -1,7 +1,7 @@
 import { HttpStatus, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { KeyValueStore } from '@raijin/api-analysis';
 import { JobQueue, JobRegistry, JobRunService, jobId, WatchesService, type JobData } from '@raijin/api-alerts';
-import { APP_CONFIG, ApiException, errorCode, isTrialActive, planPolicyLimits, randomToken, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, ApiException, errorCode, isGiftActive, isTrialActive, planPolicyLimits, randomToken, type AppConfig } from '@raijin/api-core';
 import { TrialMailService } from '@raijin/api-notifications';
 import { PrismaService, type Prisma } from '@raijin/api-prisma';
 import type { BillingInterval } from '@raijin/shared-contracts';
@@ -17,9 +17,11 @@ const TRIAL_TICK_LOCK_TTL_MS = 15 * 60_000;
 export const TRIAL_TICK_JOB = 'trial-tick';
 export const TRIAL_EMAIL_JOB = 'trial-email';
 
-export const TRIAL_EMAIL_KINDS = ['day1', 'dayMinus2', 'ended'] as const;
+export const TRIAL_EMAIL_KINDS = ['day1', 'dayMinus2', 'ended', 'giftEnded'] as const;
 export type TrialEmailKind = (typeof TRIAL_EMAIL_KINDS)[number];
-const trialEmailData = z.object({ userId: z.uuid(), kind: z.enum(TRIAL_EMAIL_KINDS) }).strict();
+const trialEmailData = z
+  .object({ userId: z.uuid(), kind: z.enum(TRIAL_EMAIL_KINDS), pausedWatches: z.number().int().min(0).max(100_000).optional() })
+  .strict();
 /** Données du tick : `now` seulement depuis la route interne de test (horloge simulée), jamais par BullMQ. */
 const tickData = z.object({ now: z.iso.datetime().optional() }).strict();
 
@@ -30,6 +32,8 @@ export interface TrialTickResult {
   readonly day1: number;
   readonly dayMinus2: number;
   readonly ended: number;
+  /** Pro offert arrivé à échéance (limite Gratuite appliquée, e-mail neutre). */
+  readonly giftsEnded: number;
 }
 
 /** Heure (0-23) à Paris pour `now`. */
@@ -82,7 +86,7 @@ export class TrialLifecycleService implements OnModuleInit {
       queue: 'notify',
       handler: async (data: JobData) => {
         const parsed = trialEmailData.parse(data);
-        return this.sendEmail(parsed.userId, parsed.kind);
+        return this.sendEmail(parsed.userId, parsed.kind, new Date(), parsed.pausedWatches ?? 0);
       },
     });
   }
@@ -103,10 +107,54 @@ export class TrialLifecycleService implements OnModuleInit {
 
   private async run(now: Date, scope: Prisma.UserWhereInput): Promise<TrialTickResult> {
     const { expired, pausedWatches, ended } = await this.expire(now, scope);
+    const gifts = await this.expireGifts(now, scope);
     const emailsOpen = parisHour(now) >= this.config.trial.emailHour;
     const day1 = emailsOpen ? await this.scheduleDay1(now, scope) : 0;
     const dayMinus2 = emailsOpen ? await this.scheduleDayMinus2(now, scope) : 0;
-    return { expired, pausedWatches, day1, dayMinus2, ended };
+    return { expired, pausedWatches: pausedWatches + gifts.pausedWatches, day1, dayMinus2, ended, giftsEnded: gifts.ended };
+  }
+
+  /**
+   * Pro offert échu (`proGrantedUntil ≤ now`, fin pas encore traitée) : `proGrantEndedAt` posé, même limite de suivis
+   * qu'en fin d'essai (selon la politique relue : un essai ou un abonnement en cours garde ses droits),
+   * `gift_expired {pausedWatches}`, e-mail neutre (sauf abonné Pro).
+   */
+  private async expireGifts(now: Date, scope: Prisma.UserWhereInput): Promise<{ ended: number; pausedWatches: number }> {
+    let ended = 0;
+    let pausedWatches = 0;
+    for (;;) {
+      const batch = await this.prisma.user.findMany({
+        where: { ...scope, proGrantedUntil: { lte: now }, proGrantEndedAt: null },
+        select: { id: true },
+        orderBy: { proGrantedUntil: 'asc' },
+        take: TRIAL_BATCH,
+      });
+      let progressed = 0;
+      for (const { id } of batch) {
+        try {
+          const outcome = await this.prisma.$transaction(async (tx) => {
+            const changed = await tx.user.updateMany({ where: { id, proGrantedUntil: { lte: now }, proGrantEndedAt: null }, data: { proGrantEndedAt: now } });
+            if (changed.count === 0) return null;
+            const change = await this.watches.enforcePlanLimitInTx(tx, id);
+            await tx.productEvent.create({ data: { userId: id, type: 'gift_expired', properties: { pausedWatches: change.count } } });
+            const user = await tx.user.findUnique({ where: { id }, select: { plan: true, suspendedAt: true } });
+            return { change, mail: user?.plan === 'FREE' && !user.suspendedAt };
+          });
+          if (!outcome) continue;
+          progressed += 1;
+          ended += 1;
+          pausedWatches += outcome.change.count;
+          await this.watches.refreshPriorities(outcome.change.mints);
+          if (outcome.mail) {
+            await this.queue.add(TRIAL_EMAIL_JOB, { userId: id, kind: 'giftEnded', pausedWatches: outcome.change.count }, { jobId: jobId('gift-ended', `${id}-${now.getTime()}`) });
+          }
+        } catch (error) {
+          this.logger.warn(`Fin du Pro offert non appliquée (${errorCode(error)})`);
+        }
+      }
+      if (batch.length < TRIAL_BATCH || progressed === 0) break;
+    }
+    return { ended, pausedWatches };
   }
 
   /** Essais échus : `ENDED`, limite Gratuite appliquée, `trial_expired`, e-mail J0 (toujours, sauf abonné Pro). */
@@ -203,13 +251,20 @@ export class TrialLifecycleService implements OnModuleInit {
    * est terminé ou la préférence désactivée entre-temps ; J0 part toujours. Une erreur d'envoi lève :
    * BullMQ réessaie (5 tentatives) avec le même `jobId`.
    */
-  async sendEmail(userId: string, kind: TrialEmailKind, now: Date = new Date()): Promise<{ sent: boolean }> {
+  async sendEmail(userId: string, kind: TrialEmailKind, now: Date = new Date(), pausedWatches = 0): Promise<{ sent: boolean }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, plan: true, trialStatus: true, trialEndsAt: true, notifyTrialEmails: true },
+      select: { email: true, plan: true, trialStatus: true, trialEndsAt: true, notifyTrialEmails: true, proGrantedUntil: true, suspendedAt: true },
     });
-    if (!user?.trialEndsAt) return { sent: false };
     const free = planPolicyLimits(this.config).free;
+    if (user?.suspendedAt) return { sent: false };
+    if (kind === 'giftEnded') {
+      // Pro de nouveau offert, abonnement ou essai en cours au moment de l'envoi : rien à annoncer.
+      if (!user || user.plan !== 'FREE' || isGiftActive(user, now) || isTrialActive(user, now)) return { sent: false };
+      await this.mail.sendGiftEnded(user.email, pausedWatches, free);
+      return { sent: true };
+    }
+    if (!user?.trialEndsAt) return { sent: false };
     // Abonné Pro au moment de l'envoi (abonnement pris entre la fin d'essai et le job) : aucun e-mail d'essai, J0 compris.
     if (user.plan !== 'FREE') return { sent: false };
     if (kind !== 'ended' && (!user.notifyTrialEmails || !isTrialActive(user, now))) return { sent: false };

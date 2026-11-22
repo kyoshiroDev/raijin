@@ -1,6 +1,7 @@
 import { Route } from '@angular/router';
 import { webFeatureAnalyseRoutes, webFeaturePublicTokenRoutes } from '@raijin/web-feature-analyse';
 import { DesignPage } from '@raijin/web-ui';
+import { adminAreaGuard } from './admin-area.guard';
 
 /**
  * Page de référence visuelle, disponible uniquement en développement.
@@ -15,6 +16,12 @@ const devOnlyRoutes: Route[] =
         // web-ui est déjà dans le bundle initial (coquille) : référence statique, retirée en prod
         // avec cette branche morte (ngDevMode === false), DesignPage est alors éliminé par tree-shaking.
         component: DesignPage,
+      },
+      {
+        // Composants de l'espace admin (KPI, graphiques, tableaux, états des services), données fictives.
+        path: '_design/admin',
+        title: 'Design admin — Raijin',
+        loadComponent: () => import('@raijin/web-feature-admin').then((m) => m.AdminDemoPage),
       },
     ]
   : [];
@@ -60,6 +67,14 @@ export const appRoutes: Route[] = [
     path: 'abonnement',
     loadChildren: () =>
       import('@raijin/web-feature-compte').then((m) => m.webFeatureAbonnementRoutes),
+  },
+  {
+    // Espace admin : chunk à la demande (Chart.js compris), jamais au démarrage. Non-admin → 404 standard
+    // (`canMatch` laisse passer la route `**`). Coque propre : pas de barre d'onglets ni de barre latérale de l'app.
+    path: 'admin',
+    canMatch: [adminAreaGuard],
+    data: { appChrome: false },
+    loadChildren: () => import('@raijin/web-feature-admin').then((m) => m.webFeatureAdminRoutes),
   },
   {
     // API en maintenance (503 `MAINTENANCE`, intercepteur de web-data-access).

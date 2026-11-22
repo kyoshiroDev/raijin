@@ -17,7 +17,11 @@ export type RevocationReason =
   | 'reuse'
   | 'password_reset'
   | 'password_change'
-  | 'account_deleted';
+  | 'account_deleted'
+  /** Compte suspendu par un admin (phase 6 bis) : le refresh répond 403 `ACCOUNT_SUSPENDED`. */
+  | 'suspended'
+  /** Rôle admin retiré par la CLI. */
+  | 'admin_revoked';
 
 export interface IssuedRefresh {
   readonly session: Session;
@@ -73,6 +77,8 @@ export class SessionService {
       throw expired();
     }
     const session = record.session;
+    // Refresh valide d'une session coupée par la suspension : motif explicite (identifiant valide, pas d'énumération).
+    if (session.revokedAt && session.revokedReason === 'suspended') throw suspended();
     if (record.expiresAt <= now || session.revokedAt || session.expiresAt <= now) throw expired();
 
     const claimed = await this.prisma.refreshToken.updateMany({
@@ -133,6 +139,10 @@ export class SessionService {
     await this.prisma.pushSubscription.deleteMany({ where: { userId } });
     return result.count;
   }
+}
+
+function suspended(): ApiException {
+  return ApiException.admin('ACCOUNT_SUSPENDED', HttpStatus.FORBIDDEN);
 }
 
 function expired(): ApiException {

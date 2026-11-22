@@ -9,9 +9,25 @@ export const ATTRIBUTION_KEY = 'rj.attribution';
 /** Bornes appliquées dès la capture (le schéma revalide tout à la lecture). */
 const MAX_LABEL = 200;
 const MAX_URL = 2048;
+const MAX_PATH = 512;
+
+/**
+ * Paramètres posés par la landing sur ses liens vers l'app (miroir de `ATTRIBUTION_QUERY_PARAMS`, contrat
+ * `analytics/ga4.ts`, vérifié par un test) : recopiés ici pour ne pas charger les contrats au démarrage.
+ * `rj_ref` = référent de la première visite sur la landing, `rj_lp` = page d'arrivée sur la landing.
+ */
+export const ATTRIBUTION_PARAMS = {
+  utmSource: 'utm_source',
+  utmMedium: 'utm_medium',
+  utmCampaign: 'utm_campaign',
+  referrer: 'rj_ref',
+  landingPath: 'rj_lp',
+} as const;
 
 /**
  * Attribution de première visite (UTM, provenance, page d'arrivée), envoyée à l'inscription.
+ * Depuis la landing, `rj_ref` et `rj_lp` remplacent `document.referrer` et le chemin courant ; chaque valeur
+ * reste validée (une valeur hostile ou trop longue est ignorée sans perdre les autres).
  * Lue dans l'URL au premier chargement et gardée pour la durée de l'onglet (`sessionStorage`) :
  * premier contact retenu. Les valeurs sont validées par `signupAttributionSchema` (contrats,
  * chargés à la demande) avant d'être écrites et à chaque lecture.
@@ -41,14 +57,17 @@ export class AttributionTracker {
     const add = (key: keyof SignupAttribution, value: string | null | undefined, max: number) => {
       if (value) candidate[key] = value.slice(0, max + 1);
     };
-    add('utmSource', params.get('utm_source'), MAX_LABEL);
-    add('utmMedium', params.get('utm_medium'), MAX_LABEL);
-    add('utmCampaign', params.get('utm_campaign'), MAX_LABEL);
-    add('referrer', this.externalReferrer(), MAX_URL);
-    add('landingPath', location.pathname, 512);
-    if (!candidate['utmSource'] && !candidate['utmMedium'] && !candidate['utmCampaign'] && !candidate['referrer']) {
+    const param = (key: keyof typeof ATTRIBUTION_PARAMS) => params.get(ATTRIBUTION_PARAMS[key]);
+    add('utmSource', param('utmSource'), MAX_LABEL);
+    add('utmMedium', param('utmMedium'), MAX_LABEL);
+    add('utmCampaign', param('utmCampaign'), MAX_LABEL);
+    // Venue de la landing : son référent et sa page d'arrivée priment (sinon le référent serait la landing).
+    add('referrer', param('referrer') || this.externalReferrer(), MAX_URL);
+    const fromLanding = param('landingPath');
+    if (!candidate['utmSource'] && !candidate['utmMedium'] && !candidate['utmCampaign'] && !candidate['referrer'] && !fromLanding) {
       return null;
     }
+    add('landingPath', fromLanding || location.pathname, MAX_PATH);
     return candidate;
   }
 
@@ -62,7 +81,7 @@ export class AttributionTracker {
         const parsed = signupAttributionSchema.safeParse({ [key]: value });
         if (parsed.success) Object.assign(clean, parsed.data);
       }
-      if (clean.utmSource || clean.utmMedium || clean.utmCampaign || clean.referrer) this.write(clean);
+      if (Object.keys(clean).length > 0) this.write(clean);
     });
   }
 

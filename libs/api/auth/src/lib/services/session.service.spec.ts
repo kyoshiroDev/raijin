@@ -58,6 +58,18 @@ describe('SessionService', () => {
     });
   }
 
+  it('refresh valide d’une session coupée par la suspension → 403 ACCOUNT_SUSPENDED', async () => {
+    const { mock, sessions } = setup();
+    mock.refreshToken.findUnique.mockResolvedValue({
+      id: 'rt',
+      sessionId: 's',
+      usedAt: null,
+      expiresAt: future(),
+      session: { id: 's', userId: 'u', revokedAt: new Date(), revokedReason: 'suspended', expiresAt: future() },
+    });
+    await expect(sessions.rotate('jeton', client)).rejects.toMatchObject({ code: 'ACCOUNT_SUSPENDED' });
+  });
+
   it('refresh inconnu → AUTH_SESSION_EXPIRED', async () => {
     const { mock, sessions } = setup();
     mock.refreshToken.findUnique.mockResolvedValue(null);

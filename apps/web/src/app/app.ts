@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ResolveEnd, Router, RouterOutlet, type ActivatedRouteSnapshot } from '@angular/router';
 import { AuthStore, UnreadAlerts } from '@raijin/web-data-access';
 import { RjAppShell, type RjNavItem } from '@raijin/web-ui';
 import { RjTrialBannerHost } from './trial-banner-host';
@@ -22,20 +22,31 @@ export function navItemsWithUnread(unread: number): readonly RjNavItem[] {
   return unread > 0 ? NAV_ITEMS.map((item) => (item.path === '/alertes' ? { ...item, badge: unread } : item)) : NAV_ITEMS;
 }
 
+/** Vrai si une route active déclare `data: { appChrome: false }` (espace admin : coque propre). */
+export function hidesAppChrome(snapshot: ActivatedRouteSnapshot | null): boolean {
+  for (let route = snapshot; route; route = route.firstChild) {
+    if (route.data['appChrome'] === false) return true;
+  }
+  return false;
+}
+
 /** Coquille de l'app : volontairement fine, la mise en page vit dans @raijin/web-ui. */
 @Component({
   selector: 'rj-root',
   imports: [RouterOutlet, RjAppShell, RjTrialBannerHost],
   template: `
     <rj-app-shell
+      [chrome]="appChrome()"
       [items]="navItems()"
       [secondaryItems]="secondaryItems"
       [notificationCount]="unread.count()"
       (notifications)="openAlerts()"
     >
       <!-- Bandeau d'essai : chunk à part, chargé seulement pour un compte en essai (ou essai terminé). -->
-      @defer (when trialAccount()) {
-        <rj-trial-banner-host />
+      @if (appChrome()) {
+        @defer (when trialAccount()) {
+          <rj-trial-banner-host />
+        }
       }
       <router-outlet />
     </rj-app-shell>
@@ -54,7 +65,15 @@ export class App {
     return trial === 'active' || (trial === 'ended' && this.auth.user()?.plan === 'FREE');
   });
 
+  /** Barre d'onglets, barre latérale et en-tête de l'app ; masqués dans l'espace admin. */
+  protected readonly appChrome = signal(true);
+
   constructor() {
+    // Décidé avant l'activation de la route (`ResolveEnd`) : pas d'en-tête de l'app affiché un instant sur /admin.
+    const sub = this.router.events.subscribe((event) => {
+      if (event instanceof ResolveEnd) this.appChrome.set(!hidesAppChrome(event.state.root));
+    });
+    inject(DestroyRef).onDestroy(() => sub.unsubscribe());
     // Badge des alertes : première lecture après le premier rendu de la route (hors chemin du LCP).
     this.unread.startAfterFirstRoute();
   }

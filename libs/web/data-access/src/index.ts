@@ -39,3 +39,13 @@ export * from './lib/billing/billing.store';
 export * from './lib/billing/trial-api';
 export * from './lib/billing/trial-banner';
 export * from './lib/testing/billing-fixtures';
+// --- Espace admin : double authentification et session admin (ui-mobile-first, phase 6 bis) ---
+export * from './lib/admin/security/admin-paths';
+export * from './lib/admin/security/admin-security-api';
+export * from './lib/admin/security/admin-session.store';
+export * from './lib/admin/security/admin-session.interceptor';
+export * from './lib/admin/security/admin-security-fixtures';
+// --- Espace admin : écrans statistiques et utilisateurs (admin-analytics, phase 6 bis) ---
+export * from './lib/admin/admin-api';
+export * from './lib/admin/admin-report';
+export * from './lib/admin/admin-fixtures';

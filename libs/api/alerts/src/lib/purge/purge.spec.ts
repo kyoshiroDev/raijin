@@ -47,11 +47,36 @@ describe('PurgeService', () => {
     const counts = await purge.run();
     expect(counts['alert']).toBe(PURGE_BATCH + 12);
     expect(counts['session']).toBe(0);
-    expect(prisma.rawQueries.filter((sql) => sql.includes('DELETE FROM'))).toHaveLength(12); // 11 règles, 2 lots pour Alert
+    // Aucun passage des agrégats : TokenAnalysis et ProductEvent ne sont pas purgés (9 règles, 2 lots pour Alert).
+    expect(prisma.rawQueries.filter((sql) => sql.includes('DELETE FROM'))).toHaveLength(10);
+    expect(counts['tokenAnalysis']).toBeUndefined();
+    expect(counts['skippedUnaggregated']).toBe(1);
     expect(prisma.rawQueries.every((sql) => !sql.includes('DROP') && !sql.includes('TRUNCATE'))).toBe(true);
     const run = prisma.tables['jobRun']?.[0];
     expect(run).toMatchObject({ job: 'purge', status: 'SUCCESS', details: expect.objectContaining({ alert: PURGE_BATCH + 12 }) });
     expect(run?.['durationMs']).toEqual(expect.any(Number));
+  });
+
+  it('m6 : événements purgés seulement jusqu’au dernier jour agrégé par metrics-aggregate', async () => {
+    const purge = new PurgeService({} as PrismaService, {} as JobRunService, clock, testConfig());
+    const cutoff = (through: string | null | undefined) => purge.rules(NOW, through).find((rule) => rule.name === 'tokenAnalysis')?.where.values[0];
+    const retention = new Date(NOW.getTime() - 90 * 86_400_000);
+    expect(cutoff(undefined)).toEqual(retention);
+    expect(cutoff('2026-11-21')).toEqual(retention);
+    expect(cutoff('2026-08-01')).toEqual(new Date('2026-08-02T00:00:00.000Z'));
+    expect(cutoff(null)).toBeUndefined();
+    expect(purge.rules(NOW, null).map((rule) => rule.name)).not.toContain('productEvent');
+  });
+
+  it('m6 : jour agrégé lu dans le dernier JobRun metrics-aggregate réussi ; tout agrégé = rien de sauté', async () => {
+    const prisma = new MemoryPrisma();
+    prisma.rawHandler = (sql) => (sql.includes('"through"') ? [{ through: '2026-11-21' }] : 0);
+    const purge = new PurgeService(prisma as unknown as PrismaService, new JobRunService(prisma as unknown as PrismaService), clock, testConfig());
+    const counts = await purge.run();
+    expect(counts).toMatchObject({ tokenAnalysis: 0, productEvent: 0, skippedUnaggregated: 0 });
+    expect(prisma.rawQueries.find((sql) => sql.includes('"through"'))).toContain("'SUCCESS'");
+    prisma.rawHandler = (sql) => (sql.includes('"through"') ? [{ through: 'pas-une-date' }] : 0);
+    expect(await purge.aggregatedThrough()).toBeNull();
   });
 
   it('échec : JobRun FAILED avec le code seulement, erreur propagée (reprise BullMQ)', async () => {

@@ -32,6 +32,7 @@ describe('planPolicyLimits', () => {
       free: { analysesPerDay: 5, maxActiveWatches: 3, pushAlerts: false, walletScansPerDay: 0, alertHistoryDays: 30 },
       trial: { analysesPerDay: 50, maxActiveWatches: 50, pushAlerts: true, walletScansPerDay: 10, alertHistoryDays: 90 },
       subscription: { analysesPerDay: null, maxActiveWatches: 50, pushAlerts: true, walletScansPerDay: 20, alertHistoryDays: 90 },
+      gift: { analysesPerDay: null, maxActiveWatches: 50, pushAlerts: true, walletScansPerDay: 20, alertHistoryDays: 90 },
     });
     for (const value of [limits.free, limits.trial, limits.subscription]) expect(entitlementsSchema.parse(value)).toEqual(value);
   });
@@ -80,6 +81,23 @@ describe('resolvePlanPolicy', () => {
   it('e-mail non vérifié signalé (suivis et push le refusent ailleurs)', () => {
     expect(resolvePlanPolicy(row({ emailVerifiedAt: null }), limits, NOW).emailVerified).toBe(false);
     expect(resolvePlanPolicy({ plan: 'FREE', trialStatus: 'NONE', trialEndsAt: null }, limits, NOW).emailVerified).toBe(false);
+  });
+});
+
+describe('resolvePlanPolicy — Pro offert (gift, phase 6 bis)', () => {
+  const until = new Date(NOW.getTime() + 10 * 24 * HOUR);
+
+  it('Pro offert en cours : Pro, source gift, droits de l’abonnement', () => {
+    const policy = resolvePlanPolicy({ ...row(), proGrantedUntil: until }, limits, NOW);
+    expect(policy).toMatchObject({ effectivePlan: 'PRO', paidPlan: 'FREE', source: 'gift', trialActive: false });
+    expect(policy.entitlements).toEqual(limits.subscription);
+  });
+
+  it('priorité : abonnement > essai > offert > gratuit ; échéance à la seconde', () => {
+    expect(resolvePlanPolicy({ ...row({ plan: 'PRO' }), proGrantedUntil: until }, limits, NOW).source).toBe('subscription');
+    expect(resolvePlanPolicy({ ...row({ trialStatus: 'ACTIVE', trialEndsAt: until }), proGrantedUntil: until }, limits, NOW).source).toBe('trial');
+    expect(resolvePlanPolicy({ ...row(), proGrantedUntil: NOW }, limits, NOW).source).toBe('free');
+    expect(resolvePlanPolicy({ ...row(), proGrantedUntil: null }, limits, NOW).source).toBe('free');
   });
 });
 

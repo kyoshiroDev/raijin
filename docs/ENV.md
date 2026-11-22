@@ -349,6 +349,8 @@ ADMIN_TOTP_ISSUER="Raijin Shield"
 # Raijin — codes 2FA faux tolérés avant blocage temporaire (compteur Redis par compte), durée du blocage
 ADMIN_TOTP_MAX_ATTEMPTS=5
 ADMIN_TOTP_LOCKOUT_MINUTES=15
+# Raijin — requêtes par minute et par compte admin sur les routes admin/* (throttler « admin », en plus de la limite globale)
+RATE_LIMIT_ADMIN_PER_MINUTE=120
 # Raijin — agrégats nocturnes DailyMetric (cron UTC, file maintenance) : AVANT la purge (PURGE_CRON), qui ne supprime
 #   les événements d'un jour qu'une fois ce jour agrégé
 METRICS_CRON="15 2 * * *"
@@ -398,7 +400,7 @@ SENTRY_ENVIRONMENT=development
   (les sessions ne survivent donc pas à un redémarrage tant qu'aucun secret n'est fourni).
 - Tests e2e de l'API (`pnpm nx e2e api-e2e`) : l'API construite est lancée par Jest (`apps/api-e2e/src/support/
   api-server.ts`) sur le port 3200 avec `ANALYSIS_FIXTURES=1`, `JOBS_TEST_TRIGGER=1`, `PUSH_PROVIDER=fake`,
-  `ALERT_EMAIL_BATCH_DELAY_S=1`, `ALERT_COOLDOWN_MINUTES=0`, `BULLMQ_PREFIX=raijin-e2e` ; journal dans
+  `ALERT_EMAIL_BATCH_DELAY_S=1`, `ALERT_COOLDOWN_MINUTES=0`, `ANALYTICS_PROVIDER=fake` (Google simulé, phase 6 bis), `BULLMQ_PREFIX=raijin-e2e` ; journal dans
   `dist/api-e2e/api.log`.
 - Phase 6 bis : en production, l'API refuse aussi de démarrer si `TOTP_ENCRYPTION_KEY` est absente, factice ou ne
   décode pas 32 octets, ou si `ANALYTICS_PROVIDER=fake`. Un `GOOGLE_SERVICE_ACCOUNT_JSON` illisible ne bloque pas le

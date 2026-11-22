@@ -103,6 +103,7 @@ export class BillingService {
           }
         : null,
       trial: buildTrialDetails(user, now),
+      giftEndsAt: policy.source === 'gift' && user.proGrantedUntil ? user.proGrantedUntil.toISOString() : null,
       paymentIssue: pro?.status === 'PAST_DUE',
       // Portail seulement s'il existe ou a existé un abonnement (pas après un Checkout simplement abandonné).
       portalAvailable: mode !== 'unavailable' && user.stripeCustomerId !== null && latest !== null,

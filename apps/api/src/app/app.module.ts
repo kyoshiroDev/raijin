@@ -1,4 +1,5 @@
 import { DynamicModule, Module } from '@nestjs/common';
+import { AdminUsersModule, ApiAdminModule } from '@raijin/api-admin';
 import { ApiAlertsModule } from '@raijin/api-alerts';
 import { ApiAnalysisModule } from '@raijin/api-analysis';
 import { ApiAuthModule } from '@raijin/api-auth';
@@ -31,6 +32,7 @@ export class AppModule {
         ApiTrialModule,
         ApiWalletModule,
         billingModule,
+        ApiAdminModule.forRoot({ imports: [billingModule, AdminUsersModule] }),
       ],
       controllers: [HealthController],
     };

@@ -14,6 +14,8 @@ module.exports = {
       target: 'node',
       compiler: 'tsc',
       main: './src/main.ts',
+      // CLI d'administration (make-admin, admin-reset-2fa) : dist/apps/api/cli.js.
+      additionalEntryPoints: [{ entryName: 'cli', entryPath: './src/cli.ts' }],
       tsConfig: './tsconfig.app.json',
       assets: [
         './src/assets',

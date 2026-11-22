@@ -8,6 +8,7 @@
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/swagger": "^11.4.8",
+    "@raijin/api-analytics": "*",
     "@raijin/api-auth": "*",
     "@raijin/api-core": "*",
     "@raijin/api-prisma": "*",

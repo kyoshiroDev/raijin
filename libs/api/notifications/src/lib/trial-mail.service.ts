@@ -3,7 +3,7 @@ import { APP_CONFIG, type AppConfig } from '@raijin/api-core';
 import type { Entitlements } from '@raijin/shared-contracts';
 import { Mailer } from './mailer/mailer';
 import type { WatchMailContext } from './templates/alert-templates';
-import { trialDay1Template, trialDayMinus2Template, trialEndedTemplate, type TrialMailRecap } from './templates/trial-templates';
+import { giftEndedTemplate, trialDay1Template, trialDayMinus2Template, trialEndedTemplate, type TrialMailRecap } from './templates/trial-templates';
 
 /** E-mails de l'essai Pro (J+1, J-2, J0), envoyés par le job `trial-tick` (`api-trial`). */
 @Injectable()
@@ -27,5 +27,10 @@ export class TrialMailService {
 
   sendEnded(to: string, recap: TrialMailRecap, free: Entitlements): Promise<void> {
     return this.mailer.send({ to, ...trialEndedTemplate(this.ctx, recap, free) });
+  }
+
+  /** Fin du Pro offert par un admin (e-mail neutre). */
+  sendGiftEnded(to: string, pausedWatches: number, free: Entitlements): Promise<void> {
+    return this.mailer.send({ to, ...giftEndedTemplate(this.ctx, pausedWatches, free) });
   }
 }

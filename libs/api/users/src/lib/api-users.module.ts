@@ -19,6 +19,8 @@ export class ApiUsersModule {
   static forRoot(options: { imports?: ModuleMetadata['imports']; billingCloser?: InjectionToken } = {}): DynamicModule {
     return {
       module: ApiUsersModule,
+      // Global : `UsersService` (flux de suppression) est réutilisé par l'espace admin sans second module de facturation.
+      global: true,
       imports: [ApiAuthModule, ...(options.imports ?? [])],
       controllers: [UsersController],
       providers: [

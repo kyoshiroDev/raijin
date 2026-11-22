@@ -19,12 +19,13 @@ const user = {
 } as unknown as User;
 
 function setup() {
-  const prisma = {
+  const prisma: Record<string, unknown> & { user: { findUnique: jest.Mock; delete: jest.Mock } } = {
     user: { findUnique: jest.fn(), delete: jest.fn() },
   };
+  prisma['$transaction'] = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
   const auth = { confirmPassword: jest.fn() };
   const sessions = { revokeAllForUser: jest.fn() };
-  const audit = { record: jest.fn() };
+  const audit = { record: jest.fn(), recordInTx: jest.fn<Promise<{ id: string }>, [unknown, { action: string }]>(async () => ({ id: 'a' })) };
   const billing = { closeForUser: jest.fn(async () => undefined) };
   const service = new UsersService(
     prisma as unknown as PrismaService,
@@ -47,10 +48,25 @@ describe('UsersService', () => {
 
   it('export : sans hash ni secret, journalisé', async () => {
     const { prisma, audit, service } = setup();
-    prisma.user.findUnique.mockResolvedValue({ id: 'u', email: 'jean@exemple.fr', sessions: [], stripeCustomerId: 'cus_secret' });
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'u',
+      email: 'jean@exemple.fr',
+      sessions: [],
+      stripeCustomerId: 'cus_secret',
+      auditLogs: [
+        { action: 'auth.login', actorKind: 'user', userAgent: 'Firefox', createdAt: new Date() },
+        { action: 'admin.user_suspended', actorKind: 'admin', userAgent: 'Navigateur de l’admin', createdAt: new Date() },
+      ],
+    });
     const data = await service.export('u', client);
     expect(data).toMatchObject({ format: 'raijin-export-v1', account: { id: 'u', hasPaymentCustomer: true } });
     expect(JSON.stringify(data)).not.toContain('cus_secret');
+    // Action admin : auteur réduit à « admin », sans son navigateur (docs/ARCHITECTURE.md §14.8).
+    expect(JSON.stringify(data)).not.toContain('Navigateur de l’admin');
+    expect((data['account'] as { auditLogs: unknown[] }).auditLogs).toEqual([
+      expect.objectContaining({ action: 'auth.login', userAgent: 'Firefox' }),
+      expect.objectContaining({ action: 'admin.user_suspended', actorKind: 'admin', userAgent: null }),
+    ]);
     const select = prisma.user.findUnique.mock.calls[0][0].select;
     for (const field of ['notifyTrialEmails', 'trialStartedAt', 'trialEndsAt', 'trialDay1MailAt', 'trialDayMinus2MailAt', 'trialEndMailAt', 'trialEndScreenSeenAt']) {
       expect(select[field]).toBe(true);
@@ -76,7 +92,7 @@ describe('UsersService', () => {
     auth.confirmPassword.mockResolvedValueOnce(undefined);
     await service.delete('u', 'bon', client);
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith('u', 'account_deleted');
-    expect(audit.record).toHaveBeenCalledWith('account.deleted', 'u', client);
+    expect(audit.recordInTx).toHaveBeenCalledWith(prisma, { action: 'account.deleted', actorKind: 'user', actorId: 'u', userId: 'u', client });
     expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 'u' } });
 
     prisma.user.findUnique.mockResolvedValue(null);
@@ -99,5 +115,26 @@ describe('UsersService', () => {
     expect(billing.closeForUser).toHaveBeenLastCalledWith('u');
     expect(billing.closeForUser.mock.invocationCallOrder[2]).toBeLessThan(prisma.user.delete.mock.invocationCallOrder[0] as number);
     await expect(new NoopAccountBillingCloser().closeForUser()).resolves.toBeUndefined();
+  });
+});
+
+describe('UsersService.deleteAccount (flux partagé avec l’espace admin)', () => {
+  it('entrée de l’appelant écrite avant la suppression, dans la même transaction ; auteur admin', async () => {
+    const { prisma, audit, service } = setup();
+    const order: string[] = [];
+    audit.recordInTx.mockImplementation(async (_tx: unknown, entry: { action: string }) => {
+      order.push(entry.action);
+      return { id: 'a' };
+    });
+    prisma.user.delete.mockImplementation(async () => order.push('delete'));
+    await service.deleteAccount('u', client, {
+      actorKind: 'admin',
+      actorId: 'admin-id',
+      beforeDelete: async (tx) => {
+        await audit.recordInTx(tx, { action: 'admin.user_deleted' });
+      },
+    });
+    expect(order).toEqual(['admin.user_deleted', 'account.deleted', 'delete']);
+    expect(audit.recordInTx).toHaveBeenCalledWith(prisma, expect.objectContaining({ action: 'account.deleted', actorKind: 'admin', actorId: 'admin-id' }));
   });
 });

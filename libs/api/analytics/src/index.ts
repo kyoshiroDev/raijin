@@ -1,1 +1,13 @@
 export * from './lib/api-analytics.module';
+export * from './lib/analytics.service';
+export * from './lib/cache/analytics-cache';
+export * from './lib/config/analytics-config';
+export * from './lib/google/ga4-client';
+export * from './lib/google/google-auth';
+export * from './lib/google/google-http';
+export * from './lib/google/search-console-client';
+export * from './lib/google/service-account';
+export * from './lib/reports/report-source';
+export * from './lib/reports/sources';
+export { fakeSeo, fakeTraffic } from './testing/fixtures/fake-reports';
+export * from './lib/cache/redis-usage-counter-store';

@@ -6,7 +6,7 @@ import {
   watchListResponseSchema,
 } from '@raijin/shared-contracts';
 import axios from 'axios';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { Client as PgClient } from 'pg';
 import { ApiClient, MAILPIT_URL, tokenFrom, uniqueEmail, uniqueFreeEmail, waitForMail } from '../support/client';
 
@@ -22,6 +22,19 @@ const DATABASE_URL = process.env['DATABASE_URL'] ?? 'postgresql://raijin:changem
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/** Code TOTP RFC 6238 (HMAC-SHA1, 6 chiffres, 30 s) d'un secret base32 (2FA admin). */
+function totp(secret: string): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const char of secret) bits += alphabet.indexOf(char).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g)?.map((byte) => parseInt(byte, 2)) ?? []);
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  const hmac = createHmac('sha1', key).update(counter).digest();
+  const offset = (hmac[hmac.length - 1] ?? 0) & 0xf;
+  return String((hmac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}
 
 function randomIp(): string {
   const b = randomBytes(3);
@@ -252,15 +265,22 @@ describe('API Raijin : essai Pro 7 jours (anti-abus, fin d’essai sous horloge 
     expect((await (await new ApiClient().init()).post('/watches/keep', { watchIds: [watchId] })).status).toBe(401);
   });
 
-  it('horloge simulée : corps invalide refusé ; tableau de conversion réservé au rôle ADMIN', async () => {
+  it('horloge simulée : corps invalide refusé ; tableau de conversion dans l’espace admin (404 non-admin, 2FA exigée)', async () => {
     const client = await verifiedUser(uniqueFreeEmail('admin'));
     expect((await client.post('/internal/trial/tick', { now: 'demain' })).status).toBe(400);
-    const forbidden = await client.get('/admin/trial-conversion');
-    expect(forbidden.status).toBe(403);
-    expect(forbidden.data['code']).toBe('FORBIDDEN');
+    // Phase 6 bis : sous @AdminRoute(), un non-admin reçoit 404 (espace invisible) au lieu de 403.
+    const hidden = await client.get('/admin/trial-conversion');
+    expect(hidden.status).toBe(404);
+    expect(hidden.data['code']).toBe('NOT_FOUND');
     expect((await (await new ApiClient().init()).get('/admin/trial-conversion')).status).toBe(401);
     const { id } = await me(client);
     await sql(`UPDATE "User" SET "role" = 'ADMIN' WHERE "id" = $1`, [id]);
+    const enrollment = await client.get('/admin/trial-conversion');
+    expect(enrollment.status).toBe(403);
+    expect(enrollment.data['code']).toBe('ADMIN_2FA_ENROLLMENT_REQUIRED');
+    const start = await client.post<{ secret: string }>('/admin/security/enrollment');
+    expect(start.status).toBe(201);
+    expect((await client.post('/admin/security/enrollment/confirm', { code: totp(start.data.secret) })).status).toBe(200);
     const report = await client.get('/admin/trial-conversion');
     expect(report.status).toBe(200);
     const parsed = trialConversionReportSchema.parse(report.data);

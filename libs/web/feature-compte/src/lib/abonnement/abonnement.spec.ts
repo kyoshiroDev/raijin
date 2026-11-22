@@ -124,6 +124,12 @@ describe('textes de l’abonnement', () => {
     expect(planStatus(fakeProAccount({ status: 'past_due' }, { paymentIssue: true })).detail).toContain('Pro reste actif');
     expect(planStatus(fakeProAccount({ cancelAtPeriodEnd: true })).detail).toContain('Résiliation programmée');
   });
+
+  it('statut : Pro offert par l’admin (source gift)', () => {
+    const gift = planStatus(fakeProAccount({}, { source: 'gift', subscription: null, giftEndsAt: '2026-12-22T00:00:00.000Z' }));
+    expect(gift.title).toBe('Pro offert');
+    expect(gift.detail).toContain('22 décembre 2026');
+  });
 });
 
 describe('Page Abonnement', () => {

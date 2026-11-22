@@ -130,6 +130,28 @@
           "BULLMQ_PREFIX": "raijin-e2e"
         }
       }
+    },
+    "make-admin": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node dist/apps/api/cli.js make-admin"
+      }
+    },
+    "admin-reset-2fa": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node dist/apps/api/cli.js admin-reset-2fa"
+      }
     }
   }
 }

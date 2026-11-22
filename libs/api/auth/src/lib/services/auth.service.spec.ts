@@ -414,3 +414,39 @@ describe('AuthService mots de passe', () => {
     );
   });
 });
+
+describe('AuthService — compte suspendu (phase 6 bis)', () => {
+  const suspendedAt = new Date('2026-11-20T10:00:00Z');
+
+  it('connexion : identifiants valides → 403 ACCOUNT_SUSPENDED, aucune session, audité', async () => {
+    const { mock, service, passwordHash, sessions, audit } = await setup();
+    mock.user.findUnique.mockResolvedValue(userFixture({ passwordHash, suspendedAt }));
+    await expectApiError(service.login({ email: 'jean.dupont@exemple.fr', password: PASSWORD }, client), 'ACCOUNT_SUSPENDED', 403);
+    expect(sessions.create).not.toHaveBeenCalled();
+    expect(actions(audit)).toContain('auth.login_suspended');
+  });
+
+  it('connexion : mauvais mot de passe d’un compte suspendu → même 401 qu’ailleurs (pas d’énumération)', async () => {
+    const { mock, service, passwordHash } = await setup();
+    mock.user.findUnique.mockResolvedValue(userFixture({ passwordHash, suspendedAt }));
+    await expectApiError(service.login({ email: 'jean.dupont@exemple.fr', password: 'mauvais mot de passe' }, client), 'AUTH_INVALID_CREDENTIALS', 401);
+  });
+
+  it('lien magique et vérification d’e-mail : 403 après un jeton valide, aucune session', async () => {
+    const { mock, service, tokens, sessions } = await setup();
+    tokens.consume.mockResolvedValue({ userId: 'u', redirectPath: null });
+    mock.user.updateMany.mockResolvedValue({ count: 0 });
+    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u', emailVerifiedAt: suspendedAt, suspendedAt }));
+    await expectApiError(service.verifyMagicLink('jeton', client), 'ACCOUNT_SUSPENDED', 403);
+    await expectApiError(service.verifyEmail('jeton', client), 'ACCOUNT_SUSPENDED', 403);
+    expect(sessions.create).not.toHaveBeenCalled();
+  });
+
+  it('refresh : compte suspendu → session révoquée, 403', async () => {
+    const { mock, service, sessions } = await setup();
+    sessions.rotate.mockResolvedValue({ session: { id: 'sid-1', userId: 'u' }, refreshToken: 'r2' });
+    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u', suspendedAt }));
+    await expectApiError(service.refresh('r1', client), 'ACCOUNT_SUSPENDED', 403);
+    expect(sessions.revoke).toHaveBeenCalledWith('sid-1', 'suspended');
+  });
+});

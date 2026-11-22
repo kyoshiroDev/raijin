@@ -1,6 +1,6 @@
 import type { Entitlements } from '@raijin/shared-contracts';
 import { LEGAL_NOTICE } from './layout';
-import { freePlanLines, recapLines, TRIAL_MAIL_SUBJECTS, trialDay1Template, trialDayMinus2Template, trialEndedTemplate, type TrialMailRecap } from './trial-templates';
+import { freePlanLines, GIFT_ENDED_SUBJECT, giftEndedTemplate, recapLines, TRIAL_MAIL_SUBJECTS, trialDay1Template, trialDayMinus2Template, trialEndedTemplate, type TrialMailRecap } from './trial-templates';
 
 const ctx = { logoUrl: 'https://app.raijinshield.com/icons/icon-192.png', appUrl: 'https://app.raijinshield.com', assetsBaseUrl: 'https://app.raijinshield.com/email' };
 const free: Entitlements = { analysesPerDay: 5, maxActiveWatches: 3, pushAlerts: false, walletScansPerDay: 0, alertHistoryDays: 30 };
@@ -96,5 +96,17 @@ describe('e-mails de l’essai Pro', () => {
     for (const forbidden of ['dernière chance', 'vite', 'urgent', 'dépêche', 'offre limitée', 'x10', 'moon', 'gain', 'opportunité', '!']) {
       expect(text).not.toContain(forbidden);
     }
+  });
+});
+
+describe('giftEndedTemplate (fin du Pro offert)', () => {
+  it('neutre : pas d’urgence ni de Rai, limites du Gratuit, suivis en pause seulement s’il y en a', () => {
+    const mail = giftEndedTemplate(ctx, 0, free);
+    expect(mail.subject).toBe(GIFT_ENDED_SUBJECT);
+    expect(mail.html).not.toContain('rai-');
+    expect(mail.text).toContain('plan Gratuit');
+    expect(mail.text).not.toContain('en pause');
+    expect(mail.text).not.toMatch(/dernière chance|vite|urgent/i);
+    expect(giftEndedTemplate(ctx, 2, free).text).toContain('2 suivis ont été mis en pause');
   });
 });

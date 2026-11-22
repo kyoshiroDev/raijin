@@ -26,6 +26,7 @@ export const PLAN_POLICY_USER_SELECT = {
   trialStartedAt: true,
   trialEndsAt: true,
   trialEndScreenSeenAt: true,
+  proGrantedUntil: true,
 } as const;
 
 export interface PlanPolicyRow {
@@ -34,6 +35,8 @@ export interface PlanPolicyRow {
   readonly trialStatus: TrialStatusRow | string;
   readonly trialEndsAt: Date | null;
   readonly emailVerifiedAt?: Date | null;
+  /** Pro offert par un admin jusqu'à cette date (source `gift`, phase 6 bis). */
+  readonly proGrantedUntil?: Date | null;
 }
 
 export interface TrialRow extends PlanPolicyRow {
@@ -48,10 +51,12 @@ export interface PlanPolicyLimits {
   readonly free: Entitlements;
   readonly trial: Entitlements;
   readonly subscription: Entitlements;
+  /** Pro offert par un admin : mêmes droits que l'abonnement Pro. */
+  readonly gift: Entitlements;
 }
 
 export interface PlanPolicy {
-  /** Plan effectif : `PRO` avec un abonnement Pro ou pendant l'essai actif. */
+  /** Plan effectif : `PRO` avec un abonnement Pro, pendant l'essai actif ou le Pro offert. */
   readonly effectivePlan: Plan;
   /** Plan payé (colonne `User.plan`). */
   readonly paidPlan: Plan;
@@ -62,6 +67,13 @@ export interface PlanPolicy {
 }
 
 export function planPolicyLimits(config: AppConfig): PlanPolicyLimits {
+  const subscription: Entitlements = {
+    analysesPerDay: null,
+    maxActiveWatches: config.watch.proLimit,
+    pushAlerts: true,
+    walletScansPerDay: config.wallet.dailyLimitPro,
+    alertHistoryDays: config.watch.proAlertHistoryDays,
+  };
   return {
     anonAnalysesPerDay: config.analysis.anonDailyLimit,
     free: {
@@ -78,13 +90,8 @@ export function planPolicyLimits(config: AppConfig): PlanPolicyLimits {
       walletScansPerDay: config.wallet.dailyLimitTrial,
       alertHistoryDays: config.watch.proAlertHistoryDays,
     },
-    subscription: {
-      analysesPerDay: null,
-      maxActiveWatches: config.watch.proLimit,
-      pushAlerts: true,
-      walletScansPerDay: config.wallet.dailyLimitPro,
-      alertHistoryDays: config.watch.proAlertHistoryDays,
-    },
+    subscription,
+    gift: subscription,
   };
 }
 
@@ -93,10 +100,16 @@ export function isTrialActive(row: Pick<PlanPolicyRow, 'trialStatus' | 'trialEnd
   return row.trialStatus === 'ACTIVE' && row.trialEndsAt !== null && row.trialEndsAt.getTime() > now.getTime();
 }
 
-/** Priorité : abonnement Pro > essai actif > Gratuit. */
+/** Pro offert en cours ⇔ échéance strictement future. */
+export function isGiftActive(row: Pick<PlanPolicyRow, 'proGrantedUntil'>, now: Date): boolean {
+  return !!row.proGrantedUntil && row.proGrantedUntil.getTime() > now.getTime();
+}
+
+/** Priorité : abonnement Pro > essai actif > Pro offert > Gratuit. */
 export function resolvePlanPolicy(row: PlanPolicyRow, limits: PlanPolicyLimits, now: Date): PlanPolicy {
   const trialActive = isTrialActive(row, now);
-  const source: PlanSource = row.plan === 'PRO' ? 'subscription' : trialActive ? 'trial' : 'free';
+  const source: PlanSource =
+    row.plan === 'PRO' ? 'subscription' : trialActive ? 'trial' : isGiftActive(row, now) ? 'gift' : 'free';
   return {
     effectivePlan: source === 'free' ? 'FREE' : 'PRO',
     paidPlan: row.plan,

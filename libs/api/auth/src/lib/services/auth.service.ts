@@ -117,6 +117,7 @@ export class AuthService {
     if (!record) throw ApiException.auth('AUTH_TOKEN_INVALID', HttpStatus.BAD_REQUEST);
     const user = await this.markEmailVerified(record.userId, client);
     await this.tokens.revokeUnused(user.id, ['EMAIL_VERIFY']);
+    await this.assertNotSuspended(user, client, 'email_verify');
     return this.startSession(user, client);
   }
 
@@ -187,6 +188,8 @@ export class AuthService {
       throw invalidCredentials(HttpStatus.UNAUTHORIZED);
     }
     await this.attempts.reset(emailNormalized);
+    // Suspension : signalée seulement après des identifiants valides (aucune énumération).
+    await this.assertNotSuspended(user, client, 'password');
     const fresh = await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
@@ -218,6 +221,10 @@ export class AuthService {
     const { session, refreshToken } = await this.sessions.rotate(rawRefreshToken, client);
     const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+    if (user.suspendedAt) {
+      await this.sessions.revoke(session.id, 'suspended');
+      throw ApiException.admin('ACCOUNT_SUSPENDED', HttpStatus.FORBIDDEN);
+    }
     return this.issue(user, session.id, refreshToken);
   }
 
@@ -266,6 +273,7 @@ export class AuthService {
     if (!record) throw ApiException.auth('AUTH_TOKEN_INVALID', HttpStatus.BAD_REQUEST);
     // Le lien prouve la possession de la boîte : l'adresse est vérifiée du même coup.
     const user = await this.markEmailVerified(record.userId, client);
+    await this.assertNotSuspended(user, client, 'magic_link');
     const fresh = await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
@@ -342,6 +350,13 @@ export class AuthService {
   // -------------------------------------------------------------------------
   // Outils
   // -------------------------------------------------------------------------
+
+  /** Compte suspendu par un admin : 403 `ACCOUNT_SUSPENDED` (audité), aucune session ouverte. */
+  private async assertNotSuspended(user: Pick<User, 'id' | 'suspendedAt'>, client: ClientInfo, method: string): Promise<void> {
+    if (!user.suspendedAt) return;
+    await this.audit.record('auth.login_suspended', user.id, client, { method });
+    throw ApiException.admin('ACCOUNT_SUSPENDED', HttpStatus.FORBIDDEN);
+  }
 
   private async startSession(user: User, client: ClientInfo): Promise<IssuedSession> {
     const { session, refreshToken } = await this.sessions.create(user.id, client);

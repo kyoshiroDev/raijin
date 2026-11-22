@@ -151,6 +151,16 @@ export class LoginAttemptsService implements OnModuleDestroy {
     await this.run((store) => store.reset(this.key(emailNormalized)));
   }
 
+  /**
+   * Compteurs à expiration d'autres usages (codes 2FA admin…), même stockage (Redis, script Lua atomique,
+   * repli mémoire). `key` est construit par l'appelant, sans donnée personnelle en clair.
+   */
+  readonly counters = {
+    get: (key: string): Promise<number> => this.run((store) => store.get(key)),
+    increment: (key: string, ttlMs: number): Promise<number> => this.run((store) => store.increment(key, ttlMs)),
+    reset: (key: string): Promise<void> => this.run((store) => store.reset(key)),
+  };
+
   onModuleDestroy(): void {
     this.primary?.close();
     this.memory.close();

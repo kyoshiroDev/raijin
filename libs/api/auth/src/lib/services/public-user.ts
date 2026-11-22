@@ -1,4 +1,4 @@
-import { isTrialActive, trialStatusOf } from '@raijin/api-core';
+import { isGiftActive, isTrialActive, trialStatusOf } from '@raijin/api-core';
 import type { User } from '@raijin/api-prisma';
 import type { PublicUser } from '@raijin/shared-contracts';
 
@@ -11,7 +11,7 @@ export function toPublicUser(user: User, now: Date = new Date()): PublicUser {
     id: user.id,
     email: user.email,
     emailVerified: user.emailVerifiedAt !== null,
-    plan: user.plan === 'PRO' || isTrialActive(user, now) ? 'PRO' : 'FREE',
+    plan: user.plan === 'PRO' || isTrialActive(user, now) || isGiftActive(user, now) ? 'PRO' : 'FREE',
     role: user.role,
     trial: {
       status: trialStatusOf(user, now),

@@ -1,5 +1,11 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { AUTH_ERROR_MESSAGES, type ApiErrorCode, type AuthErrorCode } from '@raijin/shared-contracts';
+import {
+  ADMIN_ERROR_MESSAGES,
+  AUTH_ERROR_MESSAGES as AUTH_MESSAGES,
+  type AdminErrorCode,
+  type ApiErrorCode,
+  type AuthErrorCode,
+} from '@raijin/shared-contracts';
 
 /** Messages français par défaut des codes génériques. */
 export const GENERIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -15,13 +21,11 @@ export const GENERIC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   MAINTENANCE: 'Raijin est en maintenance. Reviens dans quelques minutes.',
 };
 
+/** Messages des contrats : authentification et espace admin (dont `ACCOUNT_SUSPENDED`). */
+const CONTRACT_MESSAGES: Readonly<Record<string, string>> = { ...AUTH_MESSAGES, ...ADMIN_ERROR_MESSAGES };
+
 export function defaultMessage(code: ApiErrorCode): string {
-  return (
-    (AUTH_ERROR_MESSAGES as Readonly<Record<string, string>>)[code] ??
-    GENERIC_ERROR_MESSAGES[code] ??
-    GENERIC_ERROR_MESSAGES['INTERNAL_ERROR'] ??
-    'Erreur.'
-  );
+  return CONTRACT_MESSAGES[code] ?? GENERIC_ERROR_MESSAGES[code] ?? GENERIC_ERROR_MESSAGES['INTERNAL_ERROR'] ?? 'Erreur.';
 }
 
 /** Erreur métier de l'API : rendue telle quelle au format `{code, message}` par le filtre global. */
@@ -36,6 +40,13 @@ export class ApiException extends HttpException {
 
   /** Erreur d'authentification avec le message neutre des contrats. */
   static auth(code: AuthErrorCode, status: HttpStatus): ApiException {
-    return new ApiException(code, status, AUTH_ERROR_MESSAGES[code]);
+    const message = AUTH_MESSAGES[code];
+    return new ApiException(code, status, message);
+  }
+
+  /** Erreur de l'espace admin (ou `ACCOUNT_SUSPENDED`) avec le message des contrats. */
+  static admin(code: AdminErrorCode, status: HttpStatus): ApiException {
+    const message = ADMIN_ERROR_MESSAGES[code];
+    return new ApiException(code, status, message);
   }
 }

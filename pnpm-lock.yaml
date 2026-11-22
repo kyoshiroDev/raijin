@@ -84,6 +84,9 @@ importers:
       bullmq:
         specifier: ^6.7.8
         version: 6.7.8(ioredis@5.11.1)(pg@8.23.1)
+      chart.js:
+        specifier: ^4.6.1
+        version: 4.6.1
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -117,6 +120,9 @@ importers:
       stripe:
         specifier: ~23.2.0
         version: 23.2.0(@types/node@24.19.2)
+      uqr:
+        specifier: ^0.1.3
+        version: 0.1.3
       web-push:
         specifier: ~3.6.7
         version: 3.6.7
@@ -2485,6 +2491,9 @@ packages:
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
+
+  '@kurkle/color@0.3.4':
+    resolution: {integrity: sha512-M5UknZPHRu3DEDWoipU6sE8PdkZ6Z/S+v4dD+Ke8IaNlpdSQah50lz1KtcFBa2vsdOnwbbnxJwVM4wty6udA5w==}
 
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
@@ -5697,6 +5706,10 @@ packages:
 
   chardet@2.2.0:
     resolution: {integrity: sha512-rddelWYNPRrXq6PtNEN2S3f6t9ILzvqaN5pVgi4kqt9jHQaXIial9PznB5iSPVlQSLNaaH22ItWz3EJtQ10+OA==}
+
+  chart.js@4.6.1:
+    resolution: {integrity: sha512-hJyniucsFmq//EvXYvJ6c6mahPoI3kaxdjVH8awTaJ/fDNWeSqqqArixMJWkWNN6fcYvPU3HneSANFNYtRi61g==}
+    engines: {pnpm: '>=8'}
 
   chokidar@3.6.0:
     resolution: {integrity: sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw==}
@@ -10240,6 +10253,9 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  uqr@0.1.3:
+    resolution: {integrity: sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==}
+
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
@@ -13413,6 +13429,8 @@ snapshots:
       '@jsonjoy.com/buffers': 17.67.0(tslib@2.9.1)
       '@jsonjoy.com/codegen': 17.67.0(tslib@2.9.1)
       tslib: 2.9.1
+
+  '@kurkle/color@0.3.4': {}
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
@@ -16671,6 +16689,10 @@ snapshots:
   character-entities-legacy@3.0.0: {}
 
   chardet@2.2.0: {}
+
+  chart.js@4.6.1:
+    dependencies:
+      '@kurkle/color': 0.3.4
 
   chokidar@3.6.0:
     dependencies:
@@ -21749,6 +21771,8 @@ snapshots:
       browserslist: 4.29.6
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uqr@0.1.3: {}
 
   uri-js@4.4.1:
     dependencies:

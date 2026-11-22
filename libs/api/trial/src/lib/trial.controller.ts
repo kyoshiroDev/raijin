@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Header, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AuthGuard, CurrentAuth, Roles, RolesGuard, type AuthContext } from '@raijin/api-auth';
+import { AdminRoute, AuthGuard, CurrentAuth, type AuthContext } from '@raijin/api-auth';
 import { ApiException } from '@raijin/api-core';
 import type { TrialConversionReport, TrialRecap } from '@raijin/shared-contracts';
 import * as z from 'zod';
@@ -33,17 +33,16 @@ export class TrialController {
   }
 }
 
-/** Administration (phase 6 : tableau de conversion minimal ; espace admin complet en 6 bis). Rôle ADMIN relu en base. */
+/** Conversion des essais (phase 6), sous `@AdminRoute()` (non-admin : 404 ; 2FA et session admin exigées). */
 @ApiTags('admin')
 @Controller('admin')
-@UseGuards(AuthGuard, RolesGuard)
-@Roles('ADMIN')
+@AdminRoute()
 export class TrialAdminController {
   constructor(private readonly conversion: TrialConversionService) {}
 
   @Get('trial-conversion')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'Conversion des essais Pro par cohorte hebdomadaire (rôle ADMIN).' })
+  @ApiOperation({ summary: 'Conversion des essais Pro par cohorte hebdomadaire (espace admin).' })
   report(): Promise<TrialConversionReport> {
     return this.conversion.report();
   }

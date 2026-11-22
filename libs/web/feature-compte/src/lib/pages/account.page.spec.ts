@@ -42,6 +42,13 @@ describe('AccountPage', () => {
     expect(text).toContain('Gratuit');
     expect(text).toContain('pas un conseil en investissement');
     expect(queryAll(harness, '.bg-thunder')).toHaveLength(0);
+    expect(query(harness, '[data-admin-link]')).toBeNull();
+  });
+
+  it('admin : lien « Espace admin »', async () => {
+    const { harness } = await setupFeature('authenticated', { role: 'ADMIN' });
+    await harness.navigateByUrl('/compte');
+    expect(query(harness, '[data-admin-link]')?.getAttribute('href')).toBe('/admin');
   });
 
   it('suppression : mot de passe exigé, puis DELETE /users/me { password }', async () => {

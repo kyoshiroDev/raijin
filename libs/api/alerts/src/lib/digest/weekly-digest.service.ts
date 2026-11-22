@@ -42,6 +42,7 @@ export class WeeklyDigestService {
         where: {
           notifyWeeklyDigest: true,
           emailVerifiedAt: { not: null },
+          suspendedAt: null,
           watches: { some: { status: 'active' } },
           OR: [{ weeklyDigestSentAt: null }, { weeklyDigestSentAt: { lt: cutoff } }],
           ...(after ? { id: { gt: after } } : {}),
