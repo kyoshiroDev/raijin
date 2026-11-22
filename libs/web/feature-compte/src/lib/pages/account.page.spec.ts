@@ -99,7 +99,8 @@ describe('AccountPage', () => {
     await harness.navigateByUrl('/compte?section=notifications');
     await waitFor(() => document.activeElement?.id === 'rj-notifications-title');
     expect(document.activeElement?.id).toBe('rj-notifications-title');
-    expect(query(harness, '#notifications')).not.toBeNull();
+    // Le titre focalisé est bien celui de cet écran.
+    expect(query(harness, '#notifications')?.contains(document.activeElement)).toBe(true);
   });
 
   it('texte d’essai factuel', () => {

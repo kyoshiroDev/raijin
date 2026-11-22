@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Injector, afterNextRender, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { PLAN_LABELS, type PublicUser } from '@raijin/shared-contracts';
 import { AuthStore, PushService, UnreadAlerts, WatchesStore, toClientError } from '@raijin/web-data-access';
@@ -140,6 +140,7 @@ export class AccountPage {
   private readonly watches = inject(WatchesStore);
   private readonly unread = inject(UnreadAlerts);
   private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   /** `?section=notifications` (lien « préférences » des e-mails d'alerte) : défilement et focus sur la carte. */
   readonly section = input<string>();
@@ -177,8 +178,9 @@ export class AccountPage {
           () => {
             const view = this.document.defaultView;
             const reduce = view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? true;
-            this.document.getElementById('notifications')?.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-            this.document.getElementById('rj-notifications-title')?.focus({ preventScroll: true });
+            // Recherche limitée à cet écran (jamais un autre élément du document portant le même id).
+            this.host.querySelector('#notifications')?.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+            this.host.querySelector<HTMLElement>('#rj-notifications-title')?.focus({ preventScroll: true });
           },
           { injector: this.injector },
         ),

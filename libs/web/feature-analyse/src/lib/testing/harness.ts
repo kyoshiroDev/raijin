@@ -67,17 +67,21 @@ export function submitForm(harness: RouterTestingHarness): void {
 }
 
 /** Attend qu'une requête parte (tâches lancées à l'inactivité du navigateur), puis la renvoie. */
-export async function expectRequest(ctrl: HttpTestingController, url: string, attempts = 50): Promise<TestRequest> {
-  for (let i = 0; i < attempts; i++) {
-    const [request] = ctrl.match(url);
-    if (request) return request;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return ctrl.expectOne(url);
+export async function expectRequest(ctrl: HttpTestingController, url: string): Promise<TestRequest> {
+  let request: TestRequest | undefined;
+  await waitFor(() => (request ??= ctrl.match(url)[0]) !== undefined, `requête ${url}`);
+  return request as TestRequest;
 }
 
-export async function waitFor(condition: () => boolean, attempts = 50): Promise<void> {
-  for (let i = 0; i < attempts && !condition(); i++) {
+/**
+ * Attend qu'une condition soit vraie (écran chargé à la demande, tâche lancée à l'inactivité).
+ * Vérifie toutes les 10 ms jusqu'à la réussite : la limite de 10 s n'est qu'un garde-fou, pas un
+ * délai (un budget en nombre d'essais échouait sur une machine lente). Échoue explicitement.
+ */
+export async function waitFor(condition: () => boolean, what = 'condition attendue'): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Délai dépassé : ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }

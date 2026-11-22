@@ -78,9 +78,15 @@ export function submitForm(harness: RouterTestingHarness): void {
   form.dispatchEvent(new Event('submit', { cancelable: true }));
 }
 
-/** Attend qu'une condition soit vraie (navigation vers un écran chargé à la demande). */
-export async function waitFor(condition: () => boolean, attempts = 50): Promise<void> {
-  for (let i = 0; i < attempts && !condition(); i++) {
+/**
+ * Attend qu'une condition soit vraie (écran chargé à la demande, tâche lancée à l'inactivité).
+ * Vérifie toutes les 10 ms jusqu'à la réussite : la limite de 10 s n'est qu'un garde-fou, pas un
+ * délai (un budget en nombre d'essais échouait sur une machine lente). Échoue explicitement.
+ */
+export async function waitFor(condition: () => boolean, what = 'condition attendue'): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Délai dépassé : ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }

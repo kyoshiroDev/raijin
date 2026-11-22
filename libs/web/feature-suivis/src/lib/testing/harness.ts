@@ -61,18 +61,24 @@ export function dialog(): HTMLElement | null {
 }
 
 /** Attend une requête (écrans chargés à la demande), puis la renvoie. */
-export async function expectRequest(ctrl: HttpTestingController, match: string | ((r: { url: string; method: string }) => boolean), attempts = 100): Promise<TestRequest> {
+export async function expectRequest(ctrl: HttpTestingController, match: string | ((r: { url: string; method: string }) => boolean)): Promise<TestRequest> {
   const matcher = typeof match === 'string' ? (r: { url: string }) => r.url === match : match;
-  for (let i = 0; i < attempts; i++) {
-    const [request] = ctrl.match((r) => matcher(r));
-    if (request) return request;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return ctrl.expectOne((r) => matcher(r));
+  let request: TestRequest | undefined;
+  await waitFor(() => (request ??= ctrl.match((r) => matcher(r))[0]) !== undefined, `requête ${typeof match === 'string' ? match : 'attendue'}`);
+  return request as TestRequest;
 }
 
-export async function waitFor(condition: () => boolean, attempts = 100): Promise<void> {
-  for (let i = 0; i < attempts && !condition(); i++) await new Promise((resolve) => setTimeout(resolve, 10));
+/**
+ * Attend qu'une condition soit vraie (écran chargé à la demande, tâche lancée à l'inactivité).
+ * Vérifie toutes les 10 ms jusqu'à la réussite : la limite de 10 s n'est qu'un garde-fou, pas un
+ * délai (un budget en nombre d'essais échouait sur une machine lente). Échoue explicitement.
+ */
+export async function waitFor(condition: () => boolean, what = 'condition attendue'): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`Délai dépassé : ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 /** Rendu stabilisé après une réponse simulée. */

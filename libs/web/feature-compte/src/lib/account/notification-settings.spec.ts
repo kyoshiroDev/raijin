@@ -39,6 +39,12 @@ async function setup(settings = fakeNotificationSettings(), configure: (push: Fa
 }
 
 describe('RjNotificationSettings', () => {
+  // Le `host: { id: 'notifications' }` remplace l'id `rootN` posé par TestBed sur l'élément hôte :
+  // le nettoyage de TestBed (qui retire les `[id^="root"]`) ne le trouve plus. Sans ce retrait,
+  // l'élément survit dans le document partagé par les fichiers d'un même worker et fausse les
+  // `getElementById` des autres specs (ex. ?section=notifications de AccountPage).
+  afterEach(() => document.querySelectorAll('body > #notifications').forEach((el) => el.remove()));
+
   it('Gratuit : e-mail actif, push désactivé avec un message neutre, aucune demande de permission', async () => {
     const { host, switchOf, push } = await setup(fakeNotificationSettings({ pushAllowed: false }));
     expect(switchOf('emailAlerts').getAttribute('aria-checked')).toBe('true');

@@ -11,9 +11,14 @@ import { AnalysisStore } from './analysis.store';
 
 const API = '/api/v1';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-async function waitFor(condition: () => boolean, attempts = 100): Promise<void> {
-  for (let i = 0; i < attempts && !condition(); i++) await new Promise((resolve) => setTimeout(resolve, 10));
-}
+// Vérifie jusqu'à la réussite (10 s de garde-fou, pas un délai) et échoue explicitement.
+const waitFor = (condition: () => boolean) =>
+  vi.waitFor(
+    () => {
+      if (!condition()) throw new Error('Délai dépassé : condition attendue');
+    },
+    { timeout: 10_000, interval: 10 },
+  );
 
 async function setup() {
   await loadContracts();
