@@ -7,7 +7,7 @@
 
 - **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
 
-## Statut : phase 3 — Analyse de token — en cours (phases 1, 1 bis, 1 ter/Helius, 2 terminées)
+## Statut : phase 4 — Suivis, alertes et push — en cours (phases 1 à 3 terminées ; Lighthouse 2 pages à 87-88, voir Blocages)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
