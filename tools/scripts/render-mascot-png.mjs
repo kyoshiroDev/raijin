@@ -87,18 +87,18 @@ function check() {
     console.error(`PNG de la charte à régénérer (pnpm nx run web:render-mascot-png) :\n- ${errors.join('\n- ')}`);
     process.exit(1);
   }
-  console.log(`${TARGETS.length} PNG à jour (dimensions et empreinte des SVG sources), maintenance.css conforme aux tokens.`);
+  console.log(`${TARGETS.length} PNG à jour (dimensions et empreinte des SVG sources), maintenance-static.css conforme aux tokens.`);
 }
 
-/** La page statique `maintenance.css` recopie des tokens : mêmes valeurs que libs/brand/tokens.css. */
+/** La page statique `maintenance-static.css` recopie des tokens : mêmes valeurs que libs/brand/tokens.css. */
 function checkMaintenanceTokens() {
   const tokens = readFileSync(join(root, 'libs', 'brand', 'tokens.css'), 'utf8');
   const theme = tokens.match(/@theme\s*{([\s\S]*?)}/)?.[1] ?? '';
-  const page = readFileSync(join(publicDir, 'maintenance.css'), 'utf8');
+  const page = readFileSync(join(publicDir, 'maintenance-static.css'), 'utf8');
   const errors = [];
   for (const [, name, value] of page.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
     const expected = theme.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]?.trim();
-    if (expected !== value.trim()) errors.push(`maintenance.css : ${name} = ${value.trim()} ≠ tokens.css ${expected ?? '(absent)'}`);
+    if (expected !== value.trim()) errors.push(`maintenance-static.css : ${name} = ${value.trim()} ≠ tokens.css ${expected ?? '(absent)'}`);
   }
   return errors;
 }
