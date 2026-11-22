@@ -42,7 +42,8 @@
       "@raijin/api-solana/testing": ["./libs/api/solana/src/testing.ts"],
       "@raijin/api-prisma": ["./libs/api/prisma/src/index.ts"],
       "@raijin/api-core": ["./libs/api/core/src/index.ts"],
-      "@raijin/api-analysis": ["./libs/api/analysis/src/index.ts"]
+      "@raijin/api-analysis": ["./libs/api/analysis/src/index.ts"],
+      "@raijin/api-wallet": ["./libs/api/wallet/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

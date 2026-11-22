@@ -29,6 +29,7 @@ dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
 | `web-feature-compte` | `libs/web/feature-compte` | Auth, compte, abonnement | `scope:web`, `type:feature` |
 | `api-auth` … `api-notifications` | `libs/api/*` | Modules Nest (auth, users, billing, alerts, notifications) | `scope:api`, `type:feature` |
 | `api-analysis` | `libs/api/analysis` | Analyse de token : endpoint, cache, quotas simples, persistance, page publique, image OG (phase 3) | `scope:api`, `type:feature` |
+| `api-wallet` | `libs/api/wallet` | Scan de wallet en lecture seule : endpoint, quota de scans, cache par wallet, réutilisation des verdicts par mint (phase 5) | `scope:api`, `type:feature` |
 | `api-solana` | `libs/api/solana` | Clients Helius / RPC, DexScreener, GeckoTerminal, Jupiter, RugCheck, file de débit, agrégateur de faits (partagé avec l'API du banc) | `scope:solana`, `type:data-access` |
 | `api-prisma` | `libs/api/prisma` | Schéma Prisma, migrations, client généré, `PrismaService` | `scope:api`, `type:data-access` |
 | `api-core` | `libs/api/core` | Socle Nest transverse : config Zod, filtre d'erreurs, Helmet, CORS, throttler, CSRF, cookies | `scope:api`, `type:util` |
@@ -813,3 +814,132 @@ suivi. Chaque purge écrit son `JobRun` (nombre de lignes par table).
 de la redirection actuelle vers `/analyse`), route `/maintenance`. `MAINTENANCE_MODE=1` : l'API répond 503
 `MAINTENANCE` (sauf `health`) et un intercepteur de `web-data-access` affiche `/maintenance`. Une page statique
 `maintenance-static.html` (sans JS) est aussi produite pour la page d'erreur Traefik (phase 8).
+
+## 12. Scan de wallet (phase 5)
+
+### 12.1 Découpage
+- **Contrats** (`@raijin/shared-contracts`, `src/lib/wallet/`) : `walletScanRequestSchema` (`{address}` strict, base58,
+  refus des programmes et mints connus `KNOWN_NON_WALLET_ADDRESSES`), `walletScanResultSchema` (`summary`, `tokens` ≤ 100
+  triés par valeur, `delegations` ≤ 100, `sources`, `engineVersion`, `scannedAt`, `cached`, `partial`),
+  `walletTokenSchema` (mint, programme, métadonnées **non fiables**, `balance` {raw u64, decimals, ui exact},
+  `valueUsd` indicatif, `accountCount`, `frozen`, `delegated`, `assessment` union `analyzed` (verdict, explication,
+  `coverage` full | light, `checksEvaluated` /9, `degraded`, `fromCache`) | `not_analyzed` (over_limit | dust) |
+  `unavailable` (upstream | timeout | budget | unanalyzable)), `walletDelegationSchema` (compte, mint, `delegate`,
+  `delegatedAmount`, solde, `coversFullBalance`), `walletScanResponseSchema` (`{scan, quota}` kind `wallet_scan`),
+  `walletScanQuotaResponseSchema` (`{allowed, quota}` : Gratuit `false`/`null`), `WALLET_ERROR_CODES` (`WALLET_INVALID`,
+  `WALLET_IS_TOKEN`, `WALLET_SCAN_PLAN_REQUIRED`, `WALLET_TOO_LARGE`, `WALLET_SCAN_QUOTA_EXCEEDED`) + messages,
+  `WALLET_REVOKE_GUIDES` (liste blanche d'URLs exactes), `WALLET_SCAN_READ_ONLY_NOTICE`, `WALLET_DELEGATION_EXPLANATION`.
+- **`libs/api/solana`** (solana-data) : `listWalletHoldings(address)` (nature du compte, comptes SPL + Token-2022,
+  délégations, agrégation par mint, prix DexScreener par lots) et `collectFactsLightBatch(mints)` (faits `light` d'un lot
+  de mints, appels groupés) ; voie de budget `wallet` (`CreditLane = 'interactive' | 'watch' | 'wallet'`).
+- **`libs/shared/risk-engine`** (solana-data) : règle **D3** (12.4) ; aucune autre règle modifiée.
+- **`libs/api/wallet`** (`api-wallet`, `scope:api`, `type:feature`, généré vide) : contrôleur, droits par plan, quota,
+  cache, orchestration, `ProductEvent`.
+- **Web** (ui-mobile-first) : `web-feature-wallet` (écran `/wallet`, déjà routé), `web-data-access` (`WalletScanService`,
+  messages via la table exhaustive `api-error.ts`, déjà complétée par les codes `WALLET_*`).
+
+### 12.2 Routes (`/api/v1`, session obligatoire, CSRF sur la mutation)
+`POST wallet-scans` (`WalletScanRequest` → `WalletScanResponse`) · `GET wallet-scans/quota` (`WalletScanQuotaResponse`).
+Ordre des contrôles : session (401 `UNAUTHORIZED`) → plan (Gratuit, e-mail non vérifié compris : 403
+`WALLET_SCAN_PLAN_REQUIRED`, aucun compteur touché) → schéma (400 `WALLET_INVALID`, aussi pour un programme connu ;
+422 `WALLET_IS_TOKEN` pour un mint connu) → cache du wallet → réservation du quota (429 `WALLET_SCAN_QUOTA_EXCEEDED`) →
+collecte. Throttler dédié : 5 scans/min par utilisateur (en plus du global). L'adresse ne passe **jamais** dans l'URL
+(ni chemin ni query) : pas d'historique de navigateur ni de journal d'accès Traefik qui la contienne.
+
+### 12.3 Sources et coût par scan (Helius : RPC standard 1 crédit, toute méthode DAS 10 crédits, vérifié le 2026-11-22 sur https://www.helius.dev/docs/billing/credits)
+1. Nature de l'adresse : `getAccountInfo` jsonParsed (1) → programme exécutable ou compte de token : `WALLET_INVALID` ;
+   mint : `WALLET_IS_TOKEN` ; compte absent = wallet sans SOL, scan normal (résultat vide possible).
+2. Comptes : `getTokenAccountsByOwner` jsonParsed × 2 programmes (SPL `Tokenkeg…`, Token-2022 `Tokenz…`) en parallèle (2).
+   jsonParsed donne pour les deux programmes `mint`, `tokenAmount`, `state` (frozen), `delegate`, `delegatedAmount` : c'est
+   la source des délégations (**sur tous les comptes**, vides, poussière et NFT compris). Plus de
+   `WALLET_SCAN_MAX_ACCOUNTS` (1 000) comptes → 422 `WALLET_TOO_LARGE` (quota remboursé). DAS `getAssetsByOwner` /
+   `getTokenAccounts` **écartés** (10 crédits par page, et `getAssetsByOwner` ne donne pas le délégué).
+3. Classement : comptes à solde 0 → `emptyAccountCount` ; 0 décimale et solde 1 → `nftCount` (ignorés) ; le reste agrégé
+   par mint (somme u64 en `BigInt`). Prix DexScreener `tokens/v1` par lots de 30 (gratuit, ≈ 4 req/s) pour
+   `WALLET_SCAN_PRICE_LOOKUP_MAX` (150) mints au plus. Prix connu et valeur < `WALLET_SCAN_DUST_USD` (1 USD) →
+   `not_analyzed: dust`. **Prix inconnu ≠ poussière** (les airdrops d'arnaque n'ont souvent pas de prix : ce sont eux
+   qu'il faut vérifier). Tri : valeur connue décroissante, puis valeur inconnue ; les `WALLET_SCAN_MAX_TOKENS` (20 ; 8
+   sans clé) premiers sont analysés, les suivants `not_analyzed: over_limit`.
+4. Verdicts : d'abord le cache (12.5), puis `collectFactsLightBatch` pour les manquants seulement : `getMultipleAccounts`
+   des mints (1 par lot de 100), DAS `getAssetBatch` (10 pour tout le lot, métadonnées et update authority), DexScreener
+   déjà en main (gratuit), holders par mint `getTokenLargestAccounts` + propriétaires `getMultipleAccounts` (≈ 2, cache
+   des propriétaires 24 h). Pas de devis Jupiter, ni historique du créateur, ni RugCheck, ni GeckoTerminal.
+
+| Scan avec clé, 20 tokens à analyser | Crédits |
+|---|---|
+| Nature de l'adresse + comptes (1 + 2) | 3 |
+| Mints (1 lot) + `getAssetBatch` (1 lot) | 11 |
+| Holders (20 × ≈ 2) | ≈ 40 |
+| **Total à froid** | **≈ 54** (contre ≈ 263 avec 20 × `collectFacts(light)` : DAS `getAsset` à 10 par mint) |
+| Wallet en cache / tous les verdicts en cache | 0 / 3 |
+
+- Budget : voie `wallet` plafonnée à **3 000 crédits/jour** (`WALLET_DAILY_CREDIT_BUDGET`, compteur Redis
+  `helius:credits:wallet:<jour>`, même script Lua que §11.4), prise sur la part interactive : API 22 000 = suivis 12 000 +
+  wallet 3 000 + analyses ≥ 7 000 (≈ 500 analyses fraîches à ~14). 3 000 / 54 ≈ **55 scans à froid par jour** au pire,
+  bien plus en pratique (verdicts en cache sur les tokens courants). Validation au démarrage :
+  `WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET ≤ HELIUS_DAILY_CREDIT_BUDGET`.
+- Voie épuisée : la liste et les délégations restent servies (3 crédits, sinon RPC public), les tokens non verdictés
+  passent `unavailable: budget`, `partial: true` ; jamais d'erreur bloquante. Liste impossible (sources en panne) → 503
+  `UPSTREAM_UNAVAILABLE`, quota remboursé.
+- Échéance globale `WALLET_SCAN_DEADLINE_MS` (15 s) : les tokens non terminés passent `unavailable: timeout`. Durée
+  attendue avec clé : ≈ 4 à 6 s à froid (holders à 7 req/s partagés), < 300 ms en cache.
+
+### 12.4 Verdict rapide (`coverage: light`) et règle D3
+Le profil `light` laisse trois groupes à `null` (devis de vente, créateur, RugCheck) : avec D2 (≥ 3 indisponibles →
+jamais Sain), aucun token ne pourrait être Sain. **D3** (à écrire dans `docs/SCORING.md` par solana-data) : un groupe
+**non demandé par le profil** est « non évalué », pas « indisponible » ; il ne compte pas pour D2, qui s'applique aux
+seuls contrôles demandés. Mise en œuvre sans changer la signature `EvaluateRisk` : une seconde instance
+`createRiskEngine({ ...config, notEvaluated: ['sellSimulation', 'creator', 'rugcheck'] })`. D1 inchangée (compte de mint
+illisible → `unavailable: upstream`). Le front affiche « Sain · contrôle rapide (6/9) » avec le rappel
+`SAFE_VERDICT_REMINDER` et le lien vers l'analyse complète ; un Danger reste un Danger (critères mint, freeze et LP
+retirée évalués ; honeypot non évalué en rapide, ce que dit la phrase d'explication).
+
+### 12.5 Caches et réutilisation par mint
+1. Analyse complète récente : Redis `analysis:result:<engineVersion>:<mint>` (60 s), sinon dernière `TokenAnalysis`
+   ≤ `WALLET_REUSE_ANALYSIS_MAX_AGE_S` (1 h) → `coverage: full`, `fromCache: true`.
+2. Verdict rapide : Redis `wallet:verdict:<engineVersion>:<mint>` (`WALLET_TOKEN_VERDICT_TTL_S`, 1 h), partagé entre
+   utilisateurs. Les verdicts rapides ne sont **pas** écrits dans `TokenAnalysis` (la page publique `/t/<mint>` et les
+   suivis ne montrent que des analyses complètes).
+3. Résultat du wallet : Redis `wallet:scan:<engineVersion>:<HMAC(IP_HASH_SECRET, adresse)>`, TTL 120 s (600 s sans clé),
+   *single-flight* + verrou `wallet:lock:<hmac>` comme §9.5. Le même wallet re-scanné par le même utilisateur dans les
+   10 min ne recompte pas le quota (`quota:seen:<userId>:wallet:<hmac>`).
+
+### 12.6 Sans clé Helius
+RPC public (1 req/s) : nature de l'adresse et comptes (3 appels ≈ 3 s ; `getTokenAccountsByOwner` y est accepté mais
+lent, échéance 15 s), mints par `getMultipleAccounts`. Pas de DAS (métadonnées : extension Token-2022 ou nom
+DexScreener, sinon `null`), `getTokenLargestAccounts` refusé (holders indisponibles). Plafond **8 tokens** analysés,
+cache du wallet 600 s. `checksEvaluated` plus bas (≈ 4/9), `degraded: true` : rarement Sain, ce qui est honnête.
+
+### 12.7 Quotas et droits
+`UsageCounter` kind `wallet_scan` (déjà prévu), réservation atomique + remboursement (`WALLET_INVALID`, `WALLET_IS_TOKEN`,
+`WALLET_TOO_LARGE`, `UPSTREAM_UNAVAILABLE`) comme §9.6. Pro `WALLET_SCAN_DAILY_LIMIT_PRO` (20), essai
+`WALLET_SCAN_DAILY_LIMIT_TRIAL` (10, même logique que les analyses plafonnées pendant l'essai), Gratuit 0 (403). Plan et
+essai relus en base à chaque requête ; la phase 6 branchera Stripe sans changer ce contrat.
+
+### 12.8 Persistance et RGPD
+Une adresse de wallet est une **donnée pseudonyme** (rattachable à une personne par l'historique on-chain) et la lier à
+un compte révèle un patrimoine. Décision : **aucune persistance** de l'adresse ni du résultat en base (pas de table
+`WalletScan`) ; cache Redis ≤ 10 min, clé HMAC ; rien à exporter ni à supprimer au titre du RGPD. `ProductEvent`
+`wallet_scanned` sans adresse ni mint : `{ tokenCountBucket (0, 1-5, 6-20, 21-100, >100), analyzedCount, delegationCount,
+cached, partial, durationMs, credits, plan, trialActive }`. Journaux : adresse tronquée (`truncateMiddle` 4…4) au plus,
+jamais l'adresse du délégué ni la liste des mints. Pas d'historique des scans en v1 (une évolution demanderait un
+consentement explicite et une purge courte). À mentionner dans la politique de confidentialité (phase 7).
+
+### 12.9 Délégations et liens de révocation
+- Délégation = `delegate` non nul sur un compte de token (SPL ou Token-2022), avec `delegatedAmount` ; listée même si le
+  compte est vide. `coversFullBalance` si `delegatedAmount ≥ solde`. Le délégué permanent Token-2022 (au niveau du mint,
+  non révocable par le holder) relève du verdict du token, pas de cette liste.
+- Raijin ne propose **aucun** bouton de révocation (ce serait une transaction à signer) : il explique et renvoie vers la
+  documentation officielle, liste blanche d'URLs exactes `WALLET_REVOKE_GUIDES` vérifiée le 2026-11-22 (HTTP 200,
+  contenu relu) :
+  - Phantom : `https://help.phantom.com/articles/revoke-token-approvals-19142125651731` (la page recommande un outil
+    tiers pour Solana ; Raijin ne le lie pas directement, l'utilisateur suit le guide de Phantom) ;
+  - Solflare : `https://www.solflare.com/glossary/token-approval/` (révocation dans Paramètres → Sécurité et
+    confidentialité) et `https://help.solflare.com/en/articles/9267797-understanding-delegations-aka-spending-approvals-in-solflare`.
+  Liens `target="_blank" rel="noopener noreferrer"`. URLs à revérifier en phase 9 (test-e2e : requête HEAD, statut 200).
+
+### 12.10 Fixtures (solana-data)
+Synthétiques au format jsonParsed réel : wallet avec délégation SPL et délégation Token-2022 (dont une sur compte vide),
+wallet avec un token Danger (fixture « mint actif » existante) + un Sain + poussière + NFT, wallet vide (compte absent),
+wallet > 1 000 comptes (`WALLET_TOO_LARGE`), adresse de mint (`WALLET_IS_TOKEN`), compte de programme (`WALLET_INVALID`).
+Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (réponses simulées issues des contrats).

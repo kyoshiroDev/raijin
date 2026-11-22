@@ -6,4 +6,5 @@ export * from './lib/error';
 export * from './lib/notifications';
 export * from './lib/pagination';
 export * from './lib/verdict';
+export * from './lib/wallet';
 export * from './lib/watch';

@@ -241,6 +241,35 @@ MAIL_ASSETS_BASE_URL=
 MAINTENANCE_MODE=0
 
 # ---------------------------------------------------------------------
+# Scan de wallet (lecture seule, Pro et essai Pro, docs/ARCHITECTURE.md §12)
+# ---------------------------------------------------------------------
+# Raijin — scans de wallet par jour (jour UTC) : Pro et essai Pro. Gratuit : aucun scan (403).
+WALLET_SCAN_DAILY_LIMIT_PRO=20
+WALLET_SCAN_DAILY_LIMIT_TRIAL=10
+# Helius — part des crédits journaliers de l'API réservée aux scans de wallet
+#   (https://www.helius.dev/docs/billing/credits ; WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET
+#   ≤ HELIUS_DAILY_CREDIT_BUDGET). 3000 : ≈ 55 scans à froid par jour, les analyses gardent ≥ 7000.
+WALLET_DAILY_CREDIT_BUDGET=3000
+# Raijin — tokens analysés au plus par scan (les plus gros en valeur d'abord), avec et sans clé Helius
+WALLET_SCAN_MAX_TOKENS=20
+WALLET_SCAN_MAX_TOKENS_NO_KEY=8
+# Raijin — au-delà de ce nombre de comptes de tokens, le scan est refusé (WALLET_TOO_LARGE)
+WALLET_SCAN_MAX_ACCOUNTS=1000
+# Raijin — prix demandés à DexScreener au plus par scan (lots de 30, gratuit) ; les autres tokens : valeur inconnue
+WALLET_SCAN_PRICE_LOOKUP_MAX=150
+# Raijin — en dessous de cette valeur (USD, prix connu), un token est « poussière » : listé, non analysé
+WALLET_SCAN_DUST_USD=1
+# Raijin — échéance globale d'un scan (ms) : au-delà, les tokens restants sont « indisponibles » (résultat partiel)
+WALLET_SCAN_DEADLINE_MS=15000
+# Raijin — cache du résultat d'un wallet (s), avec et sans clé Helius ; aucune adresse n'est stockée en base
+WALLET_SCAN_CACHE_TTL_S=120
+WALLET_SCAN_CACHE_TTL_NO_KEY_S=600
+# Raijin — cache du verdict rapide par mint (s) ; une analyse complète plus récente que
+#   WALLET_REUSE_ANALYSIS_MAX_AGE_S est réutilisée telle quelle
+WALLET_TOKEN_VERDICT_TTL_S=3600
+WALLET_REUSE_ANALYSIS_MAX_AGE_S=3600
+
+# ---------------------------------------------------------------------
 # Google — (optionnel en dev : simulation locale, intégrations désactivées si vide)
 # ---------------------------------------------------------------------
 # GA4 — https://analytics.google.com/ → Administration → Flux de données → ton flux web (« G-XXXXXXX »)
@@ -278,7 +307,7 @@ SENTRY_ENVIRONMENT=development
   n'est pas en HTTPS, si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`, ou si
   `ANALYSIS_FIXTURES` est activé, si `JOBS_TEST_TRIGGER=1` ou `PUSH_PROVIDER=fake`, si une seule des deux clés
   VAPID est fournie (les deux ou aucune : sans clés, push indisponible), ou si `WATCH_DAILY_CREDIT_BUDGET`
-  dépasse `HELIUS_DAILY_CREDIT_BUDGET` (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
+  dépasse `HELIUS_DAILY_CREDIT_BUDGET`, ou `WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET` aussi (phase 5) (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
   `mailto:` ni `https:`). Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les
