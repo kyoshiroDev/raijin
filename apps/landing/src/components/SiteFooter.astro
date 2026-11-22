@@ -1,0 +1,22 @@
+---
+import ManageCookiesButton from './consent/ManageCookiesButton.astro';
+import { DISCLAIMER } from '../lib/content';
+
+interface Props {
+  /** Bannière de consentement présente (identifiant GA4 configuré). */
+  consent: boolean;
+}
+
+const { consent } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t border-line pb-safe">
+  <div class="mx-auto max-w-reading space-y-4 px-4 py-8 md:px-6 lg:px-8">
+    <p class="text-body-sm text-ink-muted">{DISCLAIMER}</p>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <p class="text-body-sm text-ink-muted">© {year} Raijin Shield</p>
+      {consent && <ManageCookiesButton />}
+    </div>
+  </div>
+</footer>

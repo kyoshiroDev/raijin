@@ -1,0 +1,77 @@
+---
+/**
+ * Bannière de consentement maison (CNIL, docs/ANALYTICS.md) : bottom sheet sur mobile, encart en bas à gauche
+ * à partir de 768 px. « Tout refuser » et « Tout accepter » ont exactement le même style ; aucune case
+ * précochée. Rendue masquée : le script de Base.astro l'affiche s'il n'existe aucun choix valide.
+ * Non rendue sans identifiant GA4 (aucune finalité soumise au consentement dans ce cas).
+ */
+interface Props {
+  measurementId: string;
+}
+
+const { measurementId } = Astro.props;
+const button =
+  'inline-flex min-h-11 items-center justify-center rounded-md border border-line-strong bg-surface-raised px-4 text-body-sm font-medium text-ink transition-colors hover:border-ink-muted';
+---
+
+<section
+  id="rj-consent"
+  data-ga4-id={measurementId}
+  role="dialog"
+  aria-labelledby="rj-consent-title"
+  aria-describedby="rj-consent-desc"
+  tabindex="-1"
+  hidden
+  class="fixed inset-x-0 bottom-0 z-50 rounded-t-lg border-t border-line bg-surface pb-safe shadow-card md:inset-x-auto md:bottom-6 md:left-6 md:max-w-md md:rounded-lg md:border"
+>
+  <div class="p-4 md:p-6">
+    <h2 id="rj-consent-title" class="font-display text-h3 text-ink">Cookies et mesure d'audience</h2>
+    <p id="rj-consent-desc" class="mt-2 text-body-sm text-ink-muted">
+      Avec ton accord, Raijin mesure la fréquentation de ce site avec Google Analytics (statistiques de visite, aucune
+      publicité). Tu peux refuser sans conséquence et changer d'avis à tout moment avec « Gérer les cookies » en bas de
+      page. Ton choix est gardé 6 mois.
+    </p>
+
+    <div id="rj-consent-panel" data-consent-panel hidden class="mt-4 space-y-3 border-t border-line pt-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-body-sm font-medium text-ink">Strictement nécessaires</p>
+          <p class="text-label text-ink-muted">Mémorisation de ton choix (cookie rj_consent).</p>
+        </div>
+        <span class="shrink-0 text-label text-ink-muted">Toujours actifs</span>
+      </div>
+      <div class="flex items-start justify-between gap-4">
+        <label for="rj-consent-analytics" class="cursor-pointer">
+          <span class="block text-body-sm font-medium text-ink">Mesure d'audience</span>
+          <span class="block text-label text-ink-muted">
+            Google Analytics 4 : pages vues, clics sur les boutons, provenance des visites (cookies _ga, rj_attr).
+          </span>
+        </label>
+        <input
+          id="rj-consent-analytics"
+          data-consent-analytics
+          type="checkbox"
+          role="switch"
+          class="mt-1 size-6 shrink-0 cursor-pointer accent-thunder"
+        />
+      </div>
+    </div>
+
+    <div class="mt-4 grid grid-cols-2 gap-2">
+      <button type="button" data-consent-action="refuse" class={button}>Tout refuser</button>
+      <button type="button" data-consent-action="accept" class={button}>Tout accepter</button>
+    </div>
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        data-consent-action="customize"
+        aria-expanded="false"
+        aria-controls="rj-consent-panel"
+        class="inline-flex min-h-11 items-center px-2 text-body-sm text-ink underline underline-offset-4"
+      >
+        Personnaliser
+      </button>
+      <button type="button" data-consent-action="save" hidden class={`${button} ml-auto`}>Enregistrer mes choix</button>
+    </div>
+  </div>
+</section>

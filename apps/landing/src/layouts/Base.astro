@@ -1,5 +1,12 @@
 ---
+import { GA4_MEASUREMENT_ID, GOOGLE_SITE_VERIFICATION } from 'astro:env/server';
 import faviconUrl from '../../../../libs/brand/icons/favicon.svg?url';
+import interUrl from '../../../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2?url';
+import groteskUrl from '../../../../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2?url';
+import ConsentBanner from '../components/consent/ConsentBanner.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import { normalizeMeasurementId } from '../lib/analytics/ga4';
+import '../styles/fonts.css';
 import '../styles/global.css';
 
 interface Props {
@@ -9,6 +16,9 @@ interface Props {
 
 const { title, description } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
+// Identifiant mal formé ou absent : ni GA4 ni bannière (aucune finalité soumise au consentement).
+const measurementId = normalizeMeasurementId(GA4_MEASUREMENT_ID);
+const siteVerification = GOOGLE_SITE_VERIFICATION?.trim() || null;
 ---
 
 <!doctype html>
@@ -21,12 +31,16 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <link rel="canonical" href={canonical} />
     <meta name="theme-color" content="#07090d" />
     <link rel="icon" type="image/svg+xml" href={faviconUrl} />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Polices de la charte : chargées ici car l'@import de tokens.css est ignoré une fois inliné par Tailwind. -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@600;700&display=swap" />
+    <link rel="preload" href={interUrl} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={groteskUrl} as="font" type="font/woff2" crossorigin />
+    {siteVerification && <meta name="google-site-verification" content={siteVerification} />}
   </head>
-  <body class="min-h-dvh bg-base font-sans text-ink">
-    <slot />
+  <body class="flex min-h-dvh flex-col bg-base font-sans text-ink">
+    {measurementId && <ConsentBanner measurementId={measurementId} />}
+    <div class="flex-1">
+      <slot />
+    </div>
+    <SiteFooter consent={measurementId !== null} />
+    <script src="../scripts/analytics-boot.ts"></script>
   </body>
 </html>

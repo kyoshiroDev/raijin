@@ -21,6 +21,7 @@ Les secrets ne vivent que côté API. Le front ne reçoit aucune clé secrète
 # ---------------------------------------------------------------------
 NODE_ENV=development
 # URL publique de l'app Angular (prod : https://app.raijinshield.com)
+#   Aussi lue par la LANDING au build (liens vers l'inscription ; défaut https://app.raijinshield.com).
 APP_URL=http://localhost:4200
 # URL publique de la landing Astro (prod : https://raijinshield.com)
 LANDING_URL=http://localhost:4321
