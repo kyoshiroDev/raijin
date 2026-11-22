@@ -2,6 +2,7 @@ import { testConfig } from '@raijin/api-core';
 import type { PrismaService } from '@raijin/api-prisma';
 import { AdminSecurityService } from '../lib/admin-security/admin-security.service';
 import { AuditService } from '../lib/audit/audit.service';
+import type { AuthService } from '../lib/services/auth.service';
 import { LoginAttemptsService, MemoryAttemptStore } from '../lib/services/login-attempts.service';
 
 type Row = Record<string, unknown>;
@@ -93,6 +94,12 @@ export function createAdminSecurityKit(env: Record<string, string> = {}) {
   const prisma = db as unknown as PrismaService;
   const audit = new AuditService(prisma, config);
   const attempts = new LoginAttemptsService(config, new MemoryAttemptStore());
-  const service = new AdminSecurityService(prisma, audit, attempts, config);
-  return { db, config, audit, attempts, service };
+  // Mot de passe actuel de la confirmation d'enrôlement : accepté sauf « mauvais mot de passe ».
+  const auth = {
+    confirmPassword: jest.fn(async (_user: unknown, password: string) => {
+      if (password === 'mauvais mot de passe') throw Object.assign(new Error('refus'), { code: 'AUTH_INVALID_CREDENTIALS' });
+    }),
+  };
+  const service = new AdminSecurityService(prisma, audit, attempts, auth as unknown as AuthService, config);
+  return { db, config, audit, attempts, auth, service };
 }

@@ -12,6 +12,7 @@ import {
 import { renderSVG } from 'uqr';
 import { AuditService } from '../audit/audit.service';
 import type { ClientInfo } from '../services/client-info';
+import { AuthService } from '../services/auth.service';
 import { LoginAttemptsService } from '../services/login-attempts.service';
 import { adminSessionDeadlines, adminSessionState } from './admin-session';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes';
@@ -33,6 +34,7 @@ export class AdminSecurityService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly attempts: LoginAttemptsService,
+    private readonly auth: AuthService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     this.recoveryKey = recoveryCodeKey(config.admin.totpEncryptionKey);
@@ -101,13 +103,24 @@ export class AdminSecurityService {
   }
 
   /** `POST admin/security/enrollment/confirm` : active la 2FA, génère les codes de secours, vérifie la session. */
-  async confirmEnrollment(userId: string, sessionId: string, code: string, client: ClientInfo | null, now: Date = new Date()): Promise<AdminEnrollmentConfirmResponse> {
+  async confirmEnrollment(
+    userId: string,
+    sessionId: string,
+    code: string,
+    currentPassword: string,
+    client: ClientInfo | null,
+    now: Date = new Date(),
+  ): Promise<AdminEnrollmentConfirmResponse> {
+    // Mot de passe actuel (argon2, compteur d'échecs commun avec la connexion) : une session volée ne suffit pas.
+    const account = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!account) throw new ApiException('NOT_FOUND', HttpStatus.NOT_FOUND);
+    await this.auth.confirmPassword(account, currentPassword, client ?? { ip: null, userAgent: null }, 'admin.2fa_enroll');
     const pending = await this.prisma.totpSecret.findUnique({ where: { userId }, select: { secretEncrypted: true, enabledAt: true, updatedAt: true } });
     if (pending?.enabledAt) throw ApiException.admin('ADMIN_2FA_ALREADY_ENROLLED', HttpStatus.CONFLICT);
     if (!pending || now.getTime() - pending.updatedAt.getTime() > ADMIN_ENROLLMENT_TTL_SECONDS * 1000) {
       throw ApiException.admin('ADMIN_2FA_ENROLLMENT_EXPIRED', HttpStatus.CONFLICT);
     }
-    await this.assertNotLocked(userId);
+    const attempt = await this.reserveAttempt(userId);
     let step: number | null;
     try {
       step = this.match(userId, pending.secretEncrypted, code, now, null);
@@ -115,7 +128,7 @@ export class AdminSecurityService {
       // Clé éphémère changée (redémarrage en développement) : recommencer l'enrôlement.
       throw ApiException.admin('ADMIN_2FA_ENROLLMENT_EXPIRED', HttpStatus.CONFLICT);
     }
-    if (step === null) return this.fail(userId, client, 'totp');
+    if (step === null) return this.fail(userId, client, 'totp', attempt);
     const codes = generateRecoveryCodes();
     await this.prisma.$transaction(async (tx) => {
       const enabled = await tx.totpSecret.updateMany({
@@ -140,11 +153,11 @@ export class AdminSecurityService {
 
   /** `POST admin/security/verify` : code TOTP ou code de secours (usage unique) → session admin vérifiée. */
   async verify(userId: string, sessionId: string, factor: AdminSecondFactor, client: ClientInfo | null, now: Date = new Date()): Promise<AdminSecurityStatus> {
-    await this.assertNotLocked(userId);
+    const attempt = await this.reserveAttempt(userId);
     if (factor.method === 'totp') {
-      await this.consumeTotp(userId, factor.code, client, now);
+      await this.consumeTotp(userId, factor.code, client, now, attempt);
     } else {
-      await this.consumeRecoveryCode(userId, factor.code, client, now);
+      await this.consumeRecoveryCode(userId, factor.code, client, now, attempt);
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.session.update({ where: { id: sessionId }, data: { adminVerifiedAt: now, adminLastSeenAt: now } });
@@ -165,8 +178,8 @@ export class AdminSecurityService {
    * dans l'anti-force brute, rejeu refusé ; 400 `ADMIN_2FA_INVALID` / 429 `ADMIN_2FA_LOCKED`.
    */
   async verifyFreshTotp(userId: string, code: string, client: ClientInfo | null, now: Date = new Date()): Promise<void> {
-    await this.assertNotLocked(userId);
-    await this.consumeTotp(userId, code, client, now);
+    const attempt = await this.reserveAttempt(userId);
+    await this.consumeTotp(userId, code, client, now, attempt);
     await this.attempts.counters.reset(this.failKey(userId));
   }
 
@@ -200,15 +213,21 @@ export class AdminSecurityService {
     return `${ADMIN_2FA_FAIL_PREFIX}${userId}`;
   }
 
-  private async assertNotLocked(userId: string): Promise<void> {
-    const failures = await this.attempts.counters.get(this.failKey(userId));
-    if (failures >= this.config.admin.totpMaxAttempts) throw ApiException.admin('ADMIN_2FA_LOCKED', HttpStatus.TOO_MANY_REQUESTS);
+  /**
+   * Anti-force brute **atomique** (audit phase 6 bis, I1) : chaque tentative incrémente le compteur (INCR + PEXPIRE
+   * Lua) **avant** toute vérification ; au-delà de `ADMIN_TOTP_MAX_ATTEMPTS`, 429 sans évaluer le code. Une rafale
+   * parallèle ne peut donc évaluer qu'au plus `totpMaxAttempts` codes par fenêtre. Remise à zéro au succès.
+   * Renvoie le rang de la tentative.
+   */
+  private async reserveAttempt(userId: string): Promise<number> {
+    const attempt = await this.attempts.counters.increment(this.failKey(userId), this.config.admin.totpLockoutMs);
+    if (attempt > this.config.admin.totpMaxAttempts) throw ApiException.admin('ADMIN_2FA_LOCKED', HttpStatus.TOO_MANY_REQUESTS);
+    return attempt;
   }
 
-  /** Échec : compteur incrémenté, audité, 400 ou 429 au seuil. */
-  private async fail(userId: string, client: ClientInfo | null, method: 'totp' | 'recovery'): Promise<never> {
-    const failures = await this.attempts.counters.increment(this.failKey(userId), this.config.admin.totpLockoutMs);
-    const locked = failures >= this.config.admin.totpMaxAttempts;
+  /** Échec (tentative déjà comptée) : audité, 400, ou 429 si c'était la dernière tentative autorisée. */
+  private async fail(userId: string, client: ClientInfo | null, method: 'totp' | 'recovery', attempt: number): Promise<never> {
+    const locked = attempt >= this.config.admin.totpMaxAttempts;
     await this.audit.recordStrict({
       action: 'admin.2fa_failed',
       actorKind: 'admin',
@@ -232,7 +251,7 @@ export class AdminSecurityService {
   }
 
   /** Vérifie un code TOTP de la 2FA activée et consomme son pas (rejeu impossible, même en concurrence). */
-  private async consumeTotp(userId: string, code: string, client: ClientInfo | null, now: Date): Promise<void> {
+  private async consumeTotp(userId: string, code: string, client: ClientInfo | null, now: Date, attempt: number): Promise<void> {
     const secret = await this.prisma.totpSecret.findUnique({ where: { userId }, select: { secretEncrypted: true, enabledAt: true, lastUsedStep: true } });
     if (!secret?.enabledAt) throw ApiException.admin('ADMIN_2FA_ENROLLMENT_REQUIRED', HttpStatus.FORBIDDEN);
     let step: number | null;
@@ -242,20 +261,20 @@ export class AdminSecurityService {
       // Clé changée ou secret illisible : réinitialisation par la CLI (admin-reset-2fa).
       step = null;
     }
-    if (step === null) return this.fail(userId, client, 'totp');
+    if (step === null) return this.fail(userId, client, 'totp', attempt);
     const consumed = await this.prisma.totpSecret.updateMany({
       where: { userId, OR: [{ lastUsedStep: null }, { lastUsedStep: { lt: step } }] },
       data: { lastUsedStep: step },
     });
-    if (consumed.count !== 1) return this.fail(userId, client, 'totp');
+    if (consumed.count !== 1) return this.fail(userId, client, 'totp', attempt);
   }
 
-  private async consumeRecoveryCode(userId: string, code: string, client: ClientInfo | null, now: Date): Promise<void> {
+  private async consumeRecoveryCode(userId: string, code: string, client: ClientInfo | null, now: Date, attempt: number): Promise<void> {
     const enrolled = await this.prisma.totpSecret.findUnique({ where: { userId }, select: { enabledAt: true } });
     if (!enrolled?.enabledAt) throw ApiException.admin('ADMIN_2FA_ENROLLMENT_REQUIRED', HttpStatus.FORBIDDEN);
     const codeHash = hashRecoveryCode(this.recoveryKey, userId, code);
     const used = await this.prisma.adminRecoveryCode.updateMany({ where: { userId, codeHash, usedAt: null }, data: { usedAt: now } });
-    if (used.count !== 1) return this.fail(userId, client, 'recovery');
+    if (used.count !== 1) return this.fail(userId, client, 'recovery', attempt);
   }
 
   private async replaceRecoveryCodes(tx: Prisma.TransactionClient, userId: string, codes: readonly string[], now: Date): Promise<void> {

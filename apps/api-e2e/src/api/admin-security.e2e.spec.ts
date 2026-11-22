@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import Redis from 'ioredis';
 import { Client as PgClient } from 'pg';
 import { ApiClient, tokenFrom, uniqueEmail, uniqueFreeEmail, waitForMail } from '../support/client';
 
@@ -24,6 +25,7 @@ const PASSWORD = 'une phrase de passe e2e solide';
 const ROOT = join(__dirname, '..', '..', '..', '..');
 const CLI = join(ROOT, 'dist', 'apps', 'api', 'cli.js');
 const DATABASE_URL = process.env['DATABASE_URL'] ?? 'postgresql://raijin:changeme-factice@localhost:5433/raijin?schema=public';
+const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6380';
 const run = promisify(execFile);
 
 async function sql<T = Record<string, unknown>>(query: string, params: unknown[] = []): Promise<T[]> {
@@ -100,6 +102,13 @@ describe('Espace admin : sécurité, comptes, audit', () => {
     adminId = await userId(adminEmail);
   }, 60_000);
 
+  it('visiteur anonyme : 404 sur admin/* (pas de 401 ni de 403 CSRF qui révéleraient les routes)', async () => {
+    const anonymous = freshClient();
+    for (const path of ADMIN_ROUTES) expect((await anonymous.get(path)).status).toBe(404);
+    // Sans jeton CSRF ni session : 404 aussi (le filtre d'entrée passe avant la garde CSRF).
+    expect((await anonymous.post('/admin/security/verify', { method: 'totp', code: '123456' })).status).toBe(404);
+  });
+
   it('compte non admin : toutes les routes admin/* en 404 (espace invisible), mutations comprises', async () => {
     for (const path of ADMIN_ROUTES) {
       const res = await admin.get(path);
@@ -139,10 +148,14 @@ describe('Espace admin : sécurité, comptes, audit', () => {
     const enrollment = adminEnrollmentStartSchema.parse(start.data);
     secret = enrollment.secret;
     expect(start.headers['set-cookie']).toBeUndefined();
-    const wrong = await admin.post('/admin/security/enrollment/confirm', { code: totp(secret, 5) });
+    const badPassword = await admin.post('/admin/security/enrollment/confirm', { code: totp(secret), currentPassword: 'mauvais mot de passe e2e' });
+    expect(badPassword.status).toBe(400);
+    expect(badPassword.data['code']).toBe('AUTH_INVALID_CREDENTIALS');
+    expect((await admin.post('/admin/security/enrollment/confirm', { code: totp(secret) })).status).toBe(400);
+    const wrong = await admin.post('/admin/security/enrollment/confirm', { code: totp(secret, 5), currentPassword: PASSWORD });
     expect(wrong.status).toBe(400);
     expect(wrong.data['code']).toBe('ADMIN_2FA_INVALID');
-    const confirm = await admin.post('/admin/security/enrollment/confirm', { code: totp(secret) });
+    const confirm = await admin.post('/admin/security/enrollment/confirm', { code: totp(secret), currentPassword: PASSWORD });
     expect(confirm.status).toBe(200);
     const body = adminEnrollmentConfirmResponseSchema.parse(confirm.data);
     recoveryCodes = body.recoveryCodes.codes;
@@ -176,6 +189,23 @@ describe('Espace admin : sécurité, comptes, audit', () => {
     expect(adminSecurityStatusSchema.parse(verified.data)).toMatchObject({ verified: true, recoveryCodesRemaining: 9 });
     expect((await admin.post('/admin/security/verify', { method: 'recovery', code })).data['code']).toBe('ADMIN_2FA_INVALID');
     expect((await admin.get('/admin/users')).status).toBe(200);
+  });
+
+  it('rafale parallèle de codes faux (I1) : au plus ADMIN_TOTP_MAX_ATTEMPTS évalués, le reste en 429', async () => {
+    const before = await sql<{ n: string }>(`SELECT count(*)::text AS n FROM "AuditLog" WHERE "userId" = $1::uuid AND "action" = 'admin.2fa_failed'`, [adminId]);
+    const results = await Promise.all(
+      Array.from({ length: 20 }, (_, index) => admin.post('/admin/security/verify', { method: 'totp', code: String(200000 + index) })),
+    );
+    expect(results.filter((res) => res.status === 429).length).toBeGreaterThanOrEqual(15);
+    const after = await sql<{ n: string }>(`SELECT count(*)::text AS n FROM "AuditLog" WHERE "userId" = $1::uuid AND "action" = 'admin.2fa_failed'`, [adminId]);
+    expect(Number(after[0]?.n) - Number(before[0]?.n)).toBeLessThanOrEqual(5);
+    // Fin du blocage (compteur Redis de l'instance de test) pour la suite du parcours.
+    const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: 1 });
+    try {
+      await redis.del(`rj:admin-2fa-fail:${adminId}`);
+    } finally {
+      redis.disconnect();
+    }
   });
 
   it('durée maximale de 8 h : expirée même avec de l’activité', async () => {

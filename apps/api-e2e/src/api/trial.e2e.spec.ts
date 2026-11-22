@@ -280,7 +280,7 @@ describe('API Raijin : essai Pro 7 jours (anti-abus, fin d’essai sous horloge 
     expect(enrollment.data['code']).toBe('ADMIN_2FA_ENROLLMENT_REQUIRED');
     const start = await client.post<{ secret: string }>('/admin/security/enrollment');
     expect(start.status).toBe(201);
-    expect((await client.post('/admin/security/enrollment/confirm', { code: totp(start.data.secret) })).status).toBe(200);
+    expect((await client.post('/admin/security/enrollment/confirm', { code: totp(start.data.secret), currentPassword: PASSWORD })).status).toBe(200);
     const report = await client.get('/admin/trial-conversion');
     expect(report.status).toBe(200);
     const parsed = trialConversionReportSchema.parse(report.data);

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { APP_CONFIG, ApiException, ApiZodBody, ZodValidationPipe, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, ApiException, ApiZodBody, AuthThrottle, ZodValidationPipe, type AppConfig } from '@raijin/api-core';
 import { PrismaService } from '@raijin/api-prisma';
 import {
   adminEnrollmentConfirmRequestSchema,
@@ -44,18 +44,20 @@ export class AdminSecurityController {
 
   @Post('enrollment/confirm')
   @HttpCode(HttpStatus.OK)
+  @AuthThrottle()
   @ApiZodBody(adminEnrollmentConfirmRequestSchema)
-  @ApiOperation({ summary: 'Confirme l’enrôlement par un code, renvoie les 10 codes de secours (une seule fois).' })
+  @ApiOperation({ summary: 'Confirme l’enrôlement par un code et le mot de passe actuel, renvoie les 10 codes de secours (une seule fois).' })
   confirmEnrollment(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodValidationPipe(adminEnrollmentConfirmRequestSchema)) body: AdminEnrollmentConfirmRequest,
     @Client() client: ClientInfo,
   ): Promise<AdminEnrollmentConfirmResponse> {
-    return this.security.confirmEnrollment(auth.userId, auth.sessionId, body.code, client);
+    return this.security.confirmEnrollment(auth.userId, auth.sessionId, body.code, body.currentPassword, client);
   }
 
   @Post('verify')
   @HttpCode(HttpStatus.OK)
+  @AuthThrottle()
   @AdminStageOverride('verify')
   @ApiZodBody(adminVerifyRequestSchema)
   @ApiOperation({ summary: 'Vérifie la session admin par un code TOTP ou un code de secours.' })
@@ -69,6 +71,7 @@ export class AdminSecurityController {
 
   @Post('recovery-codes')
   @HttpCode(HttpStatus.OK)
+  @AuthThrottle()
   @AdminStageOverride('full')
   @ApiZodBody(adminRegenerateRecoveryCodesRequestSchema)
   @ApiOperation({ summary: 'Régénère les codes de secours (code TOTP frais exigé, anciens codes invalidés).' })

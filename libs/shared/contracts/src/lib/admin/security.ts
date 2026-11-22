@@ -1,4 +1,5 @@
 import * as z from '../zod';
+import { currentPasswordSchema } from '../auth/password';
 
 /**
  * Double authentification TOTP du compte admin (RFC 6238 : SHA-1, 6 chiffres, pas de 30 s, fenêtre ±1 pas) et
@@ -6,7 +7,7 @@ import * as z from '../zod';
  * CSRF sur les POST) :
  * - `GET admin/security/status` → `AdminSecurityStatus`
  * - `POST admin/security/enrollment` → `AdminEnrollmentStart` (409 `ADMIN_2FA_ALREADY_ENROLLED`)
- * - `POST admin/security/enrollment/confirm` `AdminEnrollmentConfirmRequest` → `AdminEnrollmentConfirmResponse`
+ * - `POST admin/security/enrollment/confirm` `AdminEnrollmentConfirmRequest` (code + mot de passe actuel) → `AdminEnrollmentConfirmResponse`
  * - `POST admin/security/verify` `AdminVerifyRequest` → `AdminSecurityStatus` (400 `ADMIN_2FA_INVALID`, 429 `ADMIN_2FA_LOCKED`)
  * - `POST admin/security/recovery-codes` `AdminRegenerateRecoveryCodesRequest` → `AdminRecoveryCodes` (session admin vérifiée)
  * - `POST admin/security/end` → 204 (quitte l'espace admin, la session de l'app reste ouverte)
@@ -65,7 +66,11 @@ export const adminEnrollmentStartSchema = z.object({
 });
 export type AdminEnrollmentStart = z.infer<typeof adminEnrollmentStartSchema>;
 
-export const adminEnrollmentConfirmRequestSchema = z.object({ code: totpCodeSchema }).strict();
+/**
+ * Confirmation d'enrôlement : code de l'application **et mot de passe actuel** (vérifié par argon2, même compteur
+ * d'échecs que la connexion ; audit phase 6 bis, m4) : une session volée ne suffit pas à lier une 2FA.
+ */
+export const adminEnrollmentConfirmRequestSchema = z.object({ code: totpCodeSchema, currentPassword: currentPasswordSchema }).strict();
 export type AdminEnrollmentConfirmRequest = z.infer<typeof adminEnrollmentConfirmRequestSchema>;
 
 /** Codes de secours affichés **une seule fois** (stockés hachés) : le front propose de les copier ou télécharger. */

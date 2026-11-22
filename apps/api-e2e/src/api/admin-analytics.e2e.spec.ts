@@ -73,7 +73,7 @@ async function adminClient(email: string): Promise<ApiClient> {
   const start = await client.post('/admin/security/enrollment');
   expect(start.status).toBe(201);
   const { secret } = adminEnrollmentStartSchema.parse(start.data);
-  const confirm = await client.post('/admin/security/enrollment/confirm', { code: totp(secret) });
+  const confirm = await client.post('/admin/security/enrollment/confirm', { code: totp(secret), currentPassword: PASSWORD });
   expect(confirm.status).toBeLessThan(300);
   return client;
 }

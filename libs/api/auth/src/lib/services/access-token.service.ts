@@ -68,6 +68,12 @@ export class AccessTokenService {
     return token ? this.verify(token) : null;
   }
 
+  /** `sub` d'un access token **signé**, même expiré (filtre d'entrée de l'espace admin). */
+  readSubject(req: Request): string | null {
+    const token = this.cookies.read(req, 'access');
+    return token ? (this.verify(token, { ignoreExpiration: true })?.sub ?? null) : null;
+  }
+
   /** `sid` d'un access token signé, même expiré (garde CSRF, refresh, logout). */
   readSessionId(req: Request): string | null {
     const token = this.cookies.read(req, 'access');

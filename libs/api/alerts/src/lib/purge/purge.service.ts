@@ -51,6 +51,8 @@ export class PurgeService {
     // Anti-abus de l'essai (§13.6) : empreintes IP + UA 90 jours, HMAC des e-mails ayant eu un essai 24 mois.
     const fingerprints = new Date(now.getTime() - this.config.trial.fingerprintRetentionDays * DAY_MS);
     const claims = new Date(now.getTime() - this.config.trial.claimRetentionDays * DAY_MS);
+    // Journal d'audit (docs/ARCHITECTURE.md §14.5) : AUDIT_LOG_RETENTION_DAYS (365 j par défaut).
+    const auditLogs = new Date(now.getTime() - this.config.admin.auditLogRetentionDays * DAY_MS);
     const rules: PurgeRule[] = [
       { name: 'tokenAnalysis', table: 'TokenAnalysis', key: 'id', where: Prisma.sql`"createdAt" < ${eventsCutoff}` },
       { name: 'productEvent', table: 'ProductEvent', key: 'id', where: Prisma.sql`"createdAt" < ${eventsCutoff}` },
@@ -59,6 +61,7 @@ export class PurgeService {
       { name: 'trialClaim', table: 'TrialClaim', key: 'id', where: Prisma.sql`"createdAt" < ${claims}` },
       { name: 'alert', table: 'Alert', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
       { name: 'watchEvent', table: 'WatchEvent', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
+      { name: 'auditLog', table: 'AuditLog', key: 'id', where: Prisma.sql`"createdAt" < ${auditLogs}` },
       { name: 'jobRun', table: 'JobRun', key: 'id', where: Prisma.sql`"startedAt" < ${jobRuns} AND "status" <> 'RUNNING'` },
       {
         name: 'session',

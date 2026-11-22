@@ -21,6 +21,7 @@ describe('PurgeService', () => {
       'trialClaim',
       'alert',
       'watchEvent',
+      'auditLog',
       'jobRun',
       'session',
       'authToken',
@@ -29,6 +30,10 @@ describe('PurgeService', () => {
     const values = (name: string) => rules.find((rule) => rule.name === name)?.where.values ?? [];
     expect(values('alert')).toEqual([new Date(NOW.getTime() - 90 * 86_400_000)]);
     expect(values('jobRun')).toEqual([new Date(NOW.getTime() - 30 * 86_400_000)]);
+    // Journal d'audit : AUDIT_LOG_RETENTION_DAYS (365 j par défaut, m1 de l'audit phase 6 bis).
+    expect(values('auditLog')).toEqual([new Date(NOW.getTime() - 365 * 86_400_000)]);
+    const custom = new PurgeService({} as PrismaService, {} as JobRunService, clock, testConfig({ AUDIT_LOG_RETENTION_DAYS: '30' }));
+    expect(custom.rules(NOW).find((rule) => rule.name === 'auditLog')?.where.values).toEqual([new Date(NOW.getTime() - 30 * 86_400_000)]);
     expect(values('trialFingerprint')).toEqual([new Date(NOW.getTime() - 90 * 86_400_000)]);
     expect(values('trialClaim')).toEqual([new Date(NOW.getTime() - 730 * 86_400_000)]);
     expect(values('usageCounter')).toEqual(['2026-08-24']);
@@ -47,8 +52,8 @@ describe('PurgeService', () => {
     const counts = await purge.run();
     expect(counts['alert']).toBe(PURGE_BATCH + 12);
     expect(counts['session']).toBe(0);
-    // Aucun passage des agrégats : TokenAnalysis et ProductEvent ne sont pas purgés (9 règles, 2 lots pour Alert).
-    expect(prisma.rawQueries.filter((sql) => sql.includes('DELETE FROM'))).toHaveLength(10);
+    // Aucun passage des agrégats : TokenAnalysis et ProductEvent ne sont pas purgés (10 règles, 2 lots pour Alert).
+    expect(prisma.rawQueries.filter((sql) => sql.includes('DELETE FROM'))).toHaveLength(11);
     expect(counts['tokenAnalysis']).toBeUndefined();
     expect(counts['skippedUnaggregated']).toBe(1);
     expect(prisma.rawQueries.every((sql) => !sql.includes('DROP') && !sql.includes('TRUNCATE'))).toBe(true);

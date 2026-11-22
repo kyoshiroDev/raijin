@@ -1,3 +1,4 @@
+export * from './lib/admin-security/admin-area.middleware';
 export * from './lib/admin-security/admin-cli';
 export * from './lib/admin-security/admin-security.controller';
 export * from './lib/admin-security/admin-security.service';
