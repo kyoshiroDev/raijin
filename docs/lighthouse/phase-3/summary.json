@@ -1,157 +1,254 @@
 {
   "phase": "phase-3",
   "base": "http://127.0.0.1:4310",
-  "runs": 3,
+  "runs": 5,
   "lighthouse": "13.6.0",
-  "date": "2026-11-22T04:43:54.076Z",
+  "date": "2026-11-22T06:39:15.100Z",
   "threshold": 95,
+  "cpuSlowdownMultiplier": 4,
   "pages": [
     {
       "name": "analyse",
       "url": "/analyse",
       "scores": {
-        "performance": 62,
+        "performance": 87,
         "accessibility": 100,
-        "best-practices": 96,
+        "best-practices": 100,
         "seo": 100
       },
       "performanceRuns": [
-        61,
-        68,
-        62
+        87,
+        87,
+        85,
+        87,
+        87
+      ],
+      "passes": [
+        {
+          "performance": 87,
+          "benchmarkIndex": 1108,
+          "load1m": 6.17,
+          "tbt": "490 ms",
+          "lcp": "1.5 s"
+        },
+        {
+          "performance": 87,
+          "benchmarkIndex": 1071,
+          "load1m": 6.35,
+          "tbt": "510 ms",
+          "lcp": "1.5 s"
+        },
+        {
+          "performance": 85,
+          "benchmarkIndex": 1075,
+          "load1m": 6.72,
+          "tbt": "580 ms",
+          "lcp": "0.8 s"
+        },
+        {
+          "performance": 87,
+          "benchmarkIndex": 1305,
+          "load1m": 7.83,
+          "tbt": "510 ms",
+          "lcp": "1.5 s"
+        },
+        {
+          "performance": 87,
+          "benchmarkIndex": 1196,
+          "load1m": 7.14,
+          "tbt": "500 ms",
+          "lcp": "1.5 s"
+        }
+      ],
+      "benchmarkIndex": [
+        1108,
+        1071,
+        1075,
+        1305,
+        1196
       ],
       "metrics": {
-        "first-contentful-paint": "0.8 s",
-        "largest-contentful-paint": "4.0 s",
-        "total-blocking-time": "1,480 ms",
-        "cumulative-layout-shift": "0.013",
-        "speed-index": "1.0 s"
-      },
-      "failing": {
-        "performance": [
-          {
-            "id": "largest-contentful-paint",
-            "score": 0.5,
-            "title": "Largest Contentful Paint",
-            "displayValue": "4.0 s"
-          },
-          {
-            "id": "total-blocking-time",
-            "score": 0.14,
-            "title": "Total Blocking Time",
-            "displayValue": "1,480 ms"
-          }
-        ],
-        "best-practices": [
-          {
-            "id": "errors-in-console",
-            "score": 0,
-            "title": "Browser errors were logged to the console",
-            "displayValue": null
-          }
-        ]
-      },
-      "report": "dist/lighthouse/phase-3/analyse-3.report.html"
-    },
-    {
-      "name": "analyse-bonk",
-      "url": "/analyse/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-      "scores": {
-        "performance": 54,
-        "accessibility": 100,
-        "best-practices": 96,
-        "seo": 100
-      },
-      "performanceRuns": [
-        51,
-        58,
-        54
-      ],
-      "metrics": {
-        "first-contentful-paint": "0.8 s",
-        "largest-contentful-paint": "5.1 s",
-        "total-blocking-time": "1,670 ms",
-        "cumulative-layout-shift": "0.014",
-        "speed-index": "1.2 s"
-      },
-      "failing": {
-        "performance": [
-          {
-            "id": "largest-contentful-paint",
-            "score": 0.24,
-            "title": "Largest Contentful Paint",
-            "displayValue": "5.1 s"
-          },
-          {
-            "id": "total-blocking-time",
-            "score": 0.11,
-            "title": "Total Blocking Time",
-            "displayValue": "1,670 ms"
-          }
-        ],
-        "best-practices": [
-          {
-            "id": "errors-in-console",
-            "score": 0,
-            "title": "Browser errors were logged to the console",
-            "displayValue": null
-          }
-        ]
-      },
-      "report": "dist/lighthouse/phase-3/analyse-bonk-3.report.html"
-    },
-    {
-      "name": "t-bonk",
-      "url": "/t/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-      "scores": {
-        "performance": 62,
-        "accessibility": 100,
-        "best-practices": 92,
-        "seo": 100
-      },
-      "performanceRuns": [
-        62,
-        60,
-        64
-      ],
-      "metrics": {
-        "first-contentful-paint": "0.8 s",
-        "largest-contentful-paint": "4.0 s",
-        "total-blocking-time": "1,490 ms",
+        "first-contentful-paint": "1.5 s",
+        "largest-contentful-paint": "1.5 s",
+        "total-blocking-time": "490 ms",
         "cumulative-layout-shift": "0",
         "speed-index": "1.6 s"
       },
       "failing": {
         "performance": [
           {
-            "id": "largest-contentful-paint",
-            "score": 0.51,
-            "title": "Largest Contentful Paint",
-            "displayValue": "4.0 s"
-          },
-          {
             "id": "total-blocking-time",
-            "score": 0.14,
+            "score": 0.59,
             "title": "Total Blocking Time",
-            "displayValue": "1,490 ms"
-          }
-        ],
-        "best-practices": [
-          {
-            "id": "errors-in-console",
-            "score": 0,
-            "title": "Browser errors were logged to the console",
-            "displayValue": null
-          },
-          {
-            "id": "inspector-issues",
-            "score": 0,
-            "title": "Issues were logged in the `Issues` panel in Chrome Devtools",
-            "displayValue": null
+            "displayValue": "490 ms"
           }
         ]
       },
-      "report": "dist/lighthouse/phase-3/t-bonk-1.report.html"
+      "report": "dist/lighthouse/phase-3/analyse-1.report.html"
+    },
+    {
+      "name": "analyse-bonk",
+      "url": "/analyse/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "scores": {
+        "performance": 73,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "performanceRuns": [
+        75,
+        76,
+        72,
+        73,
+        72
+      ],
+      "passes": [
+        {
+          "performance": 75,
+          "benchmarkIndex": 1321,
+          "load1m": 6.6,
+          "tbt": "600 ms",
+          "lcp": "3.6 s"
+        },
+        {
+          "performance": 76,
+          "benchmarkIndex": 1200,
+          "load1m": 8.76,
+          "tbt": "540 ms",
+          "lcp": "3.6 s"
+        },
+        {
+          "performance": 72,
+          "benchmarkIndex": 1238,
+          "load1m": 9.41,
+          "tbt": "710 ms",
+          "lcp": "3.6 s"
+        },
+        {
+          "performance": 73,
+          "benchmarkIndex": 982,
+          "load1m": 8.3,
+          "tbt": "710 ms",
+          "lcp": "3.6 s"
+        },
+        {
+          "performance": 72,
+          "benchmarkIndex": 1061,
+          "load1m": 7.98,
+          "tbt": "700 ms",
+          "lcp": "3.7 s"
+        }
+      ],
+      "benchmarkIndex": [
+        1321,
+        1200,
+        1238,
+        982,
+        1061
+      ],
+      "metrics": {
+        "first-contentful-paint": "1.5 s",
+        "largest-contentful-paint": "3.6 s",
+        "total-blocking-time": "710 ms",
+        "cumulative-layout-shift": "0",
+        "speed-index": "1.7 s"
+      },
+      "failing": {
+        "performance": [
+          {
+            "id": "largest-contentful-paint",
+            "score": 0.62,
+            "title": "Largest Contentful Paint",
+            "displayValue": "3.6 s"
+          },
+          {
+            "id": "total-blocking-time",
+            "score": 0.42,
+            "title": "Total Blocking Time",
+            "displayValue": "710 ms"
+          }
+        ]
+      },
+      "report": "dist/lighthouse/phase-3/analyse-bonk-4.report.html"
+    },
+    {
+      "name": "t-bonk",
+      "url": "/t/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "scores": {
+        "performance": 78,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "performanceRuns": [
+        77,
+        78,
+        78,
+        79,
+        78
+      ],
+      "passes": [
+        {
+          "performance": 77,
+          "benchmarkIndex": 1086,
+          "load1m": 7.85,
+          "tbt": "1,140 ms",
+          "lcp": "0.8 s"
+        },
+        {
+          "performance": 78,
+          "benchmarkIndex": 1184,
+          "load1m": 7.71,
+          "tbt": "1,060 ms",
+          "lcp": "0.8 s"
+        },
+        {
+          "performance": 78,
+          "benchmarkIndex": 1065,
+          "load1m": 7.16,
+          "tbt": "990 ms",
+          "lcp": "0.8 s"
+        },
+        {
+          "performance": 79,
+          "benchmarkIndex": 1143,
+          "load1m": 6.95,
+          "tbt": "900 ms",
+          "lcp": "0.8 s"
+        },
+        {
+          "performance": 78,
+          "benchmarkIndex": 1019,
+          "load1m": 6.78,
+          "tbt": "970 ms",
+          "lcp": "0.8 s"
+        }
+      ],
+      "benchmarkIndex": [
+        1086,
+        1184,
+        1065,
+        1143,
+        1019
+      ],
+      "metrics": {
+        "first-contentful-paint": "0.8 s",
+        "largest-contentful-paint": "0.8 s",
+        "total-blocking-time": "1,060 ms",
+        "cumulative-layout-shift": "0",
+        "speed-index": "1.8 s"
+      },
+      "failing": {
+        "performance": [
+          {
+            "id": "total-blocking-time",
+            "score": 0.25,
+            "title": "Total Blocking Time",
+            "displayValue": "1,060 ms"
+          }
+        ]
+      },
+      "report": "dist/lighthouse/phase-3/t-bonk-2.report.html"
     }
   ]
 }

@@ -9,6 +9,7 @@ import { chromium } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -68,7 +69,18 @@ function median(values) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-function runLighthouse(url, out) {
+/** Erreurs transitoires de Lighthouse (ex. NO_NAVSTART sur machine chargée) : jusqu'à 3 tentatives. */
+function runLighthouse(url, out, attempt = 1) {
+  try {
+    return runLighthouseOnce(url, out);
+  } catch (error) {
+    if (attempt >= 3) throw error;
+    console.warn(`Lighthouse ${url} : échec de la tentative ${attempt}, nouvel essai`);
+    return runLighthouse(url, out, attempt + 1);
+  }
+}
+
+function runLighthouseOnce(url, out) {
   const bin = join(workspace, 'node_modules', '.bin', 'lighthouse');
   execFileSync(
     bin,
@@ -96,6 +108,27 @@ function failingAudits(lhr, category) {
     .map((audit) => ({ id: audit.id, score: audit.score, title: audit.title, displayValue: audit.displayValue ?? null }));
 }
 
+/**
+ * Nx lance cette cible dès que les tâches continues (serve-prod, serve-api-fixtures) ont démarré, sans
+ * garantir qu'elles écoutent déjà : on attend l'API et le serveur de production (2 min au plus).
+ */
+async function waitFor(url, label, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // Pas encore à l'écoute.
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`${label} injoignable après ${timeoutMs / 1000} s (${url})`);
+}
+
+await waitFor(`${API}/api/v1/health`, 'API');
+await waitFor(`${BASE}/manifest.webmanifest`, 'Serveur de production');
+
 const summary = {
   phase: PHASE,
   base: BASE,
@@ -109,13 +142,22 @@ const summary = {
 let failed = false;
 for (const page of PAGES) {
   const lhrs = [];
+  const passes = [];
   for (let run = 1; run <= RUNS; run++) {
     // Analyse récente et en cache avant chaque passage : on mesure le front, pas une analyse
     // recalculée par l'API (le cache d'un résultat partiel est court, docs/ARCHITECTURE.md §9.5).
     await ensureLatest();
+    const load = loadavg()[0];
     const lhr = runLighthouse(`${BASE}${page.path}`, join(fullDir, `${page.name}-${run}`));
     summary.lighthouse = lhr.lighthouseVersion;
     lhrs.push(lhr);
+    passes.push({
+      performance: Math.round(lhr.categories.performance.score * 100),
+      benchmarkIndex: Math.round(lhr.environment.benchmarkIndex),
+      load1m: Math.round(load * 100) / 100,
+      tbt: lhr.audits['total-blocking-time'].displayValue,
+      lcp: lhr.audits['largest-contentful-paint'].displayValue,
+    });
   }
   // Passage retenu : médiane du score de performance (les 3 autres catégories sont déterministes).
   const perf = lhrs.map((lhr) => lhr.categories.performance.score);
@@ -126,6 +168,7 @@ for (const page of PAGES) {
     url: page.path,
     scores,
     performanceRuns: perf.map((s) => Math.round(s * 100)),
+    passes,
     benchmarkIndex: lhrs.map((lhr) => Math.round(lhr.environment.benchmarkIndex)),
     metrics: Object.fromEntries(
       ['first-contentful-paint', 'largest-contentful-paint', 'total-blocking-time', 'cumulative-layout-shift', 'speed-index'].map((id) => [
@@ -152,6 +195,12 @@ const lines = [
   ...summary.pages.map(
     (p) =>
       `| \`${p.url.replace(BONK, '<BONK>')}\` | ${p.scores.performance} (${p.performanceRuns.join('/')}) | ${p.scores.accessibility} | ${p.scores['best-practices']} | ${p.scores.seo} | ${p.metrics['largest-contentful-paint']} | ${p.metrics['total-blocking-time']} | ${p.metrics['cumulative-layout-shift']} |`,
+  ),
+  '',
+  '## Passages (performance · benchmarkIndex · charge 1 min · TBT · LCP)',
+  '',
+  ...summary.pages.map(
+    (p) => `- \`${p.url.replace(BONK, '<BONK>')}\` : ${p.passes.map((x) => `${x.performance} · ${x.benchmarkIndex} · ${x.load1m} · ${x.tbt} · ${x.lcp}`).join(' | ')}`,
   ),
   '',
   '## Audits sous 0,9',
