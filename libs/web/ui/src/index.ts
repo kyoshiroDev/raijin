@@ -5,6 +5,7 @@ export * from './lib/button/button';
 export * from './lib/verdict-badge/verdict-badge';
 export * from './lib/card/card';
 export * from './lib/input-field/input-field';
+export * from './lib/checkbox/checkbox';
 export * from './lib/address-chip/address-chip';
 export * from './lib/bottom-sheet/bottom-sheet';
 export * from './lib/logo/logo';

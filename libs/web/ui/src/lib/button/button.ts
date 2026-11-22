@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input
 import { RjIcon } from '../icon/icon';
 import { type RjIconName } from '../icon/icons';
 
-export type RjButtonVariant = 'primary' | 'secondary' | 'ghost';
+export type RjButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type RjButtonSize = 'md' | 'lg';
 
 const BASE =
@@ -15,6 +15,8 @@ const VARIANTS: Record<RjButtonVariant, string> = {
   primary: 'bg-thunder text-on-thunder hover:shadow-glow focus-visible:shadow-glow',
   secondary: 'border border-line-strong bg-surface-raised text-ink hover:border-ink-muted',
   ghost: 'bg-transparent text-ink hover:bg-surface-raised',
+  // Action destructive (suppression) : contour et texte danger, jamais en aplat (contraste des deux thèmes).
+  danger: 'border border-danger bg-transparent text-danger hover:bg-surface-raised',
 };
 
 const DISABLED = 'cursor-not-allowed border border-line bg-surface text-ink-muted shadow-none hover:shadow-none';

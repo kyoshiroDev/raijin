@@ -29,17 +29,20 @@ export const RJ_INPUT_MAX_LENGTH = 256;
   template: `
     <label [for]="inputId" class="text-body-sm font-medium text-ink">{{ label() }}</label>
     <div class="flex gap-2">
+      <div class="relative flex min-w-0 flex-1">
       <input
         #field
         [id]="inputId"
         [attr.name]="name()"
-        [type]="type()"
+        [type]="effectiveType()"
         [attr.inputmode]="inputmode()"
         [attr.autocomplete]="autocomplete()"
         [attr.enterkeyhint]="enterkeyhint()"
         [attr.placeholder]="placeholder() || null"
         [attr.maxlength]="maxlength()"
         [attr.aria-invalid]="error() ? 'true' : null"
+        [attr.required]="required() ? '' : null"
+        [attr.aria-required]="required() ? 'true' : null"
         [attr.aria-describedby]="describedBy()"
         [disabled]="disabled()"
         [value]="value()"
@@ -48,9 +51,25 @@ export const RJ_INPUT_MAX_LENGTH = 256;
         spellcheck="false"
         class="min-h-12 w-full min-w-0 flex-1 rounded-md border bg-surface px-3 text-input text-ink placeholder:font-sans placeholder:text-ink-muted transition-colors duration-150 ease-raijin hover:border-ink-muted focus-visible:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
         [class.font-mono]="mono()"
+        [class.pr-14]="revealable()"
         [class.border-line-strong]="!error()"
         [class.border-danger]="!!error()"
+        (blur)="blurred.emit()"
       />
+      @if (revealable()) {
+        <button
+          type="button"
+          class="absolute inset-y-0.5 right-0.5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-muted transition-colors duration-150 ease-raijin hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed"
+          [disabled]="disabled()"
+          [attr.aria-label]="revealed() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
+          [attr.aria-pressed]="revealed()"
+          [attr.aria-controls]="inputId"
+          (click)="toggleReveal()"
+        >
+          <rj-icon [name]="revealed() ? 'eyeOff' : 'eye'" [size]="20" />
+        </button>
+      }
+      </div>
       @if (pasteable()) {
         <button
           type="button"
@@ -98,15 +117,23 @@ export class RjInputField {
   readonly mono = input(false);
   readonly pasteable = input(false);
   readonly disabled = input(false);
+  readonly required = input(false);
+  /** Avec `type="password"` : bouton « Afficher / Masquer le mot de passe » dans le champ. */
+  readonly revealable = input(false);
   /** Limite de saisie, appliquée aussi au texte collé (le presse-papiers n'est pas une source sûre). */
   readonly maxlength = input(RJ_INPUT_MAX_LENGTH);
 
   readonly pasted = output<string>();
   readonly pasteFailed = output<void>();
+  readonly blurred = output<void>();
 
   protected readonly inputId = `rj-field-${nextId++}`;
   protected readonly messageId = `${this.inputId}-message`;
   protected readonly pasteRefused = signal(false);
+  protected readonly revealed = signal(false);
+  protected readonly effectiveType = computed(() =>
+    this.type() === 'password' && this.revealed() ? 'text' : this.type(),
+  );
   protected readonly describedBy = computed(() =>
     this.error() || this.pasteRefused() || this.hint() ? this.messageId : null,
   );
@@ -114,6 +141,10 @@ export class RjInputField {
   protected onInput(event: Event): void {
     this.pasteRefused.set(false);
     this.value.set((event.target as HTMLInputElement).value);
+  }
+
+  protected toggleReveal(): void {
+    this.revealed.update((value) => !value);
   }
 
   async paste(): Promise<void> {

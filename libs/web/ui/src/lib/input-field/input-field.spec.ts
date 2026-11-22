@@ -88,3 +88,30 @@ describe('RjInputField', () => {
     expect(fixture.componentInstance.value()).toBe('abc');
   });
 });
+
+describe('RjInputField : mot de passe', () => {
+  it('bouton afficher / masquer, required et événement blurred', async () => {
+    const fixture = TestBed.createComponent(RjInputField);
+    fixture.componentRef.setInput('label', 'Mot de passe');
+    fixture.componentRef.setInput('type', 'password');
+    fixture.componentRef.setInput('revealable', true);
+    fixture.componentRef.setInput('required', true);
+    const blurred = vi.fn();
+    fixture.componentInstance.blurred.subscribe(blurred);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    const input = host.querySelector('input') as HTMLInputElement;
+    expect(input.type).toBe('password');
+    expect(input.required).toBe(true);
+    expect(input.getAttribute('aria-required')).toBe('true');
+    const toggle = host.querySelector('button[aria-controls]') as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-label')).toBe('Afficher le mot de passe');
+    expect(toggle.className).toContain('min-h-11');
+    toggle.click();
+    await fixture.whenStable();
+    expect(input.type).toBe('text');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    input.dispatchEvent(new Event('blur'));
+    expect(blurred).toHaveBeenCalled();
+  });
+});

@@ -97,6 +97,13 @@
           </div>
         </div>
         <div class="flex flex-col gap-3">
+          <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Danger (action destructive)</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" rjButton="danger" icon="trash">Supprimer le compte</button>
+            <button type="button" rjButton="danger" [disabled]="true">Supprimer définitivement</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-3">
           <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Grand, pleine largeur sur mobile</p>
           <div class="sm:max-w-xs">
             <button type="button" rjButton="secondary" size="lg" [block]="true" icon="suivis">Voir mes suivis</button>
@@ -195,6 +202,16 @@
         />
         <rj-input-field label="E-mail" type="email" inputmode="email" autocomplete="email" placeholder="toi@exemple.fr" />
         <rj-input-field label="Champ désactivé" placeholder="Indisponible" [disabled]="true" [pasteable]="true" />
+        <rj-input-field
+          label="Mot de passe"
+          type="password"
+          autocomplete="new-password"
+          hint="Au moins 12 caractères."
+          [revealable]="true"
+          [required]="true"
+        />
+        <rj-checkbox [required]="true">J’accepte les conditions d’utilisation.</rj-checkbox>
+        <rj-checkbox error="Accepte les conditions pour continuer.">Case en erreur</rj-checkbox>
       </div>
     </rj-card>
   </section>

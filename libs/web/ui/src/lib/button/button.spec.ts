@@ -39,6 +39,10 @@ describe('RjButton', () => {
     fixture.componentInstance.variant.set('ghost');
     await fixture.whenStable();
     expect(button.className).toContain('bg-transparent');
+    fixture.componentInstance.variant.set('danger');
+    await fixture.whenStable();
+    expect(button.className).toContain('text-danger');
+    expect(button.className).not.toContain('bg-thunder');
   });
 
   it('en chargement : désactivé, aria-busy et indicateur', async () => {

@@ -3,6 +3,7 @@ import { RjAddressChip } from '../address-chip/address-chip';
 import { RjBottomSheet } from '../bottom-sheet/bottom-sheet';
 import { RjButton } from '../button/button';
 import { RjCard } from '../card/card';
+import { RjCheckbox } from '../checkbox/checkbox';
 import { RjInputField } from '../input-field/input-field';
 import { RjLogo } from '../logo/logo';
 import { type RjNavItem } from '../navigation/nav-item';
@@ -33,6 +34,7 @@ interface DemoToken {
     RjBottomSheet,
     RjButton,
     RjCard,
+    RjCheckbox,
     RjInputField,
     RjLogo,
     RjSidebar,

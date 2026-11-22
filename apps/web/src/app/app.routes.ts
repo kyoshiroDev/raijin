@@ -46,8 +46,8 @@ export const appRoutes: Route[] = [
       import('@raijin/web-feature-wallet').then((m) => m.webFeatureWalletRoutes),
   },
   {
+    // Titres par écran dans la feature ; l'onglet Compte renvoie vers la connexion si besoin (authGuard).
     path: 'compte',
-    title: 'Compte — Raijin',
     loadChildren: () =>
       import('@raijin/web-feature-compte').then((m) => m.webFeatureCompteRoutes),
   },
