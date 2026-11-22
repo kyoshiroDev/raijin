@@ -65,3 +65,12 @@ export const changePasswordRequestSchema = z
     path: ['newPassword'],
   });
 export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
+
+/**
+ * DELETE /api/v1/users/me (connecté) → 204. Suppression définitive du compte (RGPD),
+ * confirmée par le mot de passe actuel. Révoque toutes les sessions et efface les cookies.
+ */
+export const deleteAccountRequestSchema = z.object({
+  password: currentPasswordSchema,
+});
+export type DeleteAccountRequest = z.infer<typeof deleteAccountRequestSchema>;

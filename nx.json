@@ -80,7 +80,9 @@
     "build": {
       "cache": true,
       "dependsOn": [
-        "^build"
+        "^build",
+        "prisma-generate",
+        "^prisma-generate"
       ],
       "inputs": [
         "production",
@@ -92,6 +94,10 @@
       "inputs": [
         "default",
         "{workspaceRoot}/eslint.config.mjs"
+      ],
+      "dependsOn": [
+        "prisma-generate",
+        "^prisma-generate"
       ]
     },
     "test": {
@@ -99,6 +105,10 @@
       "inputs": [
         "default",
         "^production"
+      ],
+      "dependsOn": [
+        "prisma-generate",
+        "^prisma-generate"
       ]
     },
     "typecheck": {
@@ -107,6 +117,10 @@
         "default",
         "^production",
         "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "dependsOn": [
+        "prisma-generate",
+        "^prisma-generate"
       ]
     },
     "e2e": {
@@ -119,7 +133,9 @@
     "@nx/js:tsc": {
       "cache": true,
       "dependsOn": [
-        "^build"
+        "^build",
+        "prisma-generate",
+        "^prisma-generate"
       ],
       "inputs": [
         "production",

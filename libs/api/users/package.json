@@ -7,6 +7,12 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "tslib": "^2.3.0",
-    "@nestjs/common": "^11.0.0"
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/swagger": "^11.4.8",
+    "@raijin/api-auth": "*",
+    "@raijin/api-core": "*",
+    "@raijin/api-prisma": "*",
+    "@raijin/shared-contracts": "*",
+    "express": "^5.2.1"
   }
 }

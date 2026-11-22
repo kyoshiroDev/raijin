@@ -1,10 +1,17 @@
-import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { DynamicModule, Module } from '@nestjs/common';
+import { ApiAuthModule } from '@raijin/api-auth';
+import { ApiCoreModule, type AppConfig } from '@raijin/api-core';
+import { ApiPrismaModule } from '@raijin/api-prisma';
+import { ApiUsersModule } from '@raijin/api-users';
+import { HealthController } from './health.controller';
 
-@Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
-})
-export class AppModule {}
+@Module({})
+export class AppModule {
+  static forRoot(config: AppConfig): DynamicModule {
+    return {
+      module: AppModule,
+      imports: [ApiCoreModule.forRoot(config), ApiPrismaModule, ApiAuthModule, ApiUsersModule],
+      controllers: [HealthController],
+    };
+  }
+}

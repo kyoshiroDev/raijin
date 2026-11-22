@@ -206,10 +206,17 @@ Voir `docs/ENV.md` (modèle du `.env.example`).
   propre lib Prisma (`scope:bench`, base `raijin_bench`) sans couplage.
 - Enums Prisma alignés **à l'identique** sur les contrats : `Plan { FREE PRO }`, `Role { USER ADMIN }`
   (le profil public `PublicUser` les réutilise sans conversion). Identifiants `uuid` (v7 si disponible).
-- Modèle phase 2 : `User` (avec `emailNormalized`, `trialStartedAt`, `trialEndsAt`, `trialStatus`,
-  `stripeCustomerId`, attribution UTM, `role`, `failedLoginCount`, `lockedUntil`), `RefreshToken`,
-  `AuthToken` (vérification / reset / lien magique : hash SHA-256, type, expiration, `usedAt`),
-  `TrialFingerprint`, `ProductEvent`, `AuditLog`. Les autres tables de PROMPT.md §5 arrivent avec leur phase.
+- Modèle (migration `init`, toutes les tables de PROMPT.md §5 posées dès la phase 2) : `User` (avec
+  `emailNormalized`, `trialStartedAt`, `trialEndsAt`, `trialStatus`, `stripeCustomerId`, attribution
+  UTM, `role`, `failedLoginCount`, `lockedUntil`), `Session` (= famille de refresh, son `id` est le
+  `sid` du JWT) + `RefreshToken` (hash SHA-256, `usedAt`), `AuthToken` (vérification / reset / lien
+  magique : hash SHA-256, type, expiration, `usedAt`, `redirectPath`), `TotpSecret`, `TrialFingerprint`,
+  `ProductEvent`, `DailyMetric`, `JobRun`, `Subscription`, `StripeEvent`, `TokenAnalysis`, `Watch`,
+  `Alert`, `PushSubscription`, `UsageCounter`, `AuditLog`. Index sur `mint` et `userId`. Suppression
+  d'un compte : cascade sur ses données, `SetNull` sur l'audit, les événements, les analyses et les
+  empreintes d'essai. Client Prisma 7 (`prisma-client`, CJS) avec l'adaptateur `@prisma/adapter-pg`.
+- Cibles : `api-prisma:prisma-generate` (cache), `migrate-dev`, `migrate-deploy`, `migrate-status`,
+  `seed` (compte local `dev@raijin.local`, refusé en production).
 - Scripts d'installation (`prisma`, `@prisma/engines`, `argon2`…) : chacun tranché explicitement
   dans `allowBuilds` (`pnpm-workspace.yaml`) avec sa justification, sinon la CI casse.
 
@@ -218,14 +225,20 @@ Configuration (schéma Zod des variables, échec au démarrage si invalide), fil
 au format `ApiError {code, message}` (codes de `@raijin/shared-contracts`, aucune stack hors
 développement), pipe de validation Zod (schémas des contrats), Helmet, CORS limité à
 `CORS_ORIGINS` avec `credentials: true`, `@nestjs/throttler` global (stockage Redis) et renforcé sur
-`/auth/*`, garde CSRF, utilitaire de cookies. `apps/api/src/main.ts` ne fait que brancher ce socle
-(et perd le `new Function(...)`, point M3 de l'audit de la phase 1).
+`/auth/*` (`@AuthThrottle()`, repli mémoire si Redis tombe), garde CSRF globale, utilitaire de
+cookies, OpenAPI sur `/api/v1/docs` hors production. `apps/api/src/main.ts` ne fait que brancher ce
+socle : le `new Function(...)` (point M3) est remplacé par `createRequire` pour le signal de
+disponibilité de `nx serve` (dev uniquement). La garde CSRF lit le `sid` via
+`SessionIdResolverRegistry`, que `api-auth` alimente au démarrage (core ne dépend pas d'auth).
 
 ### 8.3 E-mails : interface `Mailer` dans `libs/api/notifications`
 Classe abstraite `Mailer` (`send({to, subject, html, text})`), deux implémentations choisies par
 `MAIL_PROVIDER` : `SmtpMailer` (Mailpit en dev, `SMTP_HOST`/`SMTP_PORT`) et `ResendMailer` (prod).
-Templates HTML responsive en thème clair + version texte, couleurs lues dans `libs/brand/tokens.json`
-au build (aucune couleur en dur). `api-auth` dépend de `api-notifications`.
+Templates HTML responsive en thème clair + version texte. Les couleurs (`EMAIL_THEME`) sont celles
+du thème `light` de `libs/brand/tokens.json` ; un test échoue si elles divergent (pas d'import JSON
+inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent le SVG).
+`api-auth` dépend de `api-notifications`. Liens : `APP_URL` + `AUTH_EMAIL_LINK_PATHS` (contrats)
++ `?token=`.
 
 ### 8.4 Sessions et cookies
 - **Access token** : JWT HS256 signé par `JWT_ACCESS_SECRET`, durée `JWT_ACCESS_TTL` (15 min), contenu
@@ -243,7 +256,11 @@ au build (aucune couleur en dur). `api-auth` dépend de `api-notifications`.
   | Refresh | `__Secure-rj_rt` | `rj_rt` | `/api/v1/auth` | aucun |
   | CSRF | `__Host-rj_csrf` | `rj_csrf` | `/` | aucun |
 
-  Aucun jeton dans le corps des réponses ni dans le `localStorage`/`sessionStorage`.
+  Aucun jeton dans le corps des réponses ni dans le `localStorage`/`sessionStorage`. Le cookie
+  d'access vit aussi longtemps que la session (le JWT, lui, expire après 15 min) : son `sid` signé
+  reste lisible pour la garde CSRF de `POST /auth/refresh`. Un refresh réutilisé dans les 10 s
+  (onglets concurrents) est refusé sans révoquer la famille ; au-delà, toute la famille est révoquée.
+  La garde d'auth vérifie en base que la session n'est pas révoquée (déconnexion immédiate).
   `COOKIE_DOMAIN` reste vide (cookies liés à l'hôte de l'API).
 - Les jetons d'e-mail (vérification 24 h, reset 30 min, lien magique 15 min) sont opaques,
   stockés hachés, à usage unique ; demander un nouveau jeton invalide les précédents du même type.
@@ -270,8 +287,8 @@ au build (aucune couleur en dur). `api-auth` dépend de `api-notifications`.
 | web (Angular) | `http://localhost:4200` (proxy dev `/api` → `http://localhost:3000`, même origine) | `https://app.raijinshield.com` |
 | api (NestJS) | `http://localhost:3000/api/v1` | `https://api.raijinshield.com/api/v1` |
 | landing (Astro) | `http://localhost:4321` | `https://raijinshield.com` |
-| Mailpit (UI / SMTP) | `http://localhost:8025` / `localhost:1025` | — (Resend) |
-| Postgres / Redis | `localhost:5432` / `localhost:6379` | réseau interne Docker |
+| Mailpit (UI / SMTP) | `http://localhost:8026` / `localhost:1026` | — (Resend) |
+| Postgres / Redis | `localhost:5433` / `localhost:6380` | réseau interne Docker |
 
 - En dev, le front appelle `API_BASE_URL = '/api/v1'` (relatif) : `apps/web/proxy.conf.json` relaie
   vers l'API, donc pas de CORS ni de cookie inter-origines en local. En prod, `API_BASE_URL` vaut
@@ -282,8 +299,22 @@ au build (aucune couleur en dur). `api-auth` dépend de `api-notifications`.
 - Les liens des e-mails sont construits avec `APP_URL` (jamais avec l'en-tête `Host` de la requête).
 
 ### 8.7 Infrastructure de dev : `docker-compose.dev.yml` (racine)
-Projet Compose `raijin-dev` : Postgres 17 (volume `pgdata`), Redis 8 (sans persistance), Mailpit.
-Ports liés à `127.0.0.1` uniquement, valeurs par défaut factices identiques à `docs/ENV.md`.
+Projet Compose `raijin-dev` : Postgres 17 (volume `pgdata`), Redis 8 (sans persistance), Mailpit 1.34.
+Ports liés à `127.0.0.1` uniquement et décalés pour cohabiter avec les autres projets de la machine :
+Postgres **5433**, Redis **6380**, Mailpit SMTP **1026** / interface **8026**. Valeurs par défaut
+factices identiques à `docs/ENV.md`.
 `pnpm nx run api:dev-infra` (démarre et attend les healthchecks) ·
-`pnpm nx run api:dev-infra-stop` (arrête sans supprimer le volume).
+`pnpm nx run api:dev-infra-stop` (`docker compose -p raijin-dev stop`, sans supprimer le volume) ·
+`pnpm nx run api-prisma:migrate-deploy` · `pnpm nx e2e api-e2e` (parcours d'auth complets via Mailpit ;
+si le port 3000 est pris : `API_PORT=3100 API_URL=http://localhost:3100`).
 
+
+### 8.8 Routes livrées (`/api/v1`)
+`GET health` (200 / 503) · `GET health/config` · `GET auth/csrf` · `POST auth/register` (202) ·
+`POST auth/verify-email` · `POST auth/verify-email/resend` (202) · `POST auth/login` ·
+`POST auth/refresh` · `POST auth/logout` (204) · `GET auth/session` · `POST auth/magic-link` (202) ·
+`POST auth/magic-link/verify` (`MagicLinkSession` = `AuthSession` + `redirectPath`) ·
+`POST auth/password/forgot` (202) · `POST auth/password/reset` (204) · `POST auth/password/change` (204) ·
+`GET users/me` · `GET users/me/export` (RGPD, JSON en pièce jointe) · `DELETE users/me` (204, corps
+`DeleteAccountRequest { password }`). Codes : connexion refusée 401, compte verrouillé 429,
+jeton e-mail invalide 400, session absente 401 `AUTH_SESSION_EXPIRED`, CSRF 403.

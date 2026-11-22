@@ -26,23 +26,27 @@ APP_URL=http://localhost:4200
 LANDING_URL=http://localhost:4321
 # URL publique de l'API (prod : https://api.raijinshield.com)
 API_URL=http://localhost:3000
+# Port d'écoute de l'API (si 3000 est déjà pris sur ta machine : API_PORT=3100 et API_URL en conséquence)
 API_PORT=3000
 # Origines autorisées par CORS (web + landing), séparées par des virgules
 CORS_ORIGINS=http://localhost:4200,http://localhost:4321
 
 # ---------------------------------------------------------------------
-# PostgreSQL 17 (conteneur local docker-compose.dev.yml, puis raijin-postgres sur le VPS)
+# PostgreSQL 17 (conteneur local docker-compose.dev.yml, port hôte 5433, puis raijin-postgres sur le VPS)
 # ---------------------------------------------------------------------
 # Mot de passe à générer : openssl rand -base64 32
 POSTGRES_USER=raijin
 POSTGRES_PASSWORD=changeme-factice
 POSTGRES_DB=raijin
-DATABASE_URL=postgresql://raijin:changeme-factice@localhost:5432/raijin?schema=public
+DATABASE_URL=postgresql://raijin:changeme-factice@localhost:5433/raijin?schema=public
 
 # ---------------------------------------------------------------------
-# Redis (conteneur local, puis raijin-redis sur le VPS)
+# Redis (conteneur local, port hôte 6380, puis raijin-redis sur le VPS) : stockage du rate limiting
 # ---------------------------------------------------------------------
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://localhost:6380
+# Rate limiting par IP : toutes routes, et renforcé par route sensible de /auth (connexion, inscription, liens e-mail)
+RATE_LIMIT_PER_MINUTE=120
+RATE_LIMIT_AUTH_PER_MINUTE=10
 
 # ---------------------------------------------------------------------
 # Auth : JWT et cookies httpOnly
@@ -63,6 +67,9 @@ COOKIE_SECURE=false
 EMAIL_VERIFY_TTL=24h
 PASSWORD_RESET_TTL=30m
 MAGIC_LINK_TTL=15m
+# Verrouillage temporaire après échecs de connexion consécutifs (nombre d'échecs, durée)
+AUTH_LOCKOUT_THRESHOLD=5
+AUTH_LOCKOUT_DURATION=15m
 # Nombre de proxys de confiance devant l'API (IP réelle pour le rate limiting) : 1 derrière Traefik en prod, vide en dev
 TRUST_PROXY=
 # Clé de chiffrement des secrets TOTP (2FA admin), 32 octets. À générer : openssl rand -base64 32
@@ -79,15 +86,20 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 # ---------------------------------------------------------------------
 # E-mails : Resend (prod) ou SMTP Mailpit (dev)
 # ---------------------------------------------------------------------
-# smtp (Mailpit en dev) ou resend
+# smtp (Mailpit en dev) ou resend (activé seulement si RESEND_API_KEY contient une vraie clé)
 MAIL_PROVIDER=smtp
-# Mailpit local (docker-compose.dev.yml) : interface sur http://localhost:8025
+# Mailpit local (docker-compose.dev.yml) : SMTP sur le port hôte 1026, interface sur http://localhost:8026
 SMTP_HOST=localhost
-SMTP_PORT=1025
+SMTP_PORT=1026
+# Identifiants SMTP (vides pour Mailpit ; à renseigner seulement pour un relais SMTP authentifié)
+SMTP_USER=
+SMTP_PASSWORD=
 # Resend — https://resend.com/api-keys — (optionnel en dev : simulation locale via Mailpit)
 RESEND_API_KEY=re_factice
 # Expéditeur (domaine vérifié sur https://resend.com/domains)
 MAIL_FROM="Raijin <noreply@raijinshield.com>"
+# Logo PNG de l'en-tête des e-mails (vide = APP_URL/icons/icon-192.png)
+MAIL_LOGO_URL=
 
 # ---------------------------------------------------------------------
 # Stripe (mode test) — (optionnel en dev : simulation locale, BILLING_PROVIDER=fake)
@@ -130,6 +142,12 @@ SEARCH_CONSOLE_SITE_URL=
 GOOGLE_SITE_VERIFICATION=
 
 # ---------------------------------------------------------------------
+# Seed de développement (pnpm nx run api-prisma:seed) — optionnel
+# ---------------------------------------------------------------------
+# Mot de passe du compte local dev@raijin.local (12 caractères min.) ; vide = généré et affiché une fois
+SEED_USER_PASSWORD=
+
+# ---------------------------------------------------------------------
 # Sentry — (optionnel en dev : désactivé si vide)
 # ---------------------------------------------------------------------
 # Sentry — https://sentry.io/settings/projects/ → ton projet → Client Keys (DSN)
@@ -137,3 +155,16 @@ SENTRY_DSN_API=
 SENTRY_DSN_WEB=
 SENTRY_ENVIRONMENT=development
 ```
+
+## Validation au démarrage (`libs/api/core`, `loadConfig`)
+
+- **Production** (`NODE_ENV=production`) : l'API refuse de démarrer si `JWT_ACCESS_SECRET` ou
+  `COOKIE_SECRET` est absente, factice (`changeme…`, `…factice`) ou plus courte que 32 caractères,
+  si `DATABASE_URL` ou `REDIS_URL` manque, si `COOKIE_SECURE` n'est pas `true`, si une origine
+  n'est pas en HTTPS, ou si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`. Les messages
+  citent le nom de la variable, jamais sa valeur.
+- **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les
+  secrets absents ou factices sont générés aléatoirement à chaque démarrage, avec un avertissement
+  (les sessions ne survivent donc pas à un redémarrage tant qu'aucun secret n'est fourni).
+- `GET /api/v1/health/config` répond `configured` / `not_configured` par service, sans aucune valeur.
+

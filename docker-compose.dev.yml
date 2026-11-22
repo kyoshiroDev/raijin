@@ -1,6 +1,7 @@
 # Infrastructure locale de développement de l'API Raijin (jamais utilisée sur le VPS).
 # Lancement : pnpm nx run api:dev-infra   · arrêt : pnpm nx run api:dev-infra-stop
-# Ports liés à 127.0.0.1 uniquement. Les valeurs par défaut sont celles, factices, de docs/ENV.md ;
+# Ports liés à 127.0.0.1 uniquement, décalés (5433, 6380, 1026, 8026) pour ne pas entrer en collision
+# avec les conteneurs d'autres projets de la machine (5432, 6379, 1025, 8025). Les valeurs par défaut sont celles, factices, de docs/ENV.md ;
 # Docker Compose lit le .env racine s'il existe (les agents ne le lisent jamais).
 name: raijin-dev
 
@@ -12,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme-factice}
       POSTGRES_DB: ${POSTGRES_DB:-raijin}
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,23 +26,23 @@ services:
     image: redis:8-alpine
     command: ['redis-server', '--save', '', '--appendonly', 'no']
     ports:
-      - '127.0.0.1:6379:6379'
+      - '127.0.0.1:6380:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
 
-  # Mailpit : SMTP local (1025) + interface web http://localhost:8025 (tous les e-mails de dev y arrivent).
+  # Mailpit : SMTP local (hôte 1026) + interface web http://localhost:8026 (tous les e-mails de dev y arrivent).
   mailpit:
-    image: axllent/mailpit:v1.27
+    image: axllent/mailpit:v1.34
     environment:
       MP_MAX_MESSAGES: 500
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
     ports:
-      - '127.0.0.1:1025:1025'
-      - '127.0.0.1:8025:8025'
+      - '127.0.0.1:1026:1025'
+      - '127.0.0.1:8026:8025'
     healthcheck:
       test: ['CMD', '/mailpit', 'readyz']
       interval: 5s

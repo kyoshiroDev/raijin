@@ -1,0 +1,356 @@
+// Schéma de la base Raijin (PROMPT.md §5, docs/ARCHITECTURE.md §8.1).
+// Client généré par : pnpm nx run api-prisma:prisma-generate (dans src/generated/, ignoré par Git).
+// Migrations versionnées dans prisma/migrations (pnpm nx run api-prisma:migrate-dev / migrate-deploy).
+// Conventions : identifiants UUID v7, dates en UTC, adresses IP jamais stockées en clair (ipHash).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums (alignés à l'identique sur @raijin/shared-contracts quand ils y existent)
+// ---------------------------------------------------------------------------
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+/// État de l'essai Pro 7 jours (phase 6). Exposé en minuscules par l'API (trialStatusSchema).
+enum TrialStatus {
+  NONE
+  ACTIVE
+  ENDED
+  INELIGIBLE
+}
+
+/// Jetons à usage unique envoyés par e-mail (stockés hachés SHA-256).
+enum AuthTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+  MAGIC_LINK
+}
+
+enum Verdict {
+  safe
+  warn
+  danger
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+  PAUSED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+// ---------------------------------------------------------------------------
+// Utilisateurs et authentification
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String      @id @default(uuid(7)) @db.Uuid
+  /// E-mail saisi (minuscules, sans espaces) : adresse d'envoi.
+  email            String      @unique
+  /// E-mail normalisé anti-abus (alias +, points Gmail, googlemail.com) : un seul compte par boîte.
+  emailNormalized  String      @unique
+  /// Hash argon2id (format PHC).
+  passwordHash     String
+  emailVerifiedAt  DateTime?
+  passwordChangedAt DateTime?
+  termsAcceptedAt  DateTime
+  plan             Plan        @default(FREE)
+  role             Role        @default(USER)
+  trialStatus      TrialStatus @default(NONE)
+  trialStartedAt   DateTime?
+  trialEndsAt      DateTime?
+  stripeCustomerId String?     @unique
+  /// Verrouillage temporaire après échecs de connexion répétés.
+  failedLoginCount Int         @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  // Attribution (première visite, données externes bornées)
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  referrer         String?
+  landingPath      String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  sessions          Session[]
+  authTokens        AuthToken[]
+  totpSecret        TotpSecret?
+  subscriptions     Subscription[]
+  watches           Watch[]
+  alerts            Alert[]
+  pushSubscriptions PushSubscription[]
+  usageCounters     UsageCounter[]
+  productEvents     ProductEvent[]
+  auditLogs         AuditLog[]
+  trialFingerprints TrialFingerprint[]
+  tokenAnalyses     TokenAnalysis[]
+
+  @@index([createdAt])
+  @@index([plan])
+}
+
+/// Session = famille de refresh tokens. `id` est le `sid` de l'access token.
+/// Révoquer la session révoque toute la famille (déconnexion, réutilisation détectée, reset).
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent  String?
+  ipHash     String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// Motif de révocation : logout, reuse, password_reset, password_change, account_deleted.
+  revokedReason String?
+
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Refresh token opaque (32 octets), stocké haché SHA-256, rotation à chaque usage.
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  sessionId String    @db.Uuid
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  /// Renseigné lors de la rotation : un jeton déjà utilisé qui revient = vol, famille révoquée.
+  usedAt    DateTime?
+
+  @@index([sessionId])
+}
+
+/// Jetons e-mail (vérification, réinitialisation, lien magique) : hachés, usage unique, TTL.
+model AuthToken {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  userId       String        @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         AuthTokenType
+  tokenHash    String        @unique
+  /// Lien magique : chemin relatif de retour (validé par relativePathSchema).
+  redirectPath String?
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+/// Secret TOTP de la 2FA admin, chiffré (AES-256-GCM, TOTP_ENCRYPTION_KEY). Phase admin.
+model TotpSecret {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  userId          String    @unique @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Format : iv.tag.ciphertext (base64url).
+  secretEncrypted String
+  enabledAt       DateTime?
+  lastUsedStep    Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+/// Empreinte anti-abus de l'essai Pro (hash uniquement, conservée après suppression du compte).
+model TrialFingerprint {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  hash      String
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([hash])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Facturation (phase 6)
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id                   String             @id @default(uuid(7)) @db.Uuid
+  userId               String             @db.Uuid
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String             @unique
+  stripePriceId        String
+  status               SubscriptionStatus
+  interval             BillingInterval
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([userId])
+}
+
+/// Événements Stripe déjà traités (idempotence des webhooks).
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Analyses, suivis, alertes (phases 3 à 5)
+// ---------------------------------------------------------------------------
+
+/// Résultat d'analyse d'un token. Purgé après 90 jours (job de rétention).
+model TokenAnalysis {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  mint      String
+  verdict   Verdict
+  score     Int?
+  checks    Json
+  sources   Json
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([mint, createdAt])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Watch {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mint          String
+  lastVerdict   Verdict?
+  lastCheckedAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([userId, mint])
+  @@index([mint])
+}
+
+model Alert {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mint      String
+  type      String
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([mint])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Compteur de quotas journaliers : par utilisateur (connecté) ou par IP hachée (anonyme).
+model UsageCounter {
+  id     String   @id @default(uuid(7)) @db.Uuid
+  userId String?  @db.Uuid
+  user   User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipHash String?
+  /// Type de quota (ex. analysis, wallet_scan).
+  kind   String
+  day    DateTime @db.Date
+  count  Int      @default(0)
+
+  @@unique([userId, kind, day])
+  @@unique([ipHash, kind, day])
+  @@index([day])
+}
+
+// ---------------------------------------------------------------------------
+// Mesure, exploitation, audit
+// ---------------------------------------------------------------------------
+
+model ProductEvent {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type       String
+  properties Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([type, createdAt])
+}
+
+model DailyMetric {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  date      DateTime @db.Date
+  key       String
+  value     Float
+  createdAt DateTime @default(now())
+
+  @@unique([date, key])
+}
+
+model JobRun {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  job        String
+  startedAt  DateTime     @default(now())
+  finishedAt DateTime?
+  status     JobRunStatus @default(RUNNING)
+  error      String?
+
+  @@index([job, startedAt])
+}
+
+/// Journal d'audit (sécurité et admin). L'utilisateur supprimé devient null (journal conservé).
+model AuditLog {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorId   String?  @db.Uuid
+  action    String
+  ipHash    String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action, createdAt])
+}

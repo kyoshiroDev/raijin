@@ -1,33 +1,46 @@
 /**
  * Point d'entrée de l'API Raijin (`/api/v1`). L'app reste fine : la logique vit dans libs/api/*.
- * Helmet, CORS, throttler et format d'erreur {code, message} arrivent en phase 2 (nestjs-api).
+ * La configuration est validée avant tout (échec du démarrage si invalide en production).
  */
-
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { ConfigError, GLOBAL_PREFIX, loadConfig, setupApp } from '@raijin/api-core';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { AppModule } from './app/app.module';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const globalPrefix = 'api/v1';
-  app.setGlobalPrefix(globalPrefix);
-  const port = process.env['API_PORT'] ?? 3000;
-  await app.listen(port);
-  // Set when Nx waits for this server to be ready
-  if (process.env['NX_READY_SIGNAL_SOCKET']) {
-    try {
-      // Function keeps TypeScript and bundlers from rewriting or bundling the import
-      const load = new Function('s', 'return import(s)') as (
-        s: string,
-      ) => Promise<{ emitReadySignal(server: unknown): boolean }>;
-      (await load('@nx/js/ready-signal')).emitReadySignal(app.getHttpServer());
-    } catch {
-      // @nx/js isn't installed
-    }
+/**
+ * Signale à `nx serve` que le serveur écoute (développement uniquement, variable posée par Nx).
+ * `createRequire` résout @nx/js depuis le workspace sans évaluer de code dynamique.
+ */
+function emitNxReadySignal(server: unknown): void {
+  if (!process.env['NX_READY_SIGNAL_SOCKET']) return;
+  try {
+    const load = createRequire(join(process.cwd(), 'package.json'));
+    (load('@nx/js/ready-signal') as { emitReadySignal(server: unknown): boolean }).emitReadySignal(server);
+  } catch {
+    // @nx/js absent (image de production) : rien à signaler.
   }
-  Logger.log(
-    `API Raijin à l'écoute sur http://localhost:${port}/${globalPrefix}`,
-  );
 }
 
-bootstrap();
+async function bootstrap(): Promise<void> {
+  const logger = new Logger('Bootstrap');
+  const config = loadConfig(process.env, (message) => logger.warn(message));
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), {
+    bodyParser: false,
+  });
+  setupApp(app, config);
+  await app.listen(config.port);
+  emitNxReadySignal(app.getHttpServer());
+  logger.log(`API Raijin à l'écoute sur http://localhost:${config.port}/${GLOBAL_PREFIX} (${config.env})`);
+}
+
+bootstrap().catch((error: unknown) => {
+  if (error instanceof ConfigError) {
+    new Logger('Bootstrap').error(error.message);
+  } else {
+    new Logger('Bootstrap').error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+  }
+  process.exit(1);
+});

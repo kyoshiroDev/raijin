@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { relativePathSchema } from './common';
 import { publicUserSchema } from './user';
 
 /** En-tête envoyé par le front sur chaque mutation (POST, PUT, PATCH, DELETE). */
@@ -23,3 +24,13 @@ export const authSessionSchema = z.object({
   csrfToken: csrfTokenSchema,
 });
 export type AuthSession = z.infer<typeof authSessionSchema>;
+
+/**
+ * POST /api/v1/auth/magic-link/verify → 200 : session + page de retour demandée lors de l'envoi
+ * du lien (`redirectPath` validé à la demande, `null` si aucune). Le lien peut être ouvert dans
+ * un autre onglet : le front ne peut pas garder ce chemin en mémoire.
+ */
+export const magicLinkSessionSchema = authSessionSchema.extend({
+  redirectPath: relativePathSchema.nullable(),
+});
+export type MagicLinkSession = z.infer<typeof magicLinkSessionSchema>;

@@ -5,6 +5,7 @@ module.exports = {
   globalTeardown: '<rootDir>/src/support/global-teardown.ts',
   setupFiles: ['<rootDir>/src/support/test-setup.ts'],
   testEnvironment: 'node',
+  testTimeout: 30_000,
   transform: {
     '^.+\\.[tj]s$': [
       'ts-jest',

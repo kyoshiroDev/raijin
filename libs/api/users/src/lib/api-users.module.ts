@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
+import { ApiAuthModule } from '@raijin/api-auth';
+import { UsersController } from './users.controller';
+import { UsersService } from './users.service';
 
 @Module({
-  controllers: [],
-  providers: [],
-  exports: [],
+  imports: [ApiAuthModule],
+  controllers: [UsersController],
+  providers: [UsersService],
+  exports: [UsersService],
 })
 export class ApiUsersModule {}

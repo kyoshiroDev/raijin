@@ -29,5 +29,9 @@
         "parallel": false
       }
     }
-  }
+  },
+  "tags": [
+    "scope:api",
+    "type:app"
+  ]
 }

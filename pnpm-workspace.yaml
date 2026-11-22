@@ -16,3 +16,13 @@ allowBuilds:
   '@nestjs/core': false
   # Refusé : aucune transformation d'image côté serveur à ce stade (Astro n'en a pas besoin pour la landing).
   sharp: false
+  # Autorisé : argon2 (hachage des mots de passe, argon2id) charge un binaire natif précompilé
+  # via node-gyp-build (compilation locale seulement si aucun binaire ne correspond à la plateforme).
+  argon2: true
+  # Refusé : télémétrie de swagger-ui-dist (dépendance de @nestjs/swagger), inutile.
+  '@scarf/scarf': false
+  # Refusés : prisma (preinstall = simple contrôle de version de Node) et @prisma/engines
+  # (postinstall = téléchargement anticipé du schema engine). `prisma generate` n'en a pas besoin
+  # (moteur WebAssembly) ; la CLI télécharge le schema engine à la demande pour `migrate`.
+  prisma: false
+  '@prisma/engines': false

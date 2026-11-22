@@ -98,7 +98,7 @@
       "cache": false,
       "options": {
         "cwd": "{workspaceRoot}",
-        "command": "docker compose -f docker-compose.dev.yml up -d --wait"
+        "command": "docker compose -p raijin-dev -f docker-compose.dev.yml up -d --wait"
       }
     },
     "dev-infra-stop": {
@@ -106,7 +106,7 @@
       "cache": false,
       "options": {
         "cwd": "{workspaceRoot}",
-        "command": "docker compose -f docker-compose.dev.yml stop"
+        "command": "docker compose -p raijin-dev -f docker-compose.dev.yml stop"
       }
     }
   }
