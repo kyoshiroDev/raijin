@@ -41,7 +41,7 @@ import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-i
                     [class.text-ink-muted]="!active"
                   >
                     <rj-icon [name]="item.icon" [size]="20" />
-                    <span [class.sr-only]="collapsed()" [attr.title]="collapsed() ? null : item.label" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+                    <span [class.sr-only]="collapsed()" [attr.title]="collapsed() ? null : item.label" class="min-w-0 flex-1 truncate">{{ item.label }}@if (badge(item)) {<span class="sr-only">, {{ item.badge }} non lues</span>}</span>
                     @if (badge(item); as count) {
                       <span
                         aria-hidden="true"
@@ -51,7 +51,6 @@ import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-i
                         [class.right-1]="collapsed()"
                         >{{ count }}</span
                       >
-                      <span class="sr-only">, {{ item.badge }} non lues</span>
                     }
                   </a>
                 </li>

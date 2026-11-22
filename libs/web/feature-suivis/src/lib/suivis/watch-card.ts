@@ -28,18 +28,20 @@ export function lastCheckText(watch: Watch, now: number): string {
   template: `
     <rj-card [interactive]="true">
       <div class="flex items-start justify-between gap-3">
-        <h3 class="flex min-w-0 flex-col">
+        <!-- h2 : la carte suit directement le h1 de l'écran (ordre des titres). -->
+        <h2 class="flex min-w-0 flex-col">
           <a
             [routerLink]="['/analyse', watch().mint]"
             [class]="'-my-2.5 block min-w-0 truncate rounded-sm py-2.5 font-display text-h3 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' + (named() ? 'text-ink' : 'text-ink-muted')"
-            [attr.aria-label]="'Voir l’analyse de ' + (named() ? name() : 'ce token')"
+            [attr.aria-label]="displayed() + ', voir l’analyse'"
+            [attr.title]="displayed()"
             data-watch-name
             >{{ named() ? name() : 'Nom non publié' }}</a
           >
           @if (symbol(); as symbol) {
             <span class="truncate text-body-sm text-ink-muted">{{ symbol }}</span>
           }
-        </h3>
+        </h2>
         @if (watch().lastVerdict; as verdict) {
           <rj-verdict-badge [verdict]="verdict" />
         } @else {
@@ -112,6 +114,8 @@ export class RjWatchCard {
 
   protected readonly name = computed(() => tokenLabel(this.watch().token, this.watch().mint));
   /** Le créateur a publié un nom ou un symbole (sinon l'adresse est déjà affichée juste en dessous). */
+  /** Texte visible du lien (repris en tête du nom accessible). */
+  protected readonly displayed = computed(() => (this.named() ? this.name() : 'Nom non publié'));
   protected readonly named = computed(() => Boolean(this.watch().token?.name || this.watch().token?.symbol));
   protected readonly symbol = computed(() => tokenSymbol(this.watch().token));
   protected readonly lastCheck = computed(() => lastCheckText(this.watch(), this.now()));

@@ -123,7 +123,7 @@ const CLOCK_MS = 60_000;
               <table class="w-full table-fixed text-left text-body-sm">
                 <caption class="sr-only">Tokens suivis</caption>
                 <colgroup>
-                  <col class="w-[26%]" /><col class="w-[13%]" /><col class="w-[17%]" /><col class="w-[14%]" /><col class="w-[30%]" />
+                  <col class="w-[22%]" /><col class="w-[14%]" /><col class="w-[16%]" /><col class="w-[12%]" /><col class="w-[36%]" />
                 </colgroup>
                 <thead class="border-b border-line text-label font-medium tracking-wide text-ink-muted uppercase">
                   <tr>
@@ -142,7 +142,8 @@ const CLOCK_MS = 60_000;
                           <a
                             [routerLink]="['/analyse', watch.mint]"
                             class="-my-2.5 block truncate rounded-sm py-2.5 text-body font-semibold text-ink underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-                            [attr.aria-label]="'Voir l’analyse de ' + label(watch)"
+                            [attr.aria-label]="visibleName(watch) + ', voir l’analyse'"
+                            [attr.title]="visibleName(watch)"
                             >{{ label(watch) }}@if (symbol(watch); as symbol) {<span class="font-normal text-ink-muted"> · {{ symbol }}</span>}</a
                           >
                           <rj-address-chip [address]="watch.mint" label="Adresse du token" />
@@ -277,6 +278,12 @@ export class SuivisPage {
 
   protected label(watch: Watch): string {
     return tokenLabel(watch.token, watch.mint);
+  }
+
+  /** Texte visible du lien du tableau (nom · symbole), repris en tête du nom accessible. */
+  protected visibleName(watch: Watch): string {
+    const symbol = this.symbol(watch);
+    return symbol ? `${this.label(watch)} · ${symbol}` : this.label(watch);
   }
 
   protected symbol(watch: Watch): string | null {

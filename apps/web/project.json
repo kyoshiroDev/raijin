@@ -157,7 +157,7 @@
         "{projectRoot}/public/icons/*.png",
         "{projectRoot}/brand-png.lock.json",
         "{workspaceRoot}/tools/scripts/render-mascot-png.mjs",
-        "{projectRoot}/public/maintenance.css",
+        "{projectRoot}/public/maintenance-static.css",
         "{workspaceRoot}/libs/brand/tokens.css"
       ],
       "options": {

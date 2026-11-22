@@ -41,7 +41,7 @@ describe('Navigation', () => {
     expect(nav.className).toContain('pb-safe');
     expect(nav.className).toContain('lg:hidden');
     expect(links[2]?.textContent).toContain('9+');
-    expect(links[2]?.textContent).toContain('12 non lues');
+    expect(links[2]?.textContent).toContain('Alertes, 12 non lues');
   });
 
   it('Sidebar : 240 px, repliable à 72 px avec libellés conservés pour les lecteurs d’écran', async () => {

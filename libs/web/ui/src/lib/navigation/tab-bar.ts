@@ -36,10 +36,8 @@ import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-i
                   >
                 }
               </span>
-              <span class="max-w-full truncate" [attr.title]="item.label">{{ item.label }}</span>
-              @if (badge(item)) {
-                <span class="sr-only">, {{ item.badge }} non lues</span>
-              }
+              <!-- Compteur collé au libellé (aucune espace avant la virgule dans le nom accessible). -->
+              <span class="max-w-full truncate" [attr.title]="item.label">{{ item.label }}@if (badge(item)) {<span class="sr-only">, {{ item.badge }} non lues</span>}</span>
             </a>
           </li>
         }

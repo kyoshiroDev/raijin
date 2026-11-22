@@ -494,7 +494,7 @@ test('maintenance : 503 MAINTENANCE de l’API → /maintenance, « Réessayer �
   await expect(page.locator('main h1').first()).toHaveText('Suivis');
 });
 
-test('maintenance.html statique (page d’erreur du proxy) : sans JavaScript, styles et Rai chargés', async ({ browser }) => {
+test('maintenance-static.html (page d’erreur du proxy) : sans JavaScript, styles et Rai chargés', async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   try {
     const page = await context.newPage();
@@ -502,7 +502,7 @@ test('maintenance.html statique (page d’erreur du proxy) : sans JavaScript, st
     page.on('response', (res) => {
       if (res.status() >= 400) failed.push(`${res.status()} ${res.url()}`);
     });
-    const res = await page.goto(`${PROD_ORIGIN}/maintenance.html`);
+    const res = await page.goto(`${PROD_ORIGIN}/maintenance-static.html`);
     expect(res?.status()).toBe(200);
     await expect(page.getByRole('heading', { level: 1, name: 'Raijin fait une courte pause' })).toBeVisible();
     await expect(page.locator('script')).toHaveCount(0);

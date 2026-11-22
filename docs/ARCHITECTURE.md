@@ -812,4 +812,4 @@ suivi. Chaque purge écrit son `JobRun` (nombre de lignes par table).
 `rj-status-page` (`web-ui`, présentation pure : Rai bravo, titre, phrase, lien de retour) ; route `**` → 404 (au lieu
 de la redirection actuelle vers `/analyse`), route `/maintenance`. `MAINTENANCE_MODE=1` : l'API répond 503
 `MAINTENANCE` (sauf `health`) et un intercepteur de `web-data-access` affiche `/maintenance`. Une page statique
-`maintenance.html` (sans JS) est aussi produite pour la page d'erreur Traefik (phase 8).
+`maintenance-static.html` (sans JS) est aussi produite pour la page d'erreur Traefik (phase 8).
