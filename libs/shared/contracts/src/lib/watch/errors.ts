@@ -14,6 +14,8 @@ export const WATCH_ERROR_CODES = [
   'PUSH_PLAN_REQUIRED',
   /** Abonnement push refusé (endpoint hors des services connus, clés invalides) : 400. */
   'PUSH_SUBSCRIPTION_INVALID',
+  /** Choix des suivis à garder refusé (suivi inconnu ou d'un autre utilisateur, doublon, plus que la limite du plan) : 400. */
+  'WATCH_KEEP_INVALID',
 ] as const;
 
 export const watchErrorCodeSchema = z.enum(WATCH_ERROR_CODES);
@@ -27,6 +29,10 @@ export const WATCH_ERROR_MESSAGES: Readonly<Record<WatchErrorCode, string>> = {
   ALERT_NOT_FOUND: 'Cette alerte n’existe plus.',
   PUSH_NOT_SUPPORTED:
     'Les notifications push ne sont pas disponibles ici. Sur iPhone, ajoute d’abord Raijin à l’écran d’accueil.',
-  PUSH_PLAN_REQUIRED: 'Les notifications push font partie du plan Pro. Tu reçois tes alertes par e-mail.',
-  PUSH_SUBSCRIPTION_INVALID: 'Ce navigateur a fourni un abonnement push non pris en charge.',
+  PUSH_PLAN_REQUIRED:
+    'Les notifications push font partie du plan Pro. Tu reçois tes alertes par e-mail.',
+  PUSH_SUBSCRIPTION_INVALID:
+    'Ce navigateur a fourni un abonnement push non pris en charge.',
+  WATCH_KEEP_INVALID:
+    'Cette sélection n’est pas possible. Choisis au plus le nombre de suivis inclus dans ton plan.',
 };

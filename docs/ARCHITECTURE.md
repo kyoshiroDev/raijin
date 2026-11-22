@@ -30,6 +30,8 @@ dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
 | `api-auth` … `api-notifications` | `libs/api/*` | Modules Nest (auth, users, billing, alerts, notifications) | `scope:api`, `type:feature` |
 | `api-analysis` | `libs/api/analysis` | Analyse de token : endpoint, cache, quotas simples, persistance, page publique, image OG (phase 3) | `scope:api`, `type:feature` |
 | `api-wallet` | `libs/api/wallet` | Scan de wallet en lecture seule : endpoint, quota de scans, cache par wallet, réutilisation des verdicts par mint (phase 5) | `scope:api`, `type:feature` |
+| `api-billing` | `libs/api/billing` | Abonnement : `BillingProvider` (Stripe / simulation), Checkout, portail, webhooks idempotents, `Subscription` (phase 6) | `scope:api`, `type:feature` |
+| `api-trial` | `libs/api/trial` | Essai Pro : job de fin d'essai, e-mails J+1 / J-2 / J0, récapitulatif, conversion admin (phase 6) | `scope:api`, `type:feature` |
 | `api-solana` | `libs/api/solana` | Clients Helius / RPC, DexScreener, GeckoTerminal, Jupiter, RugCheck, file de débit, agrégateur de faits (partagé avec l'API du banc) | `scope:solana`, `type:data-access` |
 | `api-prisma` | `libs/api/prisma` | Schéma Prisma, migrations, client généré, `PrismaService` | `scope:api`, `type:data-access` |
 | `api-core` | `libs/api/core` | Socle Nest transverse : config Zod, filtre d'erreurs, Helmet, CORS, throttler, CSRF, cookies | `scope:api`, `type:util` |
@@ -943,3 +945,151 @@ Synthétiques au format jsonParsed réel : wallet avec délégation SPL et dél�
 wallet avec un token Danger (fixture « mint actif » existante) + un Sain + poussière + NFT, wallet vide (compte absent),
 wallet > 1 000 comptes (`WALLET_TOO_LARGE`), adresse de mint (`WALLET_IS_TOKEN`), compte de programme (`WALLET_INVALID`).
 Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (réponses simulées issues des contrats).
+
+## 13. Stripe et essai Pro (phase 6)
+
+### 13.1 Découpage
+- **`libs/api/auth`** (nestjs-api) : démarrage de l'essai dans `markEmailVerified` (même transaction que
+  `emailVerifiedAt`), anti-abus (`TrialEligibilityService`), liste des domaines jetables. L'essai n'a **aucune** route
+  de démarrage : il ne peut naître que de la vérification de l'e-mail.
+- **`libs/api/core`** (nestjs-api) : `resolvePlanPolicy(row, limits, now)` et `buildTrialDetails(row, now)` **purs**
+  (aucun accès base) + `PLAN_POLICY_USER_SELECT` ; seul calcul des droits et de l'état d'essai de toute l'API (§13.4).
+- **`libs/api/trial`** (`api-trial`, généré vide ; nestjs-api) : job horaire de fin d'essai, e-mails J+1 / J-2 / J0,
+  `GET trial/recap`, `POST trial/end-screen/seen`, événements `trial_*`, `GET admin/trial-conversion`.
+- **`libs/api/billing`** (`api-billing`, vide ; stripe-billing) : `BillingProvider`, Checkout, portail, webhook,
+  `Subscription`, passage Pro / Gratuit, simulation, e-mails reçu / échec de paiement (templates dans
+  `api-notifications`).
+- **`libs/api/alerts`** (nestjs-api) : `POST watches/keep`, `WatchesService.resumePlanLimited(userId)` (appelé par
+  billing au passage Pro), `enforcePlanLimit` existant (appelé par trial et billing).
+- Dépendances : `billing → alerts, notifications, core, prisma` ; `trial → alerts, notifications, core, prisma` ;
+  `auth → notifications, core, prisma`. Ni billing ↔ trial (la fin d'essai à l'abonnement est une écriture `User` dans la
+  transaction du webhook, documentée ici), ni cycle.
+- **Front** (`ui-mobile-first`) : `libs/web/feature-compte` (page Abonnement, succès, simulation, écran de fin d'essai,
+  choix des suivis), `libs/web/data-access` (`BillingApi`, `BillingStore`, `TrialApi`), bandeau d'essai dans la coque de
+  l'app (`apps/web` ne fait que le placer : composant dans `feature-compte` ou `web-ui`).
+
+### 13.2 Routes (`/api/v1`, contrats `billing/`, `trial/`, `watch/`)
+| Route | Accès | Contrat |
+|---|---|---|
+| `GET billing/plans` | public | `BillingPlansResponse` |
+| `GET billing/subscription` | session | `BillingAccount` |
+| `POST billing/checkout-sessions` | session, e-mail vérifié, CSRF, 10/min | `CheckoutSessionRequest` → `BillingRedirect` |
+| `POST billing/portal-sessions` | session, CSRF, 10/min | → `BillingRedirect` (`NO_BILLING_ACCOUNT`) |
+| `POST billing/webhook` | Stripe (signature), sans CSRF ni session, corps brut ≤ 1 Mo | 200 / 400 `BILLING_WEBHOOK_INVALID` |
+| `POST billing/simulation/checkout`, `…/portal` | `BILLING_PROVIDER=fake` hors production, session, CSRF | `FakeCheckoutCompleteRequest`, `FakePortalActionRequest` |
+| `GET trial/recap` | session | `TrialRecap` (`TRIAL_NOT_FOUND`) |
+| `POST trial/end-screen/seen` | session, CSRF | 204 |
+| `POST watches/keep` | session, e-mail vérifié, CSRF | `WatchKeepRequest` → `WatchListResponse` |
+| `GET admin/trial-conversion` | session, rôle ADMIN (garde `@Roles('ADMIN')` dans `api-auth`) | `TrialConversionReport` |
+| `POST internal/billing/webhook-fixtures/:name` | `JOBS_TEST_TRIGGER=1` uniquement (404 sinon, refusé en prod) | fixture signée rejouée |
+
+### 13.3 Modèle et machine d'états
+- **Essai = base uniquement** (`User.trialStatus/trialStartedAt/trialEndsAt`). Stripe ne crée jamais d'essai
+  (`trial_period_days` interdit) ; un statut Stripe `trialing` reçu est traité comme `active` (garde-fou).
+- `User.trialStatus` : `NONE` → (`markEmailVerified` + éligible) `ACTIVE` | (refus) `INELIGIBLE` ;
+  `ACTIVE` → `ENDED` par le job (échéance dépassée) **ou** par l'activation d'un abonnement (fin anticipée,
+  `trialEndsAt = now`, `trial_converted {phase: during}`). `ENDED` et `INELIGIBLE` sont terminaux.
+- `User.plan` = **plan payé** : `PRO` seulement si un `Subscription` a un statut Pro (`active`, `trialing`,
+  `past_due`) ; il reste `FREE` pendant l'essai. Mis à jour **dans la transaction** qui écrit `Subscription`.
+- `Subscription` (une ligne par abonnement Stripe) : + `lastEventAt` (horodatage Stripe du dernier événement appliqué),
+  + `latestInvoiceId`. `past_due` garde Pro pendant les relances Stripe ; `unpaid`, `canceled`, `incomplete_expired`,
+  `paused` → `FREE` + `enforcePlanLimit`. Réglage Stripe attendu : « si toutes les relances échouent : annuler
+  l'abonnement » (https://dashboard.stripe.com/test/settings/billing/automatic).
+- Nouvelles colonnes `User` : `notifyTrialEmails` (true), `trialDay1MailAt`, `trialDayMinus2MailAt`, `trialEndMailAt`,
+  `trialEndScreenSeenAt`. Nouvelle table `TrialClaim` (§13.6). Migration par nestjs-api, colonnes `Subscription` par
+  stripe-billing (deux migrations distinctes, nestjs-api d'abord).
+- Un seul abonnement Pro à la fois : `ALREADY_SUBSCRIBED` à la création du Checkout (verrou `SELECT … FOR UPDATE` sur
+  `User`) ; un second abonnement actif reçu par webhook est enregistré, journalisé (code) et laissé au portail.
+
+### 13.4 Source de vérité des droits : `resolvePlanPolicy`
+- Entrée : `{ plan, trialStatus, trialEndsAt, emailVerifiedAt }` relu en base **à chaque requête** ; sortie :
+  `{ effectivePlan, source: free|trial|subscription, trialActive, entitlements }` (`entitlementsSchema`).
+- Essai actif ⇔ `trialStatus = ACTIVE` **et** `trialEndsAt > now` (le job peut avoir une heure de retard : les droits,
+  eux, s'arrêtent à la seconde). Priorité : abonnement Pro > essai actif > Gratuit.
+- Valeurs (configuration, aucune en dur) : analyses anon 3 / Gratuit 5 / essai 50 / Pro illimité ; suivis Gratuit 3 /
+  Pro et essai 50 ; push Pro et essai ; scan de wallet Pro 20 / essai 10 / Gratuit 0 ; historique d'alertes Gratuit
+  30 j / Pro et essai 90 j. E-mail vérifié requis pour suivre et pour le push (inchangé).
+- `QuotaService` (analysis), `PlanLimitsService` (alerts), `WalletAccessService` (wallet) et `api-billing` remplacent leurs
+  trois calculs actuels par cette fonction (aucune règle dupliquée). Le front n'affiche que ce que l'API renvoie.
+
+### 13.5 Webhooks : signature, idempotence, ordre
+- Corps **brut** (`rawBody: true` sur cette route seulement), `Stripe-Signature` vérifiée par le SDK
+  (`webhooks.constructEvent`, tolérance 300 s), `event.livemode` égal au mode de la clé, sinon 400 sans détail.
+- **Idempotence transactionnelle** : dans une transaction, `INSERT StripeEvent(id, type)` puis application ; conflit
+  d'unicité → 200 « déjà traité » ; erreur → rollback (l'événement n'est pas marqué) → 500 → Stripe réessaie.
+- **Ordre** : jamais d'hypothèse. Pour un événement d'abonnement, l'état est relu via
+  `BillingProvider.retrieveSubscription(id)` (source Stripe) puis appliqué si `event.created ≥ lastEventAt` ; plus ancien
+  → marqué traité, ignoré. `checkout.session.completed` relit aussi l'abonnement (il peut arriver après `updated`).
+- Rattachement à l'utilisateur : `subscription.metadata.userId` (posé via `subscription_data.metadata`), sinon
+  `stripeCustomerId` ; inconnu → marqué traité, journalisé (code), 200.
+- **Effets de bord après commit** : e-mails (reçu sur `invoice.paid`, échec sur `invoice.payment_failed`) en file BullMQ
+  `notify` avec `jobId` = id de facture (aucun doublon) ; `resumePlanLimited` / `enforcePlanLimit` dans la transaction.
+- Événements traités : `STRIPE_WEBHOOK_EVENT_TYPES` (les 4 de PROMPT.md + `invoice.paid` pour les reçus) ; les autres
+  → 200 ignorés.
+
+### 13.6 Anti-abus de l'essai et rétention (tranche le mineur m5 de l'audit de la phase 4)
+- Contrôles à la vérification de l'e-mail, dans l'ordre ; le premier qui échoue donne `INELIGIBLE`, un `ProductEvent`
+  `trial_refused {reason}` et **aucun message spécifique** (`TRIAL_INELIGIBLE_NOTICE`) :
+  1. `email_already_used` : `TrialClaim.emailHash` = HMAC-SHA256(`IP_HASH_SECRET`, `"trial-email:" + emailNormalized`)
+     déjà présent (normalisation existante : casse, alias `+`, points Gmail, googlemail) ;
+  2. `disposable_domain` : domaine **ou domaine parent** dans la liste jetable ;
+  3. `fingerprint_seen` : `TrialFingerprint.hash` = HMAC-SHA256(`IP_HASH_SECRET`, `"trial-fp:" + IP (IPv6 /64) + "\n"
+     + user-agent`) déjà accordé dans les 90 jours. Empreinte de la requête de vérification (le clic sur le lien).
+- Accord : `TrialClaim` + `TrialFingerprint` écrits dans la transaction du démarrage, sous
+  `pg_advisory_xact_lock(hashtext(fingerprint))` (deux vérifications simultanées ne donnent pas deux essais).
+- **Rétention (décision m5)** : `TrialFingerprint` purgé à **90 jours** comme le demande PROMPT.md (IP + UA, donnée
+  faible qui change vite ; au-delà elle ne prouve plus rien). La règle durable est portée par **`TrialClaim`**
+  (HMAC de l'e-mail normalisé, sans e-mail en clair, `SetNull` à la suppression du compte, **conservé 24 mois**,
+  `TRIAL_CLAIM_RETENTION_DAYS=730`, intérêt légitime anti-fraude à mentionner dans la politique de confidentialité en
+  phase 7). Une suppression puis recréation du compte ne redonne donc pas d'essai. Risque résiduel accepté : même
+  machine + nouvelle boîte non jetable après 90 jours (coût réel pour l'abuseur, plafonné par 50 analyses/jour et les
+  budgets Helius).
+- **Domaines jetables** : source https://github.com/disposable-email-domains/disposable-email-domains (fichier
+  `disposable_email_blocklist.conf`, licence CC0), copiée dans `libs/api/auth/src/lib/trial/disposable-domains.generated.ts`
+  (date et commit source en tête) + `disposable-domains.local.ts` (ajouts et exceptions maison). Mise à jour par
+  `node tools/scripts/update-disposable-domains.mjs` (lancé à la main, une fois par trimestre et en phase 9, diff relu
+  et commité) ; **aucun téléchargement au runtime**, aucune dépendance npm.
+
+### 13.7 Job de fin d'essai et e-mails
+- File `maintenance`, Job Scheduler `trial-tick` (`TRIAL_JOB_CRON`, par défaut toutes les heures à :05), verrou Redis,
+  `JobRun`. Par lots de 200 :
+  1. **Expiration** : `trialStatus = ACTIVE` et `trialEndsAt ≤ now` → transaction : `ENDED`, `enforcePlanLimit`
+     (Gratuit 3 : les plus récents mis en pause `plan_limit`, jamais supprimés), `trial_expired {pausedWatches}` ;
+     après commit, e-mail J0 (`jobId trial-j0:<userId>`, `trialEndMailAt`). Compte avec abonnement Pro : déjà `ENDED`.
+  2. **J+1** et **J-2** : envoyés à la première exécution où l'heure **Europe/Paris** ≥ `TRIAL_EMAIL_HOUR` (10 h) et où
+     `now ≥ trialStartedAt + 24 h` (J+1), resp. `now ≥ trialEndsAt − 48 h` (J-2), essai encore actif,
+     `notifyTrialEmails = true`, colonne d'envoi nulle (idempotence par colonne posée avant l'envoi, `jobId` dédié).
+     J0 n'est pas désactivable. Rai sur J0 seulement (PROMPT.md : accueil, fin d'essai, alerte).
+- Écran de fin (`endScreenDue`) : dernières 24 h de l'essai, ou `ENDED` sans abonnement et `trialEndScreenSeenAt` nul.
+- Bandeau « Essai Pro : plus que N jours » (`thunder-soft`, « se termine aujourd'hui » à N ≤ 1) : pendant tout l'essai
+  actif, jours calculés par `trialDaysRemaining` (contrats) ; fermeture mémorisée **par jour** côté navigateur
+  (`localStorage`, date seulement, aucune donnée personnelle). Aucune urgence, aucun compte à rebours animé.
+- Conversion : `trial_converted` si abonnement pendant l'essai (`during`) ou ≤ `TRIAL_CONVERSION_WINDOW_DAYS` (30) après
+  sa fin (`after`). Taux = convertis / (convertis + expirés), par cohorte hebdomadaire de démarrage (lundi UTC).
+
+### 13.8 Sans compte Stripe : `BillingProvider`
+- Interface (`libs/api/billing`) : `createCheckoutSession({userId, email, customerId, interval})`,
+  `createPortalSession(customerId)`, `retrieveSubscription(id)`, `constructWebhookEvent(rawBody, signature)`,
+  `verifyPrices()`. Implémentations : `StripeBillingProvider` (SDK officiel `stripe`, `apiVersion` épinglée dans une
+  constante unique `STRIPE_API_VERSION`, même version sur l'endpoint du dashboard) et `FakeBillingProvider`.
+- `BILLING_PROVIDER=fake` (défaut en dev et tests ; **refusé au démarrage en production**) : le Checkout renvoie
+  `${APP_URL}/abonnement/simulation?session=cs_fake_…` ; la page appelle `POST billing/simulation/checkout`, qui
+  **signe localement** l'événement (`stripe.webhooks.generateTestHeaderString` avec `STRIPE_WEBHOOK_SECRET`, ou un secret
+  éphémère s'il est absent) et le passe **par le même chemin** que le webhook (vérification de signature comprise).
+  Fixtures JSON des 5 événements dans `libs/api/billing/src/testing/fixtures/`, signées à la volée (Jest, api-e2e).
+- `BILLING_PROVIDER=stripe` avec clé absente ou factice, ou prix manquants : l'API démarre, `mode: unavailable`, routes
+  de paiement en 503 `BILLING_NOT_CONFIGURED`, avertissement au démarrage, `health/config` à `not_configured`. Au
+  démarrage, `verifyPrices()` compare les montants Stripe à `PRO_PRICE_*_CENTS` (écart → `unavailable` + journal).
+- Clé `sk_live_` : acceptée par le code, mais l'activation du mode réel est une décision de l'utilisateur (phase 8).
+
+### 13.9 Sécurité
+- Prix, montant, devise, client et URLs de retour **jamais venus du front** : seul `interval` est accepté (schéma
+  `.strict()`), traduit en `STRIPE_PRICE_PRO_MONTHLY|YEARLY`. URLs de retour fixes : `APP_URL` + `BILLING_RETURN_PATHS`.
+- Le plan n'est jamais accordé par le retour de Checkout : la page de succès relit `GET billing/subscription` (sondage
+  ≤ 20 s), seul le webhook écrit `Subscription`.
+- Front : redirection uniquement si `isAllowedBillingRedirect` (hôtes Stripe exacts en https, ou même origine en simulation).
+- Aucune clé secrète côté front ; la clé publiable n'est pas nécessaire (Checkout hébergé par redirection).
+- Secrets Stripe et signature jamais journalisés ; journaux avec id d'événement et code seulement.
+- Webhook : exempté de CSRF (déjà prévu §8.5) et de session, throttler large, corps ≤ 1 Mo, aucune lecture de
+  l'utilisateur depuis la requête. Routes de simulation et `internal/*` : 404 hors simulation, refusées en production.
+- `idempotencyKey` Stripe sur la création de client et de session (`checkout:<userId>:<interval>:<minute>`).

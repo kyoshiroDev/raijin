@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   ANALYSIS_ERROR_MESSAGES,
   AUTH_ERROR_MESSAGES,
+  BILLING_ERROR_MESSAGES,
   WALLET_ERROR_MESSAGES,
   WATCH_ERROR_MESSAGES,
   apiErrorSchema,
@@ -41,6 +42,7 @@ export const GENERIC_ERROR_MESSAGES: Readonly<Record<Exclude<ClientErrorCode, ke
   ANALYSIS_NOT_FOUND: ANALYSIS_ERROR_MESSAGES.ANALYSIS_NOT_FOUND,
   ...WATCH_ERROR_MESSAGES,
   ...WALLET_ERROR_MESSAGES,
+  ...BILLING_ERROR_MESSAGES,
 };
 
 const ERROR_MESSAGES: Readonly<Record<ClientErrorCode, string>> = {

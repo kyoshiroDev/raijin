@@ -165,19 +165,51 @@ MAIL_LOGO_URL=
 # ---------------------------------------------------------------------
 # Stripe (mode test) — (optionnel en dev : simulation locale, BILLING_PROVIDER=fake)
 # ---------------------------------------------------------------------
-# fake (simulation locale) ou stripe
+# fake (simulation locale : faux Checkout, webhooks signés localement ; REFUSÉ en production) ou stripe
+#   (stripe sans clé valide : l'API démarre, paiement indisponible, 503 BILLING_NOT_CONFIGURED). docs/ARCHITECTURE.md §13.8
 BILLING_PROVIDER=fake
-# Stripe — https://dashboard.stripe.com/test/apikeys (clé secrète « sk_test_… »)
+# Stripe — https://dashboard.stripe.com/test/apikeys (clé secrète « sk_test_… », côté API uniquement, jamais journalisée)
 STRIPE_SECRET_KEY=sk_test_factice
-# Stripe — https://dashboard.stripe.com/test/webhooks (secret de signature de l'endpoint)
+# Stripe — https://dashboard.stripe.com/test/webhooks (endpoint https://api.raijinshield.com/api/v1/billing/webhook,
+#   événements : checkout.session.completed, customer.subscription.updated, customer.subscription.deleted,
+#   invoice.payment_failed, invoice.paid ; puis « Signing secret » whsec_…).
 # En local : la commande « stripe listen --forward-to localhost:3100/api/v1/billing/webhook » l'affiche.
+# En simulation (BILLING_PROVIDER=fake), sert à signer les événements simulés ; vide = secret éphémère.
 STRIPE_WEBHOOK_SECRET=whsec_factice
-# Stripe — https://dashboard.stripe.com/test/apikeys (clé publiable « pk_test_… », seule clé autorisée côté front)
-STRIPE_PUBLISHABLE_KEY=pk_test_factice
-# Stripe — https://dashboard.stripe.com/test/products (ID du prix Pro mensuel 9,90 €)
+# Stripe — https://dashboard.stripe.com/test/apikeys (clé publiable « pk_test_… ») : NON utilisée (Checkout hébergé
+#   par redirection) ; à laisser vide. Seule clé qui serait tolérée côté front.
+STRIPE_PUBLISHABLE_KEY=
+# Stripe — https://dashboard.stripe.com/test/products (produit « Raijin Pro », ID du prix récurrent mensuel 9,90 € TTC)
 STRIPE_PRICE_PRO_MONTHLY=price_factice_mensuel
-# Stripe — https://dashboard.stripe.com/test/products (ID du prix Pro annuel 99 €)
+# Stripe — https://dashboard.stripe.com/test/products (même produit, ID du prix récurrent annuel 99 € TTC)
 STRIPE_PRICE_PRO_YEARLY=price_factice_annuel
+# Stripe — https://dashboard.stripe.com/test/settings/billing/portal (optionnel : ID « bpc_… » d'une configuration
+#   du portail client ; vide = configuration par défaut du compte)
+STRIPE_PORTAL_CONFIGURATION_ID=
+# Raijin — prix affichés (centimes TTC, entiers) et devise ISO 4217 : doivent correspondre aux prix Stripe ci-dessus
+#   (vérifiés au démarrage ; écart = paiement indisponible). Jamais en dur dans le front : servis par GET /billing/plans.
+PRO_PRICE_MONTHLY_CENTS=990
+PRO_PRICE_YEARLY_CENTS=9900
+BILLING_CURRENCY=EUR
+
+# ---------------------------------------------------------------------
+# Essai Pro sans carte (base de données uniquement, Stripe non utilisé ; docs/ARCHITECTURE.md §13)
+# ---------------------------------------------------------------------
+# Raijin — durée de l'essai Pro démarré à la vérification de l'e-mail, en jours
+TRIAL_DAYS=7
+# Raijin — job de fin d'essai et d'envoi des e-mails J+1 / J-2 (cron UTC, file BullMQ maintenance)
+TRIAL_JOB_CRON="5 * * * *"
+# Raijin — heure d'envoi des e-mails J+1 et J-2, heure de Paris (Europe/Paris) ; J0 part à la fin de l'essai
+TRIAL_EMAIL_HOUR=10
+# Raijin — conservation des empreintes d'essai (HMAC IP + user-agent), en jours (PROMPT.md : 90)
+TRIAL_FINGERPRINT_RETENTION_DAYS=90
+# Raijin — conservation des HMAC d'e-mails normalisés ayant eu un essai (un essai par e-mail, même après
+#   suppression du compte), en jours : 730 = 24 mois
+TRIAL_CLAIM_RETENTION_DAYS=730
+# Raijin — un abonnement dans les N jours après la fin de l'essai compte comme une conversion
+TRIAL_CONVERSION_WINDOW_DAYS=30
+# Raijin — limite par utilisateur et par minute sur la création de sessions Checkout / portail (vide = 10)
+RATE_LIMIT_BILLING_PER_MINUTE=
 
 # ---------------------------------------------------------------------
 # Push web (VAPID) — (optionnel en dev : sans clés, le push est indisponible, alertes par e-mail seulement)
@@ -231,7 +263,7 @@ ALERT_COOLDOWN_MINUTES=360
 # Raijin — délai de regroupement des alertes d'un utilisateur dans un seul e-mail, en secondes ; plafond par jour
 ALERT_EMAIL_BATCH_DELAY_S=120
 ALERT_EMAIL_DAILY_MAX=20
-# Raijin — rétention (purge quotidienne) : analyses, événements produit, compteurs, empreintes d'essai, alertes
+# Raijin — rétention (purge quotidienne) : analyses, événements produit, compteurs, alertes (empreintes d’essai : TRIAL_FINGERPRINT_RETENTION_DAYS)
 RETENTION_DAYS=90
 # Raijin — heure de la purge quotidienne (cron UTC)
 PURGE_CRON="30 3 * * *"
@@ -309,7 +341,8 @@ SENTRY_ENVIRONMENT=development
   n'est pas en HTTPS, si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`, ou si
   `ANALYSIS_FIXTURES` est activé, si `JOBS_TEST_TRIGGER=1` ou `PUSH_PROVIDER=fake`, si une seule des deux clés
   VAPID est fournie (les deux ou aucune : sans clés, push indisponible), ou si `WATCH_DAILY_CREDIT_BUDGET`
-  dépasse `HELIUS_DAILY_CREDIT_BUDGET`, ou `WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET` aussi (phase 5) (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
+  dépasse `HELIUS_DAILY_CREDIT_BUDGET`, ou `WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET` aussi (phase 5), ou si
+  `BILLING_PROVIDER=fake` (phase 6 ; `stripe` sans clé valide démarre en mode paiement indisponible) (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
   `mailto:` ni `https:`). Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les

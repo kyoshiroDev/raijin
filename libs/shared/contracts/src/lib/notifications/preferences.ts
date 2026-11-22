@@ -13,22 +13,35 @@ export const notificationPreferencesSchema = z.object({
   pushAlerts: z.boolean(),
   /** Résumé hebdomadaire par e-mail (optionnel). */
   weeklyDigest: z.boolean(),
+  /**
+   * E-mails d'essai J+1 et J-2 (phase 6). L'e-mail J0 « Tu repasses en Gratuit » part toujours
+   * (colonne `User.notifyTrialEmails`, défaut true).
+   */
+  trialEmails: z.boolean(),
 });
-export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>;
+export type NotificationPreferences = z.infer<
+  typeof notificationPreferencesSchema
+>;
 
 /** Valeurs d'un nouveau compte (colonnes Prisma avec ces défauts). */
-export const DEFAULT_NOTIFICATION_PREFERENCES: Readonly<NotificationPreferences> = {
-  emailAlerts: true,
-  pushAlerts: true,
-  weeklyDigest: false,
-};
+export const DEFAULT_NOTIFICATION_PREFERENCES: Readonly<NotificationPreferences> =
+  {
+    emailAlerts: true,
+    pushAlerts: true,
+    weeklyDigest: false,
+    trialEmails: true,
+  };
 
 /** Corps de `PATCH notifications/preferences` : au moins un champ. */
 export const notificationPreferencesUpdateSchema = notificationPreferencesSchema
   .partial()
   .strict()
-  .refine((value) => Object.keys(value).length > 0, { message: 'Aucune préférence à modifier.' });
-export type NotificationPreferencesUpdate = z.infer<typeof notificationPreferencesUpdateSchema>;
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Aucune préférence à modifier.',
+  });
+export type NotificationPreferencesUpdate = z.infer<
+  typeof notificationPreferencesUpdateSchema
+>;
 
 /** Préférences + ce que le compte et le serveur permettent réellement. */
 export const notificationSettingsSchema = z.object({
@@ -45,8 +58,11 @@ export const notificationSettingsSchema = z.object({
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
 
 /** Libellés français des préférences (écran Compte). */
-export const NOTIFICATION_PREFERENCE_LABELS: Readonly<Record<keyof NotificationPreferences, string>> = {
+export const NOTIFICATION_PREFERENCE_LABELS: Readonly<
+  Record<keyof NotificationPreferences, string>
+> = {
   emailAlerts: 'Alertes par e-mail',
   pushAlerts: 'Notifications push',
   weeklyDigest: 'Résumé hebdomadaire',
+  trialEmails: 'E-mails pendant l’essai Pro',
 };

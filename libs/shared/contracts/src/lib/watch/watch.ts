@@ -38,12 +38,36 @@ export type WatchIdParam = z.infer<typeof watchIdParamSchema>;
  * Corps de `POST watches`. Le mint doit avoir une analyse récente (≤ 24 h, bouton « Suivre » de
  * l'écran d'analyse), sinon 404 `ANALYSIS_NOT_FOUND` : on ne suit pas une adresse jamais vérifiée.
  */
-export const watchCreateRequestSchema = z.object({ mint: mintAddressSchema }).strict();
+export const watchCreateRequestSchema = z
+  .object({ mint: mintAddressSchema })
+  .strict();
 export type WatchCreateRequest = z.infer<typeof watchCreateRequestSchema>;
 
 /** Corps de `PATCH watches/:id` : reprise refusée (`WATCH_LIMIT_REACHED`) au-delà de la limite. */
-export const watchUpdateRequestSchema = z.object({ status: watchStatusSchema }).strict();
+export const watchUpdateRequestSchema = z
+  .object({ status: watchStatusSchema })
+  .strict();
 export type WatchUpdateRequest = z.infer<typeof watchUpdateRequestSchema>;
+
+/**
+ * Corps de `POST watches/keep` (session, e-mail vérifié, CSRF) : après la fin de l'essai (ou d'un abonnement),
+ * l'utilisateur choisit les suivis qui restent actifs. Les suivis listés passent `active`, tous les autres
+ * suivis actifs ou en pause `plan_limit` passent en pause `plan_limit` (jamais supprimés) ; les pauses
+ * `user` ne changent pas. Au plus `limits.maxActiveWatches` identifiants (sinon 400 `WATCH_KEEP_INVALID`).
+ * Réponse : `WatchListResponse`.
+ */
+export const watchKeepRequestSchema = z
+  .object({
+    watchIds: z
+      .array(z.uuid())
+      .min(1)
+      .max(WATCH_LIST_MAX)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: 'Identifiants en double.',
+      }),
+  })
+  .strict();
+export type WatchKeepRequest = z.infer<typeof watchKeepRequestSchema>;
 
 /** Un suivi, avec le dernier verdict connu (réanalyse programmée). */
 export const watchSchema = z.object({

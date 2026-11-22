@@ -113,7 +113,7 @@ export function fakeAlertPage(items: Alert[] = fakeAlerts(), nextCursor: string 
 
 export function fakeNotificationSettings(overrides: Partial<NotificationSettings> = {}): NotificationSettings {
   return {
-    preferences: { emailAlerts: true, pushAlerts: true, weeklyDigest: false },
+    preferences: { emailAlerts: true, pushAlerts: true, weeklyDigest: false, trialEmails: true },
     pushAllowed: false,
     pushConfigured: true,
     pushDevices: 0,
