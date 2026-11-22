@@ -44,7 +44,10 @@
       "@raijin/api-core": ["./libs/api/core/src/index.ts"],
       "@raijin/api-analysis": ["./libs/api/analysis/src/index.ts"],
       "@raijin/api-wallet": ["./libs/api/wallet/src/index.ts"],
-      "@raijin/api-trial": ["./libs/api/trial/src/index.ts"]
+      "@raijin/api-trial": ["./libs/api/trial/src/index.ts"],
+      "@raijin/api-admin": ["./libs/api/admin/src/index.ts"],
+      "@raijin/api-analytics": ["./libs/api/analytics/src/index.ts"],
+      "@raijin/web-feature-admin": ["./libs/web/feature-admin/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

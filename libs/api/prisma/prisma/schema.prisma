@@ -129,12 +129,19 @@ model User {
   trialDayMinus2MailAt DateTime?
   trialEndMailAt       DateTime?
   trialEndScreenSeenAt DateTime?
+  /// Compte suspendu par un admin (phase 6 bis) : connexion, lien magique et refresh refusés (ACCOUNT_SUSPENDED).
+  suspendedAt          DateTime?
+  /// Pro offert par un admin (source de plan `gift`) jusqu'à cette date.
+  proGrantedUntil      DateTime?
+  /// Fin du Pro offert traitée par le job d'essai (limite de suivis, e-mail) : idempotence.
+  proGrantEndedAt      DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
   sessions          Session[]
   authTokens        AuthToken[]
   totpSecret        TotpSecret?
+  adminRecoveryCodes AdminRecoveryCode[]
   subscriptions     Subscription[]
   watches           Watch[]
   alerts            Alert[]
@@ -149,6 +156,8 @@ model User {
   @@index([createdAt])
   @@index([plan])
   @@index([trialStatus, trialEndsAt])
+  @@index([suspendedAt])
+  @@index([proGrantedUntil])
 }
 
 /// Session = famille de refresh tokens. `id` est le `sid` de l'access token.
@@ -163,8 +172,12 @@ model Session {
   lastUsedAt DateTime  @default(now())
   expiresAt  DateTime
   revokedAt  DateTime?
-  /// Motif de révocation : logout, reuse, password_reset, password_change, account_deleted.
+  /// Motif de révocation : logout, reuse, password_reset, password_change, account_deleted, suspended, admin_revoked.
   revokedReason String?
+  /// Session admin (docs/ARCHITECTURE.md §14.3) : 2FA vérifiée sur cette session, dernière activité admin.
+  /// Expire après ADMIN_SESSION_IDLE_MINUTES d'inactivité ou ADMIN_SESSION_MAX_HOURS depuis la vérification.
+  adminVerifiedAt DateTime?
+  adminLastSeenAt DateTime?
 
   refreshTokens RefreshToken[]
 
@@ -208,12 +221,24 @@ model TotpSecret {
   id              String    @id @default(uuid(7)) @db.Uuid
   userId          String    @unique @db.Uuid
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// Format : iv.tag.ciphertext (base64url).
+  /// Format : v1.<iv>.<tag>.<ciphertext> (base64url), AAD `totp:<userId>`.
   secretEncrypted String
   enabledAt       DateTime?
   lastUsedStep    Int?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+/// Code de secours de la 2FA admin (10 par compte), HMAC-SHA256 (clé dérivée de TOTP_ENCRYPTION_KEY), usage unique.
+model AdminRecoveryCode {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 /// Empreinte anti-abus de l'essai Pro (hash uniquement, conservée après suppression du compte).
@@ -464,6 +489,7 @@ model DailyMetric {
   createdAt DateTime @default(now())
 
   @@unique([date, key])
+  @@index([key, date])
 }
 
 model JobRun {
@@ -488,6 +514,8 @@ model AuditLog {
   userId    String?  @db.Uuid
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   actorId   String?  @db.Uuid
+  /// Origine de l'action : user (le titulaire), admin (espace admin), cli (make-admin, admin-reset-2fa), system (job).
+  actorKind String   @default("user")
   action    String
   ipHash    String?
   userAgent String?
@@ -495,5 +523,28 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([userId, createdAt])
+  @@index([actorId])
   @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+/// Alerte admin (docs/ARCHITECTURE.md §14.7) : job en échec répété, quota proche de sa limite. Une par incident.
+model AdminAlert {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  /// `job_failing` | `quota`.
+  kind       String
+  /// Job ou service concerné.
+  subject    String
+  /// `warn` | `danger`.
+  level      String
+  /// `job_failing:<job>:<id du premier échec>`, `quota:<service>:<jour>`.
+  dedupeKey  String    @unique
+  /// Compteurs et code d'erreur (jamais de secret, d'URL ni de donnée utilisateur).
+  details    Json
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime?
+  resolvedAt DateTime?
+
+  @@index([resolvedAt, createdAt])
 }
