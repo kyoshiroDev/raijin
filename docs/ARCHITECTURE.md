@@ -159,6 +159,23 @@ test build` (avec `nrwl/nx-set-shas`), cache pnpm et cache `.nx/cache`, `concurr
 annulation des exécutions obsolètes. E2E Playwright uniquement sur les PR vers `main`,
 artefacts de captures envoyés seulement en cas d'échec.
 
+- **Job `e2e`** (PR vers `main` uniquement, après le job principal) : conteneurs de service
+  Postgres 17 (`postgres:17.12-alpine`), Redis (`redis:8.10.3-alpine`) et Mailpit
+  (`axllent/mailpit:v1.34.0`), épinglés par tag précis **et** digest, avec healthchecks, sur les
+  mêmes ports hôte que `docker-compose.dev.yml` (5433, 6380, 1026, 8026) : la configuration de
+  développement de l'API et des suites s'applique sans adaptation. Variables non secrètes
+  (`DATABASE_URL` factice, `REDIS_URL`, `SMTP_*`, `MAILPIT_URL`) ; `JWT_ACCESS_SECRET` et
+  `COOKIE_SECRET` tirés au hasard dans le job et masqués (aucun secret GitHub). Étapes :
+  `api-prisma:migrate-deploy`, Chromium seul (navigateurs en cache, clé = version de
+  Playwright), puis `nx affected -t e2e` en deux passes (api-e2e, puis web-e2e) pour que
+  Playwright démarre sa propre API avec `JWT_ACCESS_TTL=20s` et des limites hautes au lieu de
+  réutiliser celle de la première suite. Rapport HTML et captures (`dist/.playwright/**`)
+  envoyés en artefact (7 jours) uniquement en cas d'échec.
+- **E2E en local** : `pnpm nx run api:dev-infra` (Postgres, Redis, Mailpit), puis
+  `pnpm nx run api-prisma:migrate-deploy` au premier lancement, puis `pnpm nx e2e api-e2e`
+  et `pnpm nx e2e web-e2e` (une API déjà lancée est réutilisée par Playwright : la lancer alors
+  avec `JWT_ACCESS_TTL=20s`). Arrêt : `pnpm nx run api:dev-infra-stop`.
+
 - pnpm : version imposée par `packageManager` du `package.json` (lue par `pnpm/action-setup`),
   Node 22 (au moins 22.23.4, exigé par Astro 7 ; `engines` du `package.json`),
   `pnpm install --frozen-lockfile`.
