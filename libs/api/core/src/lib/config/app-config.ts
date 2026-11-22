@@ -53,6 +53,8 @@ export interface AppConfig {
      * coûte des crédits Helius.
      */
     readonly failedDailyLimit: number;
+    /** Pannes des sources (`UPSTREAM_UNAVAILABLE`) remboursées par jour et par sujet ; au-delà, consommées. */
+    readonly upstreamFailedDailyLimit: number;
     /** Durée de cache d'un résultat (s) ; portée à `cacheTtlNoKeyS` sans clé Helius. */
     readonly cacheTtlS: number;
     readonly cacheTtlNoKeyS: number;
@@ -119,6 +121,7 @@ const envSchema = z.object({
   FREE_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(5),
   TRIAL_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(50),
   ANALYSIS_FAILED_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
+  ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT: z.coerce.number().int().min(0).max(10_000).default(10),
   ANALYSIS_CACHE_TTL_S: z.coerce.number().int().min(5).max(3_600).default(60),
   ANALYSIS_CACHE_TTL_NO_KEY_S: z.coerce.number().int().min(5).max(3_600).default(300),
   WEB_INDEX_HTML_PATH: optionalString,
@@ -299,6 +302,7 @@ export function loadConfig(
       freeDailyLimit: e.FREE_ANALYSIS_DAILY_LIMIT,
       trialDailyLimit: e.TRIAL_ANALYSIS_DAILY_LIMIT,
       failedDailyLimit: e.ANALYSIS_FAILED_DAILY_LIMIT,
+      upstreamFailedDailyLimit: e.ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT,
       cacheTtlS: e.ANALYSIS_CACHE_TTL_S,
       cacheTtlNoKeyS: e.ANALYSIS_CACHE_TTL_NO_KEY_S,
       webIndexHtmlPath: e.WEB_INDEX_HTML_PATH ?? null,

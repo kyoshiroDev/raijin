@@ -1,11 +1,11 @@
 import { Logger } from '@nestjs/common';
-import { TokenNotFoundError, type LogFields, type SolanaDataService, type SolanaLogger } from '@raijin/api-solana';
-import { FactsCollector, type CollectedFacts, type CollectorProfile } from '../ports/facts-collector';
+import { TokenNotFoundError, UpstreamError, type LogFields, type SolanaDataService, type SolanaLogger } from '@raijin/api-solana';
+import { FactsCollector, UpstreamUnavailableError, type CollectedFacts, type CollectorProfile } from '../ports/facts-collector';
 
 /**
  * Adaptateur du port `FactsCollector` sur `SolanaDataService` (`@raijin/api-solana`) :
- * `TokenNotFoundError` → `null` (404 `TOKEN_NOT_FOUND`) ; une panne de source donne déjà des faits
- * `null` et `degraded` côté collecte, jamais une exception.
+ * `TokenNotFoundError` → `null` (404 `TOKEN_NOT_FOUND`) ; `UpstreamError` (lecture du mint impossible)
+ * → `UpstreamUnavailableError` (503). Les autres pannes de source donnent des faits `null` et `degraded`.
  */
 export class SolanaFactsCollector extends FactsCollector {
   constructor(private readonly solana: SolanaDataService) {
@@ -38,6 +38,8 @@ export class SolanaFactsCollector extends FactsCollector {
       };
     } catch (error) {
       if (error instanceof TokenNotFoundError) return null;
+      // Lecture du mint impossible : 503 (remboursement plafonné, cache négatif), jamais un 500.
+      if (error instanceof UpstreamError) throw new UpstreamUnavailableError();
       throw error;
     }
   }

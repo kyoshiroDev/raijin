@@ -20,8 +20,9 @@ export const ANALYSIS_LOCK_TTL_MS = 15_000;
 /** Attente du résultat d'une autre instance : relecture du cache toutes les 250 ms pendant 10 s. */
 export const ANALYSIS_WAIT_POLL_MS = 250;
 export const ANALYSIS_WAIT_MAX_MS = 10_000;
-/** Cache négatif d'un mint inexistant. */
+/** Cache négatif d'un mint inexistant, ou dont la collecte a échoué (sources en panne, compte hostile). */
 export const NOT_FOUND_TTL_MS = 60_000;
+export const UNAVAILABLE_TTL_MS = 60_000;
 
 /** Réponse de `POST /analyses` et durée mesurée (en-tête `Server-Timing`). */
 export interface TimedAnalysisResponse {
@@ -148,7 +149,7 @@ export class AnalysisService {
   private async getOrCompute(mint: string, userId: string | null): Promise<AnalysisResult> {
     const hit = await this.readCache(mint);
     if (hit) return hit;
-    if (await this.store.get(`analysis:notfound:${mint}`)) throw error('TOKEN_NOT_FOUND');
+    await this.throwIfNegativelyCached(mint);
 
     const running = this.inflight.get(mint);
     if (running) return { ...(await running), cached: true };
@@ -180,9 +181,20 @@ export class AnalysisService {
       await sleep(this.waitPollMs);
       const hit = await this.readCache(mint);
       if (hit) return hit;
-      if (await this.store.get(`analysis:notfound:${mint}`)) throw error('TOKEN_NOT_FOUND');
+      await this.throwIfNegativelyCached(mint);
     }
     return null;
+  }
+
+  /** Échec récent pour ce mint : même erreur sans relancer la collecte (crédits Helius). */
+  private async throwIfNegativelyCached(mint: string): Promise<void> {
+    if (await this.store.get(`analysis:notfound:${mint}`)) throw error('TOKEN_NOT_FOUND');
+    if (await this.store.get(`analysis:unavailable:${mint}`)) throw error('UPSTREAM_UNAVAILABLE');
+  }
+
+  private async unavailable(mint: string): Promise<ApiException> {
+    await this.store.set(`analysis:unavailable:${mint}`, '1', UNAVAILABLE_TTL_MS);
+    return error('UPSTREAM_UNAVAILABLE');
   }
 
   private async compute(mint: string, userId: string | null): Promise<AnalysisResult> {
@@ -191,7 +203,7 @@ export class AnalysisService {
     try {
       collected = await this.collector.collectFacts(mint, { profile: 'full' });
     } catch (failure) {
-      if (failure instanceof UpstreamUnavailableError) throw error('UPSTREAM_UNAVAILABLE');
+      if (failure instanceof UpstreamUnavailableError) throw await this.unavailable(mint);
       throw failure;
     }
     if (!collected) {
@@ -199,7 +211,7 @@ export class AnalysisService {
       throw error('TOKEN_NOT_FOUND');
     }
     // Autorités inconnues : pas de verdict (docs/SCORING.md, règle D1).
-    if (collected.facts.mint !== mint || !canIssueVerdict(collected.facts)) throw error('UPSTREAM_UNAVAILABLE');
+    if (collected.facts.mint !== mint || !canIssueVerdict(collected.facts)) throw await this.unavailable(mint);
 
     const assessment = this.engine.evaluate(collected.facts);
     const result = buildAnalysisResult(mint, collected, assessment, this.clock.now());

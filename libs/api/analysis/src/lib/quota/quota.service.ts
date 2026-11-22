@@ -33,6 +33,8 @@ export interface QuotaReservation {
 
 /** Compteur interne des analyses en échec (colonne `UsageCounter.kind`, jamais exposé au front). */
 export const FAILURE_KIND = 'analysis_failure';
+/** Compteur interne des pannes de sources (remboursements plafonnés, sans refus). */
+export const UPSTREAM_FAILURE_KIND = 'analysis_upstream_failure';
 
 /** Une même analyse (sujet + mint) répétée dans ce délai ne recompte pas. */
 export const QUOTA_DEDUP_TTL_MS = 10 * 60_000;
@@ -106,23 +108,25 @@ export class QuotaService {
   }
 
   /**
-   * Analyse échouée : panne des sources (`UPSTREAM_UNAVAILABLE`, notre fait) toujours remboursée ;
-   * autre échec (token inexistant…) compté et remboursé jusqu'à `ANALYSIS_FAILED_DAILY_LIMIT` par
-   * jour, au-delà l'unité reste consommée. Ne lève jamais.
+   * Analyse échouée, comptée par sujet et par jour puis remboursée sous un plafond :
+   * - panne des sources (`UPSTREAM_UNAVAILABLE`) : jusqu'à `ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT`
+   *   remboursements, au-delà l'unité reste consommée (jamais d'analyses gratuites infinies) ;
+   * - autre échec (token inexistant…) : jusqu'à `ANALYSIS_FAILED_DAILY_LIMIT`, au-delà consommé et
+   *   le sujet refusé par `reserve`.
+   * Ne lève jamais.
    */
   async settleFailure(reservation: QuotaReservation, failure: unknown): Promise<void> {
-    if (failure instanceof ApiException && failure.code === 'UPSTREAM_UNAVAILABLE') {
-      await this.refund(reservation);
-      return;
-    }
+    const upstream = failure instanceof ApiException && failure.code === 'UPSTREAM_UNAVAILABLE';
+    const kind = upstream ? UPSTREAM_FAILURE_KIND : FAILURE_KIND;
+    const limit = upstream ? this.config.analysis.upstreamFailedDailyLimit : this.config.analysis.failedDailyLimit;
     let failures: number;
     try {
-      failures = (await this.increment(reservation.policy, reservation.day, null, FAILURE_KIND)) ?? Number.MAX_SAFE_INTEGER;
+      failures = (await this.increment(reservation.policy, reservation.day, null, kind)) ?? Number.MAX_SAFE_INTEGER;
     } catch (error) {
       this.logger.error(`Comptage d'échec impossible (${errorCode(error)})`);
       return;
     }
-    if (failures <= this.config.analysis.failedDailyLimit) await this.refund(reservation);
+    if (failures <= limit) await this.refund(reservation);
   }
 
   /** Rembourse une réservation (analyse échouée). Ne lève jamais. */

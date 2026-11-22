@@ -120,6 +120,7 @@ describe('loadConfig', () => {
       freeDailyLimit: 5,
       trialDailyLimit: 50,
       failedDailyLimit: 20,
+      upstreamFailedDailyLimit: 10,
       cacheTtlS: 60,
       cacheTtlNoKeyS: 300,
       webIndexHtmlPath: null,

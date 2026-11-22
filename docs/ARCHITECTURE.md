@@ -524,7 +524,9 @@ fixtures, pages : `/analyse` (vide), `/analyse/<mint>` (résultat), `/t/<mint>`.
   `TRUST_PROXY=1` pour simuler une IP par test via `X-Forwarded-For`).
 - **Quota** : `QuotaService.resolvePolicy` (relu en base : Gratuit, essai actif, Pro ; seul point à étendre en phase 6)
   → `reserve` (`INSERT … ON CONFLICT … DO UPDATE … WHERE count < limit RETURNING count`) → `settleFailure` en cas
-  d'erreur : panne des sources (`UPSTREAM_UNAVAILABLE`) toujours remboursée ; autres échecs (token inexistant…)
+  d'erreur : panne des sources (`UPSTREAM_UNAVAILABLE`) remboursée jusqu'à `ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT` (10)
+  par sujet et par jour (compteur `analysis_upstream_failure`), au-delà consommée ; cache négatif 60 s par mint
+  (`analysis:unavailable:` et `analysis:notfound:`) pour qu'une même adresse ne relance pas la collecte ; autres échecs (token inexistant…)
   comptés (`UsageCounter.kind = analysis_failure`) et remboursés jusqu'à `ANALYSIS_FAILED_DAILY_LIMIT` (20) par
   sujet et par jour, au-delà consommés, et le sujet reçoit 429 `QUOTA_EXCEEDED` jusqu'à minuit UTC (chaque échec
   coûte des crédits Helius). Throttlers : clé = IP ramenée à son préfixe (`ipBucket`, IPv6 par /64).

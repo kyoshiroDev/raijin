@@ -6,7 +6,7 @@ import { KeyValueStore, MemoryKeyValueStore } from '../store/key-value-store';
 import { hashIp, ipBucket } from './ip-hash';
 import { ApiException } from '@raijin/api-core';
 import { HttpStatus } from '@nestjs/common';
-import { FAILURE_KIND, QuotaService, type QuotaPolicy } from './quota.service';
+import { FAILURE_KIND, UPSTREAM_FAILURE_KIND, QuotaService, type QuotaPolicy } from './quota.service';
 
 const NOW = new Date('2026-11-22T23:30:00.000Z');
 const clock: AnalysisClock = { now: () => NOW };
@@ -32,10 +32,15 @@ function sqlOf(call: unknown[]): { text: string; values: unknown[] } {
 function fakePrisma() {
   const prisma = {
     failures: 0,
+    upstreamFailures: 0,
     user: { findUnique: jest.fn() },
     sql: jest.fn(),
     $queryRaw: jest.fn(async (...call: unknown[]): Promise<unknown> => {
       const { text, values } = sqlOf(call);
+      if (values.includes(UPSTREAM_FAILURE_KIND)) {
+        prisma.upstreamFailures += 1;
+        return [{ count: prisma.upstreamFailures }];
+      }
       if (values.includes(FAILURE_KIND)) {
         if (/^\s*SELECT/.test(text)) return prisma.failures ? [{ count: prisma.failures }] : [];
         prisma.failures += 1;
@@ -219,13 +224,15 @@ describe('QuotaService : réservation et remboursement', () => {
     await expect(service.reserve(anonymous, 'm4')).rejects.toMatchObject({ code: 'QUOTA_EXCEEDED', status: 429 });
   });
 
-  it('panne des sources : toujours remboursée, jamais comptée comme échec', async () => {
-    const { service, prisma } = setup(new MemoryKeyValueStore(), { ANALYSIS_FAILED_DAILY_LIMIT: '1' });
+  it('panne des sources : remboursée jusqu’à son propre plafond, puis consommée, sans refus ni échec compté', async () => {
+    const { service, prisma } = setup(new MemoryKeyValueStore(), { ANALYSIS_FAILED_DAILY_LIMIT: '1', ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT: '2' });
     prisma.sql.mockResolvedValue([{ count: 1 }]);
     const upstream = new ApiException('UPSTREAM_UNAVAILABLE', HttpStatus.SERVICE_UNAVAILABLE);
-    for (const mint of ['m1', 'm2', 'm3']) await service.settleFailure(await service.reserve(anonymous, mint), upstream);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(3);
+    for (const mint of ['m1', 'm2', 'm3', 'm4']) await service.settleFailure(await service.reserve(anonymous, mint), upstream);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.upstreamFailures).toBe(4);
     expect(prisma.failures).toBe(0);
+    await expect(service.reserve(anonymous, 'm5')).resolves.toMatchObject({ counted: true });
   });
 
   it('comptage d’échec impossible : journalisé, jamais levé, pas de remboursement', async () => {

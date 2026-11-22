@@ -43,6 +43,11 @@ describe('throttleTracker', () => {
     expect(throttleTracker({ ip: '2001:db8:abcd:12::1' })).not.toBe(throttleTracker({ ip: '2001:db8:abcd:13::1' }));
     expect(throttleTracker({ ip: '::ffff:198.51.100.4' })).toBe('198.51.100.4');
     expect(throttleTracker({ ip: '198.51.100.4' })).toBe('198.51.100.4');
+    expect(throttleTracker({ ip: '::ffff:7f00:1' })).toBe('127.0.0.1');
+    expect(throttleTracker({ ip: '0:0:0:0:0:ffff:c633:6404' })).toBe('198.51.100.4');
+    expect(throttleTracker({ ip: '64:ff9b::c633:6404' })).toBe('198.51.100.4');
+    expect(throttleTracker({ ip: '64:ff9b::198.51.100.5' })).toBe('198.51.100.5');
+    expect(throttleTracker({ ip: '64:ff9b::c633:6404' })).not.toBe(throttleTracker({ ip: '64:ff9b::c633:6405' }));
     expect(throttleTracker({})).toBe('unknown');
   });
 });

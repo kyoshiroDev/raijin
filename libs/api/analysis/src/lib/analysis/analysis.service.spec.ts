@@ -222,11 +222,19 @@ describe('AnalysisService : erreurs et remboursement du quota', () => {
     expect((collector as FixtureFactsCollector).calls).toBe(1);
   });
 
-  it('sources indispensables en panne : UPSTREAM_UNAVAILABLE (503), quota remboursé', async () => {
-    const { service, quota, repository } = setup();
+  it('sources indispensables en panne : UPSTREAM_UNAVAILABLE (503), échec réglé, cache négatif 60 s', async () => {
+    let now = 0;
+    const store = new MemoryKeyValueStore(() => now);
+    const { service, quota, repository, collector } = setup({ store });
     await expect(service.analyze(FIXTURE_MINTS.down, ANON)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', status: 503 });
     expect(quota.settleFailure).toHaveBeenCalledTimes(1);
     expect(repository.save).not.toHaveBeenCalled();
+    // Même adresse dans les 60 s : même erreur, sans relancer la collecte.
+    await expect(service.analyze(FIXTURE_MINTS.down, ANON)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
+    expect((collector as FixtureFactsCollector).calls).toBe(1);
+    now += 61_000;
+    await expect(service.analyze(FIXTURE_MINTS.down, ANON)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
+    expect((collector as FixtureFactsCollector).calls).toBe(2);
   });
 
   it('autorités inconnues (mintAccount null) : pas de verdict, UPSTREAM_UNAVAILABLE', async () => {

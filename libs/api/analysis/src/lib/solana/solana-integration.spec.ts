@@ -1,4 +1,4 @@
-import { DEFAULT_SOLANA_DATA_CONFIG, SolanaDataService, TokenNotFoundError } from '@raijin/api-solana';
+import { DEFAULT_SOLANA_DATA_CONFIG, SolanaDataService, TokenNotFoundError, UpstreamError } from '@raijin/api-solana';
 import { createFixtureFetch, loadAllFixtures } from '@raijin/api-solana/testing';
 import { testConfig } from '@raijin/api-core';
 import { analysisResultSchema } from '@raijin/shared-contracts';
@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import type { AnalysisRepository } from '../analysis/analysis.repository';
 import { AnalysisService } from '../analysis/analysis.service';
 import { DefaultRiskEngine } from '../analysis/risk-engine.provider';
-import { SystemClock } from '../ports/facts-collector';
+import { SystemClock, UpstreamUnavailableError } from '../ports/facts-collector';
 import type { QuotaService } from '../quota/quota.service';
 import { MemoryKeyValueStore } from '../store/key-value-store';
 import { CONSUME_CREDITS_SCRIPT, RedisCreditBudget, SolanaCacheStore } from './redis-ports';
@@ -70,6 +70,15 @@ describe('intégration @raijin/api-solana (fixtures enregistrées, aucun réseau
     await expect(collector().collectFacts(MISSING, { profile: 'full' })).resolves.toBeNull();
     await expect(service().analyze(MISSING, { kind: 'anonymous', ip: null })).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND' });
     expect(new TokenNotFoundError().code).toBe('TOKEN_NOT_FOUND');
+  }, 30_000);
+
+  it('lecture du mint impossible (UpstreamError) : UpstreamUnavailableError, autre erreur relancée', async () => {
+    const solana = new SolanaDataService({ heliusApiKey: null, fetch: createFixtureFetch(FIXTURES, DEFAULT_SOLANA_DATA_CONFIG).fetch });
+    const adapter = new SolanaFactsCollector(solana);
+    jest.spyOn(solana, 'collectFacts').mockRejectedValueOnce(new UpstreamError('solana_rpc', 'timeout'));
+    await expect(adapter.collectFacts(BONK, { profile: 'full' })).rejects.toBeInstanceOf(UpstreamUnavailableError);
+    jest.spyOn(solana, 'collectFacts').mockRejectedValueOnce(new Error('bug'));
+    await expect(adapter.collectFacts(BONK, { profile: 'full' })).rejects.toThrow('bug');
   }, 30_000);
 
   it('adresse inconnue des fixtures : pas une paire', async () => {
