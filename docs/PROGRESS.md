@@ -129,5 +129,6 @@
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
 
 ## Blocages
+- Mesures Lighthouse locales pessimistes : le CPU de la machine est bridé thermiquement (`idle_inject` sur les 8 cœurs, benchmarkIndex 700–1200). Après P1/P2 (`9d6535c`, `ea80d80`) : Perf 84 / 71 / 79, BP 100, Access. 100, SEO 100 (machine chargée). Reste : coût de démarrage d'Angular (~160 ms observés) + Zod (~40 ms) → TBT 600–960 ms simulé. Mesure au repos en cours (test-e2e) ; prochaine piste si < 95 : mesure sur runner GitHub (job Lighthouse des PR vers main), puis arbitrage architect (zod/mini, lancement de l'analyse dès le démarrage).
 - Environnement local : conteneurs d'autres projets actifs (`mtc_postgres_local` 5432, `mtc_redis_local` 6379, pile `supabase_*_raijin` 54321-54324) → **ne jamais y toucher** ; Raijin dev sur 5433 (Postgres), 6380 (Redis), 1026/8026 (Mailpit), projet Compose `raijin-dev`.
 - ~~CI run 44955347320 en échec (`ERR_PNPM_IGNORED_BUILDS`)~~ : levé, `allowBuilds` nx + @swc/core dans pnpm-workspace.yaml.
