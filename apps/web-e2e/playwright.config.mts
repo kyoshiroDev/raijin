@@ -7,6 +7,12 @@ import { getReadyUrl, workspaceRoot } from '@nx/devkit';
 const baseURL = process.env['BASE_URL'] || getReadyUrl('http://localhost:4200');
 /** Serveur du build de production (apps/web-e2e/scripts/serve-prod.mjs). */
 const PROD_ORIGIN = process.env['PROD_ORIGIN'] ?? 'http://127.0.0.1:4310';
+/**
+ * Landing Astro de test (phase 6 bis : consentement, GA4, attribution) : build fait avec un identifiant GA4 factice et
+ * `APP_URL` = l'app de test, servi par apps/web-e2e/scripts/serve-landing.mjs (support/landing.ts lit la même valeur).
+ */
+const LANDING_ORIGIN = process.env['LANDING_ORIGIN'] ?? 'http://localhost:4330';
+const LANDING_GA4_ID = 'G-E2ETEST01';
 
 const preset = nxE2EPreset(import.meta.dirname, { testDir: './src' });
 
@@ -111,6 +117,9 @@ export default defineConfig({
         // Phase 6 (billing.flow.spec.ts, trial.flow.spec.ts) : paiement simulé (faux Checkout, faux portail,
         // webhooks signés localement ; défaut hors production, explicite ici pour ne pas dépendre d'un .env).
         BILLING_PROVIDER: 'fake',
+        // Phase 6 bis (admin.flow.spec.ts, écrans admin des suites responsive et axe) : GA4 et Search Console
+        // simulés (« Données simulées » ; refusé en production), comme api-e2e.
+        ANALYTICS_PROVIDER: 'fake',
       },
     },
     {
@@ -128,6 +137,20 @@ export default defineConfig({
       url: `${PROD_ORIGIN}/manifest.webmanifest`,
       reuseExistingServer: true,
       cwd: workspaceRoot,
+    },
+    {
+      // Landing Astro (phase 6 bis) : build dans dist/apps/landing-e2e (jamais celui de production, sans GA4), avec un
+      // identifiant GA4 factice (bannière de consentement rendue) et des liens vers l'app de test. Les requêtes vers
+      // Google sont interceptées par les tests (support/landing.ts) : rien ne sort de la machine.
+      command: `../../node_modules/.bin/astro build --outDir ../../dist/apps/landing-e2e && node ../web-e2e/scripts/serve-landing.mjs --port ${new URL(LANDING_ORIGIN).port}`,
+      timeout: 180_000,
+      url: `${LANDING_ORIGIN}/robots.txt`,
+      reuseExistingServer: true,
+      cwd: `${workspaceRoot}/apps/landing`,
+      env: {
+        GA4_MEASUREMENT_ID: LANDING_GA4_ID,
+        APP_URL: baseURL,
+      },
     },
   ],
   // Chromium uniquement (CI GitHub Free) ; les largeurs responsives sont ajoutées par test-e2e.

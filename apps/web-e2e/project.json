@@ -4,7 +4,8 @@
   "projectType": "application",
   "sourceRoot": "apps/web-e2e/src",
   "implicitDependencies": [
-    "web"
+    "web",
+    "landing"
   ],
   "// targets": "to see all targets run: nx show project web-e2e --web",
   "targets": {
@@ -92,6 +93,7 @@
       }
     }
   },
+  "// implicitDependencies": "landing : consentement, GA4 et attribution testés sur le build Astro servi par scripts/serve-landing.mjs (phase 6 bis) ; une modification de la landing rend web-e2e affecté.",
   "// e2e": "Le plugin @nx/playwright passe parallelism à false quand webServer est un tableau (API + web) ; or e2e dépend du serveur continu web:serve, ce que Nx refuse sans parallélisme. Valeur d'origine rétablie (les deux serveurs ont des ports fixes et reuseExistingServer). Entrées : celles inférées, plus E2E_LOT et E2E_SHARD (lot et part de la matrice CI, lus par playwright.config.mts) pour que le cache Nx ne rejoue jamais le résultat d'un autre lot.",
   "// lighthouse": "Lighthouse mobile (phase 3) : build de production (serve-prod, port 4310) + API en mode fixtures (serve-api-fixtures, port 3100 ; arrêter toute autre API sur ce port avant). Options : --args=\"--runs 3 --phase phase-3\". Résumé dans docs/lighthouse/<phase>/, rapports complets dans dist/lighthouse/."
 }

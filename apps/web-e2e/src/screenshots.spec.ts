@@ -3,7 +3,8 @@ import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
 import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
-import { ANALYSIS_PAGES, BILLING_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
+import { SHELLLESS_PAGES } from './support/admin-pages';
+import { ANALYSIS_PAGES, BILLING_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount, type PageEntry } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
@@ -22,7 +23,8 @@ const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analys
 /** Phase 4 : suivis (vide, rempli, limite), alertes (liste, filtres, vide), préférences, 404, maintenance. */
 /** Phase 5 : scan de wallet (visiteur, Gratuit, saisie, résultats délégations et Danger, vide, phrase refusée, quota). */
 /** Phase 6 : abonnement (offres par état, succès, faux Checkout, faux portail), fin d'essai, choix des suivis, bandeau. */
-const SHOTS =
+/** Phase 6 bis : 9 écrans admin (API réelle, Google simulé), écrans 2FA, landing avec la bannière de consentement. */
+const SHOTS: readonly (PageEntry & { fullPage?: boolean })[] =
   PHASE === 'phase-1'
     ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
     : PHASE === 'phase-3'
@@ -33,7 +35,9 @@ const SHOTS =
           ? WALLET_PAGES
           : PHASE === 'phase-6'
             ? BILLING_PAGES
-            : PAGES.filter((p) => p.path.startsWith('/compte'));
+            : PHASE === 'phase-6bis'
+              ? SHELLLESS_PAGES
+              : PAGES.filter((p) => p.path.startsWith('/compte'));
 /** Résultats d'analyse et listes : page entière. */
 const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste', 'wallet-delegations', 'wallet-danger', 'abonnement-visiteur', 'abonnement-gratuit', 'abonnement-essai', 'abonnement-pro', 'abonnement-retard', 'abonnement-resilie', 'abonnement-indisponible', 'fin-essai', 'choix-suivis']);
 
@@ -46,7 +50,7 @@ for (const entry of SHOTS) {
       await openEntry(page, entry);
       const png = await page.screenshot({
         path: join(OUT, `${entry.shot ?? name}-${width}.png`),
-        fullPage: FULL_PAGE.has(name),
+        fullPage: FULL_PAGE.has(name) || entry.fullPage === true,
         animations: 'disabled',
       });
       expect(png.byteLength).toBeGreaterThan(1000);

@@ -4,6 +4,7 @@ import { MINTS, expectVerdict, useFreshIp } from './support/analysis';
 import { loginViaApi } from './support/auth';
 import { PAGES, openDialogSettled, openEntry, openPage, seededAccount, sharedVerifiedAccount } from './support/pages';
 import { WALLETS, scanButton, walletField, walletTrialAccount } from './support/wallet';
+import { SHELLLESS_PAGES } from './support/admin-pages';
 
 /** Règles WCAG 2.0/2.1/2.2 A et AA + bonnes pratiques axe. */
 /**
@@ -42,7 +43,8 @@ function focusInfo(page: Page) {
   });
 }
 
-for (const entry of PAGES) {
+// Phase 6 bis : 9 écrans admin, écrans 2FA et landing (bannière de consentement affichée).
+for (const entry of [...PAGES, ...SHELLLESS_PAGES]) {
   const { name } = entry;
   for (const viewport of [
     { width: 390, height: 844 },
