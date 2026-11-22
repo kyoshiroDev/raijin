@@ -37,11 +37,15 @@ export class PurgeService {
     const oneDay = new Date(now.getTime() - DAY_MS);
     const sevenDays = new Date(now.getTime() - 7 * DAY_MS);
     const day = retention.toISOString().slice(0, 10);
+    // Anti-abus de l'essai (§13.6) : empreintes IP + UA 90 jours, HMAC des e-mails ayant eu un essai 24 mois.
+    const fingerprints = new Date(now.getTime() - this.config.trial.fingerprintRetentionDays * DAY_MS);
+    const claims = new Date(now.getTime() - this.config.trial.claimRetentionDays * DAY_MS);
     return [
       { name: 'tokenAnalysis', table: 'TokenAnalysis', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
       { name: 'productEvent', table: 'ProductEvent', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
       { name: 'usageCounter', table: 'UsageCounter', key: 'id', where: Prisma.sql`"day" < ${day}::date` },
-      { name: 'trialFingerprint', table: 'TrialFingerprint', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
+      { name: 'trialFingerprint', table: 'TrialFingerprint', key: 'id', where: Prisma.sql`"createdAt" < ${fingerprints}` },
+      { name: 'trialClaim', table: 'TrialClaim', key: 'id', where: Prisma.sql`"createdAt" < ${claims}` },
       { name: 'alert', table: 'Alert', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
       { name: 'watchEvent', table: 'WatchEvent', key: 'id', where: Prisma.sql`"createdAt" < ${retention}` },
       { name: 'jobRun', table: 'JobRun', key: 'id', where: Prisma.sql`"startedAt" < ${jobRuns} AND "status" <> 'RUNNING'` },

@@ -4,13 +4,18 @@
     "outDir": "../../../dist/out-tsc",
     "module": "commonjs",
     "moduleResolution": "bundler",
-    "types": ["jest", "node"]
+    "types": [
+      "jest",
+      "node"
+    ]
   },
   "include": [
     "jest.config.ts",
     "jest.config.cts",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
-    "src/**/*.d.ts"
+    "src/**/*.d.ts",
+    "src/testing/billing-test-kit.ts",
+    "src/testing/memory-billing-prisma.ts"
   ]
 }

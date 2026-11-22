@@ -14,6 +14,7 @@ import { BullJobQueue } from './jobs/bullmq-runtime.service';
 import { JobHandlers } from './jobs/job-handlers.service';
 import { DisabledJobQueue, JobQueue } from './jobs/job-queue';
 import { JobRunService } from './jobs/job-run.service';
+import { JobRegistry } from './jobs/job-registry';
 import { NotificationSettingsService } from './notifications/notification-settings.service';
 import { PlanLimitsService } from './plan/plan-limits.service';
 import { PurgeService } from './purge/purge.service';
@@ -58,7 +59,8 @@ export function createJobQueue(config: AppConfig, moduleRef: ModuleRef): JobQueu
     PurgeService,
     JobRunService,
     JobHandlers,
+    JobRegistry,
   ],
-  exports: [WatchesService, PlanLimitsService, JobQueue],
+  exports: [WatchesService, PlanLimitsService, JobQueue, JobRegistry, JobRunService],
 })
 export class ApiAlertsModule {}

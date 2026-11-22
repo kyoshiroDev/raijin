@@ -1,7 +1,16 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AnalysisClock } from '@raijin/api-analysis';
-import { APP_CONFIG, ApiException, type AppConfig } from '@raijin/api-core';
-import { PrismaService } from '@raijin/api-prisma';
+import {
+  APP_CONFIG,
+  ApiException,
+  PLAN_POLICY_USER_SELECT,
+  planPolicyLimits,
+  resolvePlanPolicy,
+  type AppConfig,
+  type PlanPolicy,
+  type PlanPolicyRow,
+} from '@raijin/api-core';
+import { PrismaService, type Prisma } from '@raijin/api-prisma';
 import type { NotificationPreferences, PlanLimits } from '@raijin/shared-contracts';
 
 /** Droits du compte relus en base à chaque requête (jamais depuis le jeton ni le front). */
@@ -12,29 +21,27 @@ export interface AccountRights {
   /** Pro payé ou essai actif. */
   readonly pro: boolean;
   readonly limits: PlanLimits;
+  readonly policy: PlanPolicy;
   readonly preferences: NotificationPreferences;
 }
 
-interface PlanRow {
-  readonly plan: 'FREE' | 'PRO';
-  readonly trialStatus: string;
-  readonly trialEndsAt: Date | null;
-}
-
-/** Calcul pur des limites (plan, essai, configuration). */
-export function planLimitsOf(user: PlanRow, now: Date, config: AppConfig): PlanLimits {
-  const trialActive = user.trialStatus === 'ACTIVE' && !!user.trialEndsAt && user.trialEndsAt > now;
-  const pro = user.plan === 'PRO' || trialActive;
+/** Limites des suivis (contrat `PlanLimits`) tirées de la politique unique `resolvePlanPolicy`. */
+export function planLimitsFromPolicy(policy: PlanPolicy): PlanLimits {
   return {
-    plan: user.plan,
-    trialActive,
-    maxActiveWatches: pro ? config.watch.proLimit : config.watch.freeLimit,
-    pushAlerts: pro,
-    alertHistoryDays: pro ? config.watch.proAlertHistoryDays : config.watch.freeAlertHistoryDays,
+    plan: policy.paidPlan,
+    trialActive: policy.trialActive,
+    maxActiveWatches: policy.entitlements.maxActiveWatches,
+    pushAlerts: policy.entitlements.pushAlerts,
+    alertHistoryDays: policy.entitlements.alertHistoryDays,
   };
 }
 
-/** Limites par plan (`FREE_/PRO_WATCH_LIMIT`, essai = Pro), docs/ARCHITECTURE.md §11.5. */
+/** Calcul pur des limites (plan, essai, configuration), via `resolvePlanPolicy`. */
+export function planLimitsOf(user: PlanPolicyRow, now: Date, config: AppConfig): PlanLimits {
+  return planLimitsFromPolicy(resolvePlanPolicy(user, planPolicyLimits(config), now));
+}
+
+/** Limites par plan (`FREE_/PRO_WATCH_LIMIT`, essai = Pro), docs/ARCHITECTURE.md §11.5 et §13.4 (`resolvePlanPolicy`). */
 @Injectable()
 export class PlanLimitsService {
   constructor(
@@ -47,26 +54,41 @@ export class PlanLimitsService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
+        ...PLAN_POLICY_USER_SELECT,
         email: true,
-        emailVerifiedAt: true,
-        plan: true,
-        trialStatus: true,
-        trialEndsAt: true,
         notifyEmailAlerts: true,
         notifyPushAlerts: true,
         notifyWeeklyDigest: true,
+        notifyTrialEmails: true,
       },
     });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
-    const limits = planLimitsOf(user, this.clock.now(), this.config);
+    const policy = resolvePlanPolicy(user, planPolicyLimits(this.config), this.clock.now());
+    const limits = planLimitsFromPolicy(policy);
     return {
       userId,
       email: user.email,
       emailVerified: user.emailVerifiedAt !== null,
-      pro: limits.pushAlerts,
+      pro: policy.effectivePlan === 'PRO',
       limits,
-      preferences: { emailAlerts: user.notifyEmailAlerts, pushAlerts: user.notifyPushAlerts, weeklyDigest: user.notifyWeeklyDigest },
+      policy,
+      preferences: {
+        emailAlerts: user.notifyEmailAlerts,
+        pushAlerts: user.notifyPushAlerts,
+        weeklyDigest: user.notifyWeeklyDigest,
+        trialEmails: user.notifyTrialEmails,
+      },
     };
+  }
+
+  /**
+   * Politique relue **dans une transaction** (fin d'essai, passage Pro / Gratuit par l'abonnement) : la
+   * ligne `User` vue par la transaction, après ses propres écritures.
+   */
+  async policyIn(tx: Prisma.TransactionClient, userId: string): Promise<PlanPolicy> {
+    const user = await tx.user.findUnique({ where: { id: userId }, select: PLAN_POLICY_USER_SELECT });
+    if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+    return resolvePlanPolicy(user, planPolicyLimits(this.config), this.clock.now());
   }
 
   /** Droits d'un compte à l'e-mail vérifié, sinon 403 `AUTH_EMAIL_NOT_VERIFIED`. */

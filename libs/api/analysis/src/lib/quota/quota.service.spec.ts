@@ -100,6 +100,20 @@ describe('QuotaService : politique', () => {
     expect(await service.resolvePolicy(actor)).toMatchObject({ plan: 'PRO', limit: null, subject: 'user' });
   });
 
+  it('politique unique (resolvePlanPolicy) : abonnement prime sur l’essai, wallet_scan selon le plan', async () => {
+    const { service, prisma } = setup();
+    const actor = { kind: 'user', userId: USER_ID } as const;
+    prisma.user.findUnique.mockResolvedValueOnce({ plan: 'PRO', trialStatus: 'ACTIVE', trialEndsAt: new Date(NOW.getTime() + 1000), emailVerifiedAt: NOW });
+    expect((await service.resolvePolicy(actor)).limit).toBeNull();
+    prisma.user.findUnique.mockResolvedValueOnce({ plan: 'FREE', trialStatus: 'ACTIVE', trialEndsAt: new Date(NOW.getTime() + 1000), emailVerifiedAt: NOW });
+    expect(await service.resolvePolicy(actor, 'wallet_scan')).toMatchObject({ kind: 'wallet_scan', limit: 10, plan: 'FREE' });
+    prisma.user.findUnique.mockResolvedValueOnce({ plan: 'FREE', trialStatus: 'ENDED', trialEndsAt: NOW, emailVerifiedAt: NOW });
+    expect((await service.resolvePolicy(actor)).limit).toBe(5);
+    // L'essai s'arrête à la seconde, même si le job de fin d'essai n'est pas encore passé.
+    prisma.user.findUnique.mockResolvedValueOnce({ plan: 'FREE', trialStatus: 'ACTIVE', trialEndsAt: NOW, emailVerifiedAt: NOW });
+    expect((await service.resolvePolicy(actor)).limit).toBe(5);
+  });
+
   it('limites configurables', async () => {
     const { service } = setup(new MemoryKeyValueStore(), { ANON_ANALYSIS_DAILY_LIMIT: '7' });
     expect((await service.resolvePolicy({ kind: 'anonymous', ip: null })).limit).toBe(7);

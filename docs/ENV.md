@@ -167,12 +167,14 @@ MAIL_LOGO_URL=
 # ---------------------------------------------------------------------
 # fake (simulation locale : faux Checkout, webhooks signés localement ; REFUSÉ en production) ou stripe
 #   (stripe sans clé valide : l'API démarre, paiement indisponible, 503 BILLING_NOT_CONFIGURED). docs/ARCHITECTURE.md §13.8
+#   Vide = fake hors production, stripe en production. Une clé sk_live_ est refusée hors production (mode test seulement).
 BILLING_PROVIDER=fake
 # Stripe — https://dashboard.stripe.com/test/apikeys (clé secrète « sk_test_… », côté API uniquement, jamais journalisée)
 STRIPE_SECRET_KEY=sk_test_factice
 # Stripe — https://dashboard.stripe.com/test/webhooks (endpoint https://api.raijinshield.com/api/v1/billing/webhook,
 #   événements : checkout.session.completed, customer.subscription.updated, customer.subscription.deleted,
-#   invoice.payment_failed, invoice.paid ; puis « Signing secret » whsec_…).
+#   invoice.payment_failed, invoice.paid ; version d'API de l'endpoint = STRIPE_API_VERSION de
+#   libs/api/billing/src/lib/provider/stripe-billing.provider.ts ; puis « Signing secret » whsec_…).
 # En local : la commande « stripe listen --forward-to localhost:3100/api/v1/billing/webhook » l'affiche.
 # En simulation (BILLING_PROVIDER=fake), sert à signer les événements simulés ; vide = secret éphémère.
 STRIPE_WEBHOOK_SECRET=whsec_factice
@@ -342,7 +344,8 @@ SENTRY_ENVIRONMENT=development
   `ANALYSIS_FIXTURES` est activé, si `JOBS_TEST_TRIGGER=1` ou `PUSH_PROVIDER=fake`, si une seule des deux clés
   VAPID est fournie (les deux ou aucune : sans clés, push indisponible), ou si `WATCH_DAILY_CREDIT_BUDGET`
   dépasse `HELIUS_DAILY_CREDIT_BUDGET`, ou `WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET` aussi (phase 5), ou si
-  `BILLING_PROVIDER=fake` (phase 6 ; `stripe` sans clé valide démarre en mode paiement indisponible) (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
+  `BILLING_PROVIDER=fake` (phase 6, `loadBillingConfig` de `libs/api/billing` ; `stripe` sans clé valide démarre en mode
+  paiement indisponible ; hors production, une clé `sk_live_` est refusée) (ou si `PURGE_CRON` n'est pas un cron à 5 champs, `VAPID_SUBJECT` ni
   `mailto:` ni `https:`). Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les

@@ -48,6 +48,13 @@ export function button(label: string, href: string): string {
 </table>`;
 }
 
+/** Rai en PNG 2x (240×280 px) affiché en 120×140, centré (accueil, fin d'essai, alerte : PROMPT.md). */
+export function raiImage(assetsBaseUrl: string, file: string, alt: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;"><tr><td align="center">
+  <img src="${escapeHtml(`${assetsBaseUrl}/${file}`)}" width="120" height="140" alt="${escapeHtml(alt)}" style="display:block;border:0;width:120px;height:140px;">
+</td></tr></table>`;
+}
+
 /** Paragraphe de texte. */
 export function paragraph(text: string, muted = false): string {
   const color = muted ? EMAIL_THEME['ink-muted'] : EMAIL_THEME.ink;

@@ -9,7 +9,7 @@ import {
 import axios from 'axios';
 import { randomBytes } from 'node:crypto';
 import { Client as PgClient } from 'pg';
-import { ApiClient, MAILPIT_URL, tokenFrom, uniqueEmail, waitForMail } from '../support/client';
+import { ApiClient, MAILPIT_URL, tokenFrom, uniqueFreeEmail, waitForMail } from '../support/client';
 
 /**
  * Suivis, jobs, alertes et push contre l'API réelle (Postgres, Redis/BullMQ, Mailpit), sources simulées :
@@ -30,8 +30,9 @@ function randomIp(): string {
   return `10.${b[0]}.${b[1]}.${b[2]}`;
 }
 
+/** Compte vérifié en Gratuit (domaine jetable : pas d'essai Pro automatique). */
 async function verifiedUser(prefix: string): Promise<{ client: ApiClient; email: string }> {
-  const email = uniqueEmail(prefix);
+  const email = uniqueFreeEmail(prefix);
   const client = new ApiClient();
   client.headers['X-Forwarded-For'] = randomIp();
   await client.init();
@@ -41,7 +42,7 @@ async function verifiedUser(prefix: string): Promise<{ client: ApiClient; email:
   return { client, email };
 }
 
-/** Essai Pro de 7 jours posé directement en base (l'activation de l'essai arrive en phase 6). */
+/** Essai Pro de 7 jours posé directement en base (l'essai réel démarre à la vérification : trial.e2e.spec.ts). */
 async function startTrial(email: string): Promise<void> {
   const pg = new PgClient({ connectionString: DATABASE_URL });
   await pg.connect();
@@ -186,7 +187,7 @@ describe('API Raijin : suivis, alertes et push (jobs sur fixtures en séquence)'
     expect(push.data['code']).toBe('PUSH_PLAN_REQUIRED');
     const digest = await free.client.patch('/notifications/preferences', { weeklyDigest: true });
     expect(digest.status).toBe(200);
-    expect(notificationSettingsSchema.parse(digest.data).preferences).toEqual({ emailAlerts: true, pushAlerts: true, weeklyDigest: true });
+    expect(notificationSettingsSchema.parse(digest.data).preferences).toEqual({ emailAlerts: true, pushAlerts: true, weeklyDigest: true, trialEmails: true });
     expect((await free.client.patch('/notifications/preferences', {})).status).toBe(400);
   });
 

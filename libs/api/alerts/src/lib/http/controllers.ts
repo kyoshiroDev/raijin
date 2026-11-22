@@ -11,6 +11,7 @@ import {
   WATCH_ERROR_MESSAGES,
   watchCreateRequestSchema,
   watchIdParamSchema,
+  watchKeepRequestSchema,
   watchUpdateRequestSchema,
   type AlertListQuery,
   type AlertListResponse,
@@ -24,6 +25,7 @@ import {
   type VapidPublicKeyResponse,
   type Watch,
   type WatchCreateRequest,
+  type WatchKeepRequest,
   type WatchListResponse,
   type WatchUpdateRequest,
 } from '@raijin/shared-contracts';
@@ -32,7 +34,7 @@ import * as z from 'zod';
 import { AlertsService } from '../alerts/alerts.service';
 import { NotificationSettingsService } from '../notifications/notification-settings.service';
 import { PushSubscriptionsService } from '../push/push-subscriptions.service';
-import { WatchesService } from '../watches/watches.service';
+import { keepInvalid, WatchesService } from '../watches/watches.service';
 
 /** `:id` d'un suivi : UUID, sinon 404 (jamais d'indice sur l'existence). */
 @Injectable()
@@ -52,6 +54,16 @@ export class PushSubscriptionPipe<T extends z.ZodType> implements PipeTransform<
   transform(value: unknown): z.output<T> {
     const parsed = this.schema.safeParse(value ?? {});
     if (!parsed.success) throw new ApiException('PUSH_SUBSCRIPTION_INVALID', HttpStatus.BAD_REQUEST, WATCH_ERROR_MESSAGES.PUSH_SUBSCRIPTION_INVALID);
+    return parsed.data;
+  }
+}
+
+/** Corps de `POST watches/keep` refusé par le contrat : 400 `WATCH_KEEP_INVALID`. */
+@Injectable()
+export class WatchKeepPipe implements PipeTransform<unknown, WatchKeepRequest> {
+  transform(value: unknown): WatchKeepRequest {
+    const parsed = watchKeepRequestSchema.safeParse(value ?? {});
+    if (!parsed.success) throw keepInvalid();
     return parsed.data;
   }
 }
@@ -81,6 +93,14 @@ export class WatchesController {
     const { watch, created } = await this.watches.create(auth.userId, body.mint);
     res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
     return watch;
+  }
+
+  @Post('keep')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Choisit les suivis qui restent actifs (fin d’essai) ; les autres passent en pause, jamais supprimés.' })
+  @ApiZodBody(watchKeepRequestSchema)
+  keep(@CurrentAuth() auth: AuthContext, @Body(WatchKeepPipe) body: WatchKeepRequest): Promise<WatchListResponse> {
+    return this.watches.keep(auth.userId, body.watchIds);
   }
 
   @Patch(':id')

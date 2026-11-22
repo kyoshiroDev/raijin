@@ -11,6 +11,8 @@ import { AuthService } from './services/auth.service';
 import { LoginAttemptsService } from './services/login-attempts.service';
 import { PasswordService } from './services/password.service';
 import { SessionService } from './services/session.service';
+import { RolesGuard } from './http/roles.guard';
+import { TrialEligibilityService } from './trial/trial-eligibility.service';
 
 /**
  * Authentification : inscription, vérification d'e-mail, connexion, refresh rotatif,
@@ -30,8 +32,21 @@ import { SessionService } from './services/session.service';
     LoginAttemptsService,
     PasswordService,
     SessionService,
+    RolesGuard,
+    TrialEligibilityService,
   ],
-  exports: [AccessTokenService, AuditService, AuthGuard, OptionalAuthGuard, AuthService, LoginAttemptsService, PasswordService, SessionService],
+  exports: [
+    AccessTokenService,
+    AuditService,
+    AuthGuard,
+    OptionalAuthGuard,
+    RolesGuard,
+    AuthService,
+    LoginAttemptsService,
+    PasswordService,
+    SessionService,
+    TrialEligibilityService,
+  ],
 })
 export class ApiAuthModule implements OnModuleInit {
   constructor(

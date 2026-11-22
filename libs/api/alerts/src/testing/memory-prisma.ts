@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 /**
  * Faux Prisma en mémoire pour les tests unitaires des suivis (aucune base) : seulement les opérations
- * et filtres utilisés par les services (égalité, `in`, `not`, `lt`, `lte`, `gt`, `gte`, `OR`, relation
+ * et filtres utilisés par les services (égalité, `in`, `notIn`, `not`, `lt`, `lte`, `gt`, `gte`, `OR`, relation
  * `user`), `createMany({ skipDuplicates })` avec les contraintes uniques du schéma, `{ increment }`.
  */
 type Row = Record<string, unknown>;
@@ -32,6 +32,7 @@ function compare(value: unknown, condition: unknown, rows: MemoryPrisma, row: Ro
   const c = (x: unknown) => (x instanceof Date ? x.getTime() : x);
   for (const [op, arg] of Object.entries(ops)) {
     if (op === 'in' && !(arg as unknown[]).includes(value)) return false;
+    if (op === 'notIn' && (arg as unknown[]).includes(value)) return false;
     if (op === 'not' && (arg === null ? value === null || value === undefined : compare(value, arg, rows, row))) return false;
     if (op === 'lt' && !((v as number) < (c(arg) as number))) return false;
     if (op === 'lte' && !((v as number) <= (c(arg) as number))) return false;

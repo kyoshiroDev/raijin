@@ -2,6 +2,7 @@ import { Logger, Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '@raijin/api-core';
 import { AlertMailService } from './alert-mail.service';
 import { AuthMailService } from './auth-mail.service';
+import { TrialMailService } from './trial-mail.service';
 import { Mailer } from './mailer/mailer';
 import { ResendMailer } from './mailer/resend.mailer';
 import { SmtpMailer } from './mailer/smtp.mailer';
@@ -42,7 +43,8 @@ export function createPushSender(config: AppConfig): PushSender {
     { provide: PushSender, inject: [APP_CONFIG], useFactory: createPushSender },
     AuthMailService,
     AlertMailService,
+    TrialMailService,
   ],
-  exports: [Mailer, PushSender, AuthMailService, AlertMailService],
+  exports: [Mailer, PushSender, AuthMailService, AlertMailService, TrialMailService],
 })
 export class ApiNotificationsModule {}

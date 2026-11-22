@@ -16,6 +16,7 @@ import { normalizeEmail } from './email-normalizer';
 import { LoginAttemptsService } from './login-attempts.service';
 import { PasswordService } from './password.service';
 import { SessionService } from './session.service';
+import { TrialEligibilityService, type TrialOutcome } from '../trial/trial-eligibility.service';
 
 /** Messages neutres (202) : identiques que le compte existe ou non. */
 export const NEUTRAL_MESSAGES = {
@@ -48,6 +49,7 @@ export class AuthService {
     private readonly mail: AuthMailService,
     private readonly audit: AuditService,
     private readonly attempts: LoginAttemptsService,
+    private readonly trials: TrialEligibilityService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -132,20 +134,29 @@ export class AuthService {
     return NEUTRAL_MESSAGES.resend;
   }
 
-  /** Marque l'e-mail vérifié (une seule fois) et envoie l'e-mail de bienvenue. */
+  /**
+   * Marque l'e-mail vérifié (une seule fois) et, dans la même transaction, démarre l'essai Pro si
+   * l'anti-abus l'accepte (docs/ARCHITECTURE.md §13.6) ; sinon le compte reste en Gratuit, sans motif
+   * communiqué. Puis e-mail de bienvenue (qui annonce l'essai, ou neutre).
+   */
   private async markEmailVerified(userId: string, client: ClientInfo): Promise<User> {
     const now = new Date();
-    const updated = await this.prisma.user.updateMany({
-      where: { id: userId, emailVerifiedAt: null },
-      data: { emailVerifiedAt: now },
+    const outcome: TrialOutcome | null = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.updateMany({ where: { id: userId, emailVerifiedAt: null }, data: { emailVerifiedAt: now } });
+      if (updated.count !== 1) return null;
+      const candidate = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, emailNormalized: true, plan: true, trialStatus: true },
+      });
+      return candidate ? this.trials.startOnVerification(tx, candidate, client, now) : null;
     });
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw ApiException.auth('AUTH_TOKEN_INVALID', HttpStatus.BAD_REQUEST);
-    if (updated.count === 1) {
-      // L'essai Pro (phase 6) démarrera ici ; pour l'instant seul l'événement est enregistré.
-      this.dispatch('bienvenue', this.mail.sendWelcome(user.email, user.trialEndsAt));
+    if (outcome !== null) {
+      const trial = outcome.kind === 'started' ? { endsAt: outcome.endsAt, days: this.config.trial.days } : null;
+      this.dispatch('bienvenue', this.mail.sendWelcome(user.email, trial));
       await this.prisma.productEvent.create({ data: { userId, type: 'email_verified' } });
-      await this.audit.record('auth.email_verified', userId, client);
+      await this.audit.record('auth.email_verified', userId, client, { trial: outcome.kind });
     }
     return user;
   }
@@ -287,18 +298,20 @@ export class AuthService {
     if (this.passwords.isRejected(password, user.email)) {
       throw ApiException.auth('AUTH_PASSWORD_REJECTED', HttpStatus.BAD_REQUEST);
     }
-    const now = new Date();
+    // Le lien prouve la possession de la boîte : même vérification (et même décision d'essai) que le lien dédié.
+    if (!user.emailVerifiedAt) await this.markEmailVerified(user.id, client);
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
         passwordHash: await this.passwords.hash(password),
-        passwordChangedAt: now,
-        emailVerifiedAt: user.emailVerifiedAt ?? now,
+        passwordChangedAt: new Date(),
       },
     });
     await this.tokens.revokeUnused(user.id, ['PASSWORD_RESET', 'MAGIC_LINK']);
     await this.attempts.reset(user.emailNormalized);
     await this.sessions.revokeAllForUser(user.id, 'password_reset');
+    // Appareils abonnés au push retirés avec les sessions (audit phase 4, m2) : ils se réabonnent après connexion.
+    await this.prisma.pushSubscription.deleteMany({ where: { userId: user.id } });
     this.dispatch('mot de passe changé', this.mail.sendPasswordChanged(user.email));
     await this.audit.record('auth.password_reset', user.id, client);
   }
@@ -321,6 +334,7 @@ export class AuthService {
     });
     await this.tokens.revokeUnused(user.id, ['PASSWORD_RESET', 'MAGIC_LINK']);
     await this.sessions.revokeAllForUser(user.id, 'password_change', sessionId);
+    await this.prisma.pushSubscription.deleteMany({ where: { userId: user.id } });
     this.dispatch('mot de passe changé', this.mail.sendPasswordChanged(user.email));
     await this.audit.record('auth.password_changed', user.id, client);
   }

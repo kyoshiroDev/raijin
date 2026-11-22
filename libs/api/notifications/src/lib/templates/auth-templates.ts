@@ -1,4 +1,4 @@
-import { button, fallbackLink, paragraph, renderLayout, renderText } from './layout';
+import { button, fallbackLink, paragraph, raiImage, renderLayout, renderText } from './layout';
 
 export interface RenderedMail {
   readonly subject: string;
@@ -91,24 +91,35 @@ export function magicLinkTemplate(ctx: TemplateContext, link: string, ttlMs: num
   });
 }
 
-export function welcomeTemplate(ctx: TemplateContext, trialEndsAt: Date | null): RenderedMail {
+/** Essai Pro annoncé dans l'e-mail de bienvenue (`null` : compte Gratuit, message neutre). */
+export interface WelcomeTrial {
+  readonly endsAt: Date;
+  readonly days: number;
+}
+
+/** Bienvenue (Rai, accueil) : annonce l'essai Pro s'il a démarré, sinon un message neutre (jamais le motif d'un refus). */
+export function welcomeTemplate(ctx: TemplateContext & { readonly assetsBaseUrl?: string }, trial: WelcomeTrial | null): RenderedMail {
   const title = 'Bienvenue sur Raijin';
   const lines = [
     'Ton adresse est confirmée. Colle l’adresse d’un token Solana et Raijin vérifie pour toi les points qui comptent : mint et freeze authority, liquidité verrouillée, concentration des holders, possibilité de revente.',
-    trialEndsAt
-      ? `Ton essai Pro de 7 jours est actif jusqu’au ${trialEndsAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}, sans carte bancaire.`
+    trial
+      ? `Ton essai Pro de ${trial.days} jours est actif jusqu’au ${trial.endsAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}, sans carte bancaire : analyses étendues, suivis de tokens, alertes push et scan de wallet. À la fin, ton compte repasse en Gratuit tout seul, sans rien payer.`
       : 'Ton compte Gratuit est prêt : analyses quotidiennes et suivi de tes premiers tokens.',
     'Le risque zéro n’existe pas : Raijin te donne des faits, à toi de décider.',
   ];
   const cta = 'Analyser un token';
   const link = `${ctx.appUrl}/analyse`;
-  const body = [...lines.map((line) => paragraph(line)), button(cta, link)].join('\n');
+  const rai = ctx.assetsBaseUrl ? raiImage(ctx.assetsBaseUrl, RAI_WELCOME_FILE, RAI_WELCOME_ALT) : '';
+  const body = [rai, ...lines.map((line) => paragraph(line)), button(cta, link)].filter(Boolean).join('\n');
   return {
     subject: 'Bienvenue sur Raijin',
-    html: renderLayout({ title, preheader: 'Ton compte est prêt.', body, ...ctx }),
+    html: renderLayout({ title, preheader: trial ? 'Ton compte est prêt, ton essai Pro aussi.' : 'Ton compte est prêt.', body, logoUrl: ctx.logoUrl, appUrl: ctx.appUrl }),
     text: renderText([title, ...lines, `${cta} : ${link}`]),
   };
 }
+
+export const RAI_WELCOME_FILE = 'rai-bravo@2x.png';
+export const RAI_WELCOME_ALT = 'Rai, la mascotte de Raijin, te souhaite la bienvenue';
 
 /** Inscription tentée avec une adresse déjà utilisée : on prévient le titulaire, sans rien révéler au demandeur. */
 export function accountExistsTemplate(ctx: TemplateContext, loginLink: string, resetLink: string): RenderedMail {

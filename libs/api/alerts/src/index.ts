@@ -4,6 +4,7 @@ export * from './lib/alerts/alerts.service';
 export * from './lib/delivery/alert-delivery.service';
 export * from './lib/digest/weekly-digest.service';
 export * from './lib/jobs/job-queue';
+export * from './lib/jobs/job-registry';
 export * from './lib/jobs/job-run.service';
 export * from './lib/notifications/notification-settings.service';
 export * from './lib/plan/plan-limits.service';

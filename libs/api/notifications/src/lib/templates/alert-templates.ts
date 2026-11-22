@@ -1,7 +1,7 @@
 import { VERDICT_LABELS, type Verdict } from '@raijin/shared-contracts';
 import { alertTitle, describeAlert, severityLabel, tokenLabel, type AlertMessage } from './alert-text';
 import type { RenderedMail, TemplateContext } from './auth-templates';
-import { button, EMAIL_THEME, escapeHtml, paragraph, renderLayout, renderText } from './layout';
+import { button, EMAIL_THEME, escapeHtml, paragraph, raiImage, renderLayout, renderText } from './layout';
 
 const FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -24,9 +24,7 @@ function url(ctx: TemplateContext, path: string): string {
 
 /** Rai en PNG 2x (240×280 px) affiché en 120×140, centré. */
 function rai(ctx: WatchMailContext, file: string, alt: string): string {
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;"><tr><td align="center">
-  <img src="${escapeHtml(`${ctx.assetsBaseUrl}/${file}`)}" width="120" height="140" alt="${escapeHtml(alt)}" style="display:block;border:0;width:120px;height:140px;">
-</td></tr></table>`;
+  return raiImage(ctx.assetsBaseUrl, file, alt);
 }
 
 /** Gravité : icône + mot (jamais la couleur seule), couleurs `warn` / `danger` du thème clair. */

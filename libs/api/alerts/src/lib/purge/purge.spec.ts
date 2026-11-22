@@ -18,6 +18,7 @@ describe('PurgeService', () => {
       'productEvent',
       'usageCounter',
       'trialFingerprint',
+      'trialClaim',
       'alert',
       'watchEvent',
       'jobRun',
@@ -28,6 +29,8 @@ describe('PurgeService', () => {
     const values = (name: string) => rules.find((rule) => rule.name === name)?.where.values ?? [];
     expect(values('alert')).toEqual([new Date(NOW.getTime() - 90 * 86_400_000)]);
     expect(values('jobRun')).toEqual([new Date(NOW.getTime() - 30 * 86_400_000)]);
+    expect(values('trialFingerprint')).toEqual([new Date(NOW.getTime() - 90 * 86_400_000)]);
+    expect(values('trialClaim')).toEqual([new Date(NOW.getTime() - 730 * 86_400_000)]);
     expect(values('usageCounter')).toEqual(['2026-08-24']);
     expect(values('session')).toEqual([new Date(NOW.getTime() - 86_400_000), new Date(NOW.getTime() - 7 * 86_400_000)]);
     expect(rules.find((rule) => rule.name === 'mintWatchState')?.where.sql).toContain('NOT EXISTS');
@@ -44,7 +47,7 @@ describe('PurgeService', () => {
     const counts = await purge.run();
     expect(counts['alert']).toBe(PURGE_BATCH + 12);
     expect(counts['session']).toBe(0);
-    expect(prisma.rawQueries.filter((sql) => sql.includes('DELETE FROM'))).toHaveLength(11); // 10 règles, 2 lots pour Alert
+    expect(prisma.rawQueries.filter((sql) => sql.includes('DELETE FROM'))).toHaveLength(12); // 11 règles, 2 lots pour Alert
     expect(prisma.rawQueries.every((sql) => !sql.includes('DROP') && !sql.includes('TRUNCATE'))).toBe(true);
     const run = prisma.tables['jobRun']?.[0];
     expect(run).toMatchObject({ job: 'purge', status: 'SUCCESS', details: expect.objectContaining({ alert: PURGE_BATCH + 12 }) });

@@ -12,6 +12,7 @@ import type { PushSubscriptionsService } from '../push/push-subscriptions.servic
 import type { WatchesService } from '../watches/watches.service';
 import { AlertsController, NotificationsController, PushController, PushSubscriptionPipe, WatchesController, WatchIdPipe } from './controllers';
 import { InternalController } from './internal.controller';
+import { JobRegistry } from '../jobs/job-registry';
 
 const MINT = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 const ID = '01968b3a-7c2e-7d4a-9f00-000000000001';
@@ -78,15 +79,20 @@ describe('InternalController (tests e2e seulement)', () => {
     const delivery = { pendingEmailUsers: jest.fn(async () => [ID]) };
     const prisma = { mintWatchState: { findMany: jest.fn(async () => [{ mint: MINT }]) } };
     const scenarios = options.scenarios === undefined ? new FixtureScenarios({ demo: [[], []] }, []) : options.scenarios;
+    const registry = new JobRegistry();
+    const extra = jest.fn(async () => ({ ticked: 1 }));
+    registry.register({ name: 'trial-tick', queue: 'maintenance', handler: extra, manualRun: true });
+    registry.register({ name: 'trial-email', queue: 'notify', handler: extra });
     const controller = new InternalController(
       testConfig(env),
       handlers as unknown as JobHandlers,
       delivery as unknown as AlertDeliveryService,
       prisma as unknown as PrismaService,
       options.push ?? new FakePushSender('cle'),
+      registry,
       scenarios,
     );
-    return { controller, handlers, delivery };
+    return { controller, handlers, delivery, registry, extra };
   }
 
   it('désactivé sans JOBS_TEST_TRIGGER : 404 partout', async () => {
@@ -110,6 +116,15 @@ describe('InternalController (tests e2e seulement)', () => {
     await expect(controller.run('alert-push', {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     await expect(controller.run('inconnu', {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     await expect(controller.run('purge', { mints: ['x'] })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('jobs déclarés (JobRegistry) : déclenchables seulement avec manualRun, corps vide', async () => {
+    const { controller, extra } = setup();
+    expect(await controller.run('trial-tick', {})).toEqual({ name: 'trial-tick', results: [{ ticked: 1 }] });
+    expect(extra).toHaveBeenCalledWith({});
+    await expect(controller.run('trial-tick', { now: 'x' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(controller.run('trial-email', {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(setup({}).controller.run('trial-tick', {})).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('fixtures en séquence et boîte d’envoi du push simulé', () => {

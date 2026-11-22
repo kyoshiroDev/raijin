@@ -38,6 +38,7 @@ export class NotificationSettingsService {
         ...(patch.emailAlerts !== undefined ? { notifyEmailAlerts: patch.emailAlerts } : {}),
         ...(patch.pushAlerts !== undefined ? { notifyPushAlerts: patch.pushAlerts } : {}),
         ...(patch.weeklyDigest !== undefined ? { notifyWeeklyDigest: patch.weeklyDigest } : {}),
+        ...(patch.trialEmails !== undefined ? { notifyTrialEmails: patch.trialEmails } : {}),
       },
     });
     return this.settings(userId);

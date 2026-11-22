@@ -1,9 +1,10 @@
-import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { APP_CONFIG, errorCode, type AppConfig } from '@raijin/api-core';
 import { Queue, Worker, type Job } from 'bullmq';
 import Redis from 'ioredis';
 import { JobHandlers } from './job-handlers.service';
+import { JobRegistry } from './job-registry';
 import {
   JobQueue,
   jobNameSchema,
@@ -24,17 +25,19 @@ export const WEEKLY_DIGEST_CRON = '0 8 * * 1';
 /**
  * Files et workers BullMQ sur le Redis existant (docs/ARCHITECTURE.md §11.3). Planifications
  * persistantes (Job Schedulers) : planificateur toutes les `WATCH_TICK_SECONDS`, purge `PURGE_CRON`
- * (UTC), résumé hebdomadaire. Avec `JOBS_TEST_TRIGGER=1`, les planifications automatiques sont
- * retirées (les tests e2e déclenchent les jobs eux-mêmes) ; les workers restent actifs.
+ * (UTC), résumé hebdomadaire, jobs déclarés dans `JobRegistry` (essai…). Avec `JOBS_TEST_TRIGGER=1`, les
+ * planifications automatiques sont retirées (les tests e2e déclenchent les jobs eux-mêmes) ; les workers restent actifs.
+ * Les planifications sont posées au démarrage de l'application, une fois tous les modules initialisés.
  */
 @Injectable()
-export class BullJobQueue extends JobQueue implements OnModuleInit, OnApplicationShutdown {
+export class BullJobQueue extends JobQueue implements OnModuleInit, OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger('Jobs');
   private readonly queues = new Map<QueueName, Queue>();
   private readonly workers: Worker[] = [];
   private readonly connections: Redis[] = [];
   /** Résolu au démarrage (les services des jobs dépendent eux-mêmes de `JobQueue`). */
   private handlers: JobHandlers | null = null;
+  private registry: JobRegistry | null = null;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -63,6 +66,7 @@ export class BullJobQueue extends JobQueue implements OnModuleInit, OnApplicatio
 
   async onModuleInit(): Promise<void> {
     this.handlers = this.moduleRef.get(JobHandlers, { strict: false });
+    this.registry = this.moduleRef.get(JobRegistry, { strict: false });
     const prefix = this.config.jobs.prefix;
     const queueConnection = this.connection(false);
     for (const name of QUEUE_NAMES) {
@@ -84,6 +88,9 @@ export class BullJobQueue extends JobQueue implements OnModuleInit, OnApplicatio
       worker.on('error', (error) => this.logger.warn(`Worker en erreur (${errorCode(error)})`));
       this.workers.push(worker);
     }
+  }
+
+  async onApplicationBootstrap(): Promise<void> {
     await this.schedule();
   }
 
@@ -92,29 +99,46 @@ export class BullJobQueue extends JobQueue implements OnModuleInit, OnApplicatio
     const maintenance = this.queues.get('maintenance');
     if (!watch || !maintenance) return;
     try {
+      const extra = (this.registry?.all() ?? []).filter((job) => job.scheduler);
       if (this.config.jobs.testTrigger) {
         await watch.removeJobScheduler('watch-planner');
         await maintenance.removeJobScheduler('purge');
         await maintenance.removeJobScheduler('weekly-digest');
+        for (const job of extra) await this.queues.get(job.queue)?.removeJobScheduler(job.name);
         this.logger.log('Planifications automatiques désactivées (JOBS_TEST_TRIGGER=1)');
         return;
       }
       await watch.upsertJobScheduler('watch-planner', { every: this.config.jobs.tickSeconds * 1000 }, { name: 'watch-planner', data: {} });
       await maintenance.upsertJobScheduler('purge', { pattern: this.config.jobs.purgeCron, tz: 'UTC' }, { name: 'purge', data: {} });
       await maintenance.upsertJobScheduler('weekly-digest', { pattern: WEEKLY_DIGEST_CRON, tz: 'Europe/Paris' }, { name: 'weekly-digest', data: {} });
+      for (const job of extra) {
+        if (job.scheduler) await this.queues.get(job.queue)?.upsertJobScheduler(job.name, { pattern: job.scheduler.pattern, tz: job.scheduler.tz }, { name: job.name, data: {} });
+      }
     } catch (error) {
       this.logger.error(`Planification des jobs impossible (${errorCode(error)})`);
     }
   }
 
   private async process(job: Job): Promise<unknown> {
+    const data = (job.data ?? {}) as JobData;
     const name = jobNameSchema.safeParse(job.name);
-    if (!name.success || !this.handlers) return { ignored: true };
-    return this.handlers.run(name.data, (job.data ?? {}) as JobData);
+    if (name.success) return this.handlers ? this.handlers.run(name.data, data) : { ignored: true };
+    const extra = this.registry?.get(job.name);
+    return extra ? extra.handler(data) : { ignored: true };
   }
 
-  async add(name: JobName, data: JobData, options: EnqueueOptions = {}): Promise<void> {
-    const queue = this.queues.get(QUEUE_OF[name]);
+  private queueOf(name: string): QueueName | undefined {
+    const core = jobNameSchema.safeParse(name);
+    return core.success ? QUEUE_OF[core.data] : this.registry?.get(name)?.queue;
+  }
+
+  async add(name: JobName | (string & {}), data: JobData, options: EnqueueOptions = {}): Promise<void> {
+    const queueName = this.queueOf(name);
+    if (!queueName) {
+      this.logger.warn(`Job ${name} inconnu : non mis en file`);
+      return;
+    }
+    const queue = this.queues.get(queueName);
     if (!queue) return;
     try {
       await queue.add(name, data, {

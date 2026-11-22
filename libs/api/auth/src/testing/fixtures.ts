@@ -26,7 +26,12 @@ export function userFixture(overrides: Partial<User> = {}): User {
     notifyEmailAlerts: true,
     notifyPushAlerts: true,
     notifyWeeklyDigest: false,
+    notifyTrialEmails: true,
     weeklyDigestSentAt: null,
+    trialDay1MailAt: null,
+    trialDayMinus2MailAt: null,
+    trialEndMailAt: null,
+    trialEndScreenSeenAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -45,7 +50,10 @@ function model() {
   };
 }
 
-/** Double de PrismaService : chaque méthode est un `jest.fn()`. `$transaction` exécute le tableau. */
+/**
+ * Double de PrismaService : chaque méthode est un `jest.fn()`. `$transaction` exécute le tableau, ou la
+ * fonction avec le double lui-même comme client de transaction.
+ */
 export function createPrismaMock() {
   const mock = {
     user: model(),
@@ -55,7 +63,13 @@ export function createPrismaMock() {
     auditLog: model(),
     productEvent: model(),
     pushSubscription: model(),
-    $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
+    trialClaim: model(),
+    trialFingerprint: model(),
+    $queryRaw: jest.fn(async () => [] as unknown[]),
+    $transaction: jest.fn(),
   };
+  mock.$transaction.mockImplementation((operations: Promise<unknown>[] | ((tx: unknown) => Promise<unknown>)) =>
+    typeof operations === 'function' ? operations(mock) : Promise.all(operations),
+  );
   return { mock, prisma: mock as unknown as PrismaService };
 }

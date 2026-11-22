@@ -27,6 +27,13 @@ type WatchRow = Prisma.WatchGetPayload<{ select: typeof watchSelect }>;
 
 const notFound = () => new ApiException('WATCH_NOT_FOUND', HttpStatus.NOT_FOUND, WATCH_ERROR_MESSAGES.WATCH_NOT_FOUND);
 const limitReached = () => new ApiException('WATCH_LIMIT_REACHED', HttpStatus.FORBIDDEN, WATCH_ERROR_MESSAGES.WATCH_LIMIT_REACHED);
+export const keepInvalid = () => new ApiException('WATCH_KEEP_INVALID', HttpStatus.BAD_REQUEST, WATCH_ERROR_MESSAGES.WATCH_KEEP_INVALID);
+
+/** Suivis modifiés par un changement de plan (dans une transaction) : priorités à recalculer après commit. */
+export interface PlanLimitChange {
+  readonly count: number;
+  readonly mints: readonly string[];
+}
 
 /**
  * Suivis (docs/ARCHITECTURE.md §11.2, §11.5). Limites relues en base à chaque requête ; la création et
@@ -112,25 +119,96 @@ export class WatchesService {
   }
 
   /**
-   * Met en pause (`plan_limit`) les suivis actifs au-delà de la limite du plan, les plus récents
-   * d'abord (fin d'essai, phase 6). Renvoie le nombre de suivis mis en pause.
+   * `POST watches/keep` (docs/ARCHITECTURE.md §13.2) : les suivis listés passent actifs ; tous les autres
+   * suivis actifs ou en pause `plan_limit` passent en pause `plan_limit` (jamais supprimés) ; les pauses
+   * `user` non listées ne changent pas. Au plus `maxActiveWatches` du plan, tous à l'utilisateur, sinon
+   * 400 `WATCH_KEEP_INVALID` (aucun indice sur les suivis des autres comptes).
    */
-  async enforcePlanLimit(userId: string): Promise<number> {
-    const { limits } = await this.plans.rights(userId);
-    const paused = await this.prisma.$transaction(async (tx) => {
+  async keep(userId: string, watchIds: readonly string[]): Promise<WatchListResponse> {
+    const { limits } = await this.plans.verifiedRights(userId);
+    const ids = [...new Set(watchIds)];
+    if (ids.length === 0 || ids.length !== watchIds.length || ids.length > limits.maxActiveWatches) throw keepInvalid();
+    const mints = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
-      const active = await tx.watch.findMany({ where: { userId, status: 'active' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, mint: true } });
-      const excess = active.slice(limits.maxActiveWatches);
-      if (excess.length > 0) {
+      const kept = await tx.watch.findMany({ where: { userId, id: { in: ids } }, select: { id: true, mint: true } });
+      if (kept.length !== ids.length) throw keepInvalid();
+      const others = await tx.watch.findMany({
+        where: { userId, id: { notIn: ids }, status: 'active' },
+        select: { id: true, mint: true },
+      });
+      await tx.watch.updateMany({ where: { userId, id: { in: ids } }, data: { status: 'active', pausedReason: null, pausedAt: null } });
+      if (others.length > 0) {
         await tx.watch.updateMany({
-          where: { id: { in: excess.map((watch) => watch.id) } },
+          where: { userId, id: { in: others.map((watch) => watch.id) } },
           data: { status: 'paused', pausedReason: 'plan_limit', pausedAt: this.clock.now() },
         });
       }
-      return excess;
+      return [...kept, ...others].map((watch) => watch.mint);
     });
-    for (const mint of new Set(paused.map((watch) => watch.mint))) await this.mintStates.refreshPriority(mint);
-    return paused.length;
+    await this.refreshPriorities(mints);
+    return this.list(userId);
+  }
+
+  /**
+   * Met en pause (`plan_limit`) les suivis actifs au-delà de la limite du plan, les plus récents
+   * d'abord (fin d'essai, fin d'abonnement). Renvoie le nombre de suivis mis en pause.
+   */
+  async enforcePlanLimit(userId: string): Promise<number> {
+    const change = await this.prisma.$transaction((tx) => this.enforcePlanLimitInTx(tx, userId));
+    await this.refreshPriorities(change.mints);
+    return change.count;
+  }
+
+  /**
+   * Même règle dans la transaction de l'appelant (fin d'essai `api-trial`, webhook `api-billing`), avec la
+   * limite relue dans cette transaction. Appeler `refreshPriorities(change.mints)` après le commit.
+   */
+  async enforcePlanLimitInTx(tx: Prisma.TransactionClient, userId: string): Promise<PlanLimitChange> {
+    await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
+    const { entitlements } = await this.plans.policyIn(tx, userId);
+    const active = await tx.watch.findMany({ where: { userId, status: 'active' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, mint: true } });
+    const excess = active.slice(entitlements.maxActiveWatches);
+    if (excess.length > 0) {
+      await tx.watch.updateMany({
+        where: { id: { in: excess.map((watch) => watch.id) } },
+        data: { status: 'paused', pausedReason: 'plan_limit', pausedAt: this.clock.now() },
+      });
+    }
+    return { count: excess.length, mints: excess.map((watch) => watch.mint) };
+  }
+
+  /**
+   * Passage Pro (abonnement) : reprend les suivis en pause `plan_limit`, les plus anciens d'abord, dans
+   * la limite du plan. Les pauses `user` ne sont jamais reprises. Renvoie le nombre de suivis repris.
+   */
+  async resumePlanLimited(userId: string): Promise<number> {
+    const change = await this.prisma.$transaction((tx) => this.resumePlanLimitedInTx(tx, userId));
+    await this.refreshPriorities(change.mints);
+    return change.count;
+  }
+
+  /** Même règle dans la transaction de l'appelant ; `refreshPriorities(change.mints)` après le commit. */
+  async resumePlanLimitedInTx(tx: Prisma.TransactionClient, userId: string): Promise<PlanLimitChange> {
+    await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId}::uuid FOR UPDATE`;
+    const { entitlements } = await this.plans.policyIn(tx, userId);
+    const active = await tx.watch.count({ where: { userId, status: 'active' } });
+    const room = Math.max(0, entitlements.maxActiveWatches - active);
+    if (room === 0) return { count: 0, mints: [] };
+    const paused = await tx.watch.findMany({
+      where: { userId, status: 'paused', pausedReason: 'plan_limit' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: room,
+      select: { id: true, mint: true },
+    });
+    if (paused.length > 0) {
+      await tx.watch.updateMany({ where: { id: { in: paused.map((watch) => watch.id) } }, data: { status: 'active', pausedReason: null, pausedAt: null } });
+    }
+    return { count: paused.length, mints: paused.map((watch) => watch.mint) };
+  }
+
+  /** Recalcule la priorité de réanalyse des mints touchés (après le commit d'un changement de plan). */
+  async refreshPriorities(mints: readonly string[]): Promise<void> {
+    for (const mint of new Set(mints)) await this.mintStates.refreshPriority(mint);
   }
 
   private async views(userId: string, rows: readonly WatchRow[], historyDays: number): Promise<Watch[]> {

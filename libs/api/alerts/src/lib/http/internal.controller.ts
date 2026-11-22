@@ -9,6 +9,7 @@ import * as z from 'zod';
 import { AlertDeliveryService } from '../delivery/alert-delivery.service';
 import { JobHandlers, type JobResult } from '../jobs/job-handlers.service';
 import { jobNameSchema } from '../jobs/job-queue';
+import { JobRegistry } from '../jobs/job-registry';
 
 const runBodySchema = z.object({ mints: z.array(mintAddressSchema).min(1).max(100).optional() }).strict();
 const fixtureBodySchema = z.object({ step: z.number().int().min(0).max(100) }).strict();
@@ -16,7 +17,8 @@ const fixtureBodySchema = z.object({ step: z.number().int().min(0).max(100) }).s
 /**
  * Routes de test (`/api/v1/internal`), actives seulement si `JOBS_TEST_TRIGGER=1` hors production
  * (la configuration refuse ce réglage en production) ; sinon 404 comme une route inexistante.
- * - `POST internal/jobs/:name/run` : exécute un job tout de suite (passes : `mints` ou tous les mints suivis) ;
+ * - `POST internal/jobs/:name/run` : exécute un job tout de suite (passes : `mints` ou tous les mints suivis ;
+ *   jobs déclarés dans `JobRegistry` avec `manualRun`, corps vide) ;
  * - `POST internal/fixtures/:scenario` : étape d'un scénario de fixtures en séquence (`ANALYSIS_FIXTURES=1`) ;
  * - `GET internal/push/outbox` : notifications du push simulé (`PUSH_PROVIDER=fake`).
  */
@@ -29,6 +31,7 @@ export class InternalController {
     private readonly delivery: AlertDeliveryService,
     private readonly prisma: PrismaService,
     private readonly push: PushSender,
+    private readonly registry: JobRegistry,
     @Optional() @Inject(FixtureScenarios) private readonly scenarios: FixtureScenarios | null,
   ) {}
 
@@ -40,6 +43,11 @@ export class InternalController {
   @HttpCode(200)
   async run(@Param('name') rawName: string, @Body() rawBody: unknown): Promise<{ name: string; results: JobResult[] }> {
     this.assertEnabled();
+    const extra = this.registry.get(rawName);
+    if (extra?.manualRun) {
+      if (Object.keys((rawBody ?? {}) as object).length > 0) throw new ApiException('VALIDATION_ERROR', HttpStatus.BAD_REQUEST);
+      return { name: extra.name, results: [await extra.handler({})] };
+    }
     const name = jobNameSchema.safeParse(rawName);
     const body = runBodySchema.safeParse(rawBody ?? {});
     if (!name.success || !body.success) throw new ApiException('VALIDATION_ERROR', HttpStatus.BAD_REQUEST);

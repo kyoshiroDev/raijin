@@ -5,6 +5,7 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { BILLING_WEBHOOK_PATH, billingWebhookRawBody, loadBillingConfig } from '@raijin/api-billing';
 import { ConfigError, GLOBAL_PREFIX, loadConfig, setupApp } from '@raijin/api-core';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -27,9 +28,12 @@ function emitNxReadySignal(server: unknown): void {
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   const config = loadConfig(process.env, (message) => logger.warn(message));
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), {
+  const billing = loadBillingConfig(process.env, config, (message) => logger.warn(message));
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config, billing), {
     bodyParser: false,
   });
+  // Webhook Stripe : corps brut (signature sur les octets reçus), monté avant le parseur JSON global.
+  app.use(`/${GLOBAL_PREFIX}/${BILLING_WEBHOOK_PATH}`, billingWebhookRawBody());
   setupApp(app, config);
   await app.listen(config.port);
   emitNxReadySignal(app.getHttpServer());

@@ -6,6 +6,7 @@ export * from './lib/errors/api-exception';
 export * from './lib/errors/api-exception.filter';
 export * from './lib/errors/error-code';
 export * from './lib/http/setup-app';
+export * from './lib/plan/plan-policy';
 export * from './lib/security/cookies';
 export * from './lib/security/crypto';
 export * from './lib/security/csrf';

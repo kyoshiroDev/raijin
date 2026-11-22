@@ -49,9 +49,12 @@ export interface EnqueueOptions {
 /** Charge utile d'un job (JSON). */
 export type JobData = Readonly<Record<string, unknown>>;
 
-/** Mise en file d'un job. Implémentations : BullMQ (Redis) ; enregistrement en mémoire (tests). */
+/**
+ * Mise en file d'un job de base (`JobName`) ou déclaré dans `JobRegistry` (nom libre).
+ * Implémentations : BullMQ (Redis) ; enregistrement en mémoire (tests).
+ */
 export abstract class JobQueue {
-  abstract add(name: JobName, data: JobData, options?: EnqueueOptions): Promise<void>;
+  abstract add(name: JobName | (string & {}), data: JobData, options?: EnqueueOptions): Promise<void>;
 }
 
 /** Jobs désactivés (`JOBS_ENABLED=false` ou pas de Redis) : rien n'est mis en file. */
@@ -63,9 +66,9 @@ export class DisabledJobQueue extends JobQueue {
 
 /** File en mémoire des tests : jobs enregistrés, rien n'est exécuté. */
 export class RecordingJobQueue extends JobQueue {
-  readonly jobs: { name: JobName; data: JobData; options: EnqueueOptions }[] = [];
+  readonly jobs: { name: string; data: JobData; options: EnqueueOptions }[] = [];
 
-  async add(name: JobName, data: JobData, options: EnqueueOptions = {}): Promise<void> {
+  async add(name: string, data: JobData, options: EnqueueOptions = {}): Promise<void> {
     if (options.jobId && this.jobs.some((job) => job.options.jobId === options.jobId)) return;
     this.jobs.push({ name, data, options });
   }

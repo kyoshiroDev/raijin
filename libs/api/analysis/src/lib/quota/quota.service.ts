@@ -1,5 +1,13 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { APP_CONFIG, ApiException, errorCode, type AppConfig } from '@raijin/api-core';
+import {
+  APP_CONFIG,
+  ApiException,
+  errorCode,
+  PLAN_POLICY_USER_SELECT,
+  planPolicyLimits,
+  resolvePlanPolicy,
+  type AppConfig,
+} from '@raijin/api-core';
 import { Prisma, PrismaService } from '@raijin/api-prisma';
 import { ANALYSIS_ERROR_MESSAGES, type Plan, type QuotaInfo, type QuotaKind } from '@raijin/shared-contracts';
 import { randomUUID } from 'node:crypto';
@@ -49,8 +57,8 @@ const UNLIMITED = 2_147_483_647;
  * Quotas journaliers d'analyse (jour UTC), docs/ARCHITECTURE.md §9.6 :
  * anonyme `ANON_ANALYSIS_DAILY_LIMIT` par empreinte d'IP, Gratuit `FREE_…`, essai Pro `TRIAL_…`,
  * Pro illimité (compté pour les statistiques). Réservation atomique en base (`INSERT … ON CONFLICT
- * DO UPDATE … WHERE count < limit`), remboursée si l'analyse échoue. Phase 6 (Stripe) : seule
- * `resolvePolicy` évolue (plan payé, essai, autres `QuotaKind`).
+ * DO UPDATE … WHERE count < limit`), remboursée si l'analyse échoue. Droits : `resolvePlanPolicy`
+ * (`@raijin/api-core`, docs/ARCHITECTURE.md §13.4), source unique.
  */
 @Injectable()
 export class QuotaService {
@@ -63,29 +71,27 @@ export class QuotaService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  /** Politique du demandeur pour un type de quota. */
+  /**
+   * Politique du demandeur pour l'analyse : anonyme `ANON_…` par empreinte d'IP ; connecté selon
+   * `resolvePlanPolicy` (Gratuit, essai, Pro illimité). Le scan de wallet construit sa propre politique
+   * (`WalletAccessService`) à partir de la même fonction.
+   */
   async resolvePolicy(actor: QuotaActor, kind: QuotaKind = 'analysis'): Promise<QuotaPolicy> {
-    const limits = this.config.analysis;
+    const limits = planPolicyLimits(this.config);
     if (actor.kind === 'anonymous') {
       return {
         kind,
         subject: 'anonymous',
         userId: null,
-        ipHash: hashIp(limits.ipHashSecret, actor.ip),
+        ipHash: hashIp(this.config.analysis.ipHashSecret, actor.ip),
         plan: null,
-        limit: limits.anonDailyLimit,
+        limit: limits.anonAnalysesPerDay,
       };
     }
-    const user = await this.prisma.user.findUnique({
-      where: { id: actor.userId },
-      select: { plan: true, trialStatus: true, trialEndsAt: true },
-    });
+    const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: PLAN_POLICY_USER_SELECT });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
-    const now = this.clock.now();
-    const trialActive = user.trialStatus === 'ACTIVE' && !!user.trialEndsAt && user.trialEndsAt > now;
-    let limit: number | null = limits.freeDailyLimit;
-    if (user.plan === 'PRO') limit = null;
-    else if (trialActive) limit = limits.trialDailyLimit;
+    const policy = resolvePlanPolicy(user, limits, this.clock.now());
+    const limit = kind === 'wallet_scan' ? policy.entitlements.walletScansPerDay : policy.entitlements.analysesPerDay;
     return { kind, subject: 'user', userId: actor.userId, ipHash: null, plan: user.plan, limit };
   }
 

@@ -10,6 +10,7 @@ import { AuthService, NEUTRAL_MESSAGES } from './auth.service';
 import { LoginAttemptsService, MemoryAttemptStore } from './login-attempts.service';
 import { PasswordService } from './password.service';
 import type { SessionService } from './session.service';
+import type { TrialEligibilityService } from '../trial/trial-eligibility.service';
 
 const client = { ip: '198.51.100.1', userAgent: 'jest' };
 const PASSWORD = 'une phrase de passe solide';
@@ -52,6 +53,7 @@ async function setup() {
   const audit = { record: jest.fn(), hashIp: jest.fn() };
   const accessTokens = new AccessTokenService(new JwtService({}), new AuthCookies(config), config);
   const attempts = new LoginAttemptsService(config, new MemoryAttemptStore());
+  const trials = { startOnVerification: jest.fn().mockResolvedValue({ kind: 'skipped' }) };
   const service = new AuthService(
     prisma,
     passwords,
@@ -61,10 +63,11 @@ async function setup() {
     mail as unknown as AuthMailService,
     audit as unknown as AuditService,
     attempts,
+    trials as unknown as TrialEligibilityService,
     config,
   );
   mock.productEvent.create.mockResolvedValue({});
-  return { mock, service, sessions, tokens, mail, audit, accessTokens, passwordHash, config, passwords, attempts };
+  return { mock, service, sessions, tokens, mail, audit, accessTokens, passwordHash, config, passwords, attempts, trials };
 }
 
 const actions = (audit: { record: jest.Mock }) => audit.record.mock.calls.map((call) => call[0]);
@@ -158,6 +161,30 @@ describe('AuthService.verifyEmail / resendVerification', () => {
     expect(mail.sendWelcome).toHaveBeenCalledWith('jean.dupont@exemple.fr', null);
     expect(tokens.revokeUnused).toHaveBeenCalledWith('u', ['EMAIL_VERIFY']);
     expect(sessions.create).toHaveBeenCalledWith('u', client);
+  });
+
+  it('essai démarré dans la transaction de vérification : bienvenue qui annonce l’essai', async () => {
+    const { mock, service, tokens, mail, trials, audit } = await setup();
+    const endsAt = new Date('2026-11-29T10:00:00Z');
+    tokens.consume.mockResolvedValue({ userId: 'u', redirectPath: null });
+    mock.user.updateMany.mockResolvedValue({ count: 1 });
+    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u', emailVerifiedAt: new Date() }));
+    trials.startOnVerification.mockResolvedValue({ kind: 'started', startedAt: new Date(), endsAt });
+    await service.verifyEmail('jeton', client);
+    expect(mock.$transaction).toHaveBeenCalledTimes(1);
+    expect(trials.startOnVerification).toHaveBeenCalledWith(mock, expect.objectContaining({ id: 'u' }), client, expect.any(Date));
+    expect(mail.sendWelcome).toHaveBeenCalledWith('jean.dupont@exemple.fr', { endsAt, days: 7 });
+    expect(audit.record).toHaveBeenCalledWith('auth.email_verified', 'u', client, { trial: 'started' });
+  });
+
+  it('essai refusé : bienvenue neutre (aucun motif), compte Gratuit', async () => {
+    const { mock, service, tokens, mail, trials } = await setup();
+    tokens.consume.mockResolvedValue({ userId: 'u', redirectPath: null });
+    mock.user.updateMany.mockResolvedValue({ count: 1 });
+    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u', emailVerifiedAt: new Date(), trialStatus: 'INELIGIBLE' }));
+    trials.startOnVerification.mockResolvedValue({ kind: 'refused', reason: 'disposable_domain' });
+    await service.verifyEmail('jeton', client);
+    expect(mail.sendWelcome).toHaveBeenCalledWith('jean.dupont@exemple.fr', null);
   });
 
   it('déjà vérifié : pas de second e-mail de bienvenue', async () => {
@@ -328,11 +355,14 @@ describe('AuthService mots de passe', () => {
     tokens.consume.mockResolvedValue({ userId: 'u' });
     mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u' }));
     mock.user.update.mockResolvedValue({});
+    mock.user.updateMany.mockResolvedValue({ count: 1 });
     await service.resetPassword('jeton', 'nouvelle phrase de passe', client);
     const data = mock.user.update.mock.calls[0][0].data;
     expect(data.passwordHash).toMatch(/^\$argon2id\$/);
-    expect(data.emailVerifiedAt).toBeInstanceOf(Date);
+    // Adresse non vérifiée : vérifiée par le lien de réinitialisation, avec la même décision d'essai.
+    expect(mock.user.updateMany).toHaveBeenCalledWith({ where: { id: 'u', emailVerifiedAt: null }, data: { emailVerifiedAt: expect.any(Date) } });
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith('u', 'password_reset');
+    expect(mock.pushSubscription.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u' } });
     expect(tokens.revokeUnused).toHaveBeenCalledWith('u', ['PASSWORD_RESET', 'MAGIC_LINK']);
     expect(mail.sendPasswordChanged).toHaveBeenCalledWith('jean.dupont@exemple.fr');
     await expect(attempts.isLocked('jean.dupont@exemple.fr')).resolves.toBe(false);
@@ -364,6 +394,7 @@ describe('AuthService mots de passe', () => {
     mock.user.update.mockResolvedValue({});
     await service.changePassword('u', 'sid-courante', { currentPassword: PASSWORD, newPassword: 'toute nouvelle phrase' }, client);
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith('u', 'password_change', 'sid-courante');
+    expect(mock.pushSubscription.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u' } });
     expect(actions(audit)).toContain('auth.password_changed');
   });
 

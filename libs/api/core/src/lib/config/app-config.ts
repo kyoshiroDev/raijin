@@ -116,6 +116,17 @@ export interface AppConfig {
     /** Âge maximal (s) d'une analyse complète réutilisée telle quelle. */
     readonly reuseAnalysisMaxAgeS: number;
   };
+  /** Essai Pro sans carte (phase 6, docs/ARCHITECTURE.md §13). Droits de l'essai : `analysis.trialDailyLimit`, `wallet.dailyLimitTrial`, limites Pro des suivis. */
+  readonly trial: {
+    readonly days: number;
+    /** Cron UTC du job `trial-tick` (file maintenance). */
+    readonly jobCron: string;
+    /** Heure de Paris (0-23) à partir de laquelle partent les e-mails J+1 et J-2. */
+    readonly emailHour: number;
+    readonly fingerprintRetentionDays: number;
+    readonly claimRetentionDays: number;
+    readonly conversionWindowDays: number;
+  };
   /** Jobs BullMQ (réanalyses, envois, purges). */
   readonly jobs: {
     readonly enabled: boolean;
@@ -242,6 +253,16 @@ const envSchema = z.object({
   ALERT_EMAIL_BATCH_DELAY_S: z.coerce.number().int().min(0).max(3_600).default(120),
   ALERT_EMAIL_DAILY_MAX: z.coerce.number().int().min(0).max(500).default(20),
   RETENTION_DAYS: z.coerce.number().int().min(7).max(3_650).default(90),
+  TRIAL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  TRIAL_JOB_CRON: z
+    .string()
+    .trim()
+    .regex(/^(?:[0-9*/,-]+\s+){4}[0-9*/,-]+$/, { message: 'cron à 5 champs attendu (ex. 5 * * * *)' })
+    .default('5 * * * *'),
+  TRIAL_EMAIL_HOUR: z.coerce.number().int().min(0).max(23).default(10),
+  TRIAL_FINGERPRINT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3_650).default(90),
+  TRIAL_CLAIM_RETENTION_DAYS: z.coerce.number().int().min(30).max(3_650).default(730),
+  TRIAL_CONVERSION_WINDOW_DAYS: z.coerce.number().int().min(0).max(365).default(30),
   PURGE_CRON: z
     .string()
     .trim()
@@ -510,6 +531,14 @@ export function loadConfig(
       cacheTtlNoKeyS: e.WALLET_SCAN_CACHE_TTL_NO_KEY_S,
       tokenVerdictTtlS: e.WALLET_TOKEN_VERDICT_TTL_S,
       reuseAnalysisMaxAgeS: e.WALLET_REUSE_ANALYSIS_MAX_AGE_S,
+    },
+    trial: {
+      days: e.TRIAL_DAYS,
+      jobCron: e.TRIAL_JOB_CRON,
+      emailHour: e.TRIAL_EMAIL_HOUR,
+      fingerprintRetentionDays: e.TRIAL_FINGERPRINT_RETENTION_DAYS,
+      claimRetentionDays: e.TRIAL_CLAIM_RETENTION_DAYS,
+      conversionWindowDays: e.TRIAL_CONVERSION_WINDOW_DAYS,
     },
     jobs: {
       // Désactivés par défaut en test (services testés sans Redis), actifs sinon.

@@ -64,9 +64,14 @@ describe('templates d’auth', () => {
     expect(free.subject).toBe('Bienvenue sur Raijin');
     expect(free.html).toContain(`${ctx.appUrl}/analyse`);
     expect(free.text).toContain('Le risque zéro n’existe pas');
-    const trial = welcomeTemplate(ctx, new Date('2026-12-01T12:00:00Z'));
+    expect(free.html).not.toContain('rai-bravo');
+    expect(free.text).not.toContain('essai');
+    const trial = welcomeTemplate({ ...ctx, assetsBaseUrl: 'https://app.raijinshield.com/email' }, { endsAt: new Date('2026-12-01T12:00:00Z'), days: 7 });
     expect(trial.text).toContain('essai Pro de 7 jours');
     expect(trial.text).toContain('1 décembre');
+    expect(trial.text).toContain('sans rien payer');
+    expect(trial.html).toContain('src="https://app.raijinshield.com/email/rai-bravo@2x.png"');
+    expect(trial.html).toContain('alt="Rai, la mascotte de Raijin, te souhaite la bienvenue"');
   });
 
   it('compte existant et mot de passe changé', () => {

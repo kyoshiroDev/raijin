@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client as PgClient } from 'pg';
-import { ApiClient, tokenFrom, uniqueEmail, waitForMail } from '../support/client';
+import { ApiClient, tokenFrom, uniqueFreeEmail, waitForMail } from '../support/client';
 
 /**
  * Scan de wallet (phase 5) contre l'API réelle (Postgres, Redis), sources simulées
@@ -39,7 +39,8 @@ async function sql<T = Record<string, unknown>>(query: string, params: unknown[]
 }
 
 async function verifiedUser(prefix: string, plan: 'free' | 'pro' | 'trial'): Promise<{ client: ApiClient; email: string }> {
-  const email = uniqueEmail(prefix);
+  // Domaine jetable : pas d'essai Pro automatique, le plan voulu est posé ensuite en base.
+  const email = uniqueFreeEmail(prefix);
   const client = new ApiClient();
   client.headers['X-Forwarded-For'] = randomIp();
   await client.init();

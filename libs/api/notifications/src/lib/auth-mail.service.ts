@@ -11,6 +11,7 @@ import {
   welcomeTemplate,
   type RenderedMail,
   type TemplateContext,
+  type WelcomeTrial,
 } from './templates/auth-templates';
 
 /**
@@ -19,13 +20,13 @@ import {
  */
 @Injectable()
 export class AuthMailService {
-  private readonly ctx: TemplateContext;
+  private readonly ctx: TemplateContext & { readonly assetsBaseUrl: string };
 
   constructor(
     private readonly mailer: Mailer,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
-    this.ctx = { logoUrl: config.mail.logoUrl, appUrl: config.appUrl };
+    this.ctx = { logoUrl: config.mail.logoUrl, appUrl: config.appUrl, assetsBaseUrl: config.mail.assetsBaseUrl };
   }
 
   link(path: string, token?: string): string {
@@ -49,8 +50,9 @@ export class AuthMailService {
     return this.send(to, magicLinkTemplate(this.ctx, link, this.config.auth.magicLinkTtlMs));
   }
 
-  sendWelcome(to: string, trialEndsAt: Date | null): Promise<void> {
-    return this.send(to, welcomeTemplate(this.ctx, trialEndsAt));
+  /** Bienvenue : `trial` si l'essai Pro vient de démarrer, sinon message neutre (compte Gratuit). */
+  sendWelcome(to: string, trial: WelcomeTrial | null): Promise<void> {
+    return this.send(to, welcomeTemplate(this.ctx, trial));
   }
 
   sendAccountExists(to: string): Promise<void> {

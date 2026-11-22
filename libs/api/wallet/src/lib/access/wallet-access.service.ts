@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AnalysisClock, QuotaService, type QuotaPolicy, type QuotaReservation } from '@raijin/api-analysis';
-import { APP_CONFIG, ApiException, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, ApiException, PLAN_POLICY_USER_SELECT, planPolicyLimits, resolvePlanPolicy, type AppConfig } from '@raijin/api-core';
 import { PrismaService } from '@raijin/api-prisma';
 import { WALLET_ERROR_MESSAGES, type Plan, type QuotaInfo, type WalletScanQuotaResponse } from '@raijin/shared-contracts';
 
@@ -33,7 +33,7 @@ export function quotaExceeded(): ApiException {
  * Droits et quota du scan de wallet (docs/ARCHITECTURE.md §12.7) : Pro `WALLET_SCAN_DAILY_LIMIT_PRO`,
  * essai `WALLET_SCAN_DAILY_LIMIT_TRIAL`, Gratuit et e-mail non vérifié refusés (403, aucun compteur
  * touché). Réservation atomique `UsageCounter` kind `wallet_scan` par `QuotaService` (même plafond
- * d'échecs remboursés que l'analyse). La phase 6 (Stripe) ne change que la lecture du plan.
+ * d'échecs remboursés que l'analyse). Droits : `resolvePlanPolicy` (docs/ARCHITECTURE.md §13.4).
  */
 @Injectable()
 export class WalletAccessService {
@@ -47,17 +47,16 @@ export class WalletAccessService {
   async rights(userId: string): Promise<WalletScanRights> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { plan: true, trialStatus: true, trialEndsAt: true, emailVerifiedAt: true },
+      select: PLAN_POLICY_USER_SELECT,
     });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
-    const trialActive = user.trialStatus === 'ACTIVE' && !!user.trialEndsAt && user.trialEndsAt > this.clock.now();
-    const pro = user.plan === 'PRO';
-    const allowed = user.emailVerifiedAt !== null && (pro || trialActive);
-    const limit = pro ? this.config.wallet.dailyLimitPro : this.config.wallet.dailyLimitTrial;
+    const plan = resolvePlanPolicy(user, planPolicyLimits(this.config), this.clock.now());
+    const limit = plan.entitlements.walletScansPerDay;
+    const allowed = plan.emailVerified && limit > 0;
     const policy: QuotaPolicy | null = allowed
       ? { kind: 'wallet_scan', subject: 'user', userId, ipHash: null, plan: user.plan, limit }
       : null;
-    return { userId, plan: user.plan, trialActive, allowed, policy };
+    return { userId, plan: user.plan, trialActive: plan.trialActive, allowed, policy };
   }
 
   /** Droits d'un compte autorisé, sinon 403 `WALLET_SCAN_PLAN_REQUIRED`. */

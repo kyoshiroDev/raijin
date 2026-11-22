@@ -1,5 +1,6 @@
 import { Controller, Get, HttpStatus, Inject, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { BillingProvider } from '@raijin/api-billing';
 import { APP_CONFIG, type AppConfig } from '@raijin/api-core';
 import { PrismaService } from '@raijin/api-prisma';
 import type { Response } from 'express';
@@ -19,6 +20,7 @@ export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly billing: BillingProvider,
   ) {}
 
   @Get()
@@ -36,6 +38,8 @@ export class HealthController {
     for (const [name, configured] of Object.entries(this.config.services)) {
       services[name] = configured ? 'configured' : 'not_configured';
     }
+    // Stripe utilisable seulement en mode `stripe` (clés et prix valides) ; simulation ou indisponible : non configuré.
+    services['stripe'] = this.billing.mode() === 'stripe' ? 'configured' : 'not_configured';
     return { services };
   }
 }

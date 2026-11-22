@@ -120,8 +120,15 @@ model User {
   notifyEmailAlerts  Boolean   @default(true)
   notifyPushAlerts   Boolean   @default(true)
   notifyWeeklyDigest Boolean   @default(false)
+  /// E-mails d'essai J+1 et J-2 (préférence `trialEmails`) ; l'e-mail J0 part toujours.
+  notifyTrialEmails  Boolean   @default(true)
   /// Dernier résumé hebdomadaire envoyé (idempotence du job du lundi).
   weeklyDigestSentAt DateTime?
+  /// Idempotence des e-mails d'essai (posées avant l'envoi) et écran de fin d'essai vu (phase 6).
+  trialDay1MailAt      DateTime?
+  trialDayMinus2MailAt DateTime?
+  trialEndMailAt       DateTime?
+  trialEndScreenSeenAt DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
@@ -136,10 +143,12 @@ model User {
   productEvents     ProductEvent[]
   auditLogs         AuditLog[]
   trialFingerprints TrialFingerprint[]
+  trialClaims       TrialClaim[]
   tokenAnalyses     TokenAnalysis[]
 
   @@index([createdAt])
   @@index([plan])
+  @@index([trialStatus, trialEndsAt])
 }
 
 /// Session = famille de refresh tokens. `id` est le `sid` de l'access token.
@@ -220,6 +229,19 @@ model TrialFingerprint {
   @@index([createdAt])
 }
 
+/// Un essai Pro par e-mail normalisé (docs/ARCHITECTURE.md §13.6) : HMAC-SHA256(IP_HASH_SECRET, "trial-email:" + e-mail
+/// normalisé), jamais l'e-mail en clair. Survit à la suppression du compte (SetNull), purgé à TRIAL_CLAIM_RETENTION_DAYS.
+model TrialClaim {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  emailHash String   @unique
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
 // ---------------------------------------------------------------------------
 // Facturation (phase 6)
 // ---------------------------------------------------------------------------
@@ -234,10 +256,15 @@ model Subscription {
   interval             BillingInterval
   currentPeriodEnd     DateTime
   cancelAtPeriodEnd    Boolean            @default(false)
+  /// Horodatage Stripe (`event.created`) du dernier événement appliqué : un événement plus ancien est ignoré.
+  lastEventAt          DateTime?
+  /// Dernière facture connue (reçu, échec de paiement).
+  latestInvoiceId      String?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
   @@index([userId])
+  @@index([userId, status])
 }
 
 /// Événements Stripe déjà traités (idempotence des webhooks).

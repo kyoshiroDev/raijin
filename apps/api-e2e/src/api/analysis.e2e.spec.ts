@@ -1,6 +1,6 @@
 import { AUTH_EMAIL_LINK_PATHS, analysisResponseSchema, analysisResultSchema, quotaInfoSchema } from '@raijin/shared-contracts';
 import { randomBytes } from 'node:crypto';
-import { ApiClient, tokenFrom, uniqueEmail, waitForMail } from '../support/client';
+import { ApiClient, tokenFrom, uniqueFreeEmail, waitForMail } from '../support/client';
 
 /**
  * Analyse de token contre l'API réelle lancée avec `ANALYSIS_FIXTURES=1` (cible `api:serve-e2e`) :
@@ -101,7 +101,8 @@ describe('API Raijin : analyse de token (sources simulées)', () => {
   });
 
   it('utilisateur Gratuit connecté : quota de 5 par utilisateur ; cookie de session invalide → 401', async () => {
-    const email = uniqueEmail('analyse');
+    // Domaine jetable : pas d'essai Pro, le compte reste en Gratuit.
+    const email = uniqueFreeEmail('analyse');
     const client = await visitor();
     expect((await client.post('/auth/register', { email, password: 'une phrase de passe e2e solide', acceptTerms: true })).status).toBe(202);
     const text = await waitForMail(email, 'Confirme ton adresse');

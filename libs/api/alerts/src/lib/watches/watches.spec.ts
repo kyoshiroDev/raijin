@@ -46,7 +46,7 @@ function analysis(mintAddress: string): AnalysisResult {
 
 function setup(user: Record<string, unknown> = {}) {
   const prisma = new MemoryPrisma();
-  const base = { emailVerifiedAt: NOW, plan: 'FREE', trialStatus: 'NONE', trialEndsAt: null, notifyEmailAlerts: true, notifyPushAlerts: true, notifyWeeklyDigest: false };
+  const base = { emailVerifiedAt: NOW, plan: 'FREE', trialStatus: 'NONE', trialEndsAt: null, notifyEmailAlerts: true, notifyPushAlerts: true, notifyWeeklyDigest: false, notifyTrialEmails: true };
   prisma.tables['user']?.push({ id: U1, email: 'a@exemple.fr', ...base, ...user }, { id: U2, email: 'b@exemple.fr', ...base });
   const config = testConfig();
   const plans = new PlanLimitsService(prisma as unknown as PrismaService, clock, config);
@@ -139,6 +139,89 @@ describe('WatchesService', () => {
   });
 });
 
+describe('préférence trialEmails (colonne notifyTrialEmails)', () => {
+  it('lue et modifiée, quel que soit le plan', async () => {
+    const t = setup();
+    expect((await t.settings.settings(U1)).preferences.trialEmails).toBe(true);
+    const updated = await t.settings.update(U1, { trialEmails: false });
+    expect(updated.preferences.trialEmails).toBe(false);
+    expect(t.prisma.tables['user']?.[0]?.['notifyTrialEmails']).toBe(false);
+  });
+});
+
+describe('fin d’essai : keep, reprise, limite dans une transaction', () => {
+  async function fiveWatches(t: ReturnType<typeof setup>) {
+    for (let index = 0; index < 5; index += 1) {
+      await t.watches.create(U1, mint(index));
+      const row = t.prisma.tables['watch']?.[index];
+      if (row) row['createdAt'] = new Date(NOW.getTime() + index * 1000);
+    }
+    return (t.prisma.tables['watch'] ?? []).map((row) => row['id'] as string);
+  }
+  const statusOf = (t: ReturnType<typeof setup>) => (t.prisma.tables['watch'] ?? []).map((row) => `${row['status']}:${row['pausedReason'] ?? '-'}`);
+
+  it('essai actif → expiré : 5 suivis, les 2 plus récents en pause, jamais supprimés', async () => {
+    const t = setup({ trialStatus: 'ACTIVE', trialEndsAt: new Date(NOW.getTime() + 3_600_000) });
+    await fiveWatches(t);
+    const user = t.prisma.tables['user']?.[0];
+    if (user) user['trialStatus'] = 'ENDED';
+    const change = await t.prisma.$transaction((tx) => t.watches.enforcePlanLimitInTx(tx as unknown as Parameters<WatchesService['enforcePlanLimitInTx']>[0], U1));
+    expect(change).toEqual({ count: 2, mints: [mint(3), mint(4)] });
+    expect(statusOf(t)).toEqual(['active:-', 'active:-', 'active:-', 'paused:plan_limit', 'paused:plan_limit']);
+    expect(t.prisma.tables['watch']).toHaveLength(5);
+  });
+
+  it('keep : les 3 choisis actifs, les autres en pause plan_limit ; pause utilisateur inchangée', async () => {
+    const t = setup({ trialStatus: 'ACTIVE', trialEndsAt: new Date(NOW.getTime() + 3_600_000) });
+    const ids = await fiveWatches(t);
+    await t.watches.update(U1, ids[4] as string, 'paused');
+    const user = t.prisma.tables['user']?.[0];
+    if (user) user['trialStatus'] = 'ENDED';
+    await t.watches.enforcePlanLimit(U1);
+    const response = await t.watches.keep(U1, [ids[0], ids[3], ids[1]] as string[]);
+    expect(statusOf(t)).toEqual(['active:-', 'active:-', 'paused:plan_limit', 'active:-', 'paused:user']);
+    expect(response).toMatchObject({ activeCount: 3, pausedCount: 2, limits: { maxActiveWatches: 3, trialActive: false } });
+  });
+
+  it('keep refusé : plus que la limite, suivi d’un autre compte, doublon, e-mail non vérifié', async () => {
+    const t = setup();
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) ids.push((await t.watches.create(U1, mint(index))).watch.id);
+    const other = (await t.watches.create(U2, mint(7))).watch.id;
+    await expect(t.watches.keep(U1, [...ids, other])).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID', status: 400 });
+    await expect(t.watches.keep(U1, [ids[0] as string, other])).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID' });
+    await expect(t.watches.keep(U1, [ids[0] as string, ids[0] as string])).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID' });
+    await expect(t.watches.keep(U1, [])).rejects.toMatchObject({ code: 'WATCH_KEEP_INVALID' });
+    expect(statusOf(t).slice(0, 3)).toEqual(['active:-', 'active:-', 'active:-']);
+    const unverified = setup({ emailVerifiedAt: null });
+    await expect(unverified.watches.keep(U1, [ids[0] as string])).rejects.toMatchObject({ code: 'AUTH_EMAIL_NOT_VERIFIED' });
+  });
+
+  it('resumePlanLimited : passage Pro, reprise des pauses plan_limit (plus anciennes d’abord), jamais des pauses utilisateur', async () => {
+    const t = setup({ plan: 'PRO' });
+    const ids = await fiveWatches(t);
+    await t.watches.update(U1, ids[0] as string, 'paused');
+    const user = t.prisma.tables['user']?.[0];
+    if (user) user['plan'] = 'FREE';
+    expect(await t.watches.enforcePlanLimit(U1)).toBe(1);
+    expect(statusOf(t)).toEqual(['paused:user', 'active:-', 'active:-', 'active:-', 'paused:plan_limit']);
+    if (user) user['plan'] = 'PRO';
+    expect(await t.watches.resumePlanLimited(U1)).toBe(1);
+    expect(statusOf(t)).toEqual(['paused:user', 'active:-', 'active:-', 'active:-', 'active:-']);
+    expect(await t.watches.resumePlanLimited(U1)).toBe(0);
+  });
+
+  it('resumePlanLimited sans place : rien ne change', async () => {
+    const t = setup();
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) ids.push((await t.watches.create(U1, mint(index))).watch.id);
+    const row = t.prisma.tables['watch']?.[0];
+    if (row) Object.assign(row, { status: 'paused', pausedReason: 'plan_limit' });
+    await t.watches.create(U1, mint(5));
+    expect(await t.watches.resumePlanLimited(U1)).toBe(0);
+  });
+});
+
 describe('AlertsService', () => {
   function seed(t: ReturnType<typeof setup>, count: number, userId = U1) {
     for (let index = 0; index < count; index += 1) {
@@ -199,7 +282,7 @@ describe('préférences et push', () => {
     await expect(t.settings.update(U1, { pushAlerts: true })).rejects.toMatchObject({ code: 'PUSH_PLAN_REQUIRED', status: 403 });
     const settings = await t.settings.update(U1, { weeklyDigest: true, emailAlerts: false, pushAlerts: false });
     expect(settings).toEqual({
-      preferences: { emailAlerts: false, pushAlerts: false, weeklyDigest: true },
+      preferences: { emailAlerts: false, pushAlerts: false, weeklyDigest: true, trialEmails: true },
       pushAllowed: false,
       pushConfigured: true,
       pushDevices: 0,

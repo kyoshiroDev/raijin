@@ -133,3 +133,11 @@ export function tokenFrom(text: string, path: string): string {
 export function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}@exemple.fr`;
 }
+
+/**
+ * Adresse d'un domaine jetable (liste anti-abus) : le compte reste en Gratuit à la vérification (pas
+ * d'essai Pro, phase 6). Mailpit reçoit quand même l'e-mail.
+ */
+export function uniqueFreeEmail(prefix: string): string {
+  return uniqueEmail(prefix).replace(/@exemple\.fr$/, '@mailinator.com');
+}
