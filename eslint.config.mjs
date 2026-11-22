@@ -10,10 +10,13 @@ import nx from '@nx/eslint-plugin';
 const depConstraints = [
   // --- Scopes ---
   { sourceTag: 'scope:web', onlyDependOnLibsWithTags: ['scope:web', 'scope:shared'] },
-  { sourceTag: 'scope:api', onlyDependOnLibsWithTags: ['scope:api', 'scope:shared'] },
+  { sourceTag: 'scope:api', onlyDependOnLibsWithTags: ['scope:api', 'scope:solana', 'scope:shared'] },
   { sourceTag: 'scope:landing', onlyDependOnLibsWithTags: ['scope:landing', 'scope:shared'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
-  { sourceTag: 'scope:bench', onlyDependOnLibsWithTags: ['scope:bench', 'scope:shared'] },
+  // Intégrations Solana (libs/api/solana) : serveur uniquement, partagées par l'API Raijin et
+  // l'API du banc (PROMPT.md §4.8). Elles ne dépendent ni de scope:api ni de scope:bench.
+  { sourceTag: 'scope:solana', onlyDependOnLibsWithTags: ['scope:solana', 'scope:shared'] },
+  { sourceTag: 'scope:bench', onlyDependOnLibsWithTags: ['scope:bench', 'scope:solana', 'scope:shared'] },
   // --- Types ---
   {
     sourceTag: 'type:app',

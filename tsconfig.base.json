@@ -40,7 +40,8 @@
       "@raijin/api-notifications": ["./libs/api/notifications/src/index.ts"],
       "@raijin/api-solana": ["./libs/api/solana/src/index.ts"],
       "@raijin/api-prisma": ["./libs/api/prisma/src/index.ts"],
-      "@raijin/api-core": ["./libs/api/core/src/index.ts"]
+      "@raijin/api-core": ["./libs/api/core/src/index.ts"],
+      "@raijin/api-analysis": ["./libs/api/analysis/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

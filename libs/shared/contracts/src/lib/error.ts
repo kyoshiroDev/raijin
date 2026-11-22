@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ANALYSIS_ERROR_CODES } from './analysis/errors';
 
 /** Codes d'erreur génériques de l'API (`/api/v1`). */
 export const GENERIC_ERROR_CODES = [
@@ -37,8 +38,12 @@ export const AUTH_ERROR_CODES = [
   'AUTH_ACCOUNT_LOCKED',
 ] as const;
 
-/** Codes d'erreur standard de l'API : génériques + authentification. */
-export const apiErrorCodeSchema = z.enum([...GENERIC_ERROR_CODES, ...AUTH_ERROR_CODES]);
+/** Codes d'erreur standard de l'API : génériques + authentification + analyse. */
+export const apiErrorCodeSchema = z.enum([
+  ...GENERIC_ERROR_CODES,
+  ...AUTH_ERROR_CODES,
+  ...ANALYSIS_ERROR_CODES,
+]);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 
 export const authErrorCodeSchema = z.enum(AUTH_ERROR_CODES);

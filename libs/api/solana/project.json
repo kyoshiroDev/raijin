@@ -4,8 +4,8 @@
   "sourceRoot": "libs/api/solana/src",
   "projectType": "library",
   "tags": [
-    "scope:api",
-    "type:feature"
+    "scope:solana",
+    "type:data-access"
   ],
   "targets": {
     "build": {

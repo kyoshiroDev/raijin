@@ -27,7 +27,9 @@ dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
 | `web-feature-suivis` | `libs/web/feature-suivis` | Suivis et alertes | `scope:web`, `type:feature` |
 | `web-feature-wallet` | `libs/web/feature-wallet` | Scan de wallet | `scope:web`, `type:feature` |
 | `web-feature-compte` | `libs/web/feature-compte` | Auth, compte, abonnement | `scope:web`, `type:feature` |
-| `api-auth` … `api-solana` | `libs/api/*` | Modules Nest (auth, users, billing, alerts, notifications, solana) | `scope:api`, `type:feature` |
+| `api-auth` … `api-notifications` | `libs/api/*` | Modules Nest (auth, users, billing, alerts, notifications) | `scope:api`, `type:feature` |
+| `api-analysis` | `libs/api/analysis` | Analyse de token : endpoint, cache, quotas simples, persistance, page publique, image OG (phase 3) | `scope:api`, `type:feature` |
+| `api-solana` | `libs/api/solana` | Clients Helius / RPC, DexScreener, GeckoTerminal, Jupiter, RugCheck, file de débit, agrégateur de faits (partagé avec l'API du banc) | `scope:solana`, `type:data-access` |
 | `api-prisma` | `libs/api/prisma` | Schéma Prisma, migrations, client généré, `PrismaService` | `scope:api`, `type:data-access` |
 | `api-core` | `libs/api/core` | Socle Nest transverse : config Zod, filtre d'erreurs, Helmet, CORS, throttler, CSRF, cookies | `scope:api`, `type:util` |
 | `raijin-banc-de-test` | `apps/raijin-banc-de-test` | Front Angular 22 zoneless du banc (importé de `raijin-old`, phase 1 bis) | `scope:bench`, `type:app` |
@@ -56,10 +58,11 @@ Par **type** :
 
 Par **scope** :
 - `scope:web` → `web`, `shared` (jamais `api`).
-- `scope:api` → `api`, `shared` (jamais `web`).
+- `scope:api` → `api`, `solana`, `shared` (jamais `web`).
 - `scope:landing` → `landing`, `shared`.
 - `scope:shared` → `shared` uniquement.
-- `scope:bench` → `bench`, `shared`.
+- `scope:solana` → `solana`, `shared` (intégrations Solana côté serveur, `libs/api/solana` ; ni `api` ni `bench`).
+- `scope:bench` → `bench`, `solana`, `shared` (le banc réutilise `libs/api/solana`, PROMPT.md §4.8).
 - **Aucun projet Raijin ne dépend de `scope:bench`** (aucune règle ne l'autorise ; seul `scope:bench` lui-même le peut).
 
 Note : les modules Nest de `libs/api/*` sont taggés `type:feature` (ils jouent le rôle de
@@ -355,3 +358,140 @@ factices identiques à `docs/ENV.md`.
 `GET users/me` · `GET users/me/export` (RGPD, JSON en pièce jointe) · `DELETE users/me` (204, corps
 `DeleteAccountRequest { password }`). Codes : connexion refusée 401, compte verrouillé 429,
 jeton e-mail invalide 400, session absente 401 `AUTH_SESSION_EXPIRED`, CSRF 403.
+
+## 9. Analyse de token (phase 3)
+
+### 9.1 Découpage
+- **`libs/shared/contracts/src/lib/analysis/`** : contrat unique front ↔ API ↔ banc : `analysisRequestSchema`
+  (`{ input }` : mint ou lien, 256 caractères max), `mintParamSchema`, `analysisResultSchema` (verdict,
+  `explanation`, 9 `checks` dans l'ordre de `ANALYSIS_CHECK_IDS` avec `status`, `summary`, `metrics`
+  chiffrées, `sources` {id, name, url}, `reasonCodes` ; `engineVersion`, `analyzedAt`, `cached`, `degraded`),
+  `analysisResponseSchema` (`{ analysis, quota }`), `quotaInfoSchema`, `tokenMetadataSchema` (nom/symbole
+  **non fiables**, nettoyés et bornés, `untrusted: true`, aucune image), `riskFactsSchema` /
+  `riskAssessmentSchema` (entrée/sortie du moteur), `RISK_REASON_CODES`, `ANALYSIS_ERROR_CODES`
+  (`MINT_INVALID`, `TOKEN_NOT_FOUND`, `ANALYSIS_NOT_FOUND` ; `QUOTA_EXCEEDED`, `UPSTREAM_UNAVAILABLE`,
+  `RATE_LIMITED` restent génériques) et leurs messages, `EXTERNAL_LINK_HOSTS`, `ANALYSIS_DISCLAIMER`,
+  `SAFE_VERDICT_REMINDER`.
+- **`libs/shared/util`** : `extractSolanaAddress` (adresse brute, DexScreener, pump.fun, Solscan, Birdeye ;
+  `kind: 'mint' | 'pair_or_mint'`), `parseUrlLike` / `isAllowedHttpsUrl` (sans `URL`, absent de
+  `lib: es2022`), `sanitizeUntrustedText`. Utilisés à l'identique par le front (aperçu immédiat) et l'API.
+- **`libs/shared/risk-engine`** (pur) : `EvaluateRisk = (facts: RiskFacts) => RiskAssessment`. Aucune I/O,
+  aucune horloge (âges calculés depuis `facts.observedAt`), seuils fournis par une fabrique
+  (`createRiskEngine(config)`) pour que le banc évalue des variantes. Règles dans `docs/SCORING.md`.
+  Couverture ≥ 80 % (lignes et branches).
+- **`libs/api/solana`** (`api-solana`, **`scope:solana`**, `type:data-access`) : serveur uniquement,
+  réutilisé par `raijin-banc-de-test-api` (le tag `scope:solana` est autorisé pour `scope:api` et
+  `scope:bench`, et ne dépend lui-même que de `scope:shared`). Contenu :
+  - un client par source : `helius` (RPC + DAS), `solana-rpc` (RPC public), `dexscreener`,
+    `geckoterminal`, `jupiter` (lite-api quote, **devis seulement**), `rugcheck` ; chacun reçoit un
+    `fetch` injecté (tests sans réseau) et valide la réponse avec un schéma Zod **local** (types de
+    réponse des fournisseurs = détail d'implémentation, pas de contrat partagé) ;
+  - `UpstreamGate` par source : seau à jetons + file FIFO bornée (débordement → échec rapide),
+    timeout par appel (3 s, Jupiter 4 s), 2 tentatives max sur réseau / 429 / 5xx avec backoff
+    exponentiel + gigue (`Retry-After` respecté jusqu'à 2 s), disjoncteur simple (5 échecs consécutifs →
+    ouvert 30 s → un essai) ; implémentation maison (~150 lignes testées), **aucune dépendance** ;
+  - collecteurs de faits par contrôle et **agrégateur** `collectFacts(mint, { profile: 'full' | 'light' })`
+    → `RiskFacts` + statut par source (ok / erreur / ignorée, latence), sous une échéance globale de 8 s ;
+    `light` (sans historique du créateur ni devis de vente) servira au scan de wallet (phase 5), avec
+    `getTokenAccountsByOwner` réservé dans le client RPC ;
+  - ports `CacheStore` (get/set TTL) et `Clock`, implémentés par l'API (Redis) et plus tard par le banc :
+    la lib ne dépend pas de Redis ni de Prisma ;
+  - `ApiSolanaModule` Nest configurable (`forRootAsync`) qui assemble le tout.
+- **`libs/api/analysis`** (`api-analysis`, `scope:api`, `type:feature`) : contrôleur, cache, déduplication,
+  quotas simples, persistance `TokenAnalysis`, page publique, image OG. Orchestration :
+  `extractSolanaAddress` → résolution paire → mint (DexScreener) si `pair_or_mint` → `collectFacts` →
+  `EvaluateRisk` → rédaction des phrases → `analysisResultSchema.parse` (garde de sortie) → réponse.
+
+### 9.2 Routes (`/api/v1`)
+`POST analyses` (auth facultative, CSRF, `AnalysisRequest` → `AnalysisResponse`) ·
+`GET analyses/:mint/latest` (public, dernière analyse ≤ 24 h, sans quota, sinon 404 `ANALYSIS_NOT_FOUND`) ·
+`GET analyses/quota` (`QuotaInfo`) · `GET og/:mint.png` (image 1200×630) ·
+`GET share/t/:mint` (HTML de la page publique avec balises OG injectées, voir 9.7).
+
+### 9.3 Débit Helius (plan Free : 10 req/s RPC, 2 req/s DAS, 1 M crédits/mois, **partagés avec le banc**)
+- Répartition **statique** par processus (pas de coordination inter-processus) : API Raijin 7 req/s RPC et
+  1,5 req/s DAS, banc 3 req/s et 0,5 req/s (variables `HELIUS_RPC_RPS`, `HELIUS_DAS_RPS`).
+- Budget de crédits journalier compté dans Redis (`HELIUS_DAILY_CREDIT_BUDGET`, défaut API 22 000 ≈ 66 %
+  du mois, banc 10 000) ; au-delà, repli sur le RPC public quand c'est possible, sinon contrôle
+  `unavailable` (résultat `degraded`), jamais d'erreur bloquante.
+- Autres sources (sans compte, limites à confirmer par solana-data dans leur doc et à mettre en
+  configuration) : DexScreener ≈ 4 req/s, GeckoTerminal 0,5 req/s, Jupiter lite-api 1 req/s,
+  RugCheck 1 req/s.
+- **L'URL RPC Helius contient la clé** (`?api-key=`) : elle est construite à l'intérieur du client, jamais
+  journalisée ni renvoyée ; les logs ne portent que `source`, méthode RPC, statut et latence ; toute erreur
+  `fetch` est réemballée en `UpstreamError(source, kind)` **sans** `cause` (les erreurs undici peuvent
+  contenir l'URL). `redirect: 'error'`, taille de réponse bornée (2 Mo), `content-type` JSON exigé.
+
+### 9.4 Sans clé Helius
+RPC public `https://api.mainnet-beta.solana.com` à 1 req/s, cache des analyses porté à 300 s
+(`ANALYSIS_CACHE_TTL_NO_KEY_S`). Disponibles : autorités mint/freeze et extensions Token-2022
+(`getAccountInfo` jsonParsed), top holders (`getTokenLargestAccounts` + propriétaires via
+`getMultipleAccounts`). Indisponibles (statut `unavailable`, mention « source indisponible ») : historique
+du créateur et métadonnées modifiables des tokens SPL classiques (DAS requis ; un Token-2022 avec
+l'extension de métadonnées reste lisible). Les tests ne dépendent jamais de la clé (fixtures).
+
+### 9.5 Cache et déduplication
+- Résultat : Redis `analysis:result:<engineVersion>:<mint>`, TTL 60 s (`ANALYSIS_CACHE_TTL_S`) ; renvoyé
+  avec `cached: true`. Cache négatif `TOKEN_NOT_FOUND` 60 s. Caches par source dans `api-solana` via
+  `CacheStore` (ex. âge du token : 24 h, historique du créateur : 1 h, RugCheck : 5 min).
+- Déduplication : *single-flight* en mémoire (`Map<mint, Promise>`) + verrou Redis
+  `analysis:lock:<mint>` (`SET NX PX 15000`) ; les autres demandeurs relisent le cache toutes les 250 ms
+  pendant 10 s au plus, puis calculent eux-mêmes. Redis absent → single-flight mémoire seul.
+- Persistance : une ligne `TokenAnalysis` par analyse **fraîche** (pas pour un résultat en cache). Migration
+  phase 3 : colonnes `engineVersion`, `facts` (Json, `RiskFacts` : rejouables par le banc), `degraded`,
+  `explanation` ; `checks` = `AnalysisCheck[]`, `sources` = statut par source.
+
+### 9.6 Quotas simples (complets en phase 6)
+- Sujet : utilisateur connecté (`userId`) ou anonyme (`ipHash` = HMAC-SHA256(`IP_HASH_SECRET`, IP) tronqué,
+  IP lue via `trust proxy`). Limites en configuration : anonyme `ANON_ANALYSIS_DAILY_LIMIT` (3),
+  Gratuit `FREE_ANALYSIS_DAILY_LIMIT` (5), essai `TRIAL_ANALYSIS_DAILY_LIMIT` (50), Pro illimité. Jour UTC.
+- Réservation atomique avant l'analyse (`UPDATE … SET count = count + 1 WHERE count < limit`, upsert du
+  compteur `UsageCounter` kind `analysis`), **remboursée** si l'analyse échoue (`MINT_INVALID`,
+  `TOKEN_NOT_FOUND`, `UPSTREAM_UNAVAILABLE`). Une même analyse (sujet + mint) répétée dans les 10 min ne
+  recompte pas (Redis `quota:seen:<sujet>:<mint>`). Throttler renforcé sur `POST analyses` (anonyme).
+
+### 9.7 Page publique `/t/<mint>` et image Open Graph
+- Le front reste en rendu client (pas de SSR Angular) ; les robots des réseaux sociaux n'exécutant pas le
+  JS, `app.raijinshield.com/t/*` est servi en production par `GET /api/v1/share/t/:mint` (réécriture
+  Traefik en phase 8) : l'API lit le `index.html` du build web (`WEB_INDEX_HTML_PATH`, monté en lecture
+  seule ; à défaut, HTML minimal avec lien vers l'app) et y injecte titre, description, `og:*`,
+  `twitter:card = summary_large_image`, canonique, **toutes les valeurs échappées** (verdict + mint
+  tronqué ; symbole entre guillemets et marqué non fiable). Angular démarre ensuite normalement et met
+  à jour les balises via `Meta`/`Title` (seul mécanisme actif en dev).
+- Image OG : **satori + `@resvg/resvg-wasm`** (JS + WebAssembly, aucun script d'installation, aucun
+  binaire natif, donc rien à ajouter dans `allowBuilds` ; `sharp` reste refusé). 1200×630, fond `base`,
+  logo, badge de verdict (icône + mot), mint tronqué, petit Rai ; couleurs lues dans
+  `libs/brand/tokens.json`, polices de la charte en TTF/WOFF embarquées (satori ne lit pas le WOFF2).
+  Satori ne reçoit que des nœuds texte (pas d'HTML parsé) issus de `sanitizeUntrustedText`. Cache Redis
+  `og:<mint>:<verdict>:<engineVersion>` 1 h, `Cache-Control: public, max-age=600`, rendu en file de
+  concurrence 1 ; repli : image statique générique de la marque.
+
+### 9.8 Données externes hostiles et SSRF
+- Toute chaîne externe passe par `sanitizeUntrustedText` **à la collecte** (`api-solana`) puis par le parse
+  du contrat (rejoué côté front). Affichage par interpolation uniquement (aucun `innerHTML`,
+  aucun `bypassSecurityTrust*`).
+- Aucune image de token affichée ni proxifiée en v1 ; l'URI des métadonnées n'est **jamais** suivie.
+- Les liens de sources sont **construits par Raijin** à partir de gabarits fixes
+  (`https://dexscreener.com/solana/<mint>`, `https://rugcheck.xyz/tokens/<mint>`, `https://solscan.io/token/<mint>`…)
+  et validés par `externalUrlSchema` (https + `EXTERNAL_LINK_HOSTS`) ; jamais une URL fournie par une source.
+- SSRF : l'API n'appelle que des URL de base fixes en configuration ; le mint (base58 validé) est la seule
+  donnée insérée dans un chemin (`encodeURIComponent` quand même) ; `redirect: 'error'`.
+
+### 9.9 Fixtures
+`libs/api/solana/src/fixtures/<source>/<scenario>.json` :
+`{ recordedAt, source, request: { method, path | rpcMethod, params }, status, body }` (jamais d'URL
+complète, jamais d'en-tête). Scénarios minimum : token sain établi, stablecoin à freeze actif (émetteur
+connu), mint actif, honeypot (aucune route de vente), LP retirée, Token-2022 à taxe de transfert, mint
+inexistant, 429 et 500. Enregistrement : cible manuelle `api-solana:record-fixtures` (ni cache ni CI),
+qui lit `HELIUS_API_KEY` dans l'environnement du processus sans jamais l'afficher et retire toute
+query string ; le test `fixtures-hygiene.spec.ts` échoue si un fichier contient `api-key`,
+`helius-rpc.com/?` ou un UUID. Les tests unitaires rejouent les fixtures via le `fetch` injecté :
+**aucun appel réseau en test ni en CI**.
+
+### 9.10 Budget Lighthouse (mobile ≥ 95 sur l'écran d'analyse)
+Route lazy `web-feature-analyse` ; budget Angular `initial` resserré (avertissement 400 kB, erreur 500 kB brut), chunk de
+l'écran ≤ 80 kB brut ; LCP < 2,5 s, CLS < 0,05 (squelette aux dimensions du résultat), TBT < 200 ms ;
+animation « éclair sur le bouclier » en SVG + CSS (`transform`/`opacity` uniquement, ≤ 1,2 s,
+`prefers-reduced-motion` respecté) ; aucune ressource tierce, polices auto-hébergées préchargées
+(`font-display: swap`). Mesure sur le build de production servi statiquement, API simulée par les
+fixtures, pages : `/analyse` (vide), `/analyse/<mint>` (résultat), `/t/<mint>`.
