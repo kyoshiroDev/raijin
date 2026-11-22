@@ -1,5 +1,5 @@
 import { AUTH_EMAIL_LINK_PATHS, authSessionSchema, publicUserSchema } from '@raijin/shared-contracts';
-import { ApiClient, tokenFrom, uniqueEmail, waitForMail } from '../support/client';
+import { ApiClient, tokenFrom, uniqueEmail, waitForMail, waitForMailCount } from '../support/client';
 
 /**
  * Parcours d'auth complets contre l'API réelle, Postgres et Mailpit de docker-compose.dev.yml.
@@ -67,9 +67,50 @@ describe('API Raijin : parcours d’auth', () => {
     expect(stale.data['code']).toBe('AUTH_SESSION_EXPIRED');
 
     expect((await client.post('/auth/logout')).status).toBe(204);
+    // Cookies effacés par la déconnexion : « pas connecté », le front ne tente pas de refresh.
     const after = await client.get('/users/me');
     expect(after.status).toBe(401);
-    expect(after.data['code']).toBe('AUTH_SESSION_EXPIRED');
+    expect(after.data['code']).toBe('UNAUTHORIZED');
+  });
+
+  it('visiteur jamais connecté : session 401 UNAUTHORIZED, csrf 200, refresh 401 UNAUTHORIZED', async () => {
+    const visitor = new ApiClient();
+    const session = await visitor.get('/auth/session');
+    expect(session.status).toBe(401);
+    expect(session.data['code']).toBe('UNAUTHORIZED');
+    expect((await visitor.get('/auth/csrf')).status).toBe(200);
+    const refresh = await visitor.post('/auth/refresh');
+    expect(refresh.status).toBe(401);
+    expect(refresh.data['code']).toBe('UNAUTHORIZED');
+  });
+
+  it('refresh avec un jeton CSRF anonyme (front : auth/csrf puis auth/refresh), même sans access token', async () => {
+    const email = uniqueEmail('refresh-csrf');
+    const client = await registerAndVerify(email);
+    // Jeton CSRF anonyme obtenu après connexion : accepté par la garde.
+    expect((await client.get('/auth/csrf')).status).toBe(200);
+    expect((await client.post('/auth/refresh')).status).toBe(200);
+
+    // Cookie d'access perdu (expiré côté navigateur) : csrf anonyme puis refresh, la session reprend.
+    client.cookies.delete('rj_at');
+    expect((await client.get('/auth/csrf')).status).toBe(200);
+    const refreshed = await client.post('/auth/refresh');
+    expect(refreshed.status).toBe(200);
+    expect((await client.get('/users/me')).status).toBe(200);
+
+    // Jeton CSRF lié à la session, conservé avec le cookie d'access (même si son JWT a expiré) : accepté.
+    expect((await client.post('/auth/refresh')).status).toBe(200);
+  });
+
+  it('verify-email/resend connecté avec un corps vide : renvoi à l’adresse de la session', async () => {
+    const email = uniqueEmail('resend');
+    const client = await new ApiClient().init();
+    expect((await client.post('/auth/register', { email, password: PASSWORD, acceptTerms: true })).status).toBe(202);
+    await waitForMail(email, 'Confirme ton adresse');
+    expect((await client.post('/auth/login', { email, password: PASSWORD })).status).toBe(200);
+    const resend = await client.request('POST', '/auth/verify-email/resend');
+    expect(resend.status).toBe(202);
+    await waitForMailCount(email, 'Confirme ton adresse', 2);
   });
 
   it('connexion : identifiants faux neutres, succès, CSRF exigé', async () => {

@@ -168,12 +168,25 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
     expect(cookiesOf(res)['rj_rt']?.raw).toMatch(/Expires=Thu, 01 Jan 1970/);
   });
 
-  it('GET /auth/session et routes protégées : 401 sans session active', async () => {
-    const res = await request(server()).get('/api/v1/auth/session').expect(401);
-    expect(res.body.code).toBe('AUTH_SESSION_EXPIRED');
+  it('GET /auth/session : sans cookie → UNAUTHORIZED ; session révoquée ou jeton invalide → AUTH_SESSION_EXPIRED', async () => {
+    const anonymous = await request(server()).get('/api/v1/auth/session').expect(401);
+    expect(anonymous.body.code).toBe('UNAUTHORIZED');
     const session = issued('sid-revoquee');
     sessions.isActive.mockResolvedValue(false);
-    await request(server()).get('/api/v1/auth/session').set('Cookie', `rj_at=${session.accessToken}`).expect(401);
+    const revoked = await request(server()).get('/api/v1/auth/session').set('Cookie', `rj_at=${session.accessToken}`).expect(401);
+    expect(revoked.body.code).toBe('AUTH_SESSION_EXPIRED');
+    const garbage = await request(server()).get('/api/v1/auth/session').set('Cookie', 'rj_at=pas-un-jwt').expect(401);
+    expect(garbage.body.code).toBe('AUTH_SESSION_EXPIRED');
+  });
+
+  it('POST /auth/refresh sans cookie de refresh : 401 UNAUTHORIZED (rien à rafraîchir)', async () => {
+    const { token, cookie } = await anonymousCsrf();
+    auth.refresh.mockRejectedValue(new ApiException('UNAUTHORIZED', 401));
+    const res = await request(server())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: cookie })
+      .expect(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
   });
 
   it('GET /auth/session : session active → profil + nouveau CSRF lié', async () => {

@@ -94,6 +94,18 @@ export async function waitForMail(to: string, subject: string, timeoutMs = 10_00
   throw new Error(`Aucun e-mail « ${subject} » reçu`);
 }
 
+/** Attend au moins `count` e-mails pour `to` dont l'objet contient `subject`. */
+export async function waitForMailCount(to: string, subject: string, count: number, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const list = await axios.get<{ messages: MailpitSummary[] }>(`${MAILPIT_URL}/api/v1/messages?limit=200`);
+    const found = list.data.messages.filter((m) => m.To.some((t) => t.Address === to) && m.Subject.includes(subject));
+    if (found.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Moins de ${count} e-mails « ${subject} » reçus`);
+}
+
 /** Extrait le jeton d'un lien `…/chemin?token=…` du texte de l'e-mail. */
 export function tokenFrom(text: string, path: string): string {
   const match = new RegExp(`${path.replace(/[/-]/g, '\\$&')}\\?token=([A-Za-z0-9_-]+)`).exec(text);

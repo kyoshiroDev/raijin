@@ -244,9 +244,9 @@ describe('AuthService sessions', () => {
     expect(issued.refreshToken).toBe('r2');
   });
 
-  it('refresh sans cookie ou utilisateur supprimé : AUTH_SESSION_EXPIRED', async () => {
+  it('refresh sans cookie : UNAUTHORIZED (pas de refresh à tenter) ; utilisateur supprimé : AUTH_SESSION_EXPIRED', async () => {
     const { mock, service, sessions } = await setup();
-    await expectApiError(service.refresh(null, client), 'AUTH_SESSION_EXPIRED', 401);
+    await expectApiError(service.refresh(null, client), 'UNAUTHORIZED', 401);
     sessions.rotate.mockResolvedValue({ session: { id: 'sid-1', userId: 'u' }, refreshToken: 'r2' });
     mock.user.findUnique.mockResolvedValue(null);
     await expectApiError(service.refresh('r1', client), 'AUTH_SESSION_EXPIRED', 401);
