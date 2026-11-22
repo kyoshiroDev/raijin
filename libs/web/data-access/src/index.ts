@@ -32,3 +32,5 @@ export * from './lib/testing/watch-fixtures';
 export * from './lib/watch/watch-texts';
 export * from './lib/notifications/service-worker';
 export * from './lib/notifications/provide-push';
+export * from './lib/wallet/wallet-scan.service';
+export * from './lib/testing/wallet-fixtures';
