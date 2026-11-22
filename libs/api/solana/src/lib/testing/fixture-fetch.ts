@@ -3,6 +3,12 @@ import { join } from 'node:path';
 import { DEFAULT_SOLANA_DATA_CONFIG, type SolanaDataConfig } from '../config';
 import type { FetchLike } from '../core/ports';
 
+/*
+ * Rejeu des fixtures, exposé par le sous-chemin `@raijin/api-solana/testing` (jamais par l'index
+ * principal) : tests de la lib, tests et mode démonstration `ANALYSIS_FIXTURES=1` de l'API.
+ * Ne doit jamais être activé en production (choix de configuration de l'hôte).
+ */
+
 /** Fixture enregistrée (ARCHITECTURE.md §9.9) : ni URL complète ni en-tête. */
 export interface Fixture {
   readonly recordedAt: string;
@@ -31,8 +37,9 @@ export function loadFixture(source: string, scenario: string): Fixture {
   return JSON.parse(readFileSync(join(FIXTURES_DIR, source, `${scenario}.json`), 'utf8')) as Fixture;
 }
 
-export function loadAllFixtures(): Fixture[] {
-  return fixtureFiles().map((file) => JSON.parse(readFileSync(file, 'utf8')) as Fixture);
+/** Toutes les fixtures d'un dossier (défaut : celles de la lib ; un bundle passe son propre chemin). */
+export function loadAllFixtures(dir = FIXTURES_DIR): Fixture[] {
+  return fixtureFiles(dir).map((file) => JSON.parse(readFileSync(file, 'utf8')) as Fixture);
 }
 
 /** Paramètres ignorés à la comparaison (montant du devis : dépend du prix au moment de l'enregistrement). */

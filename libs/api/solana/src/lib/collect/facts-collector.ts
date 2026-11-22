@@ -149,7 +149,11 @@ export class FactsCollector {
     const nowMs = clock.now();
 
     try {
-      const mintPromise = tracker.track(servedBy, rpcFallback, () => this.deps.rpc.getMint(mint, signal));
+      // Coût d'abord : le compte de mint (1 crédit) est lu seul. Un mint introuvable ne déclenche
+      // aucun autre appel (ni DAS à 10 crédits, ni signatures, ni sources tierces).
+      const mintResult = await tracker.track(servedBy, rpcFallback, () => this.deps.rpc.getMint(mint, signal));
+      if (mintResult !== null && mintResult.value === null) throw new TokenNotFoundError();
+
       const dexPromise = tracker.track('dexscreener', 'dexscreener', () => this.deps.dexscreener.getTokenPairs(mint, signal));
       const geckoPromise = full
         ? tracker.track('geckoterminal', 'geckoterminal', () => this.deps.geckoterminal.getTokenPools(mint, signal))
@@ -164,12 +168,6 @@ export class FactsCollector {
         ? tracker.track(servedBy, rpcFallback, () => this.tokenCreation(mint, signal))
         : Promise.resolve(null);
 
-      const mintResult = await mintPromise;
-      if (mintResult !== null && mintResult.value === null) {
-        controller.abort();
-        await Promise.allSettled([dexPromise, geckoPromise, rugcheckPromise, dasPromise, creationPromise]);
-        throw new TokenNotFoundError();
-      }
       const [dex, gecko, rugcheck, das, creation] = await Promise.all([
         dexPromise,
         geckoPromise,

@@ -169,8 +169,20 @@ describe('collectFacts : tokens réels enregistrés (sans clé Helius)', () => {
   });
 
   it('mint inexistant : TokenNotFoundError, aucune autre source attendue', async () => {
-    const { svc } = service();
+    const { svc, calls } = service();
     await expect(svc.collectFacts(MINTS.missing)).rejects.toBeInstanceOf(TokenNotFoundError);
+    expect(calls).toEqual([{ source: 'solana_rpc', route: 'getAccountInfo' }]);
+  });
+
+  it('mint inexistant avec clé Helius : 1 seul crédit, aucun appel DAS ni tiers', async () => {
+    const credits: number[] = [];
+    const { svc, calls } = service({
+      heliusApiKey: TEST_KEY,
+      creditBudget: { tryConsume: async (n: number) => (credits.push(n), true) },
+    });
+    await expect(svc.collectFacts(MINTS.missing)).rejects.toBeInstanceOf(TokenNotFoundError);
+    expect(calls).toEqual([{ source: 'helius_rpc', route: 'getAccountInfo' }]);
+    expect(credits).toEqual([1]);
   });
 
   it('compte qui n’est pas un mint (programme système) : TokenNotFoundError', async () => {
@@ -385,5 +397,29 @@ describe('résolution paire → mint', () => {
     });
     await expect(reversed.svc.resolveToken(MINTS.lpRemoved)).resolves.toEqual({ mint: MINTS.freshPump, resolvedFromPair: true });
     await expect(reversed.svc.resolveToken(MINTS.missing)).resolves.toEqual({ mint: MINTS.missing, resolvedFromPair: false });
+  });
+
+  it('mint résolu qui n’est pas une vraie clé base58 (donnée hostile) → adresse telle quelle', async () => {
+    const hostile = service({
+      overrides: (url) =>
+        url.includes('/latest/dex/pairs/')
+          ? new Response(
+              JSON.stringify({
+                pairs: [
+                  {
+                    chainId: 'solana',
+                    dexId: 'raydium',
+                    pairAddress: MINTS.lpRemoved,
+                    // 44 caractères base58 mais 33 octets décodés : pas une clé publique.
+                    baseToken: { address: 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' },
+                    quoteToken: { address: 'So11111111111111111111111111111111111111112' },
+                  },
+                ],
+              }),
+              { headers: { 'content-type': 'application/json' } },
+            )
+          : undefined,
+    });
+    await expect(hostile.svc.resolveToken(MINTS.lpRemoved)).resolves.toEqual({ mint: MINTS.lpRemoved, resolvedFromPair: false });
   });
 });

@@ -1,9 +1,10 @@
+import { isSolanaAddress } from '@raijin/shared-util';
 import { z } from 'zod';
 import { UpstreamError } from '../core/errors';
 import { lenientArray } from './lenient';
 import { getJson, pathSegment, type RestTransport } from './rest';
 
-const address = z.string().min(32).max(44);
+const address = z.string().refine(isSolanaAddress);
 const numeric = z.union([z.number(), z.string().max(40)]).transform((value) => Number(value));
 
 const tokenRefSchema = z.object({

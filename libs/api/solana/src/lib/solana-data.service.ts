@@ -12,6 +12,7 @@ import type { UpstreamId } from './core/errors';
 import { MemoryCacheStore, MemoryCreditBudget } from './core/memory';
 import { SILENT_LOGGER, SYSTEM_CLOCK, type CacheStore, type Clock, type CreditBudget, type FetchLike, type SolanaLogger } from './core/ports';
 import { UpstreamGate } from './core/upstream-gate';
+import { isSolanaAddress } from '@raijin/shared-util';
 import { QUOTE_MINTS } from './known-accounts';
 
 export interface SolanaDataOptions {
@@ -148,6 +149,8 @@ export class SolanaDataService {
       const base = pair.baseToken.address;
       const quote = pair.quoteToken.address;
       const mint = QUOTE_MINTS.has(base) && !QUOTE_MINTS.has(quote) ? quote : base;
+      // Donnée externe : le mint résolu doit être une vraie clé publique base58 (32 octets).
+      if (!isSolanaAddress(mint)) return { mint: address, resolvedFromPair: false };
       return { mint, resolvedFromPair: true };
     } catch {
       return { mint: address, resolvedFromPair: false };
