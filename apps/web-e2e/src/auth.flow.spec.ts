@@ -317,3 +317,57 @@ test('redirection après connexion : chemin interne accepté', async ({ browser 
   await expect(page).toHaveURL(/\/suivis$/);
   await context.close();
 });
+
+test('compte verrouillé après des échecs répétés : même message qu’un compte inconnu (pas d’énumération)', async ({ browser }) => {
+  const setup = await browser.newContext();
+  const { email } = await createVerifiedAccount(setup, 'verrou');
+  await setup.close();
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('/compte/connexion');
+  // Seuil de verrouillage par défaut : 5 échecs (AUTH_LOCKOUT_THRESHOLD) ; on le dépasse depuis l'interface.
+  for (let i = 0; i < 6; i++) {
+    await fillLogin(page, email, `mauvais mot de passe ${i}`);
+    await expect(page.getByRole('alert')).toContainText('E-mail ou mot de passe incorrect.');
+  }
+  // Le bon mot de passe est refusé pendant le verrouillage, avec exactement le même message.
+  const res = page.waitForResponse((r) => r.url().endsWith('/api/v1/auth/login'));
+  await fillLogin(page, email, PASSWORD);
+  const login = await res;
+  expect(login.status()).toBe(401);
+  expect(((await login.json()) as { code: string }).code).toBe('AUTH_INVALID_CREDENTIALS');
+  await expect(page.getByRole('alert')).toContainText('E-mail ou mot de passe incorrect.');
+  const lockedText = await page.getByRole('alert').innerText();
+  await expect(page).toHaveURL(/\/compte\/connexion/);
+
+  const unknown = page.waitForResponse((r) => r.url().endsWith('/api/v1/auth/login'));
+  await fillLogin(page, uniqueEmail('inconnu-verrou'), PASSWORD);
+  const unknownRes = await unknown;
+  expect(unknownRes.status()).toBe(login.status());
+  expect(await unknownRes.json()).toEqual(await login.json());
+  // L'interface affiche exactement le même texte pour le compte verrouillé et le compte inconnu.
+  await expect(page.getByRole('alert')).toHaveText(lockedText);
+  await context.close();
+});
+
+test('deux onglets rafraîchissent en même temps : 409 rejoué, les deux restent connectés', async ({ context }) => {
+  const first = await context.newPage();
+  const { email } = await loginAndWaitForExpiry(first, context, 'deux-onglets');
+  const second = await context.newPage();
+  const statuses: number[] = [];
+  for (const p of [first, second]) {
+    p.on('response', (r) => {
+      if (r.url().endsWith('/api/v1/auth/refresh')) statuses.push(r.status());
+    });
+  }
+  // Rechargements simultanés avec le même refresh token (JWT expiré) : un 200, l'autre 409 puis rejeu.
+  await Promise.all([first.reload(), second.goto('/compte')]);
+  await expectAccount(first, email);
+  await expectAccount(second, email);
+  expect(statuses, 'au moins un refresh réussi').toContain(200);
+  expect(statuses.every((s) => s === 200 || s === 409), `statuts du refresh : ${statuses.join(', ')}`).toBe(true);
+  // La famille n'est pas révoquée : un nouveau chargement reste connecté.
+  await second.reload();
+  await expectAccount(second, email);
+});
