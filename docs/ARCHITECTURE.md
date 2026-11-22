@@ -171,8 +171,8 @@ la lib lazy `libs/web/feature-admin`.
 
 `.github/workflows/ci.yml` : sur push `dev` et PR vers `main`, `nx affected -t lint typecheck
 test build` (avec `nrwl/nx-set-shas`), cache pnpm et cache `.nx/cache`, `concurrency` avec
-annulation des exécutions obsolètes. E2E Playwright uniquement sur les PR vers `main`,
-artefacts de captures envoyés seulement en cas d'échec.
+annulation des exécutions obsolètes. E2E Playwright et Lighthouse uniquement sur les PR vers `main`
+(Lighthouse aussi en lancement manuel), artefacts de captures envoyés seulement en cas d'échec.
 
 - **Job `e2e`** (PR vers `main` uniquement, après le job principal) : conteneurs de service
   Postgres 17 (`postgres:17.12-alpine`), Redis (`redis:8.10.3-alpine`) et Mailpit
@@ -186,6 +186,21 @@ artefacts de captures envoyés seulement en cas d'échec.
   Playwright démarre sa propre API avec `JWT_ACCESS_TTL=20s` et des limites hautes au lieu de
   réutiliser celle de la première suite. Rapport HTML et captures (`dist/.playwright/**`)
   envoyés en artefact (7 jours) uniquement en cas d'échec.
+- **Job `lighthouse`** (PR vers `main`, après le job principal et en parallèle de `e2e` ; ou lancement
+  manuel `workflow_dispatch`) : mêmes services et secrets éphémères que `e2e`, migrations, Chromium de
+  Playwright (même cache), puis `pnpm nx run web-e2e:lighthouse --args="--runs 3 --phase phase-3"`
+  (build de production web + api, `serve-prod` sur 4310, API en mode fixtures sur 3100). Le résumé
+  (`docs/lighthouse/phase-3/summary.md` : tableau des scores, passages, audits fautifs) est publié dans
+  le résumé du job ; résumé + rapports HTML/JSON complets (`dist/lighthouse/phase-3/`) en artefact
+  `lighthouse-<n°>` (7 jours). Timeout 20 min. **Seuil** : sur PR vers `main`, le job échoue si une
+  catégorie est < 95 sur une page ; en lancement manuel, il publie seulement (étape en
+  `continue-on-error`), mais échoue si aucun résumé n'a été produit (serveurs non démarrés).
+- **Lancer la mesure à la demande** : `gh workflow run ci.yml --ref dev` (option `-f runs=1|3|5`,
+  défaut 3), ou onglet Actions → CI → « Run workflow » sur `dev`. Suivi : `gh run watch`, puis
+  `gh run download <id> -n lighthouse-<n°>`. En lancement manuel, seul ce job tourne (le job principal
+  et `e2e` sont ignorés) : ~10 min de runner. Le groupe de concurrence inclut l'événement, si bien qu'un
+  lancement manuel n'annule pas la vérification d'un push sur `dev`. Budget GitHub Free privé
+  (2 000 min/mois) : lancer seulement pour valider une optimisation, pas à chaque commit.
 - **E2E en local** : `pnpm nx run api:dev-infra` (Postgres, Redis, Mailpit), puis
   `pnpm nx run api-prisma:migrate-deploy` au premier lancement, puis `pnpm nx e2e api-e2e`
   et `pnpm nx e2e web-e2e` (une API déjà lancée est réutilisée par Playwright : la lancer alors
@@ -608,3 +623,38 @@ mode fixtures. Médiane de 3 : Perf 62 / 54 / 62 (`/analyse`, `/analyse/<mint>`,
 Tâche longue au démarrage ≤ 50 ms observés sur la machine de mesure au repos (≤ 200 ms simulés) ; aucune
 requête API ni chunk Zod avant le premier rendu de `/analyse` ; LCP ≤ 2 s simulé sur les 3 pages ; TBT
 ≤ 200 ms ; CLS ≤ 0,05 ; 0 erreur console et 0 problème « Issues » (visiteur anonyme, CSP de l'API active).
+
+### 10.4 Mesure de référence : le runner GitHub
+La machine de développement a un CPU bridé thermiquement (`idle_inject` sur 8 cœurs, `benchmarkIndex`
+980–1320) : Lighthouse local y donne Perf 87 / 73 / 78 (`/analyse`, `/analyse/<BONK>`, `/t/<BONK>`),
+Accessibilité, Best Practices et SEO à 100, CLS 0, TBT 490 / 710 / 1060 ms (chunk framework Angular
+161 kB), LCP de `/analyse/<BONK>` 3,6 s. Ces chiffres servent au diagnostic, pas au critère. **La mesure
+qui fait foi pour le critère ≥ 95 est celle du job `lighthouse` sur `ubuntu-latest`** (multiplicateur CPU
+4 par défaut, `benchmarkIndex` noté dans le résumé), lancé à la demande (§6) ou sur la PR `dev → main`.
+Si le runner lui-même affiche un `benchmarkIndex` < 1000, le noter dans `PROGRESS.md` à côté du score.
+
+### 10.5 Si le runner donne < 95 : options restantes (classées gain / risque)
+1. **Lancer l'analyse au démarrage de l'app** (gain moyen sur le LCP de `/analyse/<mint>` et `/t/<mint>`,
+   risque faible) : sur ces URL, déclencher jeton CSRF puis `POST /analyses` avant le bootstrap
+   (`main.ts` appelle une fonction de la lib de la feature, aucune logique dans l'app), et faire
+   consommer la promesse par le store ; la réponse arrive pendant l'évaluation du framework au lieu
+   d'après. Pas de dépendance, pas d'impact CSP.
+2. **Réduire le chunk framework** (gain moyen sur le TBT, risque faible à moyen, par petites étapes
+   mesurées). Déjà en place : zoneless (`provideZonelessChangeDetection`, pas de `zone.js`), aucun
+   `provideAnimations*` (animations CSS). Restent : inventaire du chunk avec les stats esbuild
+   (`--stats-json`) ; `withComponentInputBinding` remplacé par la lecture explicite des paramètres sur les
+   routes initiales ; formulaires (`FormsModule`/`ReactiveFormsModule`), `HttpClient` et intercepteurs
+   non nécessaires au premier rendu sortis du bundle initial ; barils de libs qui tirent des services
+   entiers remplacés par des imports ciblés ; coquille desktop (`RjAppShell`, barre latérale) rendue
+   seulement au-delà du point de rupture (`@defer (on viewport)` ou condition de média).
+3. **`zod/mini`** (gain faible sur le chemin critique depuis que Zod est hors du bundle initial, §10.2 point 3 ;
+   106 kB → ~14 kB à la demande ; risque moyen) : réécriture de tous les contrats (`libs/shared/contracts`)
+   et de leurs usages API et banc, API fonctionnelle différente (`z.optional(x)` au lieu de `x.optional()`).
+   À ne faire que si le profil montre encore l'évaluation de Zod avant le LCP.
+4. **Hydratation / prérendu** (gain incertain, risque fort) : impossible en l'état avec `script-src 'self'`
+   (script inline de rejeu d'événements) et sans effet sur la tâche longue de la coquille (§10.2 point 1).
+   Écarté, sauf hash CSP documenté et preuve que le TBT baisse.
+
+**Recommandation** : d'abord relever la mesure du runner (`gh workflow run ci.yml --ref dev`). Si une page
+est < 95, appliquer l'option 1 puis l'option 2 (coquille desktop et inventaire du chunk en premier), avec une mesure runner
+après chacune ; `zod/mini` seulement en dernier recours ; l'hydratation reste écartée.
