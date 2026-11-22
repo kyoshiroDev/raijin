@@ -168,6 +168,26 @@ async function openAlertFilters(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Attend la fin du défilement doux vers `?section=` : `window.scrollY` identique sur deux frames consécutives
+ * (sinon axe peut mesurer un élément à moitié sous l'en-tête collant, ex. bouton du bandeau d'essai).
+ */
+export async function scrollSettled(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            new Promise<boolean>((resolve) => {
+              const first = window.scrollY;
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.scrollY === first)));
+            }),
+        ),
+      { message: 'défilement vers la section terminé', timeout: 10_000 },
+    )
+    .toBe(true);
+}
+
 /** Écrans de la phase 4 (suivis, alertes, préférences, 404, maintenance), API réelle. */
 export const WATCH_PAGES: readonly PageEntry[] = [
   {
@@ -234,6 +254,7 @@ export const WATCH_PAGES: readonly PageEntry[] = [
     act: async (page) => {
       await expect(page.getByRole('switch', { name: 'Notifications push' })).toBeDisabled({ timeout: 15_000 });
       await expect(page.locator('#rj-notifications-title')).toBeFocused();
+      await scrollSettled(page);
     },
   },
   {
@@ -246,6 +267,7 @@ export const WATCH_PAGES: readonly PageEntry[] = [
     act: async (page) => {
       await expect(page.getByRole('switch', { name: 'Notifications push' })).toBeEnabled({ timeout: 15_000 });
       await expect(page.locator('#rj-notifications-title')).toBeFocused();
+      await scrollSettled(page);
     },
   },
   { name: '404', path: '/cette-page-n-existe-pas', heading: 'Cette page n’existe pas' },

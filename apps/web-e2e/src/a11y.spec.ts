@@ -325,7 +325,8 @@ for (const viewport of [
     await loginViaApi(page.context().request, email, password);
     await openPage(page, '/compte?section=notifications');
     await expect(page.locator('#rj-notifications-title')).toBeFocused({ timeout: 15_000 });
-    const expected = ['Alertes par e-mail', 'Résumé hebdomadaire', 'Notifications push'];
+    // Phase 6 : « E-mails de l’essai » entre le résumé hebdomadaire et le push.
+    const expected = ['Alertes par e-mail', 'Résumé hebdomadaire', 'E-mails de l’essai', 'Notifications push'];
     for (const name of expected) {
       await page.keyboard.press('Tab');
       const sw = page.getByRole('switch', { name });
