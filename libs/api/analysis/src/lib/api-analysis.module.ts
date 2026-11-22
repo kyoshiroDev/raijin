@@ -1,7 +1,15 @@
 import { Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ApiAuthModule } from '@raijin/api-auth';
 import { APP_CONFIG, errorCode, type AppConfig } from '@raijin/api-core';
-import { loadSolanaDataConfig, MemoryCacheStore, SolanaDataService, type SolanaDataOptions } from '@raijin/api-solana';
+import {
+  loadSolanaDataConfig,
+  MemoryCacheStore,
+  resolveSolanaDataConfig,
+  SolanaDataService,
+  UPSTREAM_IDS,
+  type SolanaDataConfig,
+  type SolanaDataOptions,
+} from '@raijin/api-solana';
 import { createFixtureFetch, loadAllFixtures } from '@raijin/api-solana/testing';
 import Redis from 'ioredis';
 import { join } from 'node:path';
@@ -37,6 +45,15 @@ export function createAnalysisRedis(config: AppConfig): Redis | null {
 }
 
 /**
+ * Réglages du mode fixtures seulement : réponses locales, donc aucun débit à protéger ; une source
+ * sans fixture échoue immédiatement (une tentative, délai court) au lieu d'attendre délais et rejeux.
+ */
+export function fixtureModeConfig(base: SolanaDataConfig): SolanaDataConfig {
+  const limits = Object.fromEntries(UPSTREAM_IDS.map((id) => [id, { ratePerSecond: 1_000, maxQueue: 100, timeoutMs: 500 }]));
+  return resolveSolanaDataConfig({ ...base, maxAttempts: 1, backoffBaseMs: 0, limits });
+}
+
+/**
  * Options de `SolanaDataService` (une instance par processus : files de débit partagées).
  * `ANALYSIS_FIXTURES=1` (jamais en production) : rejeu des enregistrements de `@raijin/api-solana`,
  * sans clé Helius ni réseau. Sinon : configuration de l'environnement (docs/ENV.md), caches par
@@ -49,10 +66,11 @@ export function solanaDataOptions(config: AppConfig, store: KeyValueStore, redis
     const dir = config.analysis.fixturesDir ?? join(process.cwd(), 'libs', 'api', 'solana', 'src', 'fixtures');
     // Rejeu appelé uniquement dans ce mode (import statique imposé par les frontières Nx : une lib ne
     // peut pas être importée à la fois statiquement et à la demande) ; aucun fichier lu sinon.
+    const replayConfig = fixtureModeConfig(solanaConfig);
     return {
-      config: solanaConfig,
+      config: replayConfig,
       heliusApiKey: null,
-      fetch: createFixtureFetch(loadAllFixtures(dir), solanaConfig).fetch,
+      fetch: createFixtureFetch(loadAllFixtures(dir), replayConfig).fetch,
       cache: new MemoryCacheStore(),
       logger,
     };

@@ -23,6 +23,7 @@ import {
   type RegisterRequest,
   type ResendVerificationRequest,
   type ResetPasswordRequest,
+  type SessionState,
   type VerifyEmailRequest,
 } from '@raijin/shared-contracts';
 import type { Request, Response } from 'express';
@@ -30,7 +31,7 @@ import { AccessTokenService } from '../services/access-token.service';
 import { AuthService, type IssuedSession } from '../services/auth.service';
 import { Client, type ClientInfo } from '../services/client-info';
 import { toPublicUser } from '../services/public-user';
-import { AuthGuard, CurrentAuth, type AuthContext } from './auth.guard';
+import { AuthGuard, CurrentAuth, OptionalAuth, OptionalAuthGuard, type AuthContext } from './auth.guard';
 
 /** Routes d'authentification `/api/v1/auth/*` (docs/PROGRESS.md, phase 2). */
 @ApiTags('auth')
@@ -131,16 +132,29 @@ export class AuthController {
     this.cookies.setCsrf(res, this.csrf.issue(null));
   }
 
+  /**
+   * État de session (`SessionState`) :
+   * - aucun cookie de session (ni access ni refresh) : 200 `{ authenticated: false }`, sans 401 ;
+   * - cookie de refresh seul (access expiré et effacé) : 401 `AUTH_SESSION_EXPIRED` → le front rafraîchit ;
+   * - cookie d'access invalide, expiré ou session révoquée : 401 `AUTH_SESSION_EXPIRED` (garde) ;
+   * - session valide : `{ authenticated: true, ...AuthSession }`.
+   */
   @Get('session')
-  @UseGuards(AuthGuard)
+  @UseGuards(OptionalAuthGuard)
   async session(
-    @CurrentAuth() auth: AuthContext,
+    @OptionalAuth() auth: AuthContext | null,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<AuthSession> {
+  ): Promise<SessionState> {
+    if (!auth) {
+      if (this.cookies.read(req, 'refresh')) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+      return { authenticated: false };
+    }
     const user = await this.auth.currentUser(auth.userId);
     const csrfToken = this.csrf.issue(auth.sessionId);
     this.cookies.setCsrf(res, csrfToken);
     return {
+      authenticated: true,
       user: toPublicUser(user),
       accessTokenExpiresAt: auth.accessTokenExpiresAt.toISOString(),
       csrfToken,

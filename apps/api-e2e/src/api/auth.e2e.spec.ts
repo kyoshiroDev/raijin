@@ -1,4 +1,4 @@
-import { AUTH_EMAIL_LINK_PATHS, authSessionSchema, publicUserSchema } from '@raijin/shared-contracts';
+import { AUTH_EMAIL_LINK_PATHS, authSessionSchema, publicUserSchema, sessionStateSchema } from '@raijin/shared-contracts';
 import { ApiClient, tokenFrom, uniqueEmail, waitForMail, waitForMailCount } from '../support/client';
 
 /**
@@ -75,11 +75,11 @@ describe('API Raijin : parcours d’auth', () => {
     expect(after.data['code']).toBe('UNAUTHORIZED');
   });
 
-  it('visiteur jamais connecté : session 401 UNAUTHORIZED, csrf 200, refresh 401 UNAUTHORIZED', async () => {
+  it('visiteur jamais connecté : session 200 anonyme (sans 401), csrf 200, refresh 401 UNAUTHORIZED', async () => {
     const visitor = new ApiClient();
     const session = await visitor.get('/auth/session');
-    expect(session.status).toBe(401);
-    expect(session.data['code']).toBe('UNAUTHORIZED');
+    expect(session.status).toBe(200);
+    expect(sessionStateSchema.parse(session.data)).toEqual({ authenticated: false });
     expect((await visitor.get('/auth/csrf')).status).toBe(200);
     const refresh = await visitor.post('/auth/refresh');
     expect(refresh.status).toBe(401);

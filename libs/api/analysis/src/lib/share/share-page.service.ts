@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, errorCode, GLOBAL_PREFIX, type AppConfig } from '@raijin/api-core';
 import { ANALYSIS_DISCLAIMER, VERDICT_LABELS, type AnalysisResult } from '@raijin/shared-contracts';
 import { truncateMiddle } from '@raijin/shared-util';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { AnalysisService } from '../analysis/analysis.service';
 import { OG_HEIGHT, OG_WIDTH } from '../og/og-template';
 
@@ -42,7 +42,8 @@ export interface SharePageMeta {
 @Injectable()
 export class SharePageService {
   private readonly logger = new Logger('SharePage');
-  private template: Promise<string> | null = null;
+  /** `index.html` en mémoire, relu dès que sa date de modification change (nouveau build web). */
+  private template: { path: string; mtimeMs: number; html: string } | null = null;
 
   constructor(
     private readonly analyses: AnalysisService,
@@ -90,17 +91,26 @@ export class SharePageService {
     };
   }
 
-  private loadTemplate(mint: string | null): Promise<string> {
+  /**
+   * Gabarit du build web : un `stat` par requête (peu coûteux), relecture seulement si le fichier a
+   * changé. Sans cela, après un nouveau build les noms des chunks changent et `/t/<mint>` resterait
+   * blanche jusqu'au redémarrage de l'API.
+   */
+  private async loadTemplate(mint: string | null): Promise<string> {
     const path = this.config.analysis.webIndexHtmlPath;
-    if (!path) return Promise.resolve(minimalHtml(this.config.appUrl, mint));
-    if (!this.template) {
-      this.template = readFile(path, 'utf8').catch((error: unknown) => {
-        this.logger.warn(`index.html du build web illisible, HTML minimal servi (${errorCode(error)})`);
-        this.template = null;
-        return '';
-      });
+    const fallback = minimalHtml(this.config.appUrl, mint);
+    if (!path) return fallback;
+    try {
+      const { mtimeMs } = await stat(path);
+      if (!this.template || this.template.path !== path || this.template.mtimeMs !== mtimeMs) {
+        this.template = { path, mtimeMs, html: await readFile(path, 'utf8') };
+      }
+      return this.template.html.includes('</head>') ? this.template.html : fallback;
+    } catch (error) {
+      this.template = null;
+      this.logger.warn(`index.html du build web illisible, HTML minimal servi (${errorCode(error)})`);
+      return fallback;
     }
-    return this.template.then((html) => (html.includes('</head>') ? html : minimalHtml(this.config.appUrl, mint)));
   }
 }
 

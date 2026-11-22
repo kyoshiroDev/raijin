@@ -1,6 +1,6 @@
 import { testConfig } from '@raijin/api-core';
 import type { AnalysisResult } from '@raijin/shared-contracts';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AnalysisService } from '../analysis/analysis.service';
@@ -100,6 +100,16 @@ describe('SharePageService', () => {
     expect(html).toContain('property="og:title"');
     const missing = await service(null, { WEB_INDEX_HTML_PATH: '/chemin/inexistant/index.html' }).render(FIXTURE_MINTS.safe);
     expect(missing).toContain('Ouvrir l’analyse dans Raijin');
+  });
+
+  it('relit index.html quand il change (nouveau build web), sans redémarrage', async () => {
+    const path = indexFile();
+    const page = service(null, { WEB_INDEX_HTML_PATH: path });
+    expect(await page.render(FIXTURE_MINTS.safe)).toContain('<rj-root></rj-root>');
+    writeFileSync(path, WEB_INDEX.replace('<rj-root></rj-root>', '<rj-root></rj-root><script src="main-NOUVEAU.js"></script>'));
+    const later = new Date(Date.now() + 5_000);
+    utimesSync(path, later, later);
+    expect(await page.render(FIXTURE_MINTS.safe)).toContain('main-NOUVEAU.js');
   });
 
   it('injectMeta insère avant </head>, minimalHtml échappe le lien', () => {

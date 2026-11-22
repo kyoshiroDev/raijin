@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ApiCoreModule, testConfig } from '@raijin/api-core';
 import { ApiPrismaModule, PrismaService } from '@raijin/api-prisma';
-import { MemoryCacheStore } from '@raijin/api-solana';
+import { loadSolanaDataConfig, MemoryCacheStore, type SolanaDataConfig } from '@raijin/api-solana';
 import { join } from 'node:path';
 import { ApiAnalysisModule, createAnalysisRedis, solanaDataOptions } from './api-analysis.module';
 import { AnalysisService } from './analysis/analysis.service';
@@ -31,8 +31,15 @@ describe('ApiAnalysisModule', () => {
     expect(fixtures.heliusApiKey).toBeNull();
     expect(fixtures.fetch).toBeDefined();
     expect(fixtures.cache).toBeInstanceOf(MemoryCacheStore);
+    // Mode fixtures seulement : une tentative, délai court, aucun débit limité.
+    const fixtureConfig = fixtures.config as SolanaDataConfig;
+    expect(fixtureConfig.maxAttempts).toBe(1);
+    expect(fixtureConfig.limits.solana_rpc).toMatchObject({ ratePerSecond: 1_000, timeoutMs: 500 });
     const real = solanaDataOptions(testConfig(), store, null);
     expect(real.fetch).toBeUndefined();
+    const fromEnv = loadSolanaDataConfig(process.env).config;
+    expect((real.config as SolanaDataConfig).maxAttempts).toBe(fromEnv.maxAttempts);
+    expect((real.config as SolanaDataConfig).limits.solana_rpc).toEqual(fromEnv.limits.solana_rpc);
     expect(real.cache).toBeInstanceOf(SolanaCacheStore);
     expect(real.creditBudget).toBeInstanceOf(RedisCreditBudget);
   });

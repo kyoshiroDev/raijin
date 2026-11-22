@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { ApiCoreModule, ApiException, setupApp, testConfig } from '@raijin/api-core';
 import { PrismaService } from '@raijin/api-prisma';
+import { sessionStateSchema } from '@raijin/shared-contracts';
 import request from 'supertest';
 import { userFixture } from '../../testing/fixtures';
 import { ApiAuthModule } from '../api-auth.module';
@@ -194,9 +195,11 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
     expect(cookiesOf(res)['rj_rt']).toBeUndefined();
   });
 
-  it('GET /auth/session : sans cookie → UNAUTHORIZED ; session révoquée ou jeton invalide → AUTH_SESSION_EXPIRED', async () => {
-    const anonymous = await request(server()).get('/api/v1/auth/session').expect(401);
-    expect(anonymous.body.code).toBe('UNAUTHORIZED');
+  it('GET /auth/session : sans cookie → 200 anonyme ; refresh seul, session révoquée ou jeton invalide → AUTH_SESSION_EXPIRED', async () => {
+    const anonymous = await request(server()).get('/api/v1/auth/session').expect(200);
+    expect(sessionStateSchema.parse(anonymous.body)).toEqual({ authenticated: false });
+    const refreshOnly = await request(server()).get('/api/v1/auth/session').set('Cookie', 'rj_rt=refresh-opaque').expect(401);
+    expect(refreshOnly.body.code).toBe('AUTH_SESSION_EXPIRED');
     const session = issued('sid-revoquee');
     sessions.isActive.mockResolvedValue(false);
     const revoked = await request(server()).get('/api/v1/auth/session').set('Cookie', `rj_at=${session.accessToken}`).expect(401);
@@ -221,6 +224,9 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
     auth.currentUser.mockResolvedValue(userFixture({ id: 'u', emailVerifiedAt: new Date() }));
     const res = await request(server()).get('/api/v1/auth/session').set('Cookie', `rj_at=${session.accessToken}`).expect(200);
     expect(res.body.user.emailVerified).toBe(true);
+    expect(res.body.authenticated).toBe(true);
+    // Identifiant de la doublure (« u ») hors format UUID : on valide la forme avec un vrai UUID.
+    expect(sessionStateSchema.safeParse({ ...res.body, user: { ...res.body.user, id: '0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' } }).success).toBe(true);
     expect(sessions.isActive).toHaveBeenCalledWith('sid-ok', 'u');
     expect(cookiesOf(res)['rj_csrf']?.value).toBe(res.body.csrfToken);
   });
