@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { MINTS, expectVerdict, useFreshIp } from './support/analysis';
 import { loginViaApi } from './support/auth';
 import { PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
@@ -54,6 +55,24 @@ for (const entry of PAGES) {
   }
 }
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+]) {
+  test(`axe analyse : accordéon déplié et « En savoir plus » ouvert ${viewport.width}px : zéro violation`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await useFreshIp(page);
+    await openPage(page, `/analyse/${MINTS.honeypot}`);
+    await expectVerdict(page, 'Danger');
+    await page.getByRole('button', { name: /^Revente possible/ }).click();
+    await expect(page.getByRole('region', { name: /Revente possible/ })).toBeVisible();
+    expect(await axe(page), 'accordéon déplié').toEqual([]);
+    await page.getByRole('button', { name: 'En savoir plus : Revente possible' }).click();
+    await openDialogSettled(page);
+    expect(await axe(page), 'bottom sheet ouverte').toEqual([]);
+  });
+}
+
 for (const [label, button] of [
   ['modale', 'Ouvrir (modale)'],
   ['panneau', 'Ouvrir (panneau)'],
@@ -82,7 +101,9 @@ for (const viewport of [
 ]) {
   test(`clavier ${viewport.width}px : Tab parcourt la coquille avec un focus visible`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await openPage(page, '/analyse');
+    // Écran sans contrôle dans le contenu : sous 1024 px la barre d'onglets suit <main> dans l'ordre du DOM
+    // (depuis la phase 3, /analyse a un formulaire qui s'intercale avant les onglets).
+    await openPage(page, '/suivis');
     const seen: string[] = [];
     for (let i = 0; i < viewport.expected.length; i++) {
       await page.keyboard.press('Tab');

@@ -2,21 +2,31 @@ import { expect, test, type Page } from '@playwright/test';
 import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
-import { PAGES, VIEWPORTS, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
+import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
+import { ANALYSIS_PAGES, PAGES, VIEWPORTS, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
  * dans docs/screenshots/<phase>/. Pages de l'app : hauteur d'écran ; /_design : page entière
  * (référence visuelle des composants).
  */
-const PHASE = process.env['SCREENSHOT_PHASE'] ?? 'phase-2';
+const PHASE = process.env['SCREENSHOT_PHASE'] ?? 'phase-3';
 const OUT = join(workspaceRoot, 'docs', 'screenshots', PHASE);
 const WIDTHS = [320, 390, 768, 1024, 1440];
 
 test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
 
 /** Phase 1 : coquille et /_design ; phase 2 (et suivantes) : écrans de compte et d'auth. */
-const SHOTS = PHASE === 'phase-1' ? PAGES.filter((p) => !p.path.startsWith('/compte/')) : PAGES.filter((p) => p.path.startsWith('/compte'));
+/** Phase 3 : écran d'analyse (vide et ses états) et page publique, API réelle en mode fixtures. */
+const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analyser un token' }, ...ANALYSIS_PAGES];
+const SHOTS =
+  PHASE === 'phase-1'
+    ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
+    : PHASE === 'phase-3'
+      ? PHASE3_SHOTS
+      : PAGES.filter((p) => p.path.startsWith('/compte'));
+/** Résultats d'analyse : page entière (verdict + 9 contrôles). */
+const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence']);
 
 for (const entry of SHOTS) {
   const { name } = entry;
@@ -27,7 +37,7 @@ for (const entry of SHOTS) {
       await openEntry(page, entry);
       const png = await page.screenshot({
         path: join(OUT, `${name}-${width}.png`),
-        fullPage: name === 'design',
+        fullPage: FULL_PAGE.has(name),
         animations: 'disabled',
       });
       expect(png.byteLength).toBeGreaterThan(1000);
@@ -120,7 +130,46 @@ const STATES: { name: string; open: (page: Page) => Promise<void> }[] = [
   },
 ];
 
-if (PHASE !== 'phase-1') {
+/** États de l'écran d'analyse obtenus par interaction (phase 3). */
+const ANALYSIS_STATES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: 'analyse-lien',
+    open: async (page) => {
+      await useFreshIp(page);
+      await openPage(page, '/analyse');
+      await tokenField(page).fill(`https://dexscreener.com/solana/${MINTS.bonkPair}`);
+      await expect(page.locator('[data-preview]')).toContainText('lien DexScreener');
+    },
+  },
+  {
+    name: 'analyse-aide',
+    open: async (page) => {
+      await useFreshIp(page);
+      await openPage(page, `/analyse/${MINTS.mintActive}`);
+      await expectVerdict(page, 'Danger');
+      await page.getByRole('button', { name: /^Autorité de mint/ }).click();
+      await page.getByRole('button', { name: 'En savoir plus : Autorité de mint' }).click();
+      await openDialogSettled(page);
+    },
+  },
+];
+
+if (PHASE === 'phase-3') {
+  for (const { name, open } of ANALYSIS_STATES) {
+    for (const width of WIDTHS) {
+      const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
+      test(`capture ${name} ${width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await open(page);
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
+        const png = await page.screenshot({ path: join(OUT, `${name}-${width}.png`), animations: 'disabled' });
+        expect(png.byteLength).toBeGreaterThan(1000);
+      });
+    }
+  }
+}
+
+if (PHASE === 'phase-2') {
   for (const { name, open } of STATES) {
     for (const width of WIDTHS) {
       const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };

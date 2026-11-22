@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('la racine redirige vers l’écran Analyser', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/analyse$/);
-  await expect(page.locator('h1')).toHaveText('Analyser');
+  await expect(page.locator('h1')).toHaveText('Analyser un token');
   await expect(page).toHaveTitle('Analyser — Raijin');
 });
 

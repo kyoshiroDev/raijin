@@ -1,5 +1,6 @@
 import { expect, request, type Page } from '@playwright/test';
 import { APP_ORIGIN, PASSWORD, createVerifiedAccount, loginViaApi, uniqueEmail } from './auth';
+import { MINTS, expectVerdict, exhaustAnonymousQuota, publishAnalysis, randomMint, useFreshIp } from './analysis';
 
 export interface PageEntry {
   name: string;
@@ -10,14 +11,106 @@ export interface PageEntry {
   auth?: boolean;
   /** Action à jouer après l'ouverture pour atteindre l'état testé (ex. « vérifie ta boîte »). */
   act?: (page: Page) => Promise<void>;
+  /** Préparation avant l'ouverture (analyse publiée, quota consommé, réponse simulée). */
+  prepare?: (page: Page, ip: string) => Promise<void>;
 }
 
 /** Jeton factice bien formé : l'écran de réinitialisation n'interroge l'API qu'à l'envoi du formulaire. */
 const FAKE_TOKEN = 'a'.repeat(43);
 
+const ANALYSE_H1 = 'Analyser un token';
+const PUBLIC_MINT = randomMint();
+
+/**
+ * États de l'écran d'analyse et de la page publique (phase 3), API réelle en mode fixtures.
+ * Chargement et erreur réseau : seules réponses simulées (POST jamais servi, 503).
+ */
+export const ANALYSIS_PAGES: readonly PageEntry[] = [
+  {
+    name: 'analyse-danger',
+    path: `/analyse/${MINTS.honeypot}`,
+    heading: ANALYSE_H1,
+    act: (page) => expectVerdict(page, 'Danger'),
+  },
+  {
+    name: 'analyse-prudence',
+    path: `/analyse/${MINTS.usdc}`,
+    heading: ANALYSE_H1,
+    act: (page) => expectVerdict(page, 'Prudence'),
+  },
+  {
+    name: 'analyse-partiel',
+    path: `/analyse/${MINTS.bonk}`,
+    heading: ANALYSE_H1,
+    act: async (page) => {
+      await expectVerdict(page, 'Prudence');
+      await expect(page.locator('[data-degraded]')).toBeVisible();
+    },
+  },
+  {
+    name: 'analyse-chargement',
+    path: `/analyse/${MINTS.bonk}`,
+    heading: ANALYSE_H1,
+    prepare: async (page) => {
+      // POST jamais servi : l'écran reste sur le chargement (bouclier + squelette).
+      await page.route('**/api/v1/analyses', (route) => (route.request().method() === 'POST' ? undefined : route.continue()));
+    },
+    act: async (page) => {
+      await expect(page.locator('rj-analysis-loading')).toBeVisible();
+    },
+  },
+  {
+    name: 'analyse-erreur',
+    path: `/analyse/${MINTS.missing}`,
+    heading: ANALYSE_H1,
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Aucun token à cette adresse' })).toBeVisible({ timeout: 20_000 });
+    },
+  },
+  {
+    name: 'analyse-erreur-reseau',
+    path: `/analyse/${MINTS.bonk}`,
+    heading: ANALYSE_H1,
+    prepare: async (page) => {
+      await page.route('**/api/v1/analyses', (route) =>
+        route.request().method() === 'POST'
+          ? route.fulfill({ status: 503, json: { code: 'UPSTREAM_UNAVAILABLE', message: 'Les sources de données ne répondent pas pour le moment. Réessaie dans quelques instants.' } })
+          : route.continue(),
+      );
+    },
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Sources de données indisponibles' })).toBeVisible();
+    },
+  },
+  {
+    name: 'analyse-quota',
+    path: `/analyse/${MINTS.pump}`,
+    heading: ANALYSE_H1,
+    prepare: (page, ip) => exhaustAnonymousQuota(page, ip),
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Quota du jour atteint' })).toBeVisible({ timeout: 20_000 });
+    },
+  },
+  {
+    name: 'public-prudence',
+    path: `/t/${MINTS.bonk}`,
+    heading: 'Verdict Raijin',
+    prepare: (page) => publishAnalysis(page.context().request, MINTS.bonk),
+    act: (page) => expectVerdict(page, 'Prudence'),
+  },
+  {
+    name: 'public-introuvable',
+    path: `/t/${PUBLIC_MINT}`,
+    heading: 'Verdict Raijin',
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Pas encore d’analyse récente' })).toBeVisible();
+    },
+  },
+];
+
 /** Pages testées (routes de l'app + page de référence visuelle, servie uniquement en dev). */
 export const PAGES: readonly PageEntry[] = [
-  { name: 'analyse', path: '/analyse', heading: 'Analyser' },
+  { name: 'analyse', path: '/analyse', heading: 'Analyser un token' },
   { name: 'suivis', path: '/suivis', heading: 'Suivis' },
   { name: 'alertes', path: '/alertes', heading: null },
   { name: 'compte', path: '/compte', heading: 'Compte', auth: true },
@@ -42,6 +135,7 @@ export const PAGES: readonly PageEntry[] = [
   { name: 'mot-de-passe-oublie', path: '/compte/mot-de-passe-oublie', heading: 'Mot de passe oublié' },
   { name: 'reinitialiser', path: `/compte/reinitialiser-mot-de-passe?token=${FAKE_TOKEN}`, heading: 'Nouveau mot de passe' },
   { name: 'lien-magique', path: '/compte/lien-magique', heading: 'Connexion sans mot de passe' },
+  ...ANALYSIS_PAGES,
 ];
 
 let sharedAccount: Promise<{ email: string; password: string }> | undefined;
@@ -61,6 +155,9 @@ export function sharedVerifiedAccount(): Promise<{ email: string; password: stri
 
 /** Ouvre l'écran d'une entrée de `PAGES` dans l'état testé (connexion préalable, action). */
 export async function openEntry(page: Page, entry: PageEntry): Promise<void> {
+  // IP fictive par test (API en TRUST_PROXY=1) : quota anonyme neuf, pas d'effet de bord entre tests.
+  const ip = await useFreshIp(page);
+  if (entry.prepare) await entry.prepare(page, ip);
   if (entry.auth) {
     const { email, password } = await sharedVerifiedAccount();
     await loginViaApi(page.context().request, email, password);

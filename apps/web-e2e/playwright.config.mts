@@ -5,6 +5,8 @@ import { getReadyUrl, workspaceRoot } from '@nx/devkit';
 // For CI, you may want to set BASE_URL to the deployed application.
 // getReadyUrl moves the address to the port the dev server task reported.
 const baseURL = process.env['BASE_URL'] || getReadyUrl('http://localhost:4200');
+/** Serveur du build de production (apps/web-e2e/scripts/serve-prod.mjs). */
+const PROD_ORIGIN = process.env['PROD_ORIGIN'] ?? 'http://127.0.0.1:4310';
 
 /**
  * Read environment variables from file.
@@ -26,7 +28,7 @@ export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, { testDir: './src' }),
   // CI : 1 worker (preset Nx). En local : 3 workers au plus, pour que le serveur de dev et axe
   // ne saturent pas la machine (timeouts aléatoires constatés avec le défaut de 50 % des cœurs).
-  workers: process.env['CI'] ? 1 : 3,
+  workers: process.env['CI'] ? 1 : Number(process.env['E2E_WORKERS'] ?? 3),
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,
@@ -42,12 +44,21 @@ export default defineConfig({
   // pour éviter les 429 sur une suite qui crée des dizaines de comptes depuis la même IP).
   webServer: [
     {
-      command: 'pnpm exec nx run api:serve',
-      timeout: 180_000,
+      // API compilée lancée sans watch, en mode fixtures (phase 3) : sources Solana rejouées depuis
+      // libs/api/solana/src/fixtures, TRUST_PROXY=1 pour simuler une IP par test (X-Forwarded-For,
+      // quota anonyme neuf), index.html du build web pour GET /share/t/:mint, origine du serveur de
+      // production local autorisée (CORS/CSRF). Même commande à la main si l'API est lancée d'avance.
+      command: 'pnpm exec nx run api:build && node dist/apps/api/main.js',
+      timeout: 300_000,
       url: 'http://localhost:3100/api/v1/health',
       reuseExistingServer: true,
       cwd: workspaceRoot,
       env: {
+        NODE_ENV: 'development',
+        ANALYSIS_FIXTURES: '1',
+        TRUST_PROXY: '1',
+        CORS_ORIGINS: `${PROD_ORIGIN},http://localhost:4310`,
+        WEB_INDEX_HTML_PATH: `${workspaceRoot}/dist/apps/web/browser/index.html`,
         JWT_ACCESS_TTL: process.env['JWT_ACCESS_TTL'] ?? '20s',
         RATE_LIMIT_AUTH_PER_MINUTE: process.env['RATE_LIMIT_AUTH_PER_MINUTE'] ?? '1000',
         RATE_LIMIT_PER_MINUTE: process.env['RATE_LIMIT_PER_MINUTE'] ?? '10000',
@@ -57,6 +68,15 @@ export default defineConfig({
       command: 'pnpm exec nx run web:serve',
       timeout: 180_000,
       url: getReadyUrl('http://localhost:4200'),
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+    },
+    {
+      // Build de production servi « comme en production » (compression, /api relayée, /t/<mint> réécrit
+      // vers GET /api/v1/share/t/:mint) : page publique servie par l'API, CSP comprise (analysis.flow.spec.ts).
+      command: 'pnpm exec nx run web:build && node apps/web-e2e/scripts/serve-prod.mjs',
+      timeout: 300_000,
+      url: `${PROD_ORIGIN}/manifest.webmanifest`,
       reuseExistingServer: true,
       cwd: workspaceRoot,
     },
