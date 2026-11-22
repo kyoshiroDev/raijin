@@ -246,6 +246,8 @@ MAINTENANCE_MODE=0
 # Raijin — scans de wallet par jour (jour UTC) : Pro et essai Pro. Gratuit : aucun scan (403).
 WALLET_SCAN_DAILY_LIMIT_PRO=20
 WALLET_SCAN_DAILY_LIMIT_TRIAL=10
+# Raijin — limite par utilisateur et par minute sur POST /wallet-scans, en plus du quota (vide = 5 en production, 60 en dev/test)
+RATE_LIMIT_WALLET_SCAN_PER_MINUTE=
 # Helius — part des crédits journaliers de l'API réservée aux scans de wallet
 #   (https://www.helius.dev/docs/billing/credits ; WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET
 #   ≤ HELIUS_DAILY_CREDIT_BUDGET). 3000 : ≈ 55 scans à froid par jour, les analyses gardent ≥ 7000.

@@ -7,6 +7,16 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "@nestjs/common": "^11.0.0",
+    "@nestjs/swagger": "^11.4.8",
+    "@nestjs/throttler": "^6.8.0",
+    "@raijin/api-analysis": "*",
+    "@raijin/api-auth": "*",
+    "@raijin/api-core": "*",
+    "@raijin/api-prisma": "*",
+    "@raijin/api-solana": "*",
+    "@raijin/shared-contracts": "*",
+    "@raijin/shared-risk-engine": "*",
+    "express": "^5.2.1",
     "tslib": "^2.3.0"
   }
 }

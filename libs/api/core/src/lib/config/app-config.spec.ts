@@ -198,6 +198,18 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ WATCH_DAILY_CREDIT_BUDGET: '30000' })).toThrow(/WATCH_DAILY_CREDIT_BUDGET/);
   });
 
+  it('scan de wallet : valeurs par défaut, budget suivis + wallet ≤ budget Helius, cache ≤ 10 min', () => {
+    const config = loadConfig({ NODE_ENV: 'test' });
+    expect(config.wallet).toMatchObject({ dailyLimitPro: 20, dailyLimitTrial: 10, dailyCreditBudget: 3_000, maxTokens: 20, maxTokensNoKey: 8 });
+    expect(config.wallet).toMatchObject({ maxAccounts: 1_000, cacheTtlS: 120, cacheTtlNoKeyS: 600, deadlineMs: 15_000, dustUsd: 1 });
+    expect(config.rateLimit.walletScanPerMinute).toBe(60);
+    expect(loadConfig({ ...prodEnv }).rateLimit.walletScanPerMinute).toBe(5);
+    expect(() => loadConfig({ WATCH_DAILY_CREDIT_BUDGET: '20000', WALLET_DAILY_CREDIT_BUDGET: '3000' })).toThrow(
+      /WATCH_DAILY_CREDIT_BUDGET \+ WALLET_DAILY_CREDIT_BUDGET/,
+    );
+    expect(() => loadConfig({ WALLET_SCAN_CACHE_TTL_NO_KEY_S: '601' })).toThrow(/WALLET_SCAN_CACHE_TTL_NO_KEY_S/);
+  });
+
   it('refuse les valeurs mal formées', () => {
     expect(() => loadConfig({ NODE_ENV: 'test', API_PORT: 'abc' })).toThrow(ConfigError);
     expect(() => loadConfig({ NODE_ENV: 'test', TRUST_PROXY: 'beaucoup' })).toThrow(/TRUST_PROXY/);

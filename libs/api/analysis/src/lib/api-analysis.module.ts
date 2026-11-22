@@ -68,12 +68,13 @@ export function createAnalysisRedis(config: AppConfig): Redis | null {
 }
 
 /**
- * Budget de crédits Helius par jour UTC, partagé par l'analyse (voie `interactive`) et les suivis
- * (voie `watch`, plafond `WATCH_DAILY_CREDIT_BUDGET`). Une instance par processus.
+ * Budget de crédits Helius par jour UTC, partagé par l'analyse (voie `interactive`), les suivis
+ * (voie `watch`, plafond `WATCH_DAILY_CREDIT_BUDGET`) et les scans de wallet (voie `wallet`, plafond
+ * `WALLET_DAILY_CREDIT_BUDGET`). Une instance par processus.
  */
 export function createCreditBudget(config: AppConfig, redis: Redis | null): RedisCreditBudget {
   const { config: solanaConfig } = loadSolanaDataConfig(process.env);
-  return new RedisCreditBudget(redis, solanaConfig.heliusDailyCreditBudget, undefined, config.watch.dailyCreditBudget);
+  return new RedisCreditBudget(redis, solanaConfig.heliusDailyCreditBudget, undefined, config.watch.dailyCreditBudget, config.wallet.dailyCreditBudget);
 }
 
 /**
@@ -169,6 +170,7 @@ export function solanaDataOptions(
   exports: [
     AnalysisService,
     QuotaService,
+    FactsCollector,
     KeyValueStore,
     SolanaDataService,
     WATCH_SOLANA_DATA,

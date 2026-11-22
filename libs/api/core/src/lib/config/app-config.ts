@@ -38,6 +38,8 @@ export interface AppConfig {
     readonly authPerMinute: number;
     /** Requêtes par minute et par IP sur `POST /analyses` (en plus du quota journalier). */
     readonly analysisPerMinute: number;
+    /** Scans de wallet par minute et **par utilisateur** (`POST /wallet-scans`, en plus du quota journalier). */
+    readonly walletScanPerMinute: number;
   };
   /** Analyse de token (phase 3, docs/ARCHITECTURE.md §9). */
   readonly analysis: {
@@ -87,6 +89,32 @@ export interface AppConfig {
     /** Regroupement des e-mails d'alerte (secondes) et plafond journalier par utilisateur. */
     readonly emailBatchDelayS: number;
     readonly emailDailyMax: number;
+  };
+  /** Scan de wallet (phase 5, docs/ARCHITECTURE.md §12). Aucune adresse n'est stockée en base. */
+  readonly wallet: {
+    /** Scans par jour (UTC) : Pro, essai Pro. Gratuit : aucun (403 `WALLET_SCAN_PLAN_REQUIRED`). */
+    readonly dailyLimitPro: number;
+    readonly dailyLimitTrial: number;
+    /** Crédits Helius par jour réservés aux scans (voie `wallet`). */
+    readonly dailyCreditBudget: number;
+    /** Tokens analysés au plus par scan, avec et sans clé Helius. */
+    readonly maxTokens: number;
+    readonly maxTokensNoKey: number;
+    /** Au-delà : 422 `WALLET_TOO_LARGE`. */
+    readonly maxAccounts: number;
+    /** Prix demandés à DexScreener au plus par scan. */
+    readonly priceLookupMax: number;
+    /** Valeur (USD, prix connu) sous laquelle un token est « poussière » (non analysé). */
+    readonly dustUsd: number;
+    /** Échéance globale d'un scan (ms). */
+    readonly deadlineMs: number;
+    /** Cache du résultat d'un wallet (s), avec et sans clé Helius ; 600 s au plus (RGPD). */
+    readonly cacheTtlS: number;
+    readonly cacheTtlNoKeyS: number;
+    /** Cache du verdict rapide par mint (s). */
+    readonly tokenVerdictTtlS: number;
+    /** Âge maximal (s) d'une analyse complète réutilisée telle quelle. */
+    readonly reuseAnalysisMaxAgeS: number;
   };
   /** Jobs BullMQ (réanalyses, envois, purges). */
   readonly jobs: {
@@ -160,6 +188,7 @@ const envSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(120),
   RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).optional(),
   RATE_LIMIT_ANALYSIS_PER_MINUTE: z.coerce.number().int().min(1).optional(),
+  RATE_LIMIT_WALLET_SCAN_PER_MINUTE: z.coerce.number().int().min(1).max(600).optional(),
   IP_HASH_SECRET: optionalString,
   ANON_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(3),
   FREE_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(5),
@@ -195,6 +224,20 @@ const envSchema = z.object({
   WATCH_FULL_INTERVAL_MIN: z.coerce.number().int().min(5).max(10_080).default(360),
   WATCH_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(12_000),
   HELIUS_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(22_000),
+  // Scan de wallet (docs/ENV.md, docs/ARCHITECTURE.md §12).
+  WALLET_SCAN_DAILY_LIMIT_PRO: z.coerce.number().int().min(1).max(10_000).default(20),
+  WALLET_SCAN_DAILY_LIMIT_TRIAL: z.coerce.number().int().min(1).max(10_000).default(10),
+  WALLET_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(3_000),
+  WALLET_SCAN_MAX_TOKENS: z.coerce.number().int().min(1).max(100).default(20),
+  WALLET_SCAN_MAX_TOKENS_NO_KEY: z.coerce.number().int().min(1).max(100).default(8),
+  WALLET_SCAN_MAX_ACCOUNTS: z.coerce.number().int().min(1).max(10_000).default(1_000),
+  WALLET_SCAN_PRICE_LOOKUP_MAX: z.coerce.number().int().min(0).max(1_000).default(150),
+  WALLET_SCAN_DUST_USD: z.coerce.number().min(0).max(1_000_000).default(1),
+  WALLET_SCAN_DEADLINE_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
+  WALLET_SCAN_CACHE_TTL_S: z.coerce.number().int().min(5).max(600).default(120),
+  WALLET_SCAN_CACHE_TTL_NO_KEY_S: z.coerce.number().int().min(5).max(600).default(600),
+  WALLET_TOKEN_VERDICT_TTL_S: z.coerce.number().int().min(5).max(86_400).default(3_600),
+  WALLET_REUSE_ANALYSIS_MAX_AGE_S: z.coerce.number().int().min(0).max(86_400).default(3_600),
   ALERT_COOLDOWN_MINUTES: z.coerce.number().int().min(0).max(10_080).default(360),
   ALERT_EMAIL_BATCH_DELAY_S: z.coerce.number().int().min(0).max(3_600).default(120),
   ALERT_EMAIL_DAILY_MAX: z.coerce.number().int().min(0).max(500).default(20),
@@ -358,6 +401,8 @@ export function loadConfig(
   if (isProduction && e.PUSH_PROVIDER === 'fake') problems.push('PUSH_PROVIDER : fake interdit en production');
   if (e.WATCH_DAILY_CREDIT_BUDGET > e.HELIUS_DAILY_CREDIT_BUDGET) {
     problems.push('WATCH_DAILY_CREDIT_BUDGET : ne doit pas dépasser HELIUS_DAILY_CREDIT_BUDGET');
+  } else if (e.WATCH_DAILY_CREDIT_BUDGET + e.WALLET_DAILY_CREDIT_BUDGET > e.HELIUS_DAILY_CREDIT_BUDGET) {
+    problems.push('WATCH_DAILY_CREDIT_BUDGET + WALLET_DAILY_CREDIT_BUDGET : ne doit pas dépasser HELIUS_DAILY_CREDIT_BUDGET');
   }
 
   // VAPID : les deux clés ou aucune. Sans clés : push indisponible en production ; paire
@@ -409,6 +454,8 @@ export function loadConfig(
       // 10 par défaut en production ; 60 en dev/test (parcours e2e et essais manuels répétés).
       authPerMinute: e.RATE_LIMIT_AUTH_PER_MINUTE ?? (isProduction ? 10 : 60),
       analysisPerMinute: e.RATE_LIMIT_ANALYSIS_PER_MINUTE ?? (isProduction ? 10 : 60),
+      // 5 par utilisateur en production (docs/ARCHITECTURE.md §12.2) ; 60 en dev/test (parcours e2e).
+      walletScanPerMinute: e.RATE_LIMIT_WALLET_SCAN_PER_MINUTE ?? (isProduction ? 5 : 60),
     },
     analysis: {
       ipHashSecret: secret('IP_HASH_SECRET'),
@@ -448,6 +495,21 @@ export function loadConfig(
       alertCooldownMinutes: e.ALERT_COOLDOWN_MINUTES,
       emailBatchDelayS: e.ALERT_EMAIL_BATCH_DELAY_S,
       emailDailyMax: e.ALERT_EMAIL_DAILY_MAX,
+    },
+    wallet: {
+      dailyLimitPro: e.WALLET_SCAN_DAILY_LIMIT_PRO,
+      dailyLimitTrial: e.WALLET_SCAN_DAILY_LIMIT_TRIAL,
+      dailyCreditBudget: e.WALLET_DAILY_CREDIT_BUDGET,
+      maxTokens: e.WALLET_SCAN_MAX_TOKENS,
+      maxTokensNoKey: e.WALLET_SCAN_MAX_TOKENS_NO_KEY,
+      maxAccounts: e.WALLET_SCAN_MAX_ACCOUNTS,
+      priceLookupMax: e.WALLET_SCAN_PRICE_LOOKUP_MAX,
+      dustUsd: e.WALLET_SCAN_DUST_USD,
+      deadlineMs: e.WALLET_SCAN_DEADLINE_MS,
+      cacheTtlS: e.WALLET_SCAN_CACHE_TTL_S,
+      cacheTtlNoKeyS: e.WALLET_SCAN_CACHE_TTL_NO_KEY_S,
+      tokenVerdictTtlS: e.WALLET_TOKEN_VERDICT_TTL_S,
+      reuseAnalysisMaxAgeS: e.WALLET_REUSE_ANALYSIS_MAX_AGE_S,
     },
     jobs: {
       // Désactivés par défaut en test (services testés sans Redis), actifs sinon.

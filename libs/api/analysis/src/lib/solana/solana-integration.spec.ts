@@ -154,6 +154,27 @@ describe('ports Redis de @raijin/api-solana', () => {
     await expect(budget.used('watch')).resolves.toBe(0);
   });
 
+  it('RedisCreditBudget : voie wallet → compteur helius:credits:wallet:<jour> plafonné à part', async () => {
+    const redis = {
+      eval: jest.fn(async () => 1),
+      get: jest.fn(async (key: string) => (key.startsWith('helius:credits:wallet:') ? '7' : '0')),
+    };
+    const budget = new RedisCreditBudget(redis as unknown as ConstructorParameters<typeof RedisCreditBudget>[0], 22_000, undefined, 12_000, 3_000);
+    await expect(budget.tryConsume(54, 'wallet')).resolves.toBe(true);
+    const [script, keys, , laneKey, credits, globalLimit, laneLimit] = (redis.eval.mock.calls[0] ?? []) as unknown[];
+    expect(script).toBe(CONSUME_LANE_CREDITS_SCRIPT);
+    expect(keys).toBe(2);
+    expect(laneKey).toMatch(/^helius:credits:wallet:\d{4}-\d{2}-\d{2}$/);
+    expect([credits, globalLimit, laneLimit]).toEqual(['54', '22000', '3000']);
+    await expect(budget.used('wallet')).resolves.toBe(7);
+    expect(budget.limit('wallet')).toBe(3_000);
+
+    const memory = new RedisCreditBudget(null, 10, undefined, 10, 3);
+    await expect(memory.tryConsume(3, 'wallet')).resolves.toBe(true);
+    await expect(memory.tryConsume(1, 'wallet')).resolves.toBe(false);
+    await expect(memory.tryConsume(7, 'interactive')).resolves.toBe(true);
+  });
+
   it('RedisCreditBudget : Redis en panne ou absent → budget mémoire', async () => {
     const failing = new RedisCreditBudget({ eval: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')), get: jest.fn() }, 10);
     await expect(failing.tryConsume(10)).resolves.toBe(true);
