@@ -25,7 +25,7 @@
 | Service | Prêt | Manque | Comment l'activer |
 |---|---|---|---|
 | Domaine raijinshield.com | — | achat OVH (utilisateur) | acheter, puis phase 8 ter (DNS via ops-chrome) |
-| Stripe | — | compte (mode test) | créer le compte, puis phase 1 ter |
+| Stripe | code complet + FakeBillingProvider (dev/test) | compte Stripe (mode test), puis clés `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO_MONTHLY|YEARLY` | créer le compte → ops-chrome configure produit, prix, Portal, relances, webhook → l'utilisateur copie les clés dans `.env` → `BILLING_PROVIDER=stripe` |
 | Resend | — | compte + domaine | créer le compte ; dev via Mailpit |
 | Helius | compte (plan Free : 1 M crédits/mois, RPC 10 req/s, DAS 2 req/s, partagés entre les 2 clés) ; clés « raijin-api » et « raijin-banc-de-test » créées | copie des clés dans `.env` par l'utilisateur ; restriction IP du VPS | copier les clés ; phase 8 ter : API Keys → Access control (IP/CIDR du VPS) |
 | Google (GA4, GSC, Cloud) | — | compte dédié | créer le compte ; services désactivés sans variables |
@@ -144,6 +144,9 @@
 - Sécurité :
 - Commits :
 - Décisions : essai géré en base seulement (jamais d'essai Stripe) ; `User.plan` = plan **payé**, essai calculé à la seconde par `resolvePlanPolicy` (source unique, remplace 3 calculs) ; `past_due` garde Pro pendant les relances ; webhooks idempotents par `StripeEvent` dans la transaction + relecture de l'abonnement + `lastEventAt` ; reçus sur `invoice.paid` (5e événement) ; **m5 tranché** : `TrialFingerprint` purgé à 90 j (PROMPT.md), un essai par e-mail porté durablement par `TrialClaim` (HMAC de l'e-mail normalisé, 24 mois, survit à la suppression du compte) ; empreinte prise au clic de vérification ; domaines jetables : liste CC0 copiée dans le dépôt + ajouts locaux, mise à jour manuelle trimestrielle, aucun téléchargement au runtime ; e-mails J+1 / J-2 à 10 h Europe/Paris, J0 à l'expiration (job horaire) ; bandeau pendant tout l'essai, fermeture par jour en `localStorage` ; écran de fin pendant les dernières 24 h ou après la fin tant que non vu ; sans compte Stripe : `FakeBillingProvider` (dev/test, refusé en prod), en prod sans clés `BILLING_NOT_CONFIGURED` ; clé publiable non utilisée ; prix en centimes dans la config, vérifiés contre Stripe au démarrage.
+
+- Avancement (orchestrateur) : [x] T1 nestjs-api, T2 stripe-billing (`d6850e4`) : essai à la vérification d'e-mail (TrialClaim 24 mois, 10 455 domaines jetables, empreinte 90 j), resolvePlanPolicy unifiée, job trial-tick + e-mails J+1/J-2/J0, watches/keep, conversion admin ; billing (Stripe SDK 23.2, API 2026-11-18.endive, FakeBillingProvider, webhooks idempotents StripeEvent + lastEventAt, past_due garde Pro, reçus/échecs) ; api-e2e 48/48 ; couvertures api-trial 98 %/80 %, api-billing 96 %/85 %. [x] T3 ui-mobile-first (`73c4386`) : /abonnement, succès, simulation, bandeau d'essai (@defer), fin d'essai + choix des 3 suivis, liens /compte remplacés. CI verte (run 45042995339). [ ] T5 test-e2e. [ ] T6 audit.
+- Décisions : e-mails de facturation envoyés après commit hors file BullMQ (perte possible si l'envoi échoue, à revoir) ; conversion d'essai via port `TrialConversion` (billing ne dépend pas de trial). À configurer dans Stripe (mode test, ops-chrome quand le compte existe) : produit Raijin Pro + prix 9,90 €/mois et 99 €/an, Portal, relances → annulation, webhook (5 événements, API 2026-11-18.endive).
 
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
