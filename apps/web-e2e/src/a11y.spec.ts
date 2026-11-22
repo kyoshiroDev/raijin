@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { MINTS, expectVerdict, useFreshIp } from './support/analysis';
 import { loginViaApi } from './support/auth';
 import { PAGES, openDialogSettled, openEntry, openPage, seededAccount, sharedVerifiedAccount } from './support/pages';
+import { WALLETS, scanButton, walletField, walletTrialAccount } from './support/wallet';
 
 /** Règles WCAG 2.0/2.1/2.2 A et AA + bonnes pratiques axe. */
 /**
@@ -348,3 +349,74 @@ for (const viewport of [
   });
 }
 
+
+/** Description de l'élément focalisé (nom accessible ou texte). */
+function activeLabel(page: Page) {
+  return page.evaluate(() => {
+    const el = document.activeElement as HTMLInputElement | null;
+    if (!el || el === document.body) return '';
+    return (el.getAttribute('aria-label') || el.labels?.[0]?.textContent || el.textContent || '').trim().replace(/\s+/g, ' ');
+  });
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+]) {
+  test(`clavier ${viewport.width}px : formulaire du scan de wallet et boutons de copie (Tab, focus visible, Entrée, Espace)`, async ({ page, context }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(viewport);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const { email, password } = await walletTrialAccount();
+    await loginViaApi(context.request, email, password);
+    await openPage(page, '/wallet');
+    const field = walletField(page);
+    await expect(field).toBeVisible({ timeout: 15_000 });
+
+    // Champ → « Coller » → « Scanner », focus visible à chaque étape.
+    await field.focus();
+    await page.keyboard.type(WALLETS.delegation);
+    for (const expected of ['Coller dans le champ Adresse publique du wallet', 'Scanner']) {
+      await page.keyboard.press('Tab');
+      expect(await activeLabel(page)).toBe(expected);
+      const info = await focusInfo(page);
+      expect(info?.visible, `« ${expected} » visible au focus`).toBe(true);
+      expect(info?.indicator, `« ${expected} » a un indicateur de focus`).toBe(true);
+    }
+    // Entrée depuis le champ envoie le formulaire.
+    await field.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-delegation]')).toHaveCount(3, { timeout: 30_000 });
+    await expect(scanButton(page)).toBeEnabled();
+
+    // Boutons de copie atteints au clavier depuis le bouton « Scanner » (ordre du DOM, avant tout autre contenu du résultat).
+    const copyButtons = page.locator('[data-delegations] rj-address-chip button');
+    await expect(copyButtons).toHaveCount(3);
+    await scanButton(page).focus();
+    let reached = false;
+    for (let i = 0; i < 40 && !reached; i++) {
+      await page.keyboard.press('Tab');
+      reached = await copyButtons.first().evaluate((el) => el === document.activeElement);
+    }
+    expect(reached, 'premier bouton « Copier l’adresse » atteint au clavier').toBe(true);
+    const info = await focusInfo(page);
+    expect(info?.visible).toBe(true);
+    expect(info?.indicator, 'bouton de copie : indicateur de focus').toBe(true);
+    const firstDelegate = await page.locator('[data-delegations] rj-address-chip').first().locator('[title]').first().getAttribute('title');
+    await page.keyboard.press('Enter');
+    await expect(copyButtons.first()).toHaveText(/Copié/);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(firstDelegate);
+
+    // Bouton suivant à l'Espace.
+    let next = false;
+    for (let i = 0; i < 10 && !next; i++) {
+      await page.keyboard.press('Tab');
+      next = await copyButtons.nth(1).evaluate((el) => el === document.activeElement);
+    }
+    expect(next, 'deuxième bouton « Copier l’adresse » atteint au clavier').toBe(true);
+    const secondDelegate = await page.locator('[data-delegations] rj-address-chip').nth(1).locator('[title]').first().getAttribute('title');
+    await page.keyboard.press('Space');
+    await expect(copyButtons.nth(1)).toHaveText(/Copié/);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(secondDelegate);
+  });
+}

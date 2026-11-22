@@ -2,6 +2,7 @@ import { expect, request, type Page } from '@playwright/test';
 import { APP_ORIGIN, PASSWORD, createVerifiedAccount, loginViaApi, uniqueEmail } from './auth';
 import { MINTS, expectVerdict, exhaustAnonymousQuota, publishAnalysis, randomMint, useFreshIp } from './analysis';
 import { followViaApi, seedAlerts, startTrial } from './watch';
+import { FAKE_SEED, WALLETS, scanWallet, scanWalletResult, setWalletScansUsed, walletField, walletTrialAccount } from './wallet';
 
 export interface PageEntry {
   name: string;
@@ -265,6 +266,97 @@ export const WATCH_PAGES: readonly PageEntry[] = [
   },
 ];
 
+const WALLET_H1 = 'Scan de wallet';
+
+/** Écran du scan de wallet en essai Pro, formulaire affiché (compteur de scans remis à zéro). */
+async function walletFormReady(page: Page): Promise<void> {
+  await expect(walletField(page)).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * États de `/wallet` (phase 5), API réelle en mode fixtures : visiteur, Gratuit, formulaire, résultat avec
+ * délégations, résultat Danger, wallet vide, phrase de récupération refusée, scans du jour épuisés.
+ */
+export const WALLET_PAGES: readonly PageEntry[] = [
+  {
+    name: 'wallet',
+    shot: 'wallet-visiteur',
+    path: '/wallet',
+    heading: WALLET_H1,
+    act: async (page) => {
+      await expect(page.locator('[data-access="signed-out"]')).toBeVisible();
+    },
+  },
+  {
+    name: 'wallet-gratuit',
+    path: '/wallet',
+    heading: WALLET_H1,
+    auth: true,
+    act: async (page) => {
+      await expect(page.locator('[data-access="plan"]')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  { name: 'wallet-saisie', path: '/wallet', heading: WALLET_H1, account: walletTrialAccount, act: walletFormReady },
+  {
+    name: 'wallet-delegations',
+    shot: 'wallet-resultat',
+    path: '/wallet',
+    heading: WALLET_H1,
+    account: walletTrialAccount,
+    act: async (page) => {
+      await walletFormReady(page);
+      await scanWalletResult(page, WALLETS.delegation);
+      await expect(page.locator('[data-delegation]')).toHaveCount(3);
+    },
+  },
+  {
+    name: 'wallet-danger',
+    path: '/wallet',
+    heading: WALLET_H1,
+    account: walletTrialAccount,
+    act: async (page) => {
+      await walletFormReady(page);
+      await scanWalletResult(page, WALLETS.danger);
+      await expect(page.locator('[data-verdict-count="danger"]')).toBeVisible();
+    },
+  },
+  {
+    name: 'wallet-vide',
+    path: '/wallet',
+    heading: WALLET_H1,
+    account: walletTrialAccount,
+    act: async (page) => {
+      await walletFormReady(page);
+      await scanWallet(page, WALLETS.empty);
+      await expect(page.getByRole('heading', { name: 'Aucun token dans ce wallet' })).toBeVisible();
+    },
+  },
+  {
+    name: 'wallet-invalide',
+    path: '/wallet',
+    heading: WALLET_H1,
+    account: walletTrialAccount,
+    act: async (page) => {
+      await walletFormReady(page);
+      await walletField(page).fill(FAKE_SEED);
+      await expect(walletField(page)).toHaveAttribute('aria-invalid', 'true');
+    },
+  },
+  {
+    name: 'wallet-quota',
+    path: '/wallet',
+    heading: WALLET_H1,
+    account: async () => {
+      const account = await walletTrialAccount();
+      await setWalletScansUsed(account.email, 10);
+      return account;
+    },
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Scans du jour utilisés' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+];
+
 /** Pages testées (routes de l'app + page de référence visuelle, servie uniquement en dev). */
 export const PAGES: readonly PageEntry[] = [
   { name: 'analyse', path: '/analyse', heading: 'Analyser un token' },
@@ -272,7 +364,6 @@ export const PAGES: readonly PageEntry[] = [
   { name: 'suivis', path: '/suivis', heading: 'Suivis', auth: true },
   { name: 'alertes', path: '/alertes', heading: null },
   { name: 'compte', path: '/compte', heading: 'Compte', auth: true },
-  { name: 'wallet', path: '/wallet', heading: 'Scan de wallet' },
   { name: 'design', path: '/_design', heading: 'Design — Raijin' },
   // Écrans d'auth (phase 2), visiteur non connecté.
   { name: 'connexion', path: '/compte/connexion', heading: 'Connexion' },
@@ -295,6 +386,7 @@ export const PAGES: readonly PageEntry[] = [
   { name: 'lien-magique', path: '/compte/lien-magique', heading: 'Connexion sans mot de passe' },
   ...ANALYSIS_PAGES,
   ...WATCH_PAGES,
+  ...WALLET_PAGES,
 ];
 
 let sharedAccount: Promise<{ email: string; password: string }> | undefined;

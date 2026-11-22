@@ -3,7 +3,7 @@ import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
 import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
-import { ANALYSIS_PAGES, PAGES, VIEWPORTS, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
+import { ANALYSIS_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
@@ -20,6 +20,7 @@ test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
 /** Phase 3 : écran d'analyse (vide et ses états) et page publique, API réelle en mode fixtures. */
 const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analyser un token' }, ...ANALYSIS_PAGES];
 /** Phase 4 : suivis (vide, rempli, limite), alertes (liste, filtres, vide), préférences, 404, maintenance. */
+/** Phase 5 : scan de wallet (visiteur, Gratuit, saisie, résultats délégations et Danger, vide, phrase refusée, quota). */
 const SHOTS =
   PHASE === 'phase-1'
     ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
@@ -27,9 +28,11 @@ const SHOTS =
       ? PHASE3_SHOTS
       : PHASE === 'phase-4'
         ? WATCH_PAGES
-        : PAGES.filter((p) => p.path.startsWith('/compte'));
+        : PHASE === 'phase-5'
+          ? WALLET_PAGES
+          : PAGES.filter((p) => p.path.startsWith('/compte'));
 /** Résultats d'analyse et listes : page entière. */
-const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste']);
+const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste', 'wallet-delegations', 'wallet-danger']);
 
 for (const entry of SHOTS) {
   const { name } = entry;
