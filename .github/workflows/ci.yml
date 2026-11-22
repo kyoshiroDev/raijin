@@ -5,10 +5,15 @@ on:
     branches: [dev]
   pull_request:
     branches: [main]
-  # Lancement manuel (bouton « Run workflow » ou `gh workflow run ci.yml --ref dev`) : seul le job
-  # lighthouse tourne, en mode diagnostic (publie les scores sans faire échouer l'exécution).
+  # Lancement manuel (bouton « Run workflow » ou `gh workflow run ci.yml --ref dev -f suite=e2e|lighthouse`) :
+  # seul le job choisi tourne (lighthouse en mode diagnostic ; e2e complet, utile quand la machine locale manque de mémoire).
   workflow_dispatch:
     inputs:
+      suite:
+        description: Job à lancer
+        type: choice
+        options: ['lighthouse', 'e2e']
+        default: 'lighthouse'
       runs:
         description: Passages Lighthouse par page (médiane retenue)
         type: choice
@@ -64,8 +69,12 @@ jobs:
       - run: pnpm nx affected -t lint typecheck test build --parallel=3
 
   e2e:
-    name: e2e Playwright (PR vers main)
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    name: e2e Playwright (PR vers main ou lancement manuel)
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'workflow_dispatch' && inputs.suite == 'e2e') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'main' && needs.verifier.result == 'success')
+      )
     needs: verifier
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -200,7 +209,7 @@ jobs:
     # workflow_dispatch : job principal ignoré, mesure seule pour diagnostic (aucun échec sur les scores).
     if: >-
       !cancelled() && (
-        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_dispatch' && inputs.suite != 'e2e') ||
         (github.event_name == 'pull_request' && github.base_ref == 'main' && needs.verifier.result == 'success')
       )
     needs: verifier
