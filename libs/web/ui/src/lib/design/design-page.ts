@@ -10,6 +10,7 @@ import { type RjNavItem } from '../navigation/nav-item';
 import { RjSidebar } from '../navigation/sidebar';
 import { RjTabBar } from '../navigation/tab-bar';
 import { RjSkeleton } from '../skeleton/skeleton';
+import { RjSwitch } from '../switch/switch';
 import { RjEmptyState } from '../states/empty-state';
 import { RjErrorState } from '../states/error-state';
 import { RjToastItem } from '../toast/toast';
@@ -40,6 +41,7 @@ interface DemoToken {
     RjSidebar,
     RjTabBar,
     RjSkeleton,
+    RjSwitch,
     RjEmptyState,
     RjErrorState,
     RjToastItem,
@@ -58,6 +60,7 @@ export class DesignPage {
   protected readonly modalOpen = signal(false);
   protected readonly panelOpen = signal(false);
   protected readonly sidebarCollapsed = signal(true);
+  protected readonly switchOn = signal(true);
 
   protected readonly navItems: readonly RjNavItem[] = [
     { label: 'Analyser', path: '/analyse', icon: 'analyse' },

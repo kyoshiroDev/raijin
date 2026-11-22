@@ -1,13 +1,16 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { App } from './app';
+import { UnreadAlerts } from '@raijin/web-data-access';
+import { App, NAV_ITEMS, navItemsWithUnread } from './app';
 import { appRoutes } from './app.routes';
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter([])],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
   });
 
@@ -31,8 +34,27 @@ describe('App', () => {
   it('déclare les routes des features et /_design en dev', () => {
     const paths = appRoutes.map((route) => route.path);
     expect(paths).toEqual(
-      expect.arrayContaining(['analyse', 't', 'suivis', 'alertes', 'wallet', 'compte', '_design']),
+      expect.arrayContaining(['analyse', 't', 'suivis', 'alertes', 'wallet', 'compte', 'maintenance', '_design', '**']),
     );
+  });
+
+  it('404 (route **) et maintenance : pages chargées à la demande, plus de redirection silencieuse', () => {
+    const notFound = appRoutes.at(-1);
+    expect(notFound?.path).toBe('**');
+    expect(notFound?.redirectTo).toBeUndefined();
+    expect(notFound?.loadComponent).toBeDefined();
+    expect(appRoutes.find((r) => r.path === 'maintenance')?.loadComponent).toBeDefined();
+  });
+
+  it('badge des alertes non lues : onglet Alertes, barre latérale et cloche du header', async () => {
+    expect(navItemsWithUnread(0)).toBe(NAV_ITEMS);
+    expect(navItemsWithUnread(4).find((item) => item.path === '/alertes')?.badge).toBe(4);
+    const fixture = TestBed.createComponent(App);
+    TestBed.inject(UnreadAlerts).set(3);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('button[aria-label="Notifications, 3 non lues"]')).not.toBeNull();
+    expect(host.querySelector('rj-tab-bar a[href="/alertes"]')?.textContent).toContain('3');
   });
 
   it('charge l’analyse et la page publique avec le bundle initial, les autres features à la demande', () => {

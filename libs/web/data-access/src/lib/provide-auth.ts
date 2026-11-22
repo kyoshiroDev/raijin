@@ -3,6 +3,7 @@ import { Injector, inject, makeEnvironmentProviders, provideAppInitializer, type
 import { AttributionTracker } from './auth/attribution';
 import { AuthStore } from './auth/auth.store';
 import { AUTH_INTERCEPTORS } from './http/interceptors';
+import { maintenanceInterceptor } from './http/maintenance';
 import { runAfterFirstRoute } from './util/idle';
 
 /**
@@ -15,7 +16,7 @@ import { runAfterFirstRoute } from './util/idle';
  */
 export function provideRaijinAuth(): EnvironmentProviders {
   return makeEnvironmentProviders([
-    provideHttpClient(withFetch(), withInterceptors([...AUTH_INTERCEPTORS])),
+    provideHttpClient(withFetch(), withInterceptors([maintenanceInterceptor, ...AUTH_INTERCEPTORS])),
     provideAppInitializer(() => {
       const attribution = inject(AttributionTracker);
       // Store d'auth (et client HTTP) créés plus tard, à l'inactivité : rien de plus au démarrage.

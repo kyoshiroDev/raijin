@@ -123,7 +123,10 @@ export class RjCheckItem {
 
   protected readonly buttonId = `rj-check-${nextId}`;
   protected readonly panelId = `rj-check-panel-${nextId++}`;
-  protected readonly label = computed(() => ANALYSIS_CHECK_LABELS[this.check().id]);
+  protected readonly label = computed(() => {
+    const id = this.check().id;
+    return Object.hasOwn(ANALYSIS_CHECK_LABELS, id) ? ANALYSIS_CHECK_LABELS[id] : 'Contrôle';
+  });
   protected readonly display = computed(() => CHECK_STATUS_DISPLAY[this.check().status]);
   protected readonly metrics = computed(() =>
     this.check().metrics.map((metric) => ({ key: metric.key, label: metric.label, formatted: formatMetric(metric) })),

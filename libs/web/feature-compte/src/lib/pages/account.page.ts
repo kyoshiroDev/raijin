@@ -1,11 +1,12 @@
 import { DOCUMENT } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, afterNextRender, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { PLAN_LABELS, type PublicUser } from '@raijin/shared-contracts';
-import { AuthStore, toClientError } from '@raijin/web-data-access';
+import { AuthStore, PushService, UnreadAlerts, WatchesStore, toClientError } from '@raijin/web-data-access';
 import { RjButton, RjCard, RjErrorState, RjIcon, RjSkeleton, RjToastService } from '@raijin/web-ui';
 import { RjChangePasswordSheet } from '../account/change-password-sheet';
 import { RjDeleteAccountSheet } from '../account/delete-account-sheet';
+import { RjNotificationSettings } from '../account/notification-settings';
 import { RjFormAlert } from '../shared/form-alert';
 import { DISCLAIMER, TEXT_LINK } from '../shared/links';
 
@@ -20,14 +21,14 @@ export function trialText(user: PublicUser): string {
 }
 
 /**
- * Écran Compte : profil, plan, sécurité (mot de passe, déconnexion), données (export, suppression).
+ * Écran Compte : profil, plan, notifications, sécurité (mot de passe, déconnexion), données (export, suppression).
  * Skeleton pendant la récupération de la session, Rai alerte si l'API ne répond pas.
  * Boutons des cartes : côte à côte s'ils tiennent en entier, sinon empilés (jamais tronqués).
  * Aucune action jaune sur l'écran lui-même : chaque bottom sheet porte sa propre action principale.
  */
 @Component({
   selector: 'rj-account-page',
-  imports: [RouterLink, RjButton, RjCard, RjErrorState, RjIcon, RjSkeleton, RjFormAlert, RjChangePasswordSheet, RjDeleteAccountSheet],
+  imports: [RouterLink, RjButton, RjCard, RjErrorState, RjIcon, RjSkeleton, RjFormAlert, RjChangePasswordSheet, RjDeleteAccountSheet, RjNotificationSettings],
   template: `
     @if (store.status() === 'error') {
       <rj-error-state
@@ -40,7 +41,7 @@ export function trialText(user: PublicUser): string {
       <div class="flex flex-col gap-6 md:gap-8">
         <header class="flex flex-col gap-1">
           <h1 class="font-display text-h2 text-ink md:text-h1">Compte</h1>
-          <p class="text-body text-ink-muted">Ton profil, ta sécurité et tes données.</p>
+          <p class="text-body text-ink-muted">Ton profil, tes notifications, ta sécurité et tes données.</p>
         </header>
 
         @if (!user.emailVerified) {
@@ -88,6 +89,8 @@ export function trialText(user: PublicUser): string {
             <p rjCardFooter class="text-body-sm text-ink-muted">Le détail des offres et la facturation arrivent bientôt ici.</p>
           </rj-card>
 
+          <rj-notification-settings class="md:col-span-2" />
+
           <rj-card>
             <h2 class="font-display text-h3 text-ink">Sécurité</h2>
             <p class="text-body text-ink-muted">Change ton mot de passe ou ferme ta session sur cet appareil.</p>
@@ -133,6 +136,14 @@ export class AccountPage {
   private readonly router = inject(Router);
   private readonly toasts = inject(RjToastService);
   private readonly document = inject(DOCUMENT);
+  private readonly push = inject(PushService);
+  private readonly watches = inject(WatchesStore);
+  private readonly unread = inject(UnreadAlerts);
+  private readonly injector = inject(Injector);
+
+  /** `?section=notifications` (lien « préférences » des e-mails d'alerte) : défilement et focus sur la carte. */
+  readonly section = input<string>();
+  private sectionShown = false;
 
   protected readonly link = TEXT_LINK;
   protected readonly disclaimer = DISCLAIMER;
@@ -157,12 +168,28 @@ export class AccountPage {
   });
 
   constructor() {
+    effect(() => {
+      const ready = this.store.user() !== null;
+      if (!ready || this.section() !== 'notifications' || this.sectionShown) return;
+      this.sectionShown = true;
+      untracked(() =>
+        afterNextRender(
+          () => {
+            const view = this.document.defaultView;
+            const reduce = view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? true;
+            this.document.getElementById('notifications')?.scrollIntoView?.({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+            this.document.getElementById('rj-notifications-title')?.focus({ preventScroll: true });
+          },
+          { injector: this.injector },
+        ),
+      );
+    });
     // Pas de garde bloquante : le skeleton s'affiche pendant la récupération de la session,
     // puis un visiteur est renvoyé vers la connexion (retour au compte ensuite).
     effect(() => {
       if (this.store.status() === 'anonymous' && !this.leaving) {
         this.leaving = true;
-        void this.router.navigate(['/compte/connexion'], { queryParams: { redirect: '/compte' }, replaceUrl: true });
+        void this.router.navigate(['/compte/connexion'], { queryParams: { redirect: this.section() === 'notifications' ? '/compte?section=notifications' : '/compte' }, replaceUrl: true });
       }
     });
   }
@@ -179,7 +206,11 @@ export class AccountPage {
   protected async logout(): Promise<void> {
     this.leaving = true;
     this.loggingOut.set(true);
+    // Cet appareil ne doit plus recevoir les alertes du compte (désabonnement avant la fin de session).
+    await this.push.disable();
     await this.store.logout();
+    this.watches.reset();
+    this.unread.set(0);
     this.loggingOut.set(false);
     this.toasts.show('Tu es déconnecté. À bientôt.');
     await this.router.navigateByUrl('/compte/connexion');

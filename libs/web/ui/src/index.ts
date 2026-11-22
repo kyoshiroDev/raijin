@@ -21,3 +21,5 @@ export * from './lib/states/error-state';
 export * from './lib/toast/toast.service';
 export * from './lib/toast/toast';
 export * from './lib/design/design-page';
+export * from './lib/status-page/status-page';
+export * from './lib/switch/switch';

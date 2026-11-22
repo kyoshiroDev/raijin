@@ -89,8 +89,8 @@ export function formatMetric(metric: CheckMetric): FormattedMetric {
 }
 
 /** Lien de source affichable : `https://` et domaine de la liste blanche, sinon `null`. */
-export function safeSourceUrl(url: string | null): string | null {
-  return url !== null && isAllowedHttpsUrl(url, EXTERNAL_LINK_HOSTS) ? url : null;
+export function safeSourceUrl(url: unknown): string | null {
+  return typeof url === 'string' && isAllowedHttpsUrl(url, EXTERNAL_LINK_HOSTS) ? url : null;
 }
 
 /** Nombre de contrôles par statut, dans l'ordre d'affichage (statuts absents omis). */

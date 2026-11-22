@@ -4,6 +4,7 @@ import { RjAddressChip, RjBottomSheet, RjButton, RjCard, RjIcon, RjSkeleton, RjT
 import { CHECK_HELP } from './check-help';
 import { CHECK_STATUS_DISPLAY, statusCounts } from './check-display';
 import { RjCheckItem } from './check-item';
+import { RjFollowButton } from './follow-button';
 import { ANALYSIS_CHECK_LABELS, ANALYSIS_DISCLAIMER, SAFE_VERDICT_REMINDER, VERDICT_LABELS } from './labels';
 import { AnalysisShare, publicTokenUrl } from './share';
 
@@ -35,7 +36,7 @@ function formatDate(iso: string): string {
  */
 @Component({
   selector: 'rj-analysis-result',
-  imports: [RjAddressChip, RjBottomSheet, RjButton, RjCard, RjCheckItem, RjIcon, RjSkeleton],
+  imports: [RjAddressChip, RjBottomSheet, RjButton, RjCard, RjCheckItem, RjFollowButton, RjIcon, RjSkeleton],
   template: `
     <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       <section class="flex min-w-0 flex-col lg:sticky lg:top-20" aria-label="Verdict">
@@ -100,9 +101,13 @@ function formatDate(iso: string): string {
           <div rjCardFooter class="flex flex-col gap-4">
             <div [class]="actionsGrid()">
               @if (mode() === 'private') {
-                <button type="button" rjButton="secondary" icon="follow" [disabled]="true" title="Les suivis arrivent bientôt dans Raijin.">
-                  Suivre (bientôt)
-                </button>
+                <!-- Bouton « Suivre » (store des suivis, bottom sheets) chargé à l'inactivité : hors du
+                     bundle initial et du chemin du LCP. Le placeholder garde la même taille. -->
+                @defer (on idle) {
+                  <rj-follow-button [mint]="result().mint" />
+                } @placeholder {
+                  <button type="button" rjButton="secondary" icon="follow" [disabled]="true">Suivre</button>
+                }
               }
               <button
                 type="button"

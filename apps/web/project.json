@@ -76,7 +76,8 @@
               "maximumError": "8kb"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "serviceWorker": "apps/web/ngsw-config.json"
         },
         "development": {
           "optimization": false,
@@ -108,7 +109,10 @@
       "executor": "@angular/build:unit-test",
       "options": {
         "watch": false
-      }
+      },
+      "dependsOn": [
+        "check-brand-png"
+      ]
     },
     "serve-static": {
       "continuous": true,
@@ -135,6 +139,29 @@
           "tsc --noEmit -p tsconfig.spec.json"
         ],
         "parallel": false
+      }
+    },
+    "render-mascot-png": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node tools/scripts/render-mascot-png.mjs"
+      }
+    },
+    "check-brand-png": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/libs/brand/mascot/*.svg",
+        "{workspaceRoot}/libs/brand/logos/raijin-mark.svg",
+        "{projectRoot}/public/email/*.png",
+        "{projectRoot}/public/icons/*.png",
+        "{projectRoot}/brand-png.lock.json",
+        "{workspaceRoot}/tools/scripts/render-mascot-png.mjs",
+        "{projectRoot}/public/maintenance.css",
+        "{workspaceRoot}/libs/brand/tokens.css"
+      ],
+      "options": {
+        "command": "node tools/scripts/render-mascot-png.mjs --check"
       }
     }
   }

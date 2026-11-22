@@ -87,10 +87,19 @@ describe('AccountPage', () => {
     const { harness, ctrl, router, store } = await setupFeature('authenticated');
     await harness.navigateByUrl('/compte');
     queryAll(harness, 'button').find((b) => b.textContent?.includes('Se déconnecter'))?.click();
+    await settle();
     ctrl.expectOne(`${API}/auth/logout`).flush(null, { status: 204, statusText: 'No Content' });
     await waitFor(() => router.url === '/compte/connexion');
     expect(store.isAuthenticated()).toBe(false);
     expect(router.url).toBe('/compte/connexion');
+  });
+
+  it('?section=notifications (lien des e-mails d’alerte) : focus sur la carte Notifications', async () => {
+    const { harness } = await setupFeature('authenticated');
+    await harness.navigateByUrl('/compte?section=notifications');
+    await waitFor(() => document.activeElement?.id === 'rj-notifications-title');
+    expect(document.activeElement?.id).toBe('rj-notifications-title');
+    expect(query(harness, '#notifications')).not.toBeNull();
   });
 
   it('texte d’essai factuel', () => {

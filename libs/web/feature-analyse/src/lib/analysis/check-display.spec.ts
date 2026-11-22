@@ -46,6 +46,10 @@ describe('safeSourceUrl', () => {
   it('accepte null', () => {
     expect(safeSourceUrl(null)).toBeNull();
   });
+
+  it('valeur non textuelle (réponse inattendue avant Zod) : aucun lien, aucun plantage', () => {
+    for (const value of [undefined, 42, {}, ['https://dexscreener.com/x']]) expect(safeSourceUrl(value)).toBeNull();
+  });
 });
 
 describe('statusCounts / tokenDisplayName', () => {

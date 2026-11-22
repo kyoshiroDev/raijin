@@ -1,4 +1,7 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { ANALYSIS_DISCLAIMER, SAFE_VERDICT_REMINDER, type AnalysisCheck, type AnalysisResult } from '@raijin/shared-contracts';
 import { fakeAnalysis } from '@raijin/web-data-access';
 import { RjAnalysisResult } from './analysis-result';
@@ -12,7 +15,11 @@ function checkAt(index: number): AnalysisCheck {
 
 /** Rendu du résultat ; `checks: false` laisse les 9 contrôles sur leur placeholder (`@defer`). */
 async function renderResult(result: AnalysisResult, mode: 'private' | 'public' = 'private', checks = true) {
-  TestBed.configureTestingModule({ deferBlockBehavior: DeferBlockBehavior.Manual });
+  TestBed.configureTestingModule({
+    deferBlockBehavior: DeferBlockBehavior.Manual,
+    // Bouton « Suivre » (bloc différé) : store des suivis et d'auth, sans requête pour un visiteur.
+    providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+  });
   const fixture = TestBed.createComponent(RjAnalysisResult);
   fixture.componentRef.setInput('result', result);
   fixture.componentRef.setInput('mode', mode);
@@ -144,11 +151,15 @@ describe('RjAnalysisResult', () => {
     expect(host.textContent).not.toContain('non fiable');
   });
 
-  it('privé : « Suivre » désactivé (bientôt) ; public : pas de « Suivre »', async () => {
+  it('privé : « Suivre » en placeholder désactivé puis actif ; public : pas de « Suivre »', async () => {
+    const placeholder = await renderResult(fakeAnalysis('warn'), 'private', false);
+    const waiting = Array.from(placeholder.host.querySelectorAll('button')).find((b) => b.textContent?.includes('Suivre'));
+    expect(waiting?.disabled).toBe(true);
+    TestBed.resetTestingModule();
     const privateView = await renderResult(fakeAnalysis('warn'));
-    const follow = Array.from(privateView.host.querySelectorAll('button')).find((b) => b.textContent?.includes('Suivre'));
-    expect(follow?.disabled).toBe(true);
-    expect(follow?.textContent).toContain('bientôt');
+    const follow = privateView.host.querySelector<HTMLButtonElement>('rj-follow-button button[data-follow]');
+    expect(follow?.disabled).toBe(false);
+    expect(follow?.getAttribute('aria-pressed')).toBe('false');
     TestBed.resetTestingModule();
     const publicView = await renderResult(fakeAnalysis('warn'), 'public');
     expect(Array.from(publicView.host.querySelectorAll('button')).some((b) => b.textContent?.includes('Suivre'))).toBe(false);

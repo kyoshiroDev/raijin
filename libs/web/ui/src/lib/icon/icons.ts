@@ -34,6 +34,13 @@ import {
   User,
   Wallet,
   X,
+  BellOff,
+  BookmarkCheck,
+  CheckCheck,
+  Pause,
+  Play,
+  SlidersHorizontal,
+  Smartphone,
   type IconNode,
 } from 'lucide';
 
@@ -81,6 +88,13 @@ export const RjIcons = {
   unavailable: CircleDashed,
   follow: BookmarkPlus,
   clock: Clock,
+  following: BookmarkCheck,
+  pause: Pause,
+  play: Play,
+  filter: SlidersHorizontal,
+  checkAll: CheckCheck,
+  bellOff: BellOff,
+  smartphone: Smartphone,
 } as const satisfies Record<string, IconNode>;
 
 export type RjIconName = keyof typeof RjIcons;

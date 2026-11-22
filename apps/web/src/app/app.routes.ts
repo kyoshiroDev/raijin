@@ -55,6 +55,16 @@ export const appRoutes: Route[] = [
     loadChildren: () =>
       import('@raijin/web-feature-compte').then((m) => m.webFeatureCompteRoutes),
   },
+  {
+    // API en maintenance (503 `MAINTENANCE`, intercepteur de web-data-access).
+    path: 'maintenance',
+    title: 'Maintenance — Raijin',
+    loadComponent: () => import('./pages/maintenance.page').then((m) => m.MaintenancePage),
+  },
   ...devOnlyRoutes,
-  { path: '**', redirectTo: 'analyse' },
+  {
+    path: '**',
+    title: 'Page introuvable — Raijin',
+    loadComponent: () => import('./pages/not-found.page').then((m) => m.NotFoundPage),
+  },
 ];

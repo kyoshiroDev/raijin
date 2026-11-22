@@ -1,12 +1,23 @@
 import { Route } from '@angular/router';
-import { WebFeatureAlertes } from './web-feature-alertes/web-feature-alertes';
-import { WebFeatureSuivis } from './web-feature-suivis/web-feature-suivis';
+import { authGuard, verifiedEmailGuard } from '@raijin/web-data-access';
 
+/**
+ * Écran « Suivis » (`/suivis`). Connexion et e-mail confirmé exigés (l'API les exige aussi) :
+ * sinon connexion avec retour, ou écran « Confirme ton adresse ».
+ */
 export const webFeatureSuivisRoutes: Route[] = [
-  { path: '', component: WebFeatureSuivis },
+  {
+    path: '',
+    canActivate: [verifiedEmailGuard],
+    loadComponent: () => import('./suivis/suivis.page').then((m) => m.SuivisPage),
+  },
 ];
 
-/** Écran « Alertes », routé sur /alertes par apps/web. */
+/** Écran « Alertes », routé sur /alertes par apps/web : une session suffit (comme l'API). */
 export const webFeatureAlertesRoutes: Route[] = [
-  { path: '', component: WebFeatureAlertes },
+  {
+    path: '',
+    canActivate: [authGuard],
+    loadComponent: () => import('./alertes/alertes.page').then((m) => m.AlertesPage),
+  },
 ];

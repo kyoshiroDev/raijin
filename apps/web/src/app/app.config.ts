@@ -1,10 +1,11 @@
 import {
   ApplicationConfig,
+  isDevMode,
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { provideRaijinAuth, provideStartupPrefetch } from '@raijin/web-data-access';
+import { provideRaijinAuth, provideServiceWorkerRegistration, provideStartupPrefetch } from '@raijin/web-data-access';
 import { appRoutes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -19,5 +20,8 @@ export const appConfig: ApplicationConfig = {
       csrf: [/^\/analyse\/[^/]+\/?$/],
       analyze: /^\/analyse\/([^/?#]+)\/?$/,
     }),
+    // Service worker Angular (cache de la coquille, push) : enregistré une fois l'app stable (30 s
+    // au plus), jamais avant le premier rendu ; SwPush arrive avec l'écran Compte (§11.7).
+    provideServiceWorkerRegistration(!isDevMode()),
   ],
 };

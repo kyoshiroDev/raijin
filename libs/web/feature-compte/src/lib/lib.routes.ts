@@ -1,7 +1,7 @@
-import { inject } from '@angular/core';
+import { inject, isDevMode } from '@angular/core';
 import { Router, type CanMatchFn, type Route } from '@angular/router';
 import { AUTH_EMAIL_LINK_PATHS } from '@raijin/shared-contracts';
-import { guestGuard } from '@raijin/web-data-access';
+import { guestGuard, providePushNotifications } from '@raijin/web-data-access';
 
 /** Chemin relatif à `/compte` d'un lien envoyé par e-mail (contrat partagé avec l'API). */
 export function emailLinkPath(key: keyof typeof AUTH_EMAIL_LINK_PATHS): string {
@@ -24,6 +24,8 @@ export const webFeatureCompteRoutes: Route[] = [
     title: 'Compte — Raijin',
     // Pas d'authGuard ici : l'écran affiche son skeleton pendant la récupération de la session
     // et renvoie lui-même un visiteur vers la connexion (AccountPage).
+    // SwPush (préférences de notification, désabonnement à la déconnexion) : seulement ici.
+    providers: [providePushNotifications(!isDevMode())],
     loadComponent: () => import('./pages/account.page').then((m) => m.AccountPage),
   },
   {

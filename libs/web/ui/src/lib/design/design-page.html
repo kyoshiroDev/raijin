@@ -213,6 +213,10 @@
         <rj-checkbox [required]="true">J’accepte les conditions d’utilisation.</rj-checkbox>
         <rj-checkbox error="Accepte les conditions pour continuer.">Case en erreur</rj-checkbox>
       </div>
+      <div class="flex flex-col divide-y divide-line">
+        <rj-switch label="Alertes par e-mail" description="Interrupteur contrôlé, état écrit en toutes lettres." [checked]="switchOn()" (checkedChange)="switchOn.set($event)" />
+        <rj-switch label="Notifications push" description="Désactivé : réservé au plan Pro." [disabled]="true" />
+      </div>
     </rj-card>
   </section>
 
