@@ -5,11 +5,15 @@ import { ANALYSIS_ERROR_MESSAGES, analysisResultSchema } from '@raijin/shared-co
 import { loadContracts } from '../contracts';
 import { FAKE_MINTS, fakeAnalysis, fakeAnalysisResponse, fakeQuota } from '../testing/analysis-fixtures';
 import { toAnalysisError } from './analysis-errors';
+import { AnalysisApi } from './analysis-api';
 import { AnalysisPrefetch } from './analysis-prefetch';
 import { AnalysisStore } from './analysis.store';
 
 const API = '/api/v1';
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+async function waitFor(condition: () => boolean, attempts = 100): Promise<void> {
+  for (let i = 0; i < attempts && !condition(); i++) await new Promise((resolve) => setTimeout(resolve, 10));
+}
 
 async function setup() {
   await loadContracts();
@@ -50,9 +54,51 @@ describe('AnalysisStore', () => {
     const hostile = { ...response, analysis: { ...response.analysis, token: { ...response.analysis.token, name: 'Bon\u202eToken\u200b<img src=x onerror=alert(1)>' } } };
     ctrl.expectOne(`${API}/analyses`).flush(hostile);
     await done;
+    // Rendu immédiat (texte brut, rendu par interpolation), puis remplacé par la version validée.
+    expect(store.status()).toBe('ready');
+    await waitFor(() => !/[\u202e\u200b]/.test(store.result()?.token.name ?? ''));
     const name = store.result()?.token.name ?? '';
     expect(name).not.toMatch(/[\u202e\u200b]/);
     expect(name.length).toBeLessThanOrEqual(64);
+  });
+
+  it('verdict affiché avant toute validation Zod, puis validé à l’inactivité', async () => {
+    const { store, ctrl } = await setup();
+    const api = TestBed.inject(AnalysisApi);
+    const validate = vi.spyOn(api, 'validateResponse');
+    const done = store.analyze(FAKE_MINTS.warn);
+    ctrl.expectOne(`${API}/analyses`).flush(fakeAnalysisResponse('warn'));
+    expect(await done).toBe(true);
+    expect(store.status()).toBe('ready');
+    expect(store.result()?.verdict).toBe('warn');
+    expect(validate).not.toHaveBeenCalled();
+    await waitFor(() => validate.mock.calls.length > 0);
+    await settle();
+    expect(validate).toHaveBeenCalledTimes(1);
+    expect(store.status()).toBe('ready');
+  });
+
+  it('validation complète en échec après affichage : repli en état d’erreur', async () => {
+    const { store, ctrl } = await setup();
+    const done = store.analyze(FAKE_MINTS.safe);
+    const response = fakeAnalysisResponse('safe');
+    // Forme correcte (affichable) mais hors contrat : version du moteur vide.
+    ctrl.expectOne(`${API}/analyses`).flush({ ...response, analysis: { ...response.analysis, engineVersion: '' } });
+    expect(await done).toBe(true);
+    expect(store.status()).toBe('ready');
+    await waitFor(() => store.status() === 'error');
+    expect(store.error()?.code).toBe('INTERNAL_ERROR');
+    expect(store.result()).toBeNull();
+  });
+
+  it('page publique : rendu avant validation, repli si la validation échoue', async () => {
+    const { store, ctrl } = await setup();
+    const done = store.loadLatest(FAKE_MINTS.danger);
+    ctrl.expectOne(`${API}/analyses/${FAKE_MINTS.danger}/latest`).flush({ ...fakeAnalysis('danger'), engineVersion: '' });
+    expect(await done).toBe(true);
+    expect(store.result()?.verdict).toBe('danger');
+    await waitFor(() => store.status() === 'error');
+    expect(store.result()).toBeNull();
   });
 
   it('réponse hors contrat : erreur interne, pas de résultat', async () => {
@@ -62,6 +108,17 @@ describe('AnalysisStore', () => {
     expect(await done).toBe(false);
     expect(store.status()).toBe('error');
     expect(store.error()?.code).toBe('INTERNAL_ERROR');
+    expect(store.result()).toBeNull();
+    ctrl.expectOne(`${API}/analyses/quota`).flush(fakeQuota());
+  });
+
+  it('forme inaffichable (date illisible) : erreur immédiate, rien n’est rendu', async () => {
+    const { store, ctrl } = await setup();
+    const done = store.analyze(FAKE_MINTS.safe);
+    const response = fakeAnalysisResponse('safe');
+    ctrl.expectOne(`${API}/analyses`).flush({ ...response, analysis: { ...response.analysis, analyzedAt: 'hier' } });
+    expect(await done).toBe(false);
+    expect(store.status()).toBe('error');
     expect(store.result()).toBeNull();
     ctrl.expectOne(`${API}/analyses/quota`).flush(fakeQuota());
   });

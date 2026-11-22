@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import type { AnalysisResponse } from '@raijin/shared-contracts';
 import { Observable, shareReplay } from 'rxjs';
 import { AnalysisApi } from './analysis-api';
 
@@ -15,7 +14,7 @@ const MAX_AGE_MS = 30_000;
 @Injectable({ providedIn: 'root' })
 export class AnalysisPrefetch {
   private readonly api = inject(AnalysisApi);
-  private pending: { input: string; startedAt: number; response: Observable<AnalysisResponse> } | null = null;
+  private pending: { input: string; startedAt: number; response: Observable<unknown> } | null = null;
 
   start(input: string): void {
     const response = this.api.analyze({ input }).pipe(shareReplay({ bufferSize: 1, refCount: false }));
@@ -25,7 +24,7 @@ export class AnalysisPrefetch {
   }
 
   /** Requête de démarrage pour cette saisie, remise une seule fois ; sinon `null`. */
-  take(input: string): Observable<AnalysisResponse> | null {
+  take(input: string): Observable<unknown> | null {
     const pending = this.pending;
     this.pending = null;
     if (!pending || pending.input !== input || Date.now() - pending.startedAt > MAX_AGE_MS) return null;

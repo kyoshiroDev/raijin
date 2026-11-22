@@ -13,12 +13,11 @@ export const appConfig: ApplicationConfig = {
     provideZonelessChangeDetection(),
     provideRouter(appRoutes, withComponentInputBinding()),
     provideRaijinAuth(),
-    // Pages d'arrivée par mint : `/analyse/<mint>` envoie `POST analyses` (jeton CSRF), et les deux
-    // valident une analyse (contrats) dès l'ouverture. Demandés au démarrage, en parallèle.
+    // `/analyse/<mint>` : jeton CSRF et `POST analyses` partent au démarrage (requête réclamée par
+    // l'écran). Pas de préchargement des contrats : le verdict s'affiche avant la validation Zod.
     provideStartupPrefetch({
       csrf: [/^\/analyse\/[^/]+\/?$/],
       analyze: /^\/analyse\/([^/?#]+)\/?$/,
-      contracts: [/^\/(analyse|t)\/[^/]+\/?$/],
     }),
   ],
 };

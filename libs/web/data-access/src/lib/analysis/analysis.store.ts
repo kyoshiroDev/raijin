@@ -4,6 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import type { ClientError } from '../http/api-error';
 import { AnalysisApi } from './analysis-api';
 import { AnalysisPrefetch } from './analysis-prefetch';
+import { readAnalysisResponse, readAnalysisResult } from './analysis-shape';
+import { runWhenIdle } from '../util/idle';
 
 /**
  * - `idle` : rien de demandé (état vide de l'écran) ;
@@ -47,10 +49,16 @@ export class AnalysisStore {
     const trimmed = input.trim();
     try {
       // Requête lancée au démarrage sur `/analyse/<mint>` (même saisie) : réutilisée, jamais rejouée.
-      const response = await firstValueFrom(this.prefetch.take(trimmed) ?? this.api.analyze({ input: trimmed }));
+      const body = await firstValueFrom(this.prefetch.take(trimmed) ?? this.api.analyze({ input: trimmed }));
       if (id !== this.sequence) return false;
+      // Affichage d'abord (contrôle de forme), validation complète par les contrats ensuite.
+      const response = readAnalysisResponse(body);
       this.currentQuota.set(response.quota);
       this.succeed(response.analysis);
+      this.validateWhenIdle(id, () => this.api.validateResponse(body), (valid) => {
+        this.currentQuota.set(valid.quota);
+        this.currentResult.set(valid.analysis);
+      });
       return true;
     } catch (error) {
       if (id !== this.sequence) return false;
@@ -63,9 +71,10 @@ export class AnalysisStore {
   async loadLatest(mint: string): Promise<boolean> {
     const id = this.begin();
     try {
-      const result = await firstValueFrom(this.api.latest(mint));
+      const body = await firstValueFrom(this.api.latest(mint));
       if (id !== this.sequence) return false;
-      this.succeed(result);
+      this.succeed(readAnalysisResult(body));
+      this.validateWhenIdle(id, () => this.api.validateResult(body), (valid) => this.currentResult.set(valid));
       return true;
     } catch (error) {
       if (id !== this.sequence) return false;
@@ -102,6 +111,25 @@ export class AnalysisStore {
     this.currentResult.set(null);
     this.currentError.set(null);
     this.currentStatus.set('idle');
+  }
+
+  /**
+   * Validation complète par les contrats (chunk Zod chargé à ce moment-là), à l'inactivité du
+   * navigateur, donc après l'affichage du verdict. Valide : le résultat nettoyé remplace l'affiché.
+   * Rejetée : l'écran repasse en état d'erreur (`INTERNAL_ERROR`). Ignorée si une demande plus
+   * récente a eu lieu entre-temps.
+   */
+  private validateWhenIdle<T>(id: number, validate: () => Promise<T>, apply: (valid: T) => void): void {
+    runWhenIdle(() => {
+      validate().then(
+        (valid) => {
+          if (id === this.sequence) apply(valid);
+        },
+        (error: unknown) => {
+          if (id === this.sequence) void this.fail(error, id);
+        },
+      );
+    });
   }
 
   private begin(): number {
