@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { MINTS, expectVerdict, useFreshIp } from './support/analysis';
 import { loginViaApi } from './support/auth';
-import { PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
+import { PAGES, openDialogSettled, openEntry, openPage, seededAccount, sharedVerifiedAccount } from './support/pages';
 
 /** Règles WCAG 2.0/2.1/2.2 A et AA + bonnes pratiques axe. */
 /**
@@ -92,7 +92,11 @@ for (const [label, button] of [
 }
 
 for (const viewport of [
-  { width: 390, height: 844, expected: ['Aller au contenu', 'Raijin Shield, accueil', 'Notifications', 'Analyser', 'Suivis', 'Alertes', 'Compte'] },
+  {
+    width: 390,
+    height: 844,
+    expected: ['Aller au contenu', 'Raijin Shield, accueil', 'Notifications', 'Analyser un token', 'Mes suivis', 'Analyser', 'Suivis', 'Alertes', 'Compte'],
+  },
   {
     width: 1440,
     height: 900,
@@ -101,9 +105,9 @@ for (const viewport of [
 ]) {
   test(`clavier ${viewport.width}px : Tab parcourt la coquille avec un focus visible`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    // Écran sans contrôle dans le contenu : sous 1024 px la barre d'onglets suit <main> dans l'ordre du DOM
-    // (depuis la phase 3, /analyse a un formulaire qui s'intercale avant les onglets).
-    await openPage(page, '/suivis');
+    // Page 404 (publique, deux liens dans le contenu) : sous 1024 px la barre d'onglets suit <main> dans l'ordre
+    // du DOM. Depuis la phase 4, /suivis exige une session (un visiteur est renvoyé vers la connexion).
+    await openPage(page, '/cette-page-n-existe-pas');
     const seen: string[] = [];
     for (let i = 0; i < viewport.expected.length; i++) {
       await page.keyboard.press('Tab');
@@ -247,3 +251,100 @@ for (const viewport of [
     expect(await axe(page)).toEqual([]);
   });
 }
+
+/**
+ * Comme `focusInfo`, pour les contrôles natifs masqués visuellement (`sr-only`, boutons radio et cases des
+ * filtres) : la cible visible et l'indicateur de focus sont portés par le `<label>` qui les englobe.
+ */
+function controlFocusInfo(page: Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || active === document.body) return null;
+    const own = active.getBoundingClientRect();
+    const el = own.width <= 1 || own.height <= 1 ? (active.closest('label') ?? active) : active;
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const outline = style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0;
+    const ring = style.boxShadow !== 'none';
+    return {
+      label: (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40),
+      visible: rect.width > 1 && rect.height > 1,
+      indicator: outline || ring,
+    };
+  });
+}
+
+test('clavier 390px : bottom sheet des filtres d’alertes (focus piégé, cases et boutons radio, Échap, retour)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { email, password } = await seededAccount('alertes');
+  await loginViaApi(page.context().request, email, password);
+  await openPage(page, '/alertes');
+  await expect(page.locator('ul[aria-label="Alertes"] > li').first()).toBeVisible({ timeout: 15_000 });
+  const trigger = page.getByRole('button', { name: /^Filtres/ });
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Filtres' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect.poll(() => dialog.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+  for (let i = 0; i < 14; i++) {
+    await page.keyboard.press('Tab');
+    expect(await dialog.evaluate((d) => d.contains(document.activeElement)), `Tab n°${i + 1} reste dans le panneau`).toBe(true);
+    const info = await controlFocusInfo(page);
+    expect(info?.visible, `« ${info?.label} » visible au focus`).toBe(true);
+    expect(info?.indicator, `« ${info?.label} » a un indicateur de focus`).toBe(true);
+  }
+  for (let i = 0; i < 14; i++) {
+    await page.keyboard.press('Shift+Tab');
+    expect(await dialog.evaluate((d) => d.contains(document.activeElement)), `Shift+Tab n°${i + 1} reste dans le panneau`).toBe(true);
+  }
+  // Boutons radio de l'état : flèches ; case de type : Espace. Les filtres passent dans l'URL.
+  await dialog.getByRole('radio', { name: 'Toutes' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: 'Non lues' })).toBeChecked();
+  await expect(page).toHaveURL(/statut=non-lues/);
+  const lp = dialog.getByRole('checkbox', { name: 'Liquidité retirée' });
+  await lp.focus();
+  await page.keyboard.press('Space');
+  await expect(lp).toBeChecked();
+  await expect(page).toHaveURL(/type=lp_removed/);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveText(/Filtres \(2\)/);
+});
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1440, height: 900 },
+]) {
+  test(`clavier ${viewport.width}px : interrupteurs des préférences (Tab, focus visible, Espace et Entrée)`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const { email, password } = await seededAccount('pro');
+    await loginViaApi(page.context().request, email, password);
+    await openPage(page, '/compte?section=notifications');
+    await expect(page.locator('#rj-notifications-title')).toBeFocused({ timeout: 15_000 });
+    const expected = ['Alertes par e-mail', 'Résumé hebdomadaire', 'Notifications push'];
+    for (const name of expected) {
+      await page.keyboard.press('Tab');
+      const sw = page.getByRole('switch', { name });
+      const active = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        return el ? `<${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}> « ${(el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)} »` : 'aucun';
+      });
+      await expect(sw, `élément focalisé : ${active}`).toBeFocused();
+      const info = await focusInfo(page);
+      expect(info?.indicator, `« ${name} » a un indicateur de focus`).toBe(true);
+    }
+    const digest = page.getByRole('switch', { name: 'Résumé hebdomadaire' });
+    const before = await digest.getAttribute('aria-checked');
+    await digest.focus();
+    await page.keyboard.press('Space');
+    await expect(digest).not.toHaveAttribute('aria-checked', before ?? '');
+    await expect(digest).not.toHaveAttribute('aria-busy', 'true');
+    await page.keyboard.press('Enter');
+    await expect(digest).toHaveAttribute('aria-checked', before ?? '');
+    await expect(digest).not.toHaveAttribute('aria-busy', 'true');
+  });
+}
+

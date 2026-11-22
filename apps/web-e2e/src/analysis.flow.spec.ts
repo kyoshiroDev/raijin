@@ -239,7 +239,9 @@ test.describe('résultat au clavier et actions', () => {
     await expect(page.getByText('Lien de l’analyse copié.')).toBeVisible();
     const origin = new URL(page.url()).origin;
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${origin}/t/${MINTS.mintActive}`);
-    await expect(page.getByRole('button', { name: /Suivre/ })).toBeDisabled();
+    // Phase 4 : « Suivre » est actif (le parcours complet est couvert par watch.flow.spec.ts).
+    await expect(page.getByRole('button', { name: 'Suivre', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Suivre', exact: true })).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('liens externes : https, liste blanche, rel noopener noreferrer nofollow, nouvel onglet', async ({ page }) => {

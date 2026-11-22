@@ -1,6 +1,7 @@
 import { expect, request, type Page } from '@playwright/test';
 import { APP_ORIGIN, PASSWORD, createVerifiedAccount, loginViaApi, uniqueEmail } from './auth';
 import { MINTS, expectVerdict, exhaustAnonymousQuota, publishAnalysis, randomMint, useFreshIp } from './analysis';
+import { followViaApi, seedAlerts, startTrial } from './watch';
 
 export interface PageEntry {
   name: string;
@@ -9,6 +10,12 @@ export interface PageEntry {
   heading: string | null;
   /** Écran de compte connecté : un compte vérifié est créé (API réelle) puis connecté avant l'ouverture. */
   auth?: boolean;
+  /** Compte particulier (suivis, alertes, essai Pro) connecté avant l'ouverture, à la place du compte partagé. */
+  account?: () => Promise<{ email: string; password: string }>;
+  /** Nom du fichier de capture, s'il diffère de `name`. */
+  shot?: string;
+  /** Élément qui doit rester visible en paysage (défaut : le titre `main h1`), ex. carte ciblée par `?section=`. */
+  landmark?: string;
   /** Action à jouer après l'ouverture pour atteindre l'état testé (ex. « vérifie ta boîte »). */
   act?: (page: Page) => Promise<void>;
   /** Préparation avant l'ouverture (analyse publiée, quota consommé, réponse simulée). */
@@ -108,10 +115,161 @@ export const ANALYSIS_PAGES: readonly PageEntry[] = [
   },
 ];
 
+type AccountKind = 'rempli' | 'limite' | 'alertes' | 'pro';
+const seeded = new Map<AccountKind, Promise<{ email: string; password: string }>>();
+
+/**
+ * Comptes préparés par l'API réelle (un par worker et par état) : suivis (2 ou 3, limite Gratuit),
+ * historique d'alertes posé en base, essai Pro (push autorisé).
+ */
+export function seededAccount(kind: AccountKind): Promise<{ email: string; password: string }> {
+  let account = seeded.get(kind);
+  if (!account) {
+    account = (async () => {
+      const api = await request.newContext({ baseURL: APP_ORIGIN, extraHTTPHeaders: { 'X-Forwarded-For': `10.250.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` } });
+      try {
+        const created = await createVerifiedAccount(api, `ecran-${kind}`);
+        const mints = kind === 'limite' ? [MINTS.bonk, MINTS.usdc, MINTS.pyusd] : kind === 'pro' ? [] : [MINTS.honeypot, MINTS.usdc];
+        for (const mint of mints) {
+          const res = await followViaApi(api, mint);
+          expect(res.status, `suivi ${mint} : ${JSON.stringify(res.body)}`).toBe(201);
+        }
+        if (kind === 'alertes') await seedAlerts(created.email, { danger: MINTS.honeypot, warn: MINTS.usdc });
+        if (kind === 'pro') await startTrial(created.email);
+        return created;
+      } finally {
+        await api.dispose();
+      }
+    })();
+    seeded.set(kind, account);
+  }
+  return account;
+}
+
+/** Ouvre la bottom sheet des filtres sous 1024 px (au-delà, le panneau latéral est toujours affiché). */
+async function openAlertFilters(page: Page): Promise<void> {
+  await expect(page.locator('ul[aria-label="Alertes"] > li').first()).toBeVisible({ timeout: 15_000 });
+  if ((page.viewportSize()?.width ?? 0) >= 1024) {
+    await expect(page.getByRole('complementary', { name: 'Filtres' })).toBeVisible();
+    return;
+  }
+  await page.getByRole('button', { name: /^Filtres/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Filtres' });
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ).then(() => undefined),
+  );
+}
+
+/** Écrans de la phase 4 (suivis, alertes, préférences, 404, maintenance), API réelle. */
+export const WATCH_PAGES: readonly PageEntry[] = [
+  {
+    name: 'suivis-vide',
+    path: '/suivis',
+    heading: 'Suivis',
+    auth: true,
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Aucun token suivi pour l’instant' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'suivis-rempli',
+    path: '/suivis',
+    heading: 'Suivis',
+    account: () => seededAccount('rempli'),
+    act: async (page) => {
+      await expect(page.locator('[data-watch-count]')).toHaveText('2 / 3', { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'suivis-limite',
+    path: '/suivis',
+    heading: 'Suivis',
+    account: () => seededAccount('limite'),
+    act: async (page) => {
+      await expect(page.locator('[data-plan-limit]')).toContainText('Limite atteinte', { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'alertes-liste',
+    shot: 'alertes',
+    path: '/alertes',
+    heading: 'Alertes',
+    account: () => seededAccount('alertes'),
+    act: async (page) => {
+      await expect(page.locator('ul[aria-label="Alertes"] > li')).toHaveCount(5, { timeout: 15_000 });
+    },
+  },
+  {
+    name: 'alertes-filtres',
+    path: '/alertes',
+    heading: 'Alertes',
+    account: () => seededAccount('alertes'),
+    act: openAlertFilters,
+  },
+  {
+    name: 'alertes-vide',
+    path: '/alertes',
+    heading: 'Alertes',
+    auth: true,
+    act: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Aucune alerte pour l’instant' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'compte-notifications-gratuit',
+    shot: 'preferences-gratuit',
+    path: '/compte?section=notifications',
+    heading: 'Compte',
+    // `?section=notifications` fait défiler jusqu'à la carte : c'est elle qui doit être visible.
+    landmark: '#rj-notifications-title',
+    auth: true,
+    act: async (page) => {
+      await expect(page.getByRole('switch', { name: 'Notifications push' })).toBeDisabled({ timeout: 15_000 });
+      await expect(page.locator('#rj-notifications-title')).toBeFocused();
+    },
+  },
+  {
+    name: 'compte-notifications-pro',
+    shot: 'preferences',
+    path: '/compte?section=notifications',
+    heading: 'Compte',
+    landmark: '#rj-notifications-title',
+    account: () => seededAccount('pro'),
+    act: async (page) => {
+      await expect(page.getByRole('switch', { name: 'Notifications push' })).toBeEnabled({ timeout: 15_000 });
+      await expect(page.locator('#rj-notifications-title')).toBeFocused();
+    },
+  },
+  { name: '404', path: '/cette-page-n-existe-pas', heading: 'Cette page n’existe pas' },
+  {
+    // Page Angular atteinte comme en vrai : l'API répond 503 `MAINTENANCE`, l'intercepteur redirige.
+    // (Un chargement direct de /maintenance sur le serveur de dev sert le fichier statique maintenance.html.)
+    name: 'maintenance',
+    path: '/suivis',
+    heading: 'Raijin fait une courte pause',
+    prepare: async (page) => {
+      await page.route('**/api/v1/**', (route) =>
+        route.fulfill({ status: 503, json: { code: 'MAINTENANCE', message: 'Raijin est en maintenance. Réessaie dans quelques minutes.' } }),
+      );
+    },
+    act: async (page) => {
+      await expect(page).toHaveURL(/\/maintenance/);
+      await expect(page.getByRole('button', { name: 'Réessayer' })).toBeVisible();
+    },
+  },
+];
+
 /** Pages testées (routes de l'app + page de référence visuelle, servie uniquement en dev). */
 export const PAGES: readonly PageEntry[] = [
   { name: 'analyse', path: '/analyse', heading: 'Analyser un token' },
-  { name: 'suivis', path: '/suivis', heading: 'Suivis' },
+  // Phase 4 : /suivis exige une session (un visiteur est renvoyé vers la connexion).
+  { name: 'suivis', path: '/suivis', heading: 'Suivis', auth: true },
   { name: 'alertes', path: '/alertes', heading: null },
   { name: 'compte', path: '/compte', heading: 'Compte', auth: true },
   { name: 'wallet', path: '/wallet', heading: 'Scan de wallet' },
@@ -136,6 +294,7 @@ export const PAGES: readonly PageEntry[] = [
   { name: 'reinitialiser', path: `/compte/reinitialiser-mot-de-passe?token=${FAKE_TOKEN}`, heading: 'Nouveau mot de passe' },
   { name: 'lien-magique', path: '/compte/lien-magique', heading: 'Connexion sans mot de passe' },
   ...ANALYSIS_PAGES,
+  ...WATCH_PAGES,
 ];
 
 let sharedAccount: Promise<{ email: string; password: string }> | undefined;
@@ -158,7 +317,10 @@ export async function openEntry(page: Page, entry: PageEntry): Promise<void> {
   // IP fictive par test (API en TRUST_PROXY=1) : quota anonyme neuf, pas d'effet de bord entre tests.
   const ip = await useFreshIp(page);
   if (entry.prepare) await entry.prepare(page, ip);
-  if (entry.auth) {
+  if (entry.account) {
+    const { email, password } = await entry.account();
+    await loginViaApi(page.context().request, email, password);
+  } else if (entry.auth) {
     const { email, password } = await sharedVerifiedAccount();
     await loginViaApi(page.context().request, email, password);
   }

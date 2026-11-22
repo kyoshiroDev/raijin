@@ -3,7 +3,7 @@ import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
 import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
-import { ANALYSIS_PAGES, PAGES, VIEWPORTS, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
+import { ANALYSIS_PAGES, PAGES, VIEWPORTS, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount } from './support/pages';
 
 /**
  * PROMPT.md §9.2 : captures de chaque page à 320, 390, 768, 1024 et 1440 px, thème sombre,
@@ -19,14 +19,17 @@ test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
 /** Phase 1 : coquille et /_design ; phase 2 (et suivantes) : écrans de compte et d'auth. */
 /** Phase 3 : écran d'analyse (vide et ses états) et page publique, API réelle en mode fixtures. */
 const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analyser un token' }, ...ANALYSIS_PAGES];
+/** Phase 4 : suivis (vide, rempli, limite), alertes (liste, filtres, vide), préférences, 404, maintenance. */
 const SHOTS =
   PHASE === 'phase-1'
     ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
     : PHASE === 'phase-3'
       ? PHASE3_SHOTS
-      : PAGES.filter((p) => p.path.startsWith('/compte'));
-/** Résultats d'analyse : page entière (verdict + 9 contrôles). */
-const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence']);
+      : PHASE === 'phase-4'
+        ? WATCH_PAGES
+        : PAGES.filter((p) => p.path.startsWith('/compte'));
+/** Résultats d'analyse et listes : page entière. */
+const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste']);
 
 for (const entry of SHOTS) {
   const { name } = entry;
@@ -36,7 +39,7 @@ for (const entry of SHOTS) {
       await page.setViewportSize(viewport);
       await openEntry(page, entry);
       const png = await page.screenshot({
-        path: join(OUT, `${name}-${width}.png`),
+        path: join(OUT, `${entry.shot ?? name}-${width}.png`),
         fullPage: FULL_PAGE.has(name),
         animations: 'disabled',
       });

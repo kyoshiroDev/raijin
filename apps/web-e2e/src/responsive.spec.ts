@@ -51,8 +51,8 @@ for (const entry of PAGES) {
         expect(await horizontalOverflow(page), 'pas de scroll horizontal en paysage').toBeLessThanOrEqual(0);
         await expect(shellTabBar(page)).toBeVisible();
         expect(await findSmallTargets(page, MIN_TARGET), 'cibles interactives ≥ 44 px').toEqual([]);
-        // La barre d'onglets fixe ne doit pas masquer tout le contenu : le titre reste visible.
-        await expect(page.locator('main h1').first()).toBeInViewport();
+        // La barre d'onglets fixe ne doit pas masquer tout le contenu : le titre (ou l'élément ciblé) reste visible.
+        await expect(page.locator(entry.landmark ?? 'main h1').first()).toBeInViewport();
       });
     }
   });

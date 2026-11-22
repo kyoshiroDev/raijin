@@ -62,6 +62,14 @@ export default defineConfig({
         JWT_ACCESS_TTL: process.env['JWT_ACCESS_TTL'] ?? '20s',
         RATE_LIMIT_AUTH_PER_MINUTE: process.env['RATE_LIMIT_AUTH_PER_MINUTE'] ?? '1000',
         RATE_LIMIT_PER_MINUTE: process.env['RATE_LIMIT_PER_MINUTE'] ?? '10000',
+        // Phase 4 (watch.flow.spec.ts) : routes internes de test (`internal/jobs`, `internal/fixtures`,
+        // `internal/push/outbox`, refusées en production), push simulé, e-mails d'alerte groupés après 1 s,
+        // délai de grâce coupé, préfixe BullMQ dédié (distinct de celui d'api-e2e).
+        JOBS_TEST_TRIGGER: '1',
+        PUSH_PROVIDER: 'fake',
+        ALERT_EMAIL_BATCH_DELAY_S: '1',
+        ALERT_COOLDOWN_MINUTES: '0',
+        BULLMQ_PREFIX: 'raijin-web-e2e',
       },
     },
     {
