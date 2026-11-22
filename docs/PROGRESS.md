@@ -7,7 +7,7 @@
 
 - **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
 
-## Statut : phase 1 ter — Services en mode test via Chrome — en cours (phases 1 et 1 bis terminées)
+## Statut : phase 2 — API et auth — en cours (phases 1, 1 bis, 1 ter/Helius terminées)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -97,4 +97,5 @@
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
 
 ## Blocages
+- Environnement local : conteneurs d'autres projets actifs (`mtc_postgres_local` 5432, `mtc_redis_local` 6379, pile `supabase_*_raijin` 54321-54324) → **ne jamais y toucher** ; Raijin dev sur 5433 (Postgres), 6380 (Redis), 1026/8026 (Mailpit), projet Compose `raijin-dev`.
 - ~~CI run 44955347320 en échec (`ERR_PNPM_IGNORED_BUILDS`)~~ : levé, `allowBuilds` nx + @swc/core dans pnpm-workspace.yaml.
