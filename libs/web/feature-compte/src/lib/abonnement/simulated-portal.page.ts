@@ -55,12 +55,12 @@ const DONE: Readonly<Record<PortalAction, string>> = {
             }
             <div rjCardFooter class="flex flex-col gap-2">
               @if (subscription.cancelAtPeriodEnd) {
-                <button type="button" rjButton="secondary" icon="play" [block]="true" [disabled]="busy() !== null" [loading]="busy() === 'resume'" (click)="run('resume')" data-action="resume">Reprendre l’abonnement</button>
+                <button type="button" rjButton="secondary" icon="play" [block]="true" [disabled]="busy() !== null" [loading]="busy() === 'resume'" (click)="run('resume')" data-action="resume">Reprendre Pro</button>
               } @else {
-                <button type="button" rjButton="secondary" icon="pause" [block]="true" [disabled]="busy() !== null" [loading]="busy() === 'cancel_at_period_end'" (click)="run('cancel_at_period_end')" data-action="cancel_at_period_end">Résilier en fin de période</button>
+                <button type="button" rjButton="secondary" icon="pause" [block]="true" [disabled]="busy() !== null" [loading]="busy() === 'cancel_at_period_end'" (click)="run('cancel_at_period_end')" data-action="cancel_at_period_end">Résilier à l’échéance</button>
               }
               <button type="button" rjButton="secondary" icon="retry" [block]="true" [disabled]="busy() !== null" [loading]="busy() === 'switch_interval'" (click)="run('switch_interval')" data-action="switch_interval">
-                Passer à l’abonnement {{ otherInterval() }}
+                Passer en {{ otherInterval() }}
               </button>
               <button type="button" rjButton="danger" icon="close" [block]="true" [disabled]="busy() !== null" [loading]="busy() === 'cancel_now'" (click)="run('cancel_now')" data-action="cancel_now">Résilier tout de suite</button>
             </div>
