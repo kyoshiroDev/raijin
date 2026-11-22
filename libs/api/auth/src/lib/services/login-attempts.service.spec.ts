@@ -1,6 +1,12 @@
 import { testConfig } from '@raijin/api-core';
-import type Redis from 'ioredis';
-import { LoginAttemptsService, MemoryAttemptStore, RedisAttemptStore, type AttemptStore } from './login-attempts.service';
+import {
+  INCREMENT_WITH_TTL_SCRIPT,
+  LoginAttemptsService,
+  MemoryAttemptStore,
+  RedisAttemptStore,
+  type AttemptRedis,
+  type AttemptStore,
+} from './login-attempts.service';
 
 describe('LoginAttemptsService', () => {
   const config = testConfig({ AUTH_LOCKOUT_THRESHOLD: '3' });
@@ -42,20 +48,31 @@ describe('LoginAttemptsService', () => {
     expect(failing.close).toHaveBeenCalled();
   });
 
-  it('RedisAttemptStore : INCR, PEXPIRE au premier échec, clé jamais en clair', async () => {
+  it('RedisAttemptStore : INCR + PEXPIRE atomiques (script Lua), clé jamais en clair', async () => {
+    // Faux Redis qui rejoue la sémantique du script (INCR, PEXPIRE si premier échec ou clé sans TTL).
+    const counts = new Map<string, { count: number; ttl: number }>();
     const redis = {
-      incr: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2),
-      pexpire: jest.fn(),
+      eval: jest.fn(async (script: string, _keys: number, key: string, ttl: string) => {
+        expect(script).toBe(INCREMENT_WITH_TTL_SCRIPT);
+        const entry = counts.get(key) ?? { count: 0, ttl: -1 };
+        entry.count += 1;
+        if (entry.count === 1 || entry.ttl < 0) entry.ttl = Number(ttl);
+        counts.set(key, entry);
+        return entry.count;
+      }),
       get: jest.fn().mockResolvedValueOnce('2').mockResolvedValueOnce(null),
       del: jest.fn(),
       disconnect: jest.fn(),
     };
-    const store = new RedisAttemptStore(redis as unknown as Redis);
+    const store = new RedisAttemptStore(redis as unknown as AttemptRedis);
     const service = new LoginAttemptsService(config, store);
     await service.recordFailure('jean@exemple.fr');
     await service.recordFailure('jean@exemple.fr');
-    expect(redis.pexpire).toHaveBeenCalledTimes(1);
-    const key = redis.incr.mock.calls[0][0] as string;
+    expect(redis.eval).toHaveBeenCalledTimes(2);
+    const [, , key, ttl] = redis.eval.mock.calls[0] ?? [];
+    expect(ttl).toBe(String(config.auth.lockoutMs));
+    if (!key) throw new Error('clé absente');
+    expect(counts.get(key)).toEqual({ count: 2, ttl: config.auth.lockoutMs });
     expect(key).toMatch(/^rj:auth-fail:/);
     expect(key).not.toContain('jean');
     await expect(service.isLocked('jean@exemple.fr')).resolves.toBe(false);
@@ -64,6 +81,12 @@ describe('LoginAttemptsService', () => {
     expect(redis.del).toHaveBeenCalledWith(key);
     service.onModuleDestroy();
     expect(redis.disconnect).toHaveBeenCalled();
+  });
+
+  it('le script Lua pose toujours une expiration (premier échec ou clé héritée sans TTL)', () => {
+    expect(INCREMENT_WITH_TTL_SCRIPT).toContain("redis.call('INCR', KEYS[1])");
+    expect(INCREMENT_WITH_TTL_SCRIPT).toMatch(/count == 1 or redis\.call\('PTTL', KEYS\[1\]\) < 0/);
+    expect(INCREMENT_WITH_TTL_SCRIPT).toContain("redis.call('PEXPIRE', KEYS[1], ARGV[1])");
   });
 
   it('sans Redis configuré : mémoire seule ; avec Redis injoignable : repli', async () => {

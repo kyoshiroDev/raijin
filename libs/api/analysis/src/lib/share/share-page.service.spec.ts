@@ -1,0 +1,115 @@
+import { testConfig } from '@raijin/api-core';
+import type { AnalysisResult } from '@raijin/shared-contracts';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { AnalysisService } from '../analysis/analysis.service';
+import { DefaultRiskEngine } from '../analysis/risk-engine.provider';
+import { buildAnalysisResult } from '../analysis/result-builder';
+import { FIXTURE_MINTS, FixtureFactsCollector, HOSTILE_TOKEN_NAME } from '../fixtures/fixture-facts-collector';
+import { escapeHtml, injectMeta, minimalHtml, SharePageService } from './share-page.service';
+
+const NOW = new Date('2026-11-22T12:00:00.000Z');
+
+async function hostileResult(): Promise<AnalysisResult> {
+  const collected = await new FixtureFactsCollector({ now: () => NOW }).collectFacts(FIXTURE_MINTS.hostile);
+  if (!collected) throw new Error('fixture absente');
+  return buildAnalysisResult(FIXTURE_MINTS.hostile, collected, new DefaultRiskEngine().evaluate(collected.facts), NOW);
+}
+
+const WEB_INDEX = `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Raijin</title>
+    <base href="/" />
+    <meta name="description" content="Description d'origine" />
+    <meta property="og:title" content="ancien" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="canonical" href="https://ancien.example/" />
+  </head>
+  <body>
+    <rj-root></rj-root>
+  </body>
+</html>`;
+
+function service(result: AnalysisResult | null, env: Record<string, string> = {}) {
+  const analyses = { findLatest: jest.fn(async () => result) } as unknown as AnalysisService;
+  return new SharePageService(analyses, testConfig({ APP_URL: 'https://app.raijinshield.com', API_URL: 'https://api.raijinshield.com', ...env }));
+}
+
+function indexFile(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'raijin-share-'));
+  const path = join(dir, 'index.html');
+  writeFileSync(path, WEB_INDEX);
+  return path;
+}
+
+describe('escapeHtml', () => {
+  it('échappe les 5 caractères sensibles', () => {
+    expect(escapeHtml(`<a href="x" onclick='y'>&</a>`)).toBe('&lt;a href=&quot;x&quot; onclick=&#39;y&#39;&gt;&amp;&lt;/a&gt;');
+  });
+});
+
+describe('SharePageService', () => {
+  it('nom et symbole hostiles : aucune balise injectée, valeurs échappées, marqués non vérifiés', async () => {
+    const result = await hostileResult();
+    const html = await service(result, { WEB_INDEX_HTML_PATH: indexFile() }).render(FIXTURE_MINTS.hostile);
+    expect(html).not.toMatch(/<script/i);
+    expect(html).not.toMatch(/<img/i);
+    expect(html).not.toContain('onload="y"');
+    expect(html).not.toMatch(/[\u202E\u200B]/);
+    expect(html).toContain('(non vérifié)');
+    expect(html).toContain('&quot;&gt;&lt;img src=x&gt;');
+    // Toutes les valeurs d'attributs sont fermées proprement : aucune balise meta cassée.
+    for (const tag of html.match(/<meta [^>]*>/g) ?? []) expect(tag).toMatch(/^<meta (name|property|charset)=/);
+    expect(HOSTILE_TOKEN_NAME).toContain('<script>');
+  });
+
+  it('remplace titre, description, OG, Twitter et canonique du build web, une seule fois chacun', async () => {
+    const result = await hostileResult();
+    const html = await service({ ...result, verdict: 'warn' }, { WEB_INDEX_HTML_PATH: indexFile() }).render(FIXTURE_MINTS.hostile);
+    expect(html.match(/<title>/g)).toHaveLength(1);
+    expect(html).toContain('<title>Prudence · token 8hVd…Q6kU · Raijin Shield</title>');
+    expect(html).not.toContain("Description d'origine");
+    expect(html).not.toContain('ancien');
+    expect(html.match(/property="og:title"/g)).toHaveLength(1);
+    expect(html).toContain(`<link rel="canonical" href="https://app.raijinshield.com/t/${FIXTURE_MINTS.hostile}" />`);
+    expect(html).toContain(`<meta property="og:image" content="https://api.raijinshield.com/api/v1/og/${FIXTURE_MINTS.hostile}.png" />`);
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+    expect(html).toContain('pas un conseil en investissement');
+    expect(html).toContain('<rj-root></rj-root>');
+    expect(html).toContain('<base href="/" />');
+  });
+
+  it('mint sans analyse : balises génériques du token', async () => {
+    const html = await service(null, { WEB_INDEX_HTML_PATH: indexFile() }).render(FIXTURE_MINTS.safe);
+    expect(html).toContain('<title>Token 8hVd…Gypt · Raijin Shield</title>');
+  });
+
+  it('mint invalide : page générique vers /analyse', async () => {
+    const page = service(null);
+    const html = await page.render(null);
+    expect(html).toContain('<title>Analyse de token Solana · Raijin Shield</title>');
+    expect(html).toContain('href="https://app.raijinshield.com/analyse"');
+  });
+
+  it('sans build web (ou fichier illisible) : HTML minimal avec lien vers l’app', async () => {
+    const html = await service(null).render(FIXTURE_MINTS.safe);
+    expect(html).toContain(`href="https://app.raijinshield.com/t/${FIXTURE_MINTS.safe}"`);
+    expect(html).toContain('property="og:title"');
+    const missing = await service(null, { WEB_INDEX_HTML_PATH: '/chemin/inexistant/index.html' }).render(FIXTURE_MINTS.safe);
+    expect(missing).toContain('Ouvrir l’analyse dans Raijin');
+  });
+
+  it('injectMeta insère avant </head>, minimalHtml échappe le lien', () => {
+    const html = injectMeta(minimalHtml('https://app.example', null), {
+      title: 'T',
+      description: 'D',
+      canonical: 'https://app.example/x',
+      image: 'https://api.example/i.png',
+      imageAlt: 'A',
+    });
+    expect(html.indexOf('<title>T</title>')).toBeLessThan(html.indexOf('</head>'));
+  });
+});

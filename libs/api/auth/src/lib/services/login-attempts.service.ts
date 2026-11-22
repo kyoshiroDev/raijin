@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { APP_CONFIG, hmac, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, errorCode, hmac, type AppConfig } from '@raijin/api-core';
 import Redis from 'ioredis';
 
 /** Stockage minimal d'un compteur à expiration. */
@@ -48,14 +48,29 @@ export class MemoryAttemptStore implements AttemptStore {
   }
 }
 
-/** Compteur Redis partagé entre instances (INCR + PEXPIRE au premier échec). */
+/**
+ * INCR + PEXPIRE atomiques (script Lua exécuté d'un bloc par Redis) : l'expiration est posée au
+ * premier échec, ou reposée si la clé n'en a pas (clé héritée d'une ancienne version non atomique),
+ * pour qu'un compteur ne puisse jamais rester sans expiration (verrouillage permanent).
+ */
+export const INCREMENT_WITH_TTL_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 or redis.call('PTTL', KEYS[1]) < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
+
+/** Sous-ensemble d'ioredis utilisé (tests sans serveur). */
+export type AttemptRedis = Pick<Redis, 'eval' | 'get' | 'del' | 'disconnect'>;
+
+/** Compteur Redis partagé entre instances (INCR + PEXPIRE atomiques). */
 export class RedisAttemptStore implements AttemptStore {
-  constructor(private readonly redis: Redis) {}
+  constructor(private readonly redis: AttemptRedis) {}
 
   async increment(key: string, ttlMs: number): Promise<number> {
-    const count = await this.redis.incr(key);
-    if (count === 1) await this.redis.pexpire(key, ttlMs);
-    return count;
+    const count = await this.redis.eval(INCREMENT_WITH_TTL_SCRIPT, 1, key, String(Math.max(1, Math.round(ttlMs))));
+    return Number(count);
   }
 
   async get(key: string): Promise<number> {
@@ -96,7 +111,7 @@ export class LoginAttemptsService implements OnModuleDestroy {
         enableOfflineQueue: false,
         connectTimeout: 2_000,
       });
-      redis.on('error', (error: Error) => this.warn(`Redis : ${error.message}`));
+      redis.on('error', (error: Error) => this.warn(`Redis indisponible (${errorCode(error)})`));
       this.primary = new RedisAttemptStore(redis);
     } else {
       this.primary = null;
@@ -112,7 +127,7 @@ export class LoginAttemptsService implements OnModuleDestroy {
       try {
         return await operation(this.primary);
       } catch (error) {
-        this.warn(`Redis indisponible, compteur en mémoire : ${(error as Error).message}`);
+        this.warn(`Redis indisponible, compteur en mémoire (${errorCode(error)})`);
       }
     }
     return operation(this.memory);

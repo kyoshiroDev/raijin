@@ -3,7 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { SessionIdResolverRegistry } from '@raijin/api-core';
 import { ApiNotificationsModule } from '@raijin/api-notifications';
 import { AuthController } from './http/auth.controller';
-import { AuthGuard } from './http/auth.guard';
+import { AuthGuard, OptionalAuthGuard } from './http/auth.guard';
 import { AccessTokenService } from './services/access-token.service';
 import { AuditService } from './services/audit.service';
 import { AuthTokenService } from './services/auth-token.service';
@@ -24,13 +24,14 @@ import { SessionService } from './services/session.service';
     AccessTokenService,
     AuditService,
     AuthGuard,
+    OptionalAuthGuard,
     AuthService,
     AuthTokenService,
     LoginAttemptsService,
     PasswordService,
     SessionService,
   ],
-  exports: [AccessTokenService, AuditService, AuthGuard, AuthService, LoginAttemptsService, PasswordService, SessionService],
+  exports: [AccessTokenService, AuditService, AuthGuard, OptionalAuthGuard, AuthService, LoginAttemptsService, PasswordService, SessionService],
 })
 export class ApiAuthModule implements OnModuleInit {
   constructor(

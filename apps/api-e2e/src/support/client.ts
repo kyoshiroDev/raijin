@@ -7,6 +7,8 @@ export const MAILPIT_URL = process.env['MAILPIT_URL'] ?? 'http://localhost:8026'
 export class ApiClient {
   readonly cookies = new Map<string, string>();
   csrfToken = '';
+  /** En-têtes ajoutés à chaque requête (ex. X-Forwarded-For : IP simulée, l'API de test fait confiance à 1 proxy). */
+  readonly headers: Record<string, string> = {};
 
   private store(res: AxiosResponse): void {
     const header = res.headers['set-cookie'] ?? [];
@@ -26,6 +28,15 @@ export class ApiClient {
     return [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ');
   }
 
+  /** Requête brute (corps binaire, en-têtes de réponse). */
+  async raw(path: string): Promise<AxiosResponse<Buffer>> {
+    return axios.get<Buffer>(`/api/v1${path}`, {
+      responseType: 'arraybuffer',
+      validateStatus: () => true,
+      headers: { ...this.headers, Origin: ORIGIN },
+    });
+  }
+
   async request<T = Record<string, unknown>>(
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
@@ -37,6 +48,7 @@ export class ApiClient {
       data,
       validateStatus: () => true,
       headers: {
+        ...this.headers,
         Origin: ORIGIN,
         ...(this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
         ...(this.cookies.size ? { Cookie: this.cookieHeader() } : {}),
@@ -65,6 +77,7 @@ export class ApiClient {
 
   clone(): ApiClient {
     const copy = new ApiClient();
+    Object.assign(copy.headers, this.headers);
     this.cookies.forEach((value, name) => copy.cookies.set(name, value));
     copy.csrfToken = this.csrfToken;
     return copy;

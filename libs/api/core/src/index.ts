@@ -4,6 +4,7 @@ export * from './lib/config/config.module';
 export * from './lib/config/duration';
 export * from './lib/errors/api-exception';
 export * from './lib/errors/api-exception.filter';
+export * from './lib/errors/error-code';
 export * from './lib/http/setup-app';
 export * from './lib/security/cookies';
 export * from './lib/security/crypto';

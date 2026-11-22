@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { APP_CONFIG, hmac, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, errorCode, hmac, type AppConfig } from '@raijin/api-core';
 import { Prisma, PrismaService } from '@raijin/api-prisma';
 import type { ClientInfo } from './client-info';
 
@@ -36,7 +36,7 @@ export class AuditService {
       });
     } catch (error) {
       // L'audit ne doit jamais casser le parcours utilisateur.
-      this.logger.error(`Audit « ${action} » non enregistré : ${(error as Error).message}`);
+      this.logger.error(`Audit « ${action} » non enregistré (${errorCode(error)})`);
     }
   }
 }

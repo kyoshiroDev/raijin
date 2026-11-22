@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { APP_CONFIG, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, errorCode, type AppConfig } from '@raijin/api-core';
 import { PrismaClient } from '../generated/prisma/client';
 
 /**
@@ -20,7 +20,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
     } catch (error) {
       // L'API démarre quand même : /health signale la base indisponible.
-      this.logger.error(`Connexion à la base impossible : ${(error as Error).message}`);
+      // Code seulement : le message du pilote peut contenir l'URL de connexion.
+      this.logger.error(`Connexion à la base impossible (${errorCode(error)})`);
     }
   }
 

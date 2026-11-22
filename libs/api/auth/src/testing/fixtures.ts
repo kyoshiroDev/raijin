@@ -17,8 +17,6 @@ export function userFixture(overrides: Partial<User> = {}): User {
     trialStartedAt: null,
     trialEndsAt: null,
     stripeCustomerId: null,
-    failedLoginCount: 0,
-    lockedUntil: null,
     lastLoginAt: null,
     utmSource: null,
     utmMedium: null,

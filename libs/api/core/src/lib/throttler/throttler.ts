@@ -17,6 +17,7 @@ import {
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
 import { ApiException } from '../errors/api-exception';
+import { errorCode } from '../errors/error-code';
 
 type StorageRecord = Awaited<ReturnType<ThrottlerStorage['increment']>>;
 
@@ -28,11 +29,27 @@ export const AUTH_THROTTLE = 'raijin:auth-throttle';
  */
 export const AuthThrottle = (): MethodDecorator & ClassDecorator => SetMetadata(AUTH_THROTTLE, true);
 
-function hasAuthThrottle(context: ExecutionContext): boolean {
+export const ANALYSIS_THROTTLE = 'raijin:analysis-throttle';
+
+/**
+ * Limite renforcée des routes d'analyse (`RATE_LIMIT_ANALYSIS_PER_MINUTE` par IP et par route),
+ * en plus du quota journalier : freine la rotation de sessions et les rafales anonymes.
+ */
+export const AnalysisThrottle = (): MethodDecorator & ClassDecorator => SetMetadata(ANALYSIS_THROTTLE, true);
+
+function hasMetadata(context: ExecutionContext, key: string): boolean {
   return (
-    Reflect.getMetadata(AUTH_THROTTLE, context.getHandler()) === true ||
-    Reflect.getMetadata(AUTH_THROTTLE, context.getClass()) === true
+    Reflect.getMetadata(key, context.getHandler()) === true ||
+    Reflect.getMetadata(key, context.getClass()) === true
   );
+}
+
+function hasAuthThrottle(context: ExecutionContext): boolean {
+  return hasMetadata(context, AUTH_THROTTLE);
+}
+
+function hasAnalysisThrottle(context: ExecutionContext): boolean {
+  return hasMetadata(context, ANALYSIS_THROTTLE);
 }
 
 /**
@@ -65,8 +82,7 @@ export class ResilientThrottlerStorage implements ThrottlerStorage, OnApplicatio
       try {
         return await this.primary.increment(key, ttl, limit, blockDuration, throttlerName);
       } catch (error) {
-        const now = Date.now();
-        this.warn(`Redis indisponible, limites en mémoire : ${(error as Error).message}`);
+        this.warn(`Redis indisponible, limites en mémoire (${errorCode(error)})`);
       }
     }
     return this.memory.increment(key, ttl, limit, blockDuration, throttlerName);
@@ -90,7 +106,7 @@ export function createThrottlerStorage(redisUrl: string | null): ResilientThrott
     connectTimeout: 2_000,
   });
   const storage = new ResilientThrottlerStorage(redis, () => redis.redis.disconnect());
-  redis.redis.on('error', (error: Error) => storage.warn(`Redis : ${error.message}`));
+  redis.redis.on('error', (error: Error) => storage.warn(`Redis indisponible (${errorCode(error)})`));
   return storage;
 }
 
@@ -120,6 +136,12 @@ export class ApiThrottlerGuard extends ThrottlerGuard {
             ttl: 60_000,
             limit: config.rateLimit.authPerMinute,
             skipIf: (context: ExecutionContext) => !hasAuthThrottle(context),
+          },
+          {
+            name: 'analysis',
+            ttl: 60_000,
+            limit: config.rateLimit.analysisPerMinute,
+            skipIf: (context: ExecutionContext) => !hasAnalysisThrottle(context),
           },
         ],
       }),

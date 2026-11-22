@@ -36,6 +36,28 @@ export interface AppConfig {
     readonly perMinute: number;
     /** Requêtes par minute et par IP sur chaque route sensible de `/auth`. */
     readonly authPerMinute: number;
+    /** Requêtes par minute et par IP sur `POST /analyses` (en plus du quota journalier). */
+    readonly analysisPerMinute: number;
+  };
+  /** Analyse de token (phase 3, docs/ARCHITECTURE.md §9). */
+  readonly analysis: {
+    /** Clé HMAC de l'empreinte d'IP des visiteurs anonymes (l'IP n'est jamais stockée en clair). */
+    readonly ipHashSecret: string;
+    /** Analyses par jour (UTC) : visiteur anonyme, plan Gratuit, essai Pro. Pro : illimité. */
+    readonly anonDailyLimit: number;
+    readonly freeDailyLimit: number;
+    readonly trialDailyLimit: number;
+    /** Durée de cache d'un résultat (s) ; portée à `cacheTtlNoKeyS` sans clé Helius. */
+    readonly cacheTtlS: number;
+    readonly cacheTtlNoKeyS: number;
+    /** `index.html` du build web servi pour `/t/:mint` (balises OG injectées) ; `null` : HTML minimal. */
+    readonly webIndexHtmlPath: string | null;
+    /** Dossier des polices WOFF de l'image OG ; `null` : recherche automatique. */
+    readonly ogFontsDir: string | null;
+    /** Sources simulées par des fixtures (tests e2e, démonstration) ; refusé en production. */
+    readonly fixtures: boolean;
+    /** Dossier des fixtures rejouées ; `null` : `libs/api/solana/src/fixtures` depuis le répertoire courant. */
+    readonly fixturesDir: string | null;
   };
   readonly mail: {
     readonly provider: 'smtp' | 'resend';
@@ -85,6 +107,17 @@ const envSchema = z.object({
   AUTH_LOCKOUT_DURATION: z.string().default('15m'),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(120),
   RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).optional(),
+  RATE_LIMIT_ANALYSIS_PER_MINUTE: z.coerce.number().int().min(1).optional(),
+  IP_HASH_SECRET: optionalString,
+  ANON_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(3),
+  FREE_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(5),
+  TRIAL_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(50),
+  ANALYSIS_CACHE_TTL_S: z.coerce.number().int().min(5).max(3_600).default(60),
+  ANALYSIS_CACHE_TTL_NO_KEY_S: z.coerce.number().int().min(5).max(3_600).default(300),
+  WEB_INDEX_HTML_PATH: optionalString,
+  OG_FONTS_DIR: optionalString,
+  ANALYSIS_FIXTURES: optionalString,
+  ANALYSIS_FIXTURES_DIR: optionalString,
   MAIL_PROVIDER: z.enum(['smtp', 'resend']).default('smtp'),
   MAIL_FROM: z.string().trim().min(3).default('Raijin <noreply@raijinshield.com>'),
   SMTP_HOST: z.string().trim().min(1).default('localhost'),
@@ -148,7 +181,7 @@ export function loadConfig(
   const isProduction = e.NODE_ENV === 'production';
   const problems: string[] = [];
 
-  const secret = (name: 'JWT_ACCESS_SECRET' | 'COOKIE_SECRET'): string => {
+  const secret = (name: 'JWT_ACCESS_SECRET' | 'COOKIE_SECRET' | 'IP_HASH_SECRET'): string => {
     const value = e[name];
     if (isReal(value) && value.length >= MIN_SECRET_LENGTH) return value;
     if (isProduction) {
@@ -218,6 +251,11 @@ export function loadConfig(
     provider = 'smtp';
   }
 
+  const analysisFixtures = parseBoolean(e.ANALYSIS_FIXTURES, false);
+  if (isProduction && analysisFixtures) {
+    problems.push('ANALYSIS_FIXTURES : interdit en production (sources simulées)');
+  }
+
   const config: AppConfig = {
     env: e.NODE_ENV,
     isProduction,
@@ -246,6 +284,19 @@ export function loadConfig(
       perMinute: e.RATE_LIMIT_PER_MINUTE,
       // 10 par défaut en production ; 60 en dev/test (parcours e2e et essais manuels répétés).
       authPerMinute: e.RATE_LIMIT_AUTH_PER_MINUTE ?? (isProduction ? 10 : 60),
+      analysisPerMinute: e.RATE_LIMIT_ANALYSIS_PER_MINUTE ?? (isProduction ? 10 : 60),
+    },
+    analysis: {
+      ipHashSecret: secret('IP_HASH_SECRET'),
+      anonDailyLimit: e.ANON_ANALYSIS_DAILY_LIMIT,
+      freeDailyLimit: e.FREE_ANALYSIS_DAILY_LIMIT,
+      trialDailyLimit: e.TRIAL_ANALYSIS_DAILY_LIMIT,
+      cacheTtlS: e.ANALYSIS_CACHE_TTL_S,
+      cacheTtlNoKeyS: e.ANALYSIS_CACHE_TTL_NO_KEY_S,
+      webIndexHtmlPath: e.WEB_INDEX_HTML_PATH ?? null,
+      ogFontsDir: e.OG_FONTS_DIR ?? null,
+      fixtures: analysisFixtures,
+      fixturesDir: e.ANALYSIS_FIXTURES_DIR ?? null,
     },
     mail: {
       provider,

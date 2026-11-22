@@ -108,6 +108,23 @@
         "cwd": "{workspaceRoot}",
         "command": "docker compose -p raijin-dev -f docker-compose.dev.yml stop"
       }
+    },
+    "serve-e2e": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node dist/apps/api/main.js",
+        "readyWhen": "API Raijin",
+        "env": {
+          "ANALYSIS_FIXTURES": "1",
+          "TRUST_PROXY": "1",
+          "NODE_ENV": "development"
+        }
+      }
     }
   }
 }

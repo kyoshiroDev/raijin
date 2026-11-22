@@ -240,7 +240,8 @@ Voir `docs/ENV.md` (modèle du `.env.example`).
   (le profil public `PublicUser` les réutilise sans conversion). Identifiants `uuid` (v7 si disponible).
 - Modèle (migration `init`, toutes les tables de PROMPT.md §5 posées dès la phase 2) : `User` (avec
   `emailNormalized`, `trialStartedAt`, `trialEndsAt`, `trialStatus`, `stripeCustomerId`, attribution
-  UTM, `role` ; `failedLoginCount` / `lockedUntil` réservés, le verrouillage vivant dans Redis), `Session` (= famille de refresh, son `id` est le
+  UTM, `role` ; le verrouillage vit dans Redis, les colonnes réservées `failedLoginCount` / `lockedUntil` ont été
+  supprimées par la migration `20261122180000_analysis`), `Session` (= famille de refresh, son `id` est le
   `sid` du JWT) + `RefreshToken` (hash SHA-256, `usedAt`), `AuthToken` (vérification / reset / lien
   magique : hash SHA-256, type, expiration, `usedAt`, `redirectPath`), `TotpSecret`, `TrialFingerprint`,
   `ProductEvent`, `DailyMetric`, `JobRun`, `Subscription`, `StripeEvent`, `TokenAnalysis`, `Watch`,
@@ -304,6 +305,17 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
   confirmations par mot de passe (changement, suppression). argon2 tourne toujours (vrai hash ou
   factice) et la réponse reste 401 `AUTH_INVALID_CREDENTIALS` : ni l'existence du compte ni le
   verrouillage ne sont révélés (`AUTH_ACCOUNT_LOCKED` n'est plus renvoyé).
+- Compteur d'échecs : `INCR` + `PEXPIRE` atomiques (script Lua : expiration posée au premier échec, ou reposée
+  si la clé n'en a pas), jamais de clé sans expiration. **Repli mémoire si Redis tombe** : le compteur passe en
+  mémoire du processus (journalisé, code d'erreur seulement). Acceptable tant que l'API tourne en **une seule
+  instance** (cas de la v1 sur le VPS) ; avec plusieurs instances, chaque instance aurait son compteur (seuil
+  effectif multiplié) : à revoir si l'API est un jour répliquée.
+- **Verrouillage provoqué par un tiers** (qui tape exprès de mauvais mots de passe pour une adresse) : le
+  verrouillage ne concerne que la connexion par mot de passe et expire seul (`AUTH_LOCKOUT_DURATION`) ; le
+  **lien magique** (`POST auth/magic-link`, envoyé à la boîte de l'utilisateur) reste l'accès de secours et
+  n'est pas soumis au compteur. Le front le propose après un échec de connexion.
+- Journaux : jamais le message brut d'une erreur de pilote (pg, ioredis, undici, qui peut contenir une URL ou
+  un hôte) ; seulement son code (`errorCode()` de `api-core`, ex. `ECONNREFUSED`, `P2002`).
 - Réponses neutres (202 `MessageResponse`) pour inscription, mot de passe oublié, lien magique,
   renvoi de vérification : aucune énumération des comptes.
 
@@ -356,7 +368,9 @@ factices identiques à `docs/ENV.md`.
 `POST auth/magic-link/verify` (`MagicLinkSession` = `AuthSession` + `redirectPath`) ·
 `POST auth/password/forgot` (202) · `POST auth/password/reset` (204) · `POST auth/password/change` (204) ·
 `GET users/me` · `GET users/me/export` (RGPD, JSON en pièce jointe) · `DELETE users/me` (204, corps
-`DeleteAccountRequest { password }`). Codes : connexion refusée 401, compte verrouillé 429,
+`DeleteAccountRequest { password }`). Phase 3 : `POST analyses` (200 `AnalysisResponse`, auth facultative, CSRF, throttler
+`analysis`) · `GET analyses/quota` (`QuotaInfo`) · `GET analyses/:mint/latest` (`AnalysisResult`, 404
+`ANALYSIS_NOT_FOUND`) · `GET share/t/:mint` (HTML) · `GET og/:mint.png` (PNG 1200×630, ETag). Codes : connexion refusée 401, compte verrouillé 429,
 jeton e-mail invalide 400, session absente 401 `AUTH_SESSION_EXPIRED`, CSRF 403.
 
 ## 9. Analyse de token (phase 3)
@@ -495,3 +509,30 @@ animation « éclair sur le bouclier » en SVG + CSS (`transform`/`opacity` uniq
 `prefers-reduced-motion` respecté) ; aucune ressource tierce, polices auto-hébergées préchargées
 (`font-display: swap`). Mesure sur le build de production servi statiquement, API simulée par les
 fixtures, pages : `/analyse` (vide), `/analyse/<mint>` (résultat), `/t/<mint>`.
+
+### 9.11 Implémentation livrée (T3, `libs/api/analysis`)
+- **Collecte** : port `FactsCollector` (`collectFacts`, `resolveMint`), implémenté par `SolanaFactsCollector` sur
+  `SolanaDataService` (`@raijin/api-solana`, une instance par processus créée par `ApiAnalysisModule`) :
+  `TokenNotFoundError` → 404 `TOKEN_NOT_FOUND` ; `canIssueVerdict(facts) === false` → 503 `UPSTREAM_UNAVAILABLE` ;
+  contrôles bâtis avec `summarizeCheck`, `buildCheckMetrics`, `collected.checkSources`, `explainVerdict`,
+  `collected.degraded`. Ports fournis à la lib : `SolanaCacheStore` (Redis, préfixe `solana:`) et
+  `RedisCreditBudget` (compteur `helius:credits:<jour>`, script Lua INCRBY + EXPIRE + annulation au-delà du budget ;
+  repli mémoire si Redis tombe). Cache des résultats 60 s avec clé Helius (`heliusConfigured`), 300 s sinon.
+- **Mode fixtures** (`ANALYSIS_FIXTURES=1`, refusé en production) : `SolanaDataService` sans clé Helius, `fetch`
+  qui rejoue `libs/api/solana/src/fixtures` (`ANALYSIS_FIXTURES_DIR`). Utilisé par `api:serve-e2e` (avec
+  `TRUST_PROXY=1` pour simuler une IP par test via `X-Forwarded-For`).
+- **Quota** : `QuotaService.resolvePolicy` (relu en base : Gratuit, essai actif, Pro ; seul point à étendre en phase 6)
+  → `reserve` (`INSERT … ON CONFLICT … DO UPDATE … WHERE count < limit RETURNING count`) → `refund` sur toute
+  erreur. Empreinte d'IP : HMAC(`IP_HASH_SECRET`) tronqué, IPv6 regroupée par /64. Throttler `analysis`
+  (`@AnalysisThrottle()`, `RATE_LIMIT_ANALYSIS_PER_MINUTE`) appliqué à tout `POST analyses`. Auth facultative
+  (`OptionalAuthGuard`) : cookie d'access invalide → 401 `AUTH_SESSION_EXPIRED` (pas de bascule silencieuse en anonyme).
+- **Persistance** : `TokenAnalysis` (+ `token` Json : métadonnées nettoyées pour la page publique, `durationMs`) ;
+  `ProductEvent` `analysis_done` (mint, verdict, cached, degraded, engineVersion, durationMs, subject) à chaque
+  analyse réussie, en cache ou non ; durée aussi dans l'en-tête `Server-Timing`.
+- **Page publique** : `GET share/t/:mint` répond avec une CSP adaptée au document de l'app (`script-src 'self'`,
+  `style-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`) au lieu du `default-src 'none'` des réponses JSON.
+  Point à trancher en phase 8 (Traefik) : si le build web garde `inlineCritical` (attribut `onload` sur la feuille de
+  style), la CSP de l'app doit l'autoriser ou le build doit le désactiver.
+- **Image OG** : logo et Rai copiés dans `og/brand-assets.ts` (test d'égalité avec `libs/brand`), polices WOFF
+  `@fontsource` copiées dans `dist/apps/api/assets/fonts` au build (`OG_FONTS_DIR` sinon). Nom du token réduit aux
+  caractères latins des polices, 24 caractères max, toujours « (non vérifié) ».

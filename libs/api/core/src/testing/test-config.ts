@@ -6,6 +6,7 @@ export function testConfig(env: Record<string, string> = {}): AppConfig {
     NODE_ENV: 'test',
     JWT_ACCESS_SECRET: 'a'.repeat(48),
     COOKIE_SECRET: 'c'.repeat(48),
+    IP_HASH_SECRET: 'i'.repeat(48),
     ...env,
   });
 }

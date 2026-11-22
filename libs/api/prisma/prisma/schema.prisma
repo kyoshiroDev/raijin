@@ -91,9 +91,6 @@ model User {
   trialStartedAt   DateTime?
   trialEndsAt      DateTime?
   stripeCustomerId String?     @unique
-  /// Verrouillage temporaire après échecs de connexion répétés.
-  failedLoginCount Int         @default(0)
-  lockedUntil      DateTime?
   lastLoginAt      DateTime?
   // Attribution (première visite, données externes bornées)
   utmSource        String?
@@ -230,14 +227,28 @@ model StripeEvent {
 // ---------------------------------------------------------------------------
 
 /// Résultat d'analyse d'un token. Purgé après 90 jours (job de rétention).
+/// Une ligne par analyse fraîche (pas pour un résultat servi depuis le cache).
 model TokenAnalysis {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  mint      String
-  verdict   Verdict
-  score     Int?
-  checks    Json
-  sources   Json
-  userId    String?  @db.Uuid
+  id            String   @id @default(uuid(7)) @db.Uuid
+  mint          String
+  verdict       Verdict
+  score         Int?
+  /// `AnalysisCheck[]` du contrat (9 contrôles dans l'ordre).
+  checks        Json
+  /// Statut par source (`ok` / `error` / `skipped`, latence).
+  sources       Json
+  /// Version du moteur de verdict (`RISK_ENGINE_VERSION`).
+  engineVersion String   @default("0.0.0")
+  /// `RiskFacts` normalisés : rejouables par le banc sur une variante du moteur.
+  facts         Json?
+  /// Métadonnées du token (nom/symbole non fiables, nettoyés, sans image) : page publique.
+  token         Json?
+  /// Au moins un contrôle indisponible (résultat partiel).
+  degraded      Boolean  @default(false)
+  explanation   String?
+  /// Durée de l'analyse (collecte + moteur), en millisecondes.
+  durationMs    Int?
+  userId        String?  @db.Uuid
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 

@@ -13,7 +13,7 @@
       ],
       "dependsOn": [
         "api:build",
-        "api:serve"
+        "api:serve-e2e"
       ],
       "options": {
         "cwd": "apps/api-e2e"

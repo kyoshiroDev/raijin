@@ -326,7 +326,7 @@ describe('AuthService mots de passe', () => {
     const { mock, service, tokens, sessions, mail, attempts, config } = await setup();
     for (let i = 0; i < config.auth.lockoutThreshold; i++) await attempts.recordFailure('jean.dupont@exemple.fr');
     tokens.consume.mockResolvedValue({ userId: 'u' });
-    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u', lockedUntil: new Date(Date.now() + 1000) }));
+    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u' }));
     mock.user.update.mockResolvedValue({});
     await service.resetPassword('jeton', 'nouvelle phrase de passe', client);
     const data = mock.user.update.mock.calls[0][0].data;

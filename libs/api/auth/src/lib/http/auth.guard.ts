@@ -58,3 +58,27 @@ export const CurrentAuth = createParamDecorator((_data: unknown, context: Execut
   if (!auth) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
   return auth;
 });
+
+/**
+ * Authentification facultative (routes ouvertes aux visiteurs, ex. `POST /analyses`) :
+ * - aucun cookie d'access : visiteur anonyme, la requête continue sans `auth` ;
+ * - cookie présent mais expiré, invalide ou session révoquée : 401 `AUTH_SESSION_EXPIRED`, pour que
+ *   le front rafraîchisse la session au lieu de consommer en silence le quota anonyme ;
+ * - cookie valide : `auth` posé comme avec `AuthGuard`.
+ */
+@Injectable()
+export class OptionalAuthGuard implements CanActivate {
+  constructor(private readonly required: AuthGuard, private readonly cookies: AuthCookies) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    if (!this.cookies.read(req, 'access')) return true;
+    return this.required.canActivate(context);
+  }
+}
+
+/** `@OptionalAuth() auth: AuthContext | null` (route protégée par `OptionalAuthGuard`). */
+export const OptionalAuth = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): AuthContext | null =>
+    context.switchToHttp().getRequest<AuthenticatedRequest>().auth ?? null,
+);

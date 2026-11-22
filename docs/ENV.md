@@ -84,10 +84,57 @@ TOTP_ENCRYPTION_KEY=changeme-cle-totp-factice
 # ---------------------------------------------------------------------
 # Helius (RPC Solana) — (optionnel en dev : simulation locale, RPC public + fixtures)
 # ---------------------------------------------------------------------
-# Helius — https://dashboard.helius.dev/api-keys
+# Helius — https://dashboard.helius.dev/api-keys (copiée par toi, jamais affichée ni journalisée)
 HELIUS_API_KEY=
-# RPC de repli sans clé (débit très limité)
+# Helius — débit réservé à ce processus (plan Free : 10 req/s RPC et 2 req/s DAS partagés avec le banc,
+#   https://www.helius.dev/docs/billing/rate-limits). API Raijin 7 / 1,5 ; banc 3 / 0,5.
+HELIUS_RPC_RPS=7
+HELIUS_DAS_RPS=1.5
+# Helius — crédits par jour UTC (plan Free : 1 M/mois ; RPC 1 crédit, DAS 10,
+#   https://www.helius.dev/docs/billing/credits). API 22000, banc 10000. Au-delà : RPC public ou « indisponible ».
+HELIUS_DAILY_CREDIT_BUDGET=22000
+# Solana — RPC public de repli sans clé (https://solana.com/docs/references/clusters, ~1 req/s ; refuse getTokenLargestAccounts)
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+SOLANA_RPC_RPS=1
+# URL de base des API publiques (https sans query string ; défauts du code, à ne changer que pour un proxy) :
+#   DexScreener — https://docs.dexscreener.com/api/reference (300 req/min sur les routes paires/tokens)
+DEXSCREENER_API_URL=https://api.dexscreener.com
+#   GeckoTerminal — https://www.geckoterminal.com/dex-api (API publique ~10 appels/min)
+GECKOTERMINAL_API_URL=https://api.geckoterminal.com/api/v2
+#   Jupiter (devis seulement, sans clé : 0,5 req/s) — https://developers.jup.ag/docs/api-rate-limit
+JUPITER_API_URL=https://lite-api.jup.ag/swap/v1
+#   RugCheck (rapport public sans clé) — https://api.rugcheck.xyz/swagger/index.html
+RUGCHECK_API_URL=https://api.rugcheck.xyz/v1
+# Helius — URL de base RPC/DAS (la clé est ajoutée par le code, jamais ici)
+HELIUS_RPC_URL=https://mainnet.helius-rpc.com
+
+# ---------------------------------------------------------------------
+# Analyse de token (API Raijin, docs/ARCHITECTURE.md §9.5 à §9.7)
+# ---------------------------------------------------------------------
+# Raijin — clé HMAC de l'empreinte d'IP des visiteurs anonymes (quota ; l'IP n'est jamais stockée en clair).
+#   OBLIGATOIRE en production (32 caractères min.). À générer : openssl rand -base64 48
+IP_HASH_SECRET=changeme-ip-hash-secret-factice
+# Raijin — analyses par jour UTC : visiteur anonyme (par empreinte d'IP), plan Gratuit, essai Pro 7 jours (Pro : illimité)
+ANON_ANALYSIS_DAILY_LIMIT=3
+FREE_ANALYSIS_DAILY_LIMIT=5
+TRIAL_ANALYSIS_DAILY_LIMIT=50
+# Raijin — limite par IP et par minute sur POST /analyses, en plus du quota (vide = 10 en production, 60 en dev/test)
+RATE_LIMIT_ANALYSIS_PER_MINUTE=
+# Raijin — durée du cache Redis d'un résultat d'analyse, en secondes (avec clé Helius / sans clé, RPC public lent)
+ANALYSIS_CACHE_TTL_S=60
+ANALYSIS_CACHE_TTL_NO_KEY_S=300
+# Raijin — index.html du build web servi pour /t/<mint> avec les balises Open Graph injectées
+#   (prod : volume en lecture seule ; build local : pnpm nx build web → dist/apps/web/browser/index.html).
+#   Vide = HTML minimal avec un lien vers l'app.
+WEB_INDEX_HTML_PATH=
+# Raijin — dossier des polices WOFF de l'image OG (vide = assets/fonts du build de l'API, puis node_modules/@fontsource)
+OG_FONTS_DIR=
+# Raijin — sources simulées par des fixtures (tests e2e, démonstration locale sans réseau). 0 ou 1.
+#   Refusé en production (l'API ne démarre pas). Rejoue les enregistrements de libs/api/solana/src/fixtures
+#   (BONK, USDC, PYUSD, pump.fun récent, mint actif, honeypot, mint inexistant), sans clé Helius.
+ANALYSIS_FIXTURES=0
+# Raijin — dossier des fixtures rejouées (vide = libs/api/solana/src/fixtures depuis la racine du dépôt)
+ANALYSIS_FIXTURES_DIR=
 
 # ---------------------------------------------------------------------
 # E-mails : Resend (prod) ou SMTP Mailpit (dev)
@@ -164,10 +211,11 @@ SENTRY_ENVIRONMENT=development
 
 ## Validation au démarrage (`libs/api/core`, `loadConfig`)
 
-- **Production** (`NODE_ENV=production`) : l'API refuse de démarrer si `JWT_ACCESS_SECRET` ou
-  `COOKIE_SECRET` est absente, factice (`changeme…`, `…factice`) ou plus courte que 32 caractères,
+- **Production** (`NODE_ENV=production`) : l'API refuse de démarrer si `JWT_ACCESS_SECRET`,
+  `COOKIE_SECRET` ou `IP_HASH_SECRET` est absente, factice (`changeme…`, `…factice`) ou plus courte que 32 caractères,
   si `DATABASE_URL`, `REDIS_URL` ou `TRUST_PROXY` manque, si `COOKIE_SECURE` n'est pas `true`, si une origine
-  n'est pas en HTTPS, ou si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`. Les messages
+  n'est pas en HTTPS, si `MAIL_PROVIDER=resend` sans vraie `RESEND_API_KEY`, ou si
+  `ANALYSIS_FIXTURES` est activé. Les messages
   citent le nom de la variable, jamais sa valeur.
 - **Développement / test** : valeurs de repli non secrètes (ports locaux 5433 / 6380 / 1026) ; les
   secrets absents ou factices sont générés aléatoirement à chaque démarrage, avec un avertissement

@@ -11,6 +11,7 @@ const prodEnv = {
   REDIS_URL: 'redis://redis:6379',
   JWT_ACCESS_SECRET: strong,
   COOKIE_SECRET: `${strong}x`,
+  IP_HASH_SECRET: `${strong}y`,
   COOKIE_SECURE: 'true',
   TRUST_PROXY: '1',
 };
@@ -42,7 +43,7 @@ describe('loadConfig', () => {
     expect(config.mail.provider).toBe('smtp');
     expect(config.mail.smtpPort).toBe(1026);
     expect(config.mail.logoUrl).toBe('http://localhost:4200/icons/icon-192.png');
-    expect(warnings).toHaveLength(2);
+    expect(warnings).toHaveLength(3);
     expect(warnings.join(' ')).not.toContain(config.auth.accessSecret);
   });
 
@@ -110,6 +111,26 @@ describe('loadConfig', () => {
     expect(loadConfig(prodEnv).rateLimit.authPerMinute).toBe(10);
     expect(loadConfig({ NODE_ENV: 'test' }).rateLimit.authPerMinute).toBe(60);
     expect(loadConfig({ NODE_ENV: 'test', RATE_LIMIT_AUTH_PER_MINUTE: '3' }).rateLimit.authPerMinute).toBe(3);
+  });
+
+  it('analyse : limites et caches par défaut, IP_HASH_SECRET exigée et fixtures interdites en production', () => {
+    const config = loadConfig({ NODE_ENV: 'test' });
+    expect(config.analysis).toMatchObject({
+      anonDailyLimit: 3,
+      freeDailyLimit: 5,
+      trialDailyLimit: 50,
+      cacheTtlS: 60,
+      cacheTtlNoKeyS: 300,
+      webIndexHtmlPath: null,
+      fixtures: false,
+    });
+    expect(config.analysis.ipHashSecret.length).toBeGreaterThanOrEqual(32);
+    expect(config.rateLimit.analysisPerMinute).toBe(60);
+    expect(loadConfig(prodEnv).rateLimit.analysisPerMinute).toBe(10);
+    expect(loadConfig({ NODE_ENV: 'test', ANALYSIS_FIXTURES: '1' }).analysis.fixtures).toBe(true);
+    expect(() => loadConfig({ ...prodEnv, IP_HASH_SECRET: undefined })).toThrow(/IP_HASH_SECRET/);
+    expect(() => loadConfig({ ...prodEnv, ANALYSIS_FIXTURES: 'true' })).toThrow(/ANALYSIS_FIXTURES/);
+    expect(() => loadConfig({ NODE_ENV: 'test', FREE_ANALYSIS_DAILY_LIMIT: '0' })).toThrow(ConfigError);
   });
 
   it('refuse les valeurs mal formées', () => {
