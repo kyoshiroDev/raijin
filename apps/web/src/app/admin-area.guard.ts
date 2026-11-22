@@ -11,15 +11,16 @@ export const ADMIN_LOGIN_PATH = '/compte/connexion';
 /**
  * Entrée de l'espace admin (`/admin`, affichage seulement : le vrai contrôle est fait par l'API sur chaque route
  * `admin/*`). Visiteur → connexion avec retour ; compte connecté sans rôle ADMIN → la route ne correspond pas et
- * la page 404 standard s'affiche (l'espace reste invisible). API injoignable : la feature s'ouvre et affiche son
- * état d'erreur (aucune donnée n'est servie sans l'API).
+ * la page 404 standard s'affiche (l'espace reste invisible). API injoignable : même 404 standard, le chunk admin
+ * n'est téléchargé pour personne tant que le rôle ADMIN n'est pas confirmé.
  * `canMatch` : le chunk admin n'est même pas téléchargé pour un non-admin.
  */
 export const adminAreaGuard: CanMatchFn = async (_route, segments) => {
   const auth = inject(AuthStore);
   const router = inject(Router);
   await auth.whenReady();
-  if (auth.status() === 'error') return true;
+  // API injoignable : rôle inconnu, le chunk admin n'est pas téléchargé (404 standard, rien ne fuit).
+  if (auth.status() === 'error') return false;
   if (!auth.isAuthenticated()) {
     // Chemin reconstruit à partir des segments reconnus par le routeur (toujours interne, sans requête) ;
     // l'écran de connexion le revalide avec `safeRedirect`.

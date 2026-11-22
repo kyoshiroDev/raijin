@@ -63,9 +63,10 @@ describe('adminAreaGuard', () => {
     expect(ADMIN_LOGIN_PATH).toBe(AUTH_ROUTES.login);
   });
 
-  it('API injoignable : la feature s’ouvre et affiche son propre état d’erreur', async () => {
-    const { component } = await setup('error');
-    expect(component).toBe(AdminStub);
+  it('API injoignable : 404 standard, le chunk admin n’est pas chargé', async () => {
+    const { router, component } = await setup('error');
+    expect(component).toBe(NotFoundStub);
+    expect(router.url).toBe('/admin/trafic');
   });
 
   it('la route admin masque la coque de l’app', async () => {
