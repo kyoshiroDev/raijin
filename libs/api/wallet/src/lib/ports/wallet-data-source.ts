@@ -54,6 +54,8 @@ export interface ListHoldingsOptions {
   readonly maxAccounts: number;
   readonly priceLookupMax: number;
   readonly dustUsd: number;
+  /** Échéance globale du scan : annule la lecture en cours. */
+  readonly signal?: AbortSignal;
 }
 
 /** Verdict rapide d'un mint du lot : faits `light`, ou motif d'indisponibilité. */

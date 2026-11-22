@@ -98,23 +98,28 @@ export class WalletScanService {
   /** `POST wallet-scans`. */
   async scan(userId: string, body: unknown): Promise<WalletScanResponse> {
     const started = performance.now();
+    // Échéance globale fixée à l'arrivée : l'attente d'un verrou détenu ailleurs en est déduite.
+    const deadlineAt = Date.now() + this.config.wallet.deadlineMs;
     const rights = await this.access.requireAllowed(userId);
     const address = parseWalletRequest(body);
     const key = walletKey(this.config.analysis.ipHashSecret, address);
     await this.throwIfRejected(key);
-    const cached = await this.readCache(key);
+    const cached = await this.readCache(key, address);
     const reservation = await this.access.reserve(rights.policy, key);
 
     let computed: Computed;
     try {
-      computed = cached ? { result: cached, credits: 0 } : await this.getOrCompute(address, key);
+      computed = cached ? { result: cached, credits: 0 } : await this.getOrCompute(address, key, deadlineAt);
     } catch (failure) {
       await this.access.settleFailure(reservation, failure);
       throw failure;
     }
+    // `cached: true` seulement pour un re-scan du même utilisateur (déjà compté dans la fenêtre
+    // `quota:seen`) : sinon, il révélerait qu'un autre compte vient de scanner ce wallet.
+    const sameUserRescan = !reservation.counted;
     // Garde de sortie : rien ne sort de l'API hors contrat.
     const response = walletScanResponseSchema.parse({
-      scan: computed.result,
+      scan: { ...computed.result, cached: computed.result.cached && sameUserRescan },
       quota: await this.access.info(rights.policy, reservation.used),
     });
     const durationMs = performance.now() - started;
@@ -143,11 +148,13 @@ export class WalletScanService {
     return `wallet:scan:${this.engine.version}:${key}`;
   }
 
-  private async readCache(key: string): Promise<WalletScanResult | null> {
+  /** Résultat en cache ; l'adresse, absente de la valeur stockée, est remise depuis la requête. */
+  private async readCache(key: string, address: string): Promise<WalletScanResult | null> {
     const raw = await this.store.get(this.scanKey(key));
     if (!raw) return null;
     try {
-      const parsed = walletScanResultSchema.safeParse(JSON.parse(raw));
+      const stored = JSON.parse(raw) as Record<string, unknown>;
+      const parsed = walletScanResultSchema.safeParse({ ...stored, address });
       return parsed.success ? { ...parsed.data, cached: true } : null;
     } catch {
       return null;
@@ -159,46 +166,50 @@ export class WalletScanService {
     if (code === 'WALLET_INVALID' || code === 'WALLET_IS_TOKEN' || code === 'WALLET_TOO_LARGE') throw walletError(code);
   }
 
-  private async getOrCompute(address: string, key: string): Promise<Computed> {
+  private async getOrCompute(address: string, key: string, deadlineAt: number): Promise<Computed> {
     const running = this.inflight.get(key);
     if (running) {
       const shared = await running;
       return { result: { ...shared.result, cached: true }, credits: 0 };
     }
-    const promise = this.computeWithLock(address, key).finally(() => this.inflight.delete(key));
+    const promise = this.computeWithLock(address, key, deadlineAt).finally(() => this.inflight.delete(key));
     this.inflight.set(key, promise);
     return promise;
   }
 
-  private async computeWithLock(address: string, key: string): Promise<Computed> {
+  private async computeWithLock(address: string, key: string, deadlineAt: number): Promise<Computed> {
     const lockKey = `wallet:lock:${key}`;
     const token = randomToken(12);
     const acquired = await this.store.setIfAbsent(lockKey, token, WALLET_LOCK_TTL_MS);
     if (acquired === false) {
-      // Une autre instance scanne ce wallet : relecture du cache jusqu'à l'échéance, puis calcul.
-      const deadline = Date.now() + this.config.wallet.deadlineMs;
-      while (Date.now() < deadline) {
+      // Une autre instance scanne ce wallet : relecture du cache jusqu'à l'échéance (le temps
+      // d'attente est pris sur l'échéance du scan), puis calcul avec le temps restant.
+      while (Date.now() < deadlineAt) {
         await sleep(this.waitPollMs);
-        const hit = await this.readCache(key);
+        const hit = await this.readCache(key, address);
         if (hit) return { result: hit, credits: 0 };
         await this.throwIfRejected(key);
       }
     }
     try {
-      return await this.compute(address, key);
+      return await this.compute(address, key, deadlineAt);
     } finally {
       if (acquired) await this.store.deleteIfEquals(lockKey, token);
     }
   }
 
-  private async compute(address: string, key: string): Promise<Computed> {
-    const deadlineAt = Date.now() + this.config.wallet.deadlineMs;
+  private async compute(address: string, key: string, deadlineAt: number): Promise<Computed> {
     const { maxAccounts, priceLookupMax, dustUsd } = this.config.wallet;
+    // Échéance propagée à la lecture des comptes (annulation des appels en cours).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(0, deadlineAt - Date.now()));
     let holdings;
     try {
-      holdings = await this.source.listHoldings(address, { maxAccounts, priceLookupMax, dustUsd });
+      holdings = await this.source.listHoldings(address, { maxAccounts, priceLookupMax, dustUsd, signal: controller.signal });
     } catch (failure) {
-      throw await this.mapListFailure(failure, key);
+      throw await this.mapListFailure(controller.signal.aborted ? new UpstreamUnavailableError() : failure, key);
+    } finally {
+      clearTimeout(timer);
     }
     const plan = planHoldings(holdings.tokens, this.maxTokens, dustUsd);
     const resolved = await this.verdicts.resolve(plan.toAnalyze, deadlineAt);
@@ -211,7 +222,10 @@ export class WalletScanService {
       scannedAt: this.clock.now(),
       partial: resolved.partial,
     });
-    await this.store.set(this.scanKey(key), JSON.stringify(result), this.cacheTtlMs);
+    // Valeur stockée **sans l'adresse** (seule l'empreinte HMAC figure dans la clé).
+    const stored: Partial<WalletScanResult> = { ...result };
+    delete stored.address;
+    await this.store.set(this.scanKey(key), JSON.stringify(stored), this.cacheTtlMs);
     return { result, credits: holdings.credits + resolved.credits };
   }
 

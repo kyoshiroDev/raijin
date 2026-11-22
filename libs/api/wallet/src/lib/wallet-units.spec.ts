@@ -166,6 +166,9 @@ describe('SolanaWalletDataSource (adaptateur @raijin/api-solana)', () => {
     expect(listed.tokens[0]).toMatchObject({ mint: FIXTURE_MINTS.bonk, amountRaw: '100000', decimals: 5, valueUsd: 2, name: 'Bonk' });
     expect(listed.delegations[0]).toMatchObject({ delegatedAmountRaw: '5', balanceRaw: '0', decimals: 6, symbol: 'GIFT' });
     expect(listed).toMatchObject({ nftCount: 2, emptyAccountCount: 3, credits: 3 });
+    const signal = new AbortController().signal;
+    await source.listHoldings(FIXTURE_WALLETS.delegations, { maxAccounts: 1000, priceLookupMax: 150, dustUsd: 1, signal });
+    expect((data.listWalletHoldings as jest.Mock).mock.calls[1][1]).toMatchObject({ signal, maxTokens: 20 });
 
     const batch = await source.collectLightBatch([FIXTURE_MINTS.bonk, FIXTURE_MINTS.scam], { deadlineAt: Date.now() + 5_000 });
     expect(batch.credits).toBe(11);

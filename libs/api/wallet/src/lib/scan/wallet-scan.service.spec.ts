@@ -12,7 +12,7 @@ import {
   walletKit,
 } from '../../testing/wallet-test-kit';
 import { FIXTURE_DELEGATES, FIXTURE_MINTS, FIXTURE_WALLETS, UnavailableWalletDataSource } from '../fixtures/fixture-wallets';
-import { WalletDataSource, type LightBatchResult, type WalletHoldings } from '../ports/wallet-data-source';
+import { WalletDataSource, type LightBatchResult, type ListHoldingsOptions, type WalletHoldings } from '../ports/wallet-data-source';
 import { walletKey } from './wallet-utils';
 
 const FACTS = {
@@ -21,6 +21,7 @@ const FACTS = {
   [FIXTURE_MINTS.mintActive]: dangerFacts(FIXTURE_MINTS.mintActive),
   [FIXTURE_MINTS.freshPump]: healthyFacts(FIXTURE_MINTS.freshPump),
 };
+const OTHER_USER_ID = '0195a0c4-0000-7000-8000-000000000002';
 const OTHER_WALLET = '7nYabs9dUhvxYwdTnrWVBL9MYviKSfrEbdWCUbcnwkpF';
 
 async function rejection(promise: Promise<unknown>): Promise<{ code: string; status: number }> {
@@ -283,5 +284,65 @@ describe('WalletScanService', () => {
     expect(logs.some((line) => line.startsWith('Scan de wallet frais'))).toBe(true);
     // Aucune écriture en base hors de l'événement (pas de table de scans, pas de TokenAnalysis).
     expect(Object.keys(kit.prisma)).toEqual(['user', 'tokenAnalysis', 'productEvent']);
+  });
+
+  it('audit : valeur en cache sans l’adresse (remise depuis la requête à la lecture)', async () => {
+    const kit = walletKit({ facts: FACTS });
+    await kit.scan.scan(USER_ID, { address: FIXTURE_WALLETS.delegations });
+    const key = `wallet:scan:${kit.engine.version}:${walletKey(kit.config.analysis.ipHashSecret, FIXTURE_WALLETS.delegations)}`;
+    const raw = (await kit.store.get(key)) ?? '';
+    expect(raw).not.toContain(FIXTURE_WALLETS.delegations);
+    expect(JSON.parse(raw)).not.toHaveProperty('address');
+    const again = await kit.scan.scan(USER_ID, { address: FIXTURE_WALLETS.delegations });
+    expect(again.scan).toMatchObject({ address: FIXTURE_WALLETS.delegations, cached: true });
+  });
+
+  it('audit : `cached` ne révèle pas le scan d’un autre compte (cache et single-flight partagés)', async () => {
+    const kit = walletKit({ facts: FACTS });
+    const listHoldings = jest.spyOn(kit.source, 'listHoldings');
+    await kit.scan.scan(USER_ID, { address: FIXTURE_WALLETS.danger });
+    const other = await kit.scan.scan(OTHER_USER_ID, { address: FIXTURE_WALLETS.danger });
+    expect(other.scan.cached).toBe(false);
+    expect(listHoldings).toHaveBeenCalledTimes(1);
+    expect((await kit.scan.scan(OTHER_USER_ID, { address: FIXTURE_WALLETS.danger })).scan.cached).toBe(true);
+
+    const flight = walletKit({ facts: FACTS });
+    const [a, b] = await Promise.all([
+      flight.scan.scan(USER_ID, { address: FIXTURE_WALLETS.delegations }),
+      flight.scan.scan(OTHER_USER_ID, { address: FIXTURE_WALLETS.delegations }),
+    ]);
+    expect([a.scan.cached, b.scan.cached]).toEqual([false, false]);
+  });
+
+  it('audit : échéance propagée à listHoldings (AbortSignal), attente du verrou déduite', async () => {
+    let received: AbortSignal | undefined;
+    class HangingSource extends WalletDataSource {
+      get heliusConfigured() {
+        return true;
+      }
+      listHoldings(_address: string, options: ListHoldingsOptions): Promise<WalletHoldings> {
+        received = options.signal;
+        return new Promise((_resolve, reject) => {
+          if (options.signal?.aborted) reject(new Error('aborted'));
+          options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      }
+      async collectLightBatch(): Promise<LightBatchResult> {
+        return { entries: [], credits: 0 };
+      }
+    }
+    const kit = walletKit({ source: new HangingSource(), env: { WALLET_SCAN_DEADLINE_MS: '1000' } });
+    let started = Date.now();
+    await expect(rejection(kit.scan.scan(USER_ID, { address: OTHER_WALLET }))).resolves.toEqual({ code: 'UPSTREAM_UNAVAILABLE', status: 503 });
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(received?.aborted).toBe(true);
+    expect(kit.quota.refunds).toBe(1);
+
+    // Verrou tenu par une autre instance : l'attente consomme l'échéance, pas 2 × 15 s.
+    const lockKey = `wallet:lock:${walletKey(kit.config.analysis.ipHashSecret, FIXTURE_WALLETS.empty)}`;
+    await kit.store.set(lockKey, 'autre-instance', 60_000);
+    started = Date.now();
+    await expect(rejection(kit.scan.scan(USER_ID, { address: FIXTURE_WALLETS.empty }))).resolves.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
+    expect(Date.now() - started).toBeLessThan(1_500);
   });
 });
