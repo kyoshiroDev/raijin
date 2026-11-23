@@ -3,19 +3,35 @@
 // scripts/serve-prod.mjs (port 4310), API réelle en mode fixtures (port 3100, `ANALYSIS_FIXTURES=1`).
 // Landing (phase 7, docs/ARCHITECTURE.md §15.7) : accueil, tarifs et un guide, build statique de mesure
 // (identifiant GA4 factice : la bannière de consentement d'une première visite est rendue, aucune requête
-// Google avant l'accord) servi compressé par scripts/serve-landing.mjs (port 4332, cibles web-e2e:build-landing-lighthouse puis serve-landing-lighthouse).
+// Google avant l'accord, cible web-e2e:build-landing-lighthouse), servi compressé par scripts/serve-landing.mjs sur le
+// port 4332 : ce script démarre lui-même ce serveur (sauf s'il répond déjà) et l'arrête à la fin ou en cas d'erreur.
 // Chromium de Playwright (pas de téléchargement de navigateur). Médiane de RUNS passages par page.
 // Sorties : rapports complets dans dist/lighthouse/ (non versionnés), résumé léger (scores, métriques,
 // audits fautifs) dans docs/lighthouse/<phase>/summary.json et summary.md.
 // Usage : node apps/web-e2e/scripts/lighthouse.mjs [--phase phase-7] [--runs 3] [--pages all|app|landing]
-//   [--base http://127.0.0.1:4310] [--landing http://127.0.0.1:4332]
+//   [--base http://127.0.0.1:4310] [--landing http://127.0.0.1:4332] [--landing-dist dist/apps/landing-lighthouse]
 import { chromium } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const USAGE = `Usage : node apps/web-e2e/scripts/lighthouse.mjs [options]
+  --phase <nom>          dossier du résumé docs/lighthouse/<nom>/ (défaut : phase-7)
+  --runs <n>             passages par page, médiane retenue (défaut : 3)
+  --pages all|app|landing  pages mesurées (défaut : all)
+  --base <url>           app de production (défaut : http://127.0.0.1:4310)
+  --api <url>            API en mode fixtures (défaut : http://localhost:3100)
+  --landing <url>        landing (défaut : http://127.0.0.1:4332) ; démarrée par ce script si elle ne répond pas
+  --landing-dist <dir>   build servi (défaut : dist/apps/landing-lighthouse, cible web-e2e:build-landing-lighthouse)
+  --threshold <n>        seuil par catégorie (défaut : 95)
+  --cpu <n>              multiplicateur CPU (diagnostic seulement)`;
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(USAGE);
+  process.exit(0);
+}
 
 const workspace = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
 const arg = (name, fallback) => {
@@ -146,7 +162,55 @@ if (PAGES.some((page) => page.site === 'app')) {
   await waitFor(`${BASE}/manifest.webmanifest`, 'Serveur de production');
 }
 // Le serveur de la landing (tâche continue) démarre après son build (dépendance Nx) : marge de 5 min.
-if (PAGES.some((page) => page.site === 'landing')) await waitFor(`${LANDING}/robots.txt`, 'Landing', 300_000);
+if (PAGES.some((page) => page.site === 'landing')) await startLanding();
+
+/**
+ * Serveur de la landing démarré par ce script (une tâche continue Nx pour ce serveur s'arrêtait aussitôt en CI) :
+ * réutilisé s'il répond déjà, sinon `serve-landing.mjs` lancé sur le port de `--landing` avec `LANDING_DIST`,
+ * prêt à la ligne « Landing de test sur » ou à un 200 sur /robots.txt, arrêté à la sortie du script.
+ */
+async function startLanding() {
+  if (await isUp(`${LANDING}/robots.txt`)) {
+    console.log(`Landing déjà servie sur ${LANDING} : réutilisée`);
+    return;
+  }
+  const dist = resolve(workspace, arg('landing-dist', join('dist', 'apps', 'landing-lighthouse')));
+  const child = spawn(process.execPath, [join(workspace, 'apps', 'web-e2e', 'scripts', 'serve-landing.mjs'), '--port', new URL(LANDING).port || '80'], {
+    cwd: workspace,
+    env: { ...process.env, LANDING_DIST: dist },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  const stop = () => {
+    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
+  };
+  process.on('exit', stop);
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      stop();
+      process.exit(130);
+    });
+  }
+  let ready = false;
+  child.stdout.on('data', (chunk) => {
+    process.stdout.write(chunk);
+    if (String(chunk).includes('Landing de test sur')) ready = true;
+  });
+  const deadline = Date.now() + 60_000;
+  while (!ready && !(await isUp(`${LANDING}/robots.txt`))) {
+    if (child.exitCode !== null) throw new Error(`serve-landing.mjs arrêté (code ${child.exitCode}) : build ${dist} absent ? (pnpm nx run web-e2e:build-landing-lighthouse)`);
+    if (Date.now() > deadline) throw new Error(`Landing injoignable après 60 s (${LANDING})`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  await waitFor(`${LANDING}/robots.txt`, 'Landing', 30_000);
+}
+
+async function isUp(url) {
+  try {
+    return (await fetch(url)).ok;
+  } catch {
+    return false;
+  }
+}
 
 const summary = {
   phase: PHASE,
