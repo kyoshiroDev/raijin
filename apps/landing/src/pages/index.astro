@@ -1,6 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
-import { appHref } from '../lib/app-url';
+import { APP_ROUTES, appHref } from '../lib/app-url';
 ---
 
 <Base
@@ -11,7 +11,7 @@ import { appHref } from '../lib/app-url';
     <h1 class="font-display text-h1 md:text-display">Vérifie avant de signer.</h1>
     <p class="mt-4 text-body text-ink-muted">Raijin Shield, le bouclier anti-rug des memecoins Solana.</p>
     <a
-      href={appHref('/inscription')}
+      href={appHref(APP_ROUTES.inscription)}
       data-app-link
       data-track="cta_essai_clic"
       data-track-emplacement="hero"

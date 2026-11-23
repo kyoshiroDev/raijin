@@ -10,7 +10,7 @@ contrats `libs/shared/contracts/src/lib/analytics/ga4.ts`.
 |---|---|---|
 | `GA4_MEASUREMENT_ID` | Flux web GA4 (`G-XXXXXXX`, motif `^G-[A-Z0-9]{4,20}$`) | ni GA4, ni bannière, ni lien « Gérer les cookies » |
 | `GOOGLE_SITE_VERIFICATION` | `<meta name="google-site-verification">` (propriété « préfixe d'URL ») | pas de meta (inutile avec une propriété de domaine DNS) |
-| `APP_URL` | Base des liens vers l'app (`appHref('/inscription')`) | `https://app.raijinshield.com` |
+| `APP_URL` | Base des liens vers l'app (`appHref(APP_ROUTES.inscription)` → `/compte/inscription` ; aussi `connexion` → `/compte/connexion`, `analyse` → `/analyse`) | `https://app.raijinshield.com` |
 
 Les variables sont lues dans l'environnement du processus de build (`astro build`, lancé depuis `apps/landing`) : le
 script de déploiement doit les exporter. Rien n'est secret ici.
@@ -76,7 +76,7 @@ Aucune donnée personnelle, aucune adresse de wallet ni mint saisi dans les para
 - Stockage : `sessionStorage` (`rj.attribution`, onglet courant) **sans consentement** ; cookie de premier niveau
   `rj_attr` (JSON, 90 jours, `SameSite=Lax`, `Secure`) **après acceptation** de la mesure d'audience. Refus ou retrait :
   cookie supprimé, retour en session.
-- Transmission à l'app : au démarrage, chaque `<a data-app-link href={appHref('/inscription')}>` est complété avec
+- Transmission à l'app : au démarrage, chaque `<a data-app-link href={appHref(APP_ROUTES.inscription)}>` est complété avec
   `ATTRIBUTION_QUERY_PARAMS` : `utm_source`, `utm_medium`, `utm_campaign`, `rj_ref` (provenance), `rj_lp` (page
   d'arrivée). Un paramètre déjà présent dans le lien n'est pas écrasé.
 - Alignement : `apps/landing/src/lib/analytics/constants.spec.ts` compare les constantes de la landing à celles des
