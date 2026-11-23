@@ -161,9 +161,15 @@ describe('activation et codes de secours', () => {
     expect(text(harness)).toContain('Clé secrète : JBSWY3DPEHPK3PXP');
 
     type(input(root, 'input[name="totp"]'), '654321');
+    const password = input(root, 'input[name="current-password"]');
+    expect(password.getAttribute('autocomplete')).toBe('current-password');
+    expect(password.type).toBe('password');
+    type(password, 'mot-de-passe-actuel');
+    await flush(harness);
+    (root?.querySelector('button[type="submit"]') as HTMLButtonElement).click();
     await settle();
     const confirm = ctrl.expectOne(`${API}/admin/security/enrollment/confirm`);
-    expect(confirm.request.body).toEqual({ code: '654321' });
+    expect(confirm.request.body).toEqual({ code: '654321', currentPassword: 'mot-de-passe-actuel' });
     confirm.flush({ status: fakeAdminSecurityStatus(), recoveryCodes: fakeAdminRecoveryCodes() });
     await flush(harness, 6);
     expect(router.url).toBe('/admin/securite/codes-de-secours');
@@ -175,6 +181,33 @@ describe('activation et codes de secours', () => {
     await flush(harness);
     expect(text(harness)).not.toContain('ABCDE-FGH23');
     expect(text(harness)).toContain('déjà été affichés');
+  });
+
+  it('mot de passe refusé : message accessible, code conservé, aucune redirection', async () => {
+    const { harness, ctrl, router } = await setupAdmin();
+    const done = navigate(router, '/admin/securite/activation');
+    await settle();
+    ctrl.expectOne(STATUS).flush(fakeAdminNotEnrolled());
+    await done;
+    await flush(harness);
+    ctrl.expectOne(`${API}/admin/security/enrollment`).flush(fakeAdminEnrollment());
+    await flush(harness);
+    const root = harness.routeNativeElement;
+    type(input(root, 'input[name="totp"]'), '654321');
+    type(input(root, 'input[name="current-password"]'), 'faux');
+    await flush(harness);
+    (root?.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    await settle();
+    ctrl
+      .expectOne(`${API}/admin/security/enrollment/confirm`)
+      .flush({ code: 'AUTH_INVALID_CREDENTIALS', message: 'refusé' }, { status: 400, statusText: 'Bad Request' });
+    await flush(harness);
+    const field = input(root, 'input[name="current-password"]');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.value).toBe('');
+    expect(root?.querySelector('[role="alert"]')?.textContent).toContain('Mot de passe incorrect');
+    expect(input(root, 'input[name="totp"]').value).toBe('654321');
+    expect(router.url).toBe('/admin/securite/activation');
   });
 
   it('formats : clé groupée, code de secours normalisé, fichier texte', () => {

@@ -35,9 +35,10 @@ export class AdminSecurityApi {
     return contracts.adminEnrollmentStartSchema.parse(body);
   }
 
-  async confirmEnrollment(code: string): Promise<AdminEnrollmentConfirmResponse> {
+  /** Code de l'application **et** mot de passe actuel (400 `AUTH_INVALID_CREDENTIALS` si refusé). */
+  async confirmEnrollment(code: string, currentPassword: string): Promise<AdminEnrollmentConfirmResponse> {
     const contracts = await loadContracts();
-    const request = contracts.adminEnrollmentConfirmRequestSchema.parse({ code });
+    const request = contracts.adminEnrollmentConfirmRequestSchema.parse({ code, currentPassword });
     const body = await firstValueFrom(this.http.post(this.url('/enrollment/confirm'), request));
     return contracts.adminEnrollmentConfirmResponseSchema.parse(body);
   }

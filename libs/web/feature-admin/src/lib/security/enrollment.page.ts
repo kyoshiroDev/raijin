@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router } from '@angular/router';
 import { type AdminEnrollmentStart } from '@raijin/shared-contracts';
 import { ADMIN_PATHS, AdminSecurityApi, AdminSessionStore, toClientError } from '@raijin/web-data-access';
-import { RjButton, RjClipboard, RjErrorState, RjIcon, RjSkeleton, RjToastService } from '@raijin/web-ui';
+import { RjButton, RjClipboard, RjErrorState, RjIcon, RjInputField, RjSkeleton, RjToastService } from '@raijin/web-ui';
 import { RjAdminAlert } from '../ui/alert';
 import { formatTime } from '../ui/format';
 import { RjOtpInput } from './otp-input';
@@ -14,12 +14,13 @@ export function groupSecret(secret: string): string {
 
 /**
  * Activation de la double authentification (admin pas encore enrôlé) : QR code à scanner, clé à saisir à la main
- * (copiable), lien direct vers l'application sur mobile, puis code à 6 chiffres. Après confirmation, les codes de
+ * (copiable), lien direct vers l'application sur mobile, puis code à 6 chiffres et mot de passe actuel (une
+ * session volée ne suffit pas à lier une 2FA). Après confirmation, les codes de
  * secours sont montrés une seule fois (écran suivant).
  */
 @Component({
   selector: 'rj-admin-enrollment-page',
-  imports: [RjButton, RjErrorState, RjIcon, RjSkeleton, RjAdminAlert, RjOtpInput],
+  imports: [RjButton, RjErrorState, RjIcon, RjInputField, RjSkeleton, RjAdminAlert, RjOtpInput],
   template: `
     <header class="flex flex-col gap-2">
       <p class="text-label font-semibold tracking-wide text-thunder-ink uppercase">Espace admin · étape 1 sur 2</p>
@@ -101,8 +102,23 @@ export function groupSecret(secret: string): string {
                 </rj-admin-alert>
               }
               <form class="flex flex-col gap-4" (submit)="$event.preventDefault(); confirm()" novalidate>
-                <rj-otp-input [(value)]="code" [error]="codeError()" [disabled]="confirming()" hint="Le code change toutes les 30 secondes." (complete)="confirm()" />
-                <button type="submit" rjButton="primary" size="lg" [block]="true" icon="safe" [loading]="confirming()" [disabled]="code().length !== 6">
+                <rj-otp-input [(value)]="code" [error]="codeError()" [disabled]="confirming()" hint="Le code change toutes les 30 secondes." />
+                <rj-input-field
+                  label="Mot de passe actuel"
+                  name="current-password"
+                  type="password"
+                  autocomplete="current-password"
+                  enterkeyhint="done"
+                  [revealable]="true"
+                  [required]="true"
+                  [(value)]="password"
+                  [error]="passwordError()"
+                  [disabled]="confirming()"
+                  hint="Confirme qu’il s’agit bien de toi avant de lier ton application."
+                />
+                <!-- Annonce immédiate du refus (le message visible est aussi lié au champ par aria-describedby). -->
+                <p class="sr-only" role="alert">{{ passwordError() }}</p>
+                <button type="submit" rjButton="primary" size="lg" [block]="true" icon="safe" [loading]="confirming()" [disabled]="!canConfirm()">
                   Confirmer le code
                 </button>
               </form>
@@ -129,6 +145,9 @@ export class AdminEnrollmentPage {
   protected readonly copied = signal(false);
   protected readonly code = signal('');
   protected readonly codeError = signal('');
+  protected readonly password = signal('');
+  protected readonly passwordError = signal('');
+  protected readonly canConfirm = computed(() => this.code().length === 6 && this.password().length > 0);
   protected readonly alert = signal<{ tone: 'danger' | 'warn'; message: string; restart: boolean } | null>(null);
 
   protected readonly groups = computed(() => groupSecret(this.enrollment()?.secret ?? '').split(' ').filter(Boolean));
@@ -145,6 +164,7 @@ export class AdminEnrollmentPage {
     this.starting.set(true);
     this.alert.set(null);
     this.codeError.set('');
+    this.passwordError.set('');
     this.code.set('');
     try {
       this.enrollment.set(await this.api.startEnrollment());
@@ -169,17 +189,24 @@ export class AdminEnrollmentPage {
   }
 
   protected async confirm(): Promise<void> {
-    if (this.confirming() || this.code().length !== 6) return;
+    if (this.confirming() || !this.canConfirm()) return;
     this.confirming.set(true);
     this.codeError.set('');
+    this.passwordError.set('');
     this.alert.set(null);
     try {
-      const result = await this.api.confirmEnrollment(this.code());
+      const result = await this.api.confirmEnrollment(this.code(), this.password());
       this.session.setPendingRecoveryCodes(result.recoveryCodes);
       this.session.applyStatus(result.status);
       await this.router.navigateByUrl(ADMIN_PATHS.recoveryCodes);
     } catch (error) {
       const client = toClientError(error);
+      if (client.code === 'AUTH_INVALID_CREDENTIALS') {
+        // Code de l'application gardé : seul le mot de passe est à ressaisir.
+        this.password.set('');
+        this.passwordError.set('Mot de passe incorrect. Saisis le mot de passe de ton compte Raijin.');
+        return;
+      }
       this.code.set('');
       if (client.code === 'ADMIN_2FA_INVALID') this.codeError.set(client.message);
       else if (client.code === 'ADMIN_2FA_ENROLLMENT_EXPIRED') this.alert.set({ tone: 'warn', message: client.message, restart: true });

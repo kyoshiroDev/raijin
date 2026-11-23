@@ -11,6 +11,7 @@ import { AUTH_INTERCEPTORS } from '../../http/interceptors';
 import { fakeSession } from '../../testing/fixtures';
 import { isAdminApiUrl, isAdminSecurityPath, safeAdminReturn } from './admin-paths';
 import { fakeAdminNotEnrolled, fakeAdminRecoveryCodes, fakeAdminSecurityStatus } from './admin-security-fixtures';
+import { AdminSecurityApi } from './admin-security-api';
 import { adminSessionInterceptor } from './admin-session.interceptor';
 import { AdminSessionStore } from './admin-session.store';
 
@@ -204,5 +205,23 @@ describe('AdminSessionStore', () => {
     const { store } = setup();
     store.applyStatus(fakeAdminSecurityStatus({ recoveryCodesRemaining: 2 }));
     expect(store.recoveryCodesLow()).toBe(true);
+  });
+});
+
+describe('AdminSecurityApi', () => {
+  it('confirmation d’enrôlement : code et mot de passe actuel, réponse validée', async () => {
+    const { ctrl } = setup();
+    const api = TestBed.inject(AdminSecurityApi);
+    const result = api.confirmEnrollment('123 456', 'mot-de-passe-actuel');
+    await settle();
+    const request = ctrl.expectOne(`${API}/admin/security/enrollment/confirm`);
+    expect(request.request.body).toEqual({ code: '123456', currentPassword: 'mot-de-passe-actuel' });
+    request.flush({ status: fakeAdminSecurityStatus(), recoveryCodes: fakeAdminRecoveryCodes() });
+    expect((await result).recoveryCodes.codes).toHaveLength(10);
+  });
+
+  it('mot de passe vide : refusé avant tout envoi', async () => {
+    setup();
+    await expect(TestBed.inject(AdminSecurityApi).confirmEnrollment('123456', '')).rejects.toBeTruthy();
   });
 });

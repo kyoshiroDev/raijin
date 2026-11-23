@@ -23,7 +23,7 @@ import { AdminApi, createAdminReport, toClientError, type AdminUserListParams } 
 import { RjBottomSheet, RjButton, RjIcon, RjInputField, RjToastService } from '@raijin/web-ui';
 import { adminScreen } from '../../shell/admin-screens';
 import { RjAdminAlert } from '../../ui/alert';
-import { NO_VALUE, RjAdminFilters, RjAdminPageHeader, RjAdminPanel, RjDataTable, formatLongDay, formatMetric, type RjTableColumn } from '../../ui';
+import { NO_VALUE, RjAdminFilters, RjAdminPageHeader, RjAdminPanel, RjDataTable, formatLongDay, formatMetric, type RjRowLink, type RjTableColumn } from '../../ui';
 import { RjAdminReportState } from '../shared/page-helpers';
 
 const TRIAL_LABELS: Readonly<Record<TrialStatus, string>> = { none: 'Jamais', active: 'En cours', ended: 'Terminé', ineligible: 'Non éligible' };
@@ -284,7 +284,7 @@ export class AdminUsersPage {
   });
 
   protected readonly byId = (row: AdminUserSummary) => row.id;
-  protected readonly link = (row: AdminUserSummary) => `/admin/utilisateurs?fiche=${row.id}`;
+  protected readonly link = (row: AdminUserSummary): RjRowLink => ({ path: '/admin/utilisateurs', queryParams: { fiche: row.id } });
 
   protected readonly columns: readonly RjTableColumn<AdminUserSummary>[] = [
     { key: 'email', label: 'E-mail', value: (row) => row.email, primary: true },

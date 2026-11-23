@@ -4,7 +4,8 @@ import { type AdminKpi } from '@raijin/shared-contracts';
 import { RjChart } from './chart/chart';
 import { buildChartConfig, readChartTheme, summarizeChart, timeSeriesToChart, type RjChartDataset, type RjChartTheme } from './chart/chart-config';
 import { RJ_CHART_LOADER } from './chart/chart-loader';
-import { RjDataTable, type RjTableColumn } from './data-table';
+import { RjDataTable, resolveRowLink, type RjTableColumn } from './data-table';
+import { provideRouter } from '@angular/router';
 import { describeChange, formatChange, formatMetric } from './format';
 import { RjKpiCard } from './kpi-card';
 import { RjServiceState } from './service-state';
@@ -235,5 +236,27 @@ describe('rj-service-state et rj-data-table', () => {
     expect(root.querySelector('img')).toBeNull();
     expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(root.querySelector('td')?.textContent?.trim()).toMatch(/^12\s345$/);
+  });
+});
+
+describe('rj-data-table : lignes cliquables', () => {
+  it('chemin + paramètres de requête : lien correct, jamais de « ? » encodé dans le chemin', async () => {
+    interface Row { id: string; email: string }
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(RjDataTable<Row>);
+    fixture.componentRef.setInput('caption', 'Comptes');
+    fixture.componentRef.setInput('columns', [{ key: 'email', label: 'E-mail', value: (row: Row) => row.email, primary: true }]);
+    fixture.componentRef.setInput('rows', [{ id: 'u1', email: 'a@exemple.fr' }]);
+    fixture.componentRef.setInput('rowLink', (row: Row) => ({ path: '/admin/utilisateurs', queryParams: { fiche: row.id } }));
+    await fixture.whenStable();
+    const hrefs = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) expect(href).toBe('/admin/utilisateurs?fiche=u1');
+  });
+
+  it('une chaîne avec « ? » est découpée en chemin + requête', () => {
+    expect(resolveRowLink('/admin/utilisateurs?fiche=u2')).toEqual({ path: '/admin/utilisateurs', queryParams: { fiche: 'u2' } });
+    expect(resolveRowLink('/admin/sante')).toEqual({ path: '/admin/sante', queryParams: null });
+    expect(resolveRowLink(null)).toBeNull();
   });
 });
