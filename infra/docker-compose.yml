@@ -172,8 +172,10 @@ services:
     container_name: raijin-api
     restart: unless-stopped
     env_file:
+      # Facultatif pour Compose afin que `docker buildx bake` (job CI « images ») puisse lire ce fichier sans lui ;
+      # en production, infra/deploy.sh refuse de continuer s'il est absent, et l'API refuse de démarrer sans secrets.
       - path: .env.api
-        required: true
+        required: false
     environment:
       NODE_ENV: production
       API_PORT: '3000'
