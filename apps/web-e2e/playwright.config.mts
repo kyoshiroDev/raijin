@@ -47,6 +47,30 @@ function shardFromEnv(value: string | undefined): { current: number; total: numb
 }
 
 /**
+ * Coût d'un échec en CI (docs/ARCHITECTURE.md §6). Le preset Nx relance chaque échec 2 fois : sur un écran cassé
+ * pour de bon (11 largeurs en responsive), chaque test coûte 3 passages, souvent jusqu'au délai d'assertion. Run
+ * 45086414316 : 74 tests admin en échec x 3 = 16 min, lot responsive-2 annulé à 25 min alors que ses tests verts
+ * tenaient en 3 min. D'où, en CI seulement :
+ * - 1 seule relance pour responsive et visuel (captures et axe sur fixtures, déterministes) ; 2 ailleurs (parcours
+ *   avec API réelle, jobs et e-mails) ;
+ * - arrêt du lot après `E2E_MAX_FAILURES` tests en échec définitif (15 par défaut, 0 = illimité) : un lot cassé
+ *   s'arrête en quelques minutes au lieu d'épuiser son timeout. En local : aucune relance, aucune limite.
+ */
+const LOTS_DETERMINISTES: readonly string[] = ['responsive', 'visuel'];
+
+function ciRetries(lot: string | undefined): number {
+  if (!process.env['CI']) return 0;
+  return lot && LOTS_DETERMINISTES.includes(lot) ? 1 : 2;
+}
+
+function ciMaxFailures(): number {
+  if (!process.env['CI']) return 0;
+  const value = Number(process.env['E2E_MAX_FAILURES'] ?? 15);
+  if (!Number.isInteger(value) || value < 0) throw new Error(`E2E_MAX_FAILURES invalide : « ${process.env['E2E_MAX_FAILURES']} »`);
+  return value;
+}
+
+/**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
  */
@@ -66,6 +90,8 @@ export default defineConfig({
   ...preset,
   ...lotFilter(process.env['E2E_LOT']),
   shard: shardFromEnv(process.env['E2E_SHARD']),
+  retries: ciRetries(process.env['E2E_LOT']),
+  maxFailures: ciMaxFailures(),
   // CI : 1 worker par défaut (runner 2 vCPU qui fait tourner aussi l'API, le serveur de dev et le build servi ;
   // les parcours partagent l'état global de l'API : scénarios de fixtures, passes de jobs). En local : 3 workers
   // au plus, pour que le serveur de dev et axe ne saturent pas la machine. `E2E_WORKERS` force la valeur.

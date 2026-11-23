@@ -226,6 +226,32 @@ annulation des exécutions obsolètes. E2E Playwright et Lighthouse uniquement s
     +1-2 min pour `e2e-rapport` en cas d'échec. Avec Lighthouse (~10 min), une PR vers `main` coûte
     ~90 min : environ 20 lancements complets par mois tiennent dans les 2 000 min de GitHub Free privé,
     à réserver aux PR vers `main` et aux lancements manuels `-f suite=e2e`.
+  - **Durées mesurées et coût des échecs (2026-11-23)**. Run vert 45050124331 (833 tests) : 5 lots de
+    6,3 à 7,4 min (mise en place + builds ~3,5-4 min, tests ~1,5-3 min ; 287 tests responsive en
+    ~3 min, soit ~0,6 s par test), **~35 min facturées par lancement**. Run 45086414316 (1 010 tests,
+    +13 écrans admin et landing dans responsive, axe et captures) : responsive-1 6,6 min, parcours
+    7,3, visuel 12,4 (33 échecs axe admin), et responsive-2 **annulé à 25 min** : ses 213 tests verts
+    ont pris 3 min, mais 74 tests admin en échec définitif × 3 passages (2 relances du preset Nx, souvent
+    jusqu'au délai d'assertion, 3 à 9 s chacun) ont coûté 16,5 min. Le volume n'était donc pas en
+    cause : c'était le coût d'un écran cassé.
+  - **Garde-fous** (`playwright.config.mts`, CI seulement) : **1 relance** pour `responsive` et
+    `visuel` (fixtures, déterministes ; 2 conservées pour `parcours` et `reste`, API réelle, jobs,
+    e-mails) et **arrêt du lot après `E2E_MAX_FAILURES` = 15 tests en échec définitif** (`maxFailures`,
+    réglé dans `ci.yml` ; 0 = illimité). Un lot cassé coûte au plus ~15 × 2 × 9 s ≈ 4,5 min de plus, et
+    son rapport montre les 15 premiers échecs (assez pour diagnostiquer un écran entier : 11 largeurs).
+    Variable non déclarée en entrée du cache Nx : elle ne change rien à un run vert, et Nx ne met pas en
+    cache un échec. En local : ni relance ni limite.
+  - **Pas de 3e part responsive** : `--shard` coupe dans l'ordre des tests et les 13 nouveaux écrans,
+    en fin de `responsive.spec.ts`, tomberaient tous dans la dernière part ; Playwright 1.65 n'a pas de
+    poids de part. Un 3e lot ajouterait ~5,5 min de mise en place facturée par lancement pour ~2 min
+    gagnées sur responsive-2. Estimation, tout vert : responsive-1 ~7 min (359 tests), responsive-2
+    ~13-14 min (358 tests, dont 143 admin/landing plus lents, ~1,5-2 s avec connexion), visuel ~10
+    (212), parcours ~7,5, reste ~7, soit **~45 min facturées par lancement** (~55 avec Lighthouse ;
+    ~35 lancements complets par mois dans les 2 000 min), ~19 min au pire pour un lot qui atteint la
+    limite d'échecs. Si responsive-2 dépasse durablement 18 min tout vert : passer à `E2E_SHARD=1/3..3/3`
+    (3 lignes de matrice) ou séparer `visuel` en `a11y` / `captures` dans `E2E_LOTS`. Contrôle de
+    couverture : `E2E_LOT=<lot> [E2E_SHARD=i/n] npx playwright test --list` par lot, dont l'union doit
+    être égale à la liste complète (1 010 tests au 2026-11-23, vérifié).
 - **Job `lighthouse`** (PR vers `main`, après le job principal et en parallèle de `e2e` ; ou lancement
   manuel `workflow_dispatch`) : mêmes services et secrets éphémères que `e2e`, migrations, Chromium de
   Playwright (même cache), puis `pnpm nx run web-e2e:lighthouse --args="--runs 3 --phase phase-3"`

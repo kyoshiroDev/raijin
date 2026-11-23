@@ -80,7 +80,10 @@ jobs:
     # Matrice de 5 lots en parallèle (une suite web-e2e de plus de 800 tests dépassait 30 min sur un seul
     # runner). Lots équilibrés sur la durée par E2E_LOT (playwright.config.mts) ; responsive, nombreux mais
     # rapides, est coupé en deux par E2E_SHARD ; api-e2e tourne dans le lot le plus léger. Chaque lot a ses
-    # propres services et sa propre API : aucun état partagé entre lots. Détail et coût : ARCHITECTURE.md §6.
+    # propres services et sa propre API : aucun état partagé entre lots. Un écran cassé coûtait 3 passages
+    # par test (run 45086414316 : responsive-2 annulé à 25 min, dont 16 min d'échecs relancés) : en CI, une
+    # seule relance pour responsive et visuel, et arrêt du lot après E2E_MAX_FAILURES échecs définitifs.
+    # Lot vert le plus long estimé à 14 min, 19 min au pire avec 15 échecs. Détail et coût : ARCHITECTURE.md §6.
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -142,6 +145,8 @@ jobs:
       # Lot et part lus par apps/web-e2e/playwright.config.mts (entrées du cache Nx de web-e2e:e2e).
       E2E_LOT: ${{ matrix.lot }}
       E2E_SHARD: ${{ matrix.shard }}
+      # Tests en échec définitif au-delà desquels le lot s'arrête (playwright.config.mts, 0 = illimité).
+      E2E_MAX_FAILURES: '15'
       # Nom de blob propre au lot : les blobs des 5 lots sont fusionnés sans collision par e2e-rapport.
       PLAYWRIGHT_BLOB_OUTPUT_NAME: report-${{ matrix.id }}.zip
     steps:
