@@ -307,7 +307,8 @@ jobs:
       )
     needs: verifier
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 6 pages (3 de l'app, 3 de la landing depuis la phase 7) x LH_RUNS passages, plus le build Astro de mesure.
+    timeout-minutes: 30
     # Mêmes services que e2e : l'API en mode fixtures (serve-api-fixtures) a besoin de Postgres et Redis
     # (CSRF, quotas, dernière analyse de /t/<mint>). Identifiants factices, non secrets.
     services:
@@ -354,7 +355,7 @@ jobs:
       MAIL_PROVIDER: smtp
       # Entrée du lancement manuel (vide sur PR) passée par variable, jamais interpolée dans un script.
       LH_RUNS: ${{ inputs.runs || '3' }}
-      LH_PHASE: phase-3
+      LH_PHASE: phase-7
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -406,10 +407,12 @@ jobs:
       - name: Migrations Prisma
         run: pnpm nx run api-prisma:migrate-deploy
 
-      # Build de production web + api (dépendances de serve-prod et serve-api-fixtures), puis médiane de
-      # LH_RUNS passages par page. Le script sort en erreur si une catégorie < 95 : bloquant sur PR,
-      # ignoré en lancement manuel (continue-on-error), l'étape suivante vérifiant qu'un résumé existe.
-      - name: Lighthouse (build de production + API fixtures)
+      # Build de production web + api (dépendances de serve-prod et serve-api-fixtures) et build statique de la
+      # landing (serve-landing-lighthouse : GA4 factice, bannière rendue, servi compressé sur le port 4332), puis
+      # médiane de LH_RUNS passages par page (app : /analyse, /analyse/<BONK>, /t/<BONK> ; landing : /, /tarifs,
+      # un guide). Le script sort en erreur si une catégorie < 95 : bloquant sur PR, ignoré en lancement manuel
+      # (continue-on-error), l'étape suivante vérifiant qu'un résumé existe.
+      - name: Lighthouse (app de production + API fixtures + landing statique)
         id: lighthouse
         continue-on-error: ${{ github.event_name == 'workflow_dispatch' }}
         run: pnpm nx run web-e2e:lighthouse --args="--runs $LH_RUNS --phase $LH_PHASE"

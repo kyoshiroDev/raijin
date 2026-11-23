@@ -42,3 +42,56 @@ export async function interceptGoogle(page: Page): Promise<string[]> {
 }
 
 export const consentBanner = (page: Page) => page.getByRole('dialog', { name: /^Cookies et mesure d.audience$/ });
+
+/** Pages de la landing (phase 7, docs/ARCHITECTURE.md §15.5) : chemin servi sans `.html`, titre `h1` attendu. */
+export interface LandingRoute {
+  /** Identifiant court (noms de tests et de captures). */
+  slug: string;
+  path: string;
+  heading: string;
+  /** Statut HTTP attendu (la 404 est servie avec 404). */
+  status?: number;
+  /** Page avec un fil d'Ariane visible (pages internes). */
+  breadcrumb?: boolean;
+  /** Page légale : champs « À compléter » visibles. */
+  legal?: boolean;
+}
+
+export const LANDING_GUIDES = [
+  { slug: 'rug-pull-solana', heading: 'Comment repérer un rug pull sur Solana avant de signer', title: 'Comment repérer un rug pull sur Solana' },
+  { slug: 'mint-authority', heading: "Mint authority et freeze authority : ce qu'elles permettent sur Solana", title: "Mint authority : c'est quoi ?" },
+  { slug: 'honeypot-solana', heading: "Honeypot sur Solana : comment détecter un token qu'on ne peut pas revendre", title: 'Honeypot : comment le détecter' },
+] as const;
+
+export const LANDING_ROUTES: readonly LandingRoute[] = [
+  { slug: 'accueil', path: '/', heading: 'Vérifie avant de signer.' },
+  { slug: 'tarifs', path: '/tarifs', heading: 'Tarifs', breadcrumb: true },
+  { slug: 'comment-ca-marche', path: '/comment-ca-marche', heading: 'Comment ça marche', breadcrumb: true },
+  { slug: 'faq', path: '/faq', heading: 'Questions fréquentes', breadcrumb: true },
+  { slug: 'guides', path: '/guides', heading: 'Guides', breadcrumb: true },
+  ...LANDING_GUIDES.map((guide) => ({ slug: `guide-${guide.slug}`, path: `/guides/${guide.slug}`, heading: guide.heading, breadcrumb: true })),
+  { slug: 'mentions-legales', path: '/mentions-legales', heading: 'Mentions légales', breadcrumb: true, legal: true },
+  { slug: 'cgu', path: '/cgu', heading: "Conditions générales d'utilisation et de vente", breadcrumb: true, legal: true },
+  { slug: 'confidentialite', path: '/confidentialite', heading: 'Politique de confidentialité', breadcrumb: true, legal: true },
+  { slug: '404', path: '/page-qui-n-existe-pas', heading: 'Page introuvable', status: 404 },
+];
+
+/**
+ * Choix de consentement posé avant la visite (cookie `rj_consent` au format `v1.<choix>.<date>`) : bannière masquée ;
+ * `granted` charge GA4 (script Google intercepté par `interceptGoogle`).
+ */
+export async function presetConsent(page: Page, choice: 'granted' | 'denied'): Promise<void> {
+  await page.context().addCookies([
+    { name: CONSENT_COOKIE, value: `v1.${choice}.${new Date().toISOString().slice(0, 10)}`, url: LANDING_ORIGIN, sameSite: 'Lax' },
+  ]);
+}
+
+/** Événements GA4 poussés par `gtag('event', …)` dans `dataLayer` (gtag.js simulé : rien n'est envoyé). */
+export function ga4Events(page: Page): Promise<{ name: string; params: Record<string, unknown> }[]> {
+  return page.evaluate(() =>
+    ((window as unknown as { dataLayer?: ArrayLike<unknown>[] }).dataLayer ?? [])
+      .map((entry) => Array.from(entry))
+      .filter((entry) => entry[0] === 'event')
+      .map((entry) => ({ name: String(entry[1]), params: (entry[2] ?? {}) as Record<string, unknown> })),
+  );
+}

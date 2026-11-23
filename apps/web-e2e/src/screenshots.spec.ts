@@ -3,7 +3,7 @@ import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
 import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
-import { SHELLLESS_PAGES } from './support/admin-pages';
+import { LANDING_PAGES, SHELLLESS_PAGES } from './support/admin-pages';
 import { ANALYSIS_PAGES, BILLING_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount, type PageEntry } from './support/pages';
 
 /**
@@ -24,6 +24,7 @@ const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analys
 /** Phase 5 : scan de wallet (visiteur, Gratuit, saisie, résultats délégations et Danger, vide, phrase refusée, quota). */
 /** Phase 6 : abonnement (offres par état, succès, faux Checkout, faux portail), fin d'essai, choix des suivis, bandeau. */
 /** Phase 6 bis : 9 écrans admin (API réelle, Google simulé), écrans 2FA, landing avec la bannière de consentement. */
+/** Phase 7 : chaque page de la landing (accueil avec la bannière, puis toutes les pages après un refus mémorisé). */
 const SHOTS: readonly (PageEntry & { fullPage?: boolean })[] =
   PHASE === 'phase-1'
     ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
@@ -37,7 +38,9 @@ const SHOTS: readonly (PageEntry & { fullPage?: boolean })[] =
             ? BILLING_PAGES
             : PHASE === 'phase-6bis'
               ? SHELLLESS_PAGES
-              : PAGES.filter((p) => p.path.startsWith('/compte'));
+              : PHASE === 'phase-7'
+                ? LANDING_PAGES
+                : PAGES.filter((p) => p.path.startsWith('/compte'));
 /** Résultats d'analyse et listes : page entière. */
 const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste', 'wallet-delegations', 'wallet-danger', 'abonnement-visiteur', 'abonnement-gratuit', 'abonnement-essai', 'abonnement-pro', 'abonnement-retard', 'abonnement-resilie', 'abonnement-indisponible', 'fin-essai', 'choix-suivis']);
 

@@ -2,11 +2,14 @@
 // Sert un build fait avec un identifiant GA4 factice et APP_URL pointant vers l'app de test (playwright.config.mts),
 // dans un dossier à part (dist/apps/landing-e2e) pour ne jamais écraser le build de production de la landing.
 // `build.format: 'file'` : /guides/x → guides/x.html ; / → index.html. Aucune requête sortante.
+// Compression gzip/brotli des textes, comme Traefik en production (phase 8) : la mesure Lighthouse de la landing
+// (scripts/lighthouse.mjs, `LANDING_DIST` = build de mesure) porte sur les octets réellement transférés.
 // Usage : node apps/web-e2e/scripts/serve-landing.mjs [--port 4330]
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { constants, createBrotliCompress, createGzip } from 'node:zlib';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const root = resolve(process.env['LANDING_DIST'] ?? join(here, '..', '..', '..', 'dist', 'apps', 'landing-e2e'));
@@ -26,6 +29,29 @@ const TYPES = {
   '.xml': 'application/xml; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
+
+const COMPRESSIBLE = /^(text\/|application\/(json|xml|manifest\+json)|image\/svg\+xml)/;
+
+function compressor(req, type) {
+  if (!COMPRESSIBLE.test(type)) return null;
+  const accept = String(req.headers['accept-encoding'] ?? '');
+  if (/\bbr\b/.test(accept)) return { encoding: 'br', stream: createBrotliCompress({ params: { [constants.BROTLI_PARAM_QUALITY]: 5 } }) };
+  if (/\bgzip\b/.test(accept)) return { encoding: 'gzip', stream: createGzip() };
+  return null;
+}
+
+/** Envoie un fichier (compressé si le client l'accepte). */
+function send(req, res, file, status, cacheControl) {
+  const type = TYPES[extname(file)] ?? 'application/octet-stream';
+  const headers = { 'Content-Type': type, 'Cache-Control': cacheControl, 'X-Content-Type-Options': 'nosniff', Vary: 'Accept-Encoding' };
+  const zip = compressor(req, type);
+  if (zip) headers['Content-Encoding'] = zip.encoding;
+  res.writeHead(status, headers);
+  if (req.method === 'HEAD') return res.end();
+  const input = createReadStream(file);
+  if (zip) input.pipe(zip.stream).pipe(res);
+  else input.pipe(res);
+}
 
 if (!existsSync(join(root, 'index.html'))) {
   console.error(`Build de la landing introuvable : ${root}/index.html`);
@@ -55,18 +81,12 @@ createServer((req, res) => {
   const file = resolveFile(url.pathname);
   if (!file) {
     const notFound = join(root, '404.html');
+    if (existsSync(notFound)) return send(req, res, notFound, 404, 'no-cache');
     res.writeHead(404, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' });
-    if (existsSync(notFound)) createReadStream(notFound).pipe(res);
-    else res.end('Page introuvable');
+    res.end('Page introuvable');
     return;
   }
-  res.writeHead(200, {
-    'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
-    'Cache-Control': file.includes(`${sep}_astro${sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-  });
-  if (req.method === 'HEAD') res.end();
-  else createReadStream(file).pipe(res);
+  send(req, res, file, 200, file.includes(`${sep}_astro${sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
 }).listen(port, () => {
   console.log(`Landing de test sur http://localhost:${port} (${root})`);
 });

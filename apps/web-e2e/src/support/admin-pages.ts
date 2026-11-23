@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { loginViaApi } from './auth';
 import { ADMIN_SCREENS, loginVerifiedAdmin, sharedAdmin, submitEnrollment } from './admin';
-import { LANDING_ORIGIN, consentBanner, interceptGoogle } from './landing';
+import { LANDING_ORIGIN, LANDING_ROUTES, consentBanner, interceptGoogle, presetConsent } from './landing';
 import { type PageEntry } from './pages';
 
 /**
@@ -103,11 +103,14 @@ export const ADMIN_2FA_PAGES: readonly ShelllessEntry[] = [
   },
 ];
 
-/** Landing (build de test, identifiant GA4 factice) : accueil avec la bannière de consentement. */
+/**
+ * Landing (build de test, identifiant GA4 factice) : accueil avec la bannière de consentement (première visite), puis
+ * chaque page (phase 7) après un refus mémorisé (bannière masquée : on teste la page elle-même). Captures pleine page
+ * pour l'accueil et les tarifs (pages longues de référence), hauteur d'écran ailleurs.
+ */
 export const LANDING_PAGES: readonly ShelllessEntry[] = [
   {
-    name: 'landing-accueil',
-    shot: 'landing-accueil-banniere',
+    name: 'landing-accueil-banniere',
     path: `${LANDING_ORIGIN}/`,
     heading: 'Vérifie avant de signer.',
     nav: 'none',
@@ -118,6 +121,22 @@ export const LANDING_PAGES: readonly ShelllessEntry[] = [
       await expect(consentBanner(page)).toBeVisible();
     },
   },
+  ...LANDING_ROUTES.map(
+    (route): ShelllessEntry => ({
+      name: `landing-${route.slug}`,
+      path: `${LANDING_ORIGIN}${route.path}`,
+      heading: route.heading,
+      nav: 'none',
+      fullPage: route.slug === 'accueil' || route.slug === 'tarifs',
+      prepare: async (page) => {
+        await interceptGoogle(page);
+        await presetConsent(page, 'denied');
+      },
+      act: async (page) => {
+        await expect(consentBanner(page)).toBeHidden();
+      },
+    }),
+  ),
 ];
 
 export const SHELLLESS_PAGES: readonly ShelllessEntry[] = [...ADMIN_PAGES, ...ADMIN_2FA_PAGES, ...LANDING_PAGES];

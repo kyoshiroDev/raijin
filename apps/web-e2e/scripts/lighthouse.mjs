@@ -1,10 +1,14 @@
 // Lighthouse mobile (émulation mobile et throttling simulé par défaut de Lighthouse) sur l'écran
 // d'analyse (docs/ARCHITECTURE.md §9.10, PROMPT.md §3) : build de production servi par
 // scripts/serve-prod.mjs (port 4310), API réelle en mode fixtures (port 3100, `ANALYSIS_FIXTURES=1`).
+// Landing (phase 7, docs/ARCHITECTURE.md §15.7) : accueil, tarifs et un guide, build statique de mesure
+// (identifiant GA4 factice : la bannière de consentement d'une première visite est rendue, aucune requête
+// Google avant l'accord) servi compressé par scripts/serve-landing.mjs (port 4332, cible web-e2e:serve-landing-lighthouse).
 // Chromium de Playwright (pas de téléchargement de navigateur). Médiane de RUNS passages par page.
 // Sorties : rapports complets dans dist/lighthouse/ (non versionnés), résumé léger (scores, métriques,
 // audits fautifs) dans docs/lighthouse/<phase>/summary.json et summary.md.
-// Usage : node apps/web-e2e/scripts/lighthouse.mjs [--phase phase-3] [--runs 3] [--base http://127.0.0.1:4310]
+// Usage : node apps/web-e2e/scripts/lighthouse.mjs [--phase phase-7] [--runs 3] [--pages all|app|landing]
+//   [--base http://127.0.0.1:4310] [--landing http://127.0.0.1:4332]
 import { chromium } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -18,10 +22,14 @@ const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
-const PHASE = arg('phase', 'phase-3');
+const PHASE = arg('phase', 'phase-7');
 const RUNS = Number(arg('runs', '3'));
 const BASE = arg('base', 'http://127.0.0.1:4310').replace(/\/$/, '');
 const API = arg('api', 'http://localhost:3100').replace(/\/$/, '');
+const LANDING = arg('landing', 'http://127.0.0.1:4332').replace(/\/$/, '');
+// Pages mesurées : toutes (défaut), celles de l'app seules ou celles de la landing seules.
+const SCOPE = arg('pages', 'all');
+if (!['all', 'app', 'landing'].includes(SCOPE)) throw new Error(`--pages invalide : « ${SCOPE} » (attendu : all, app, landing)`);
 const THRESHOLD = Number(arg('threshold', '95'));
 // Multiplicateur CPU du throttling simulé : 4 (défaut Lighthouse) fait foi. Une autre valeur ne sert
 // qu'au diagnostic sur une machine lente (benchmarkIndex < 1000, avertissement Lighthouse), voir
@@ -29,11 +37,18 @@ const THRESHOLD = Number(arg('threshold', '95'));
 const CPU = arg('cpu', null);
 const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 const CATEGORIES = ['performance', 'accessibility', 'best-practices', 'seo'];
-const PAGES = [
-  { name: 'analyse', path: '/analyse' },
-  { name: 'analyse-bonk', path: `/analyse/${BONK}` },
-  { name: 't-bonk', path: `/t/${BONK}` },
+const ALL_PAGES = [
+  { site: 'app', name: 'analyse', path: '/analyse' },
+  { site: 'app', name: 'analyse-bonk', path: `/analyse/${BONK}` },
+  { site: 'app', name: 't-bonk', path: `/t/${BONK}` },
+  { site: 'landing', name: 'landing-accueil', path: '/' },
+  { site: 'landing', name: 'landing-tarifs', path: '/tarifs' },
+  { site: 'landing', name: 'landing-guide-rug-pull', path: '/guides/rug-pull-solana' },
 ];
+const PAGES = ALL_PAGES.filter((page) => SCOPE === 'all' || page.site === SCOPE);
+const origin = (page) => (page.site === 'landing' ? LANDING : BASE);
+/** Libellé d'une page dans le résumé (mint remplacé, landing préfixée). */
+const label = (page) => `${page.site === 'landing' ? 'landing ' : ''}${page.url.replace(BONK, '<BONK>')}`;
 
 const fullDir = join(workspace, 'dist', 'lighthouse', PHASE);
 const summaryDir = join(workspace, 'docs', 'lighthouse', PHASE);
@@ -126,12 +141,17 @@ async function waitFor(url, label, timeoutMs = 120_000) {
   throw new Error(`${label} injoignable après ${timeoutMs / 1000} s (${url})`);
 }
 
-await waitFor(`${API}/api/v1/health`, 'API');
-await waitFor(`${BASE}/manifest.webmanifest`, 'Serveur de production');
+if (PAGES.some((page) => page.site === 'app')) {
+  await waitFor(`${API}/api/v1/health`, 'API');
+  await waitFor(`${BASE}/manifest.webmanifest`, 'Serveur de production');
+}
+// La cible de la landing construit le site avant de le servir (Astro, ~1 min sur le runner) : 5 min au plus.
+if (PAGES.some((page) => page.site === 'landing')) await waitFor(`${LANDING}/robots.txt`, 'Landing', 300_000);
 
 const summary = {
   phase: PHASE,
   base: BASE,
+  landing: LANDING,
   runs: RUNS,
   lighthouse: null,
   date: new Date().toISOString(),
@@ -146,9 +166,9 @@ for (const page of PAGES) {
   for (let run = 1; run <= RUNS; run++) {
     // Analyse récente et en cache avant chaque passage : on mesure le front, pas une analyse
     // recalculée par l'API (le cache d'un résultat partiel est court, docs/ARCHITECTURE.md §9.5).
-    await ensureLatest();
+    if (page.site === 'app') await ensureLatest();
     const load = loadavg()[0];
-    const lhr = runLighthouse(`${BASE}${page.path}`, join(fullDir, `${page.name}-${run}`));
+    const lhr = runLighthouse(`${origin(page)}${page.path}`, join(fullDir, `${page.name}-${run}`));
     summary.lighthouse = lhr.lighthouseVersion;
     lhrs.push(lhr);
     passes.push({
@@ -165,6 +185,7 @@ for (const page of PAGES) {
   const scores = Object.fromEntries(CATEGORIES.map((c) => [c, Math.round(chosen.categories[c].score * 100)]));
   const entry = {
     name: page.name,
+    site: page.site,
     url: page.path,
     scores,
     performanceRuns: perf.map((s) => Math.round(s * 100)),
@@ -181,35 +202,35 @@ for (const page of PAGES) {
   };
   if (CATEGORIES.some((c) => scores[c] < THRESHOLD)) failed = true;
   summary.pages.push(entry);
-  console.log(`${page.path} : ${CATEGORIES.map((c) => `${c} ${scores[c]}`).join(' · ')} (perf ${entry.performanceRuns.join('/')})`);
+  console.log(`${label(entry)} : ${CATEGORIES.map((c) => `${c} ${scores[c]}`).join(' · ')} (perf ${entry.performanceRuns.join('/')})`);
 }
 
 writeFileSync(join(summaryDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
 const lines = [
   `# Lighthouse mobile — ${PHASE}`,
   '',
-  `Lighthouse ${summary.lighthouse}, émulation mobile par défaut (Moto G Power, 4G lente simulée), build de production servi par \`apps/web-e2e/scripts/serve-prod.mjs\`, API en mode fixtures. Médiane de ${RUNS} passages (performance). Seuil : ${THRESHOLD}. Multiplicateur CPU : ${summary.cpuSlowdownMultiplier}${summary.cpuSlowdownMultiplier === 4 ? ' (défaut)' : ' (diagnostic, ne fait pas foi)'} ; benchmarkIndex de la machine : ${summary.pages.flatMap((p) => p.benchmarkIndex).join(', ')} (Lighthouse attend > 1000). Généré par \`pnpm nx run web-e2e:lighthouse\` le ${summary.date.slice(0, 10)}.`,
+  `Lighthouse ${summary.lighthouse}, émulation mobile par défaut (Moto G Power, 4G lente simulée), app : build de production servi par \`apps/web-e2e/scripts/serve-prod.mjs\`, API en mode fixtures ; landing : build statique (GA4 factice, bannière de consentement affichée) servi compressé par \`apps/web-e2e/scripts/serve-landing.mjs\`. Médiane de ${RUNS} passages (performance). Seuil : ${THRESHOLD}. Multiplicateur CPU : ${summary.cpuSlowdownMultiplier}${summary.cpuSlowdownMultiplier === 4 ? ' (défaut)' : ' (diagnostic, ne fait pas foi)'} ; benchmarkIndex de la machine : ${summary.pages.flatMap((p) => p.benchmarkIndex).join(', ')} (Lighthouse attend > 1000). Généré par \`pnpm nx run web-e2e:lighthouse\` le ${summary.date.slice(0, 10)}.`,
   '',
   '| Page | Performance | Accessibilité | Best Practices | SEO | LCP | TBT | CLS |',
   '|---|---|---|---|---|---|---|---|',
   ...summary.pages.map(
     (p) =>
-      `| \`${p.url.replace(BONK, '<BONK>')}\` | ${p.scores.performance} (${p.performanceRuns.join('/')}) | ${p.scores.accessibility} | ${p.scores['best-practices']} | ${p.scores.seo} | ${p.metrics['largest-contentful-paint']} | ${p.metrics['total-blocking-time']} | ${p.metrics['cumulative-layout-shift']} |`,
+      `| \`${label(p)}\` | ${p.scores.performance} (${p.performanceRuns.join('/')}) | ${p.scores.accessibility} | ${p.scores['best-practices']} | ${p.scores.seo} | ${p.metrics['largest-contentful-paint']} | ${p.metrics['total-blocking-time']} | ${p.metrics['cumulative-layout-shift']} |`,
   ),
   '',
   '## Passages (performance · benchmarkIndex · charge 1 min · TBT · LCP)',
   '',
   ...summary.pages.map(
-    (p) => `- \`${p.url.replace(BONK, '<BONK>')}\` : ${p.passes.map((x) => `${x.performance} · ${x.benchmarkIndex} · ${x.load1m} · ${x.tbt} · ${x.lcp}`).join(' | ')}`,
+    (p) => `- \`${label(p)}\` : ${p.passes.map((x) => `${x.performance} · ${x.benchmarkIndex} · ${x.load1m} · ${x.tbt} · ${x.lcp}`).join(' | ')}`,
   ),
   '',
   '## Audits sous 0,9',
   '',
   ...summary.pages.flatMap((p) => {
     const entries = Object.entries(p.failing);
-    if (entries.length === 0) return [`- \`${p.url.replace(BONK, '<BONK>')}\` : aucun`];
+    if (entries.length === 0) return [`- \`${label(p)}\` : aucun`];
     return [
-      `- \`${p.url.replace(BONK, '<BONK>')}\` :`,
+      `- \`${label(p)}\` :`,
       ...entries.flatMap(([category, list]) => list.map((a) => `  - ${category} · \`${a.id}\` (${a.score}) ${a.title}${a.displayValue ? ` — ${a.displayValue}` : ''}`)),
     ];
   }),
