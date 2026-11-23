@@ -1,0 +1,86 @@
+[
+  {
+    "id": "sans-compte",
+    "order": 1,
+    "home": true,
+    "question": "Faut-il un compte pour analyser un token ?",
+    "answer": "Non. Tu peux faire {anonAnalysesPerDay} analyses par jour sans compte : colle l'adresse du token sur l'accueil et Raijin ouvre le résultat dans l'app. Avec un compte gratuit, tu passes à {freeAnalysesPerDay} analyses par jour et tu peux suivre des tokens."
+  },
+  {
+    "id": "lecture-seule",
+    "order": 2,
+    "home": true,
+    "question": "Raijin peut-il toucher à mes fonds ?",
+    "answer": "Non. Raijin Shield travaille en lecture seule : aucune connexion de wallet, aucune signature, aucune transaction. Il lit des données publiques de la blockchain Solana et de sources de marché. La revente est vérifiée par un simple devis Jupiter, jamais exécuté."
+  },
+  {
+    "id": "verdict-sain",
+    "order": 3,
+    "home": true,
+    "question": "Un verdict Sain veut-il dire que le token est sûr ?",
+    "answer": "Non. Sain signifie qu'aucun signal critique ni modéré n'a été détecté sur les contrôles disponibles au moment de l'analyse. Aucun signal détecté ne veut pas dire sans risque : un token peut changer après l'analyse, et un memecoin reste un actif extrêmement risqué."
+  },
+  {
+    "id": "essai-pro",
+    "order": 4,
+    "home": true,
+    "question": "Comment fonctionne l'essai Pro ?",
+    "answer": "Quand tu confirmes ton adresse e-mail, ton compte passe en Pro pendant {trialDays} jours, sans carte bancaire. Pendant l'essai, les analyses sont plafonnées à {trialAnalysesPerDay} par jour. À la fin, tu repasses en Gratuit automatiquement : rien n'est prélevé, tes suivis au-delà de la limite sont mis en pause, pas supprimés."
+  },
+  {
+    "id": "recommandation",
+    "order": 5,
+    "home": true,
+    "question": "Raijin me recommande-t-il des tokens ?",
+    "answer": "Non. Raijin informe sur le risque technique d'un token : autorités, liquidité, répartition des holders, revente possible. Il ne recommande jamais d'investir et ne donne aucun conseil en investissement. La décision t'appartient."
+  },
+  {
+    "id": "sources",
+    "order": 6,
+    "home": true,
+    "question": "D'où viennent les données ?",
+    "answer": "Du RPC Solana via Helius pour les autorités, les holders, les métadonnées et l'historique du créateur ; de DexScreener et GeckoTerminal pour la liquidité et l'âge du pool ; de Jupiter pour le devis de vente ; de RugCheck comme source complémentaire. Chaque contrôle affiche sa source."
+  },
+  {
+    "id": "liens",
+    "order": 7,
+    "home": false,
+    "question": "Puis-je coller un lien DexScreener, pump.fun ou Solscan ?",
+    "answer": "Oui. Colle l'adresse du token ou un lien DexScreener, pump.fun, Solscan ou Birdeye : Raijin en extrait l'adresse automatiquement. Aucun lien n'est ouvert ni suivi pendant l'extraction."
+  },
+  {
+    "id": "indisponible",
+    "order": 8,
+    "home": false,
+    "question": "Pourquoi un contrôle est-il parfois indisponible ?",
+    "answer": "Une source peut ne pas répondre à temps ou ne pas avoir de donnée sur un token très récent. Raijin l'affiche clairement comme indisponible au lieu de deviner. Si les autorités de mint et de freeze ne sont pas connues, ou si trop de contrôles manquent, le verdict ne peut pas être Sain."
+  },
+  {
+    "id": "alertes",
+    "order": 9,
+    "home": false,
+    "question": "Comment fonctionnent les alertes ?",
+    "answer": "Les tokens que tu suis sont réanalysés régulièrement. Si le verdict se dégrade ou si un événement critique survient (liquidité retirée, autorité de mint réactivée, gros holder qui vend), Raijin te prévient par e-mail, et aussi par notification push avec Pro. Sur iPhone, installe l'app sur l'écran d'accueil pour recevoir le push."
+  },
+  {
+    "id": "scan-wallet",
+    "order": 10,
+    "home": false,
+    "question": "Que fait le scan de wallet ?",
+    "answer": "Avec Pro, tu colles l'adresse publique d'un wallet : Raijin liste les tokens détenus avec un verdict pour chacun et signale les délégations actives, avec la marche à suivre pour les révoquer dans ton propre wallet. Aucune connexion ni signature n'est demandée."
+  },
+  {
+    "id": "resiliation",
+    "order": 11,
+    "home": false,
+    "question": "Comment résilier l'abonnement Pro ?",
+    "answer": "Depuis l'app, dans Compte puis Abonnement : le portail sécurisé de Stripe te permet de changer de formule ou de résilier en quelques clics. Pro reste actif jusqu'à la fin de la période déjà payée ({proMonthly} par mois ou {proYearly} par an), sans nouveau prélèvement."
+  },
+  {
+    "id": "donnees",
+    "order": 12,
+    "home": false,
+    "question": "Quelles données personnelles Raijin conserve-t-il ?",
+    "answer": "Le strict nécessaire : ton e-mail, un mot de passe haché, ton historique d'analyses, tes suivis et tes préférences d'alertes. Tu peux exporter ou supprimer ton compte à tout moment depuis l'app. Le détail est dans la politique de confidentialité."
+  }
+]

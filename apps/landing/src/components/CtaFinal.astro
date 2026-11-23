@@ -1,0 +1,35 @@
+---
+import { APP_ROUTES, appHref } from '../lib/app-url';
+import { PRICING } from '../lib/pricing';
+
+/** Appel à l'action de fin de page (emplacement GA4 `final`). Bouton principal unique de la section. */
+interface Props {
+  title?: string;
+  emplacement?: 'final' | 'guide' | 'faq';
+}
+
+const { title = 'Vérifie ton prochain token avant de signer.', emplacement = 'final' } = Astro.props;
+---
+
+<section aria-labelledby={`cta-${emplacement}`} class="rounded-lg border border-line bg-surface p-6 text-center md:p-10">
+  <h2 id={`cta-${emplacement}`} class="font-display text-h2 font-bold text-ink md:text-h1">{title}</h2>
+  <p class="mx-auto mt-3 max-w-xl text-body text-ink-muted">{PRICING.trialOffer}</p>
+  <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+    <a
+      href={appHref(APP_ROUTES.inscription)}
+      data-app-link
+      data-track="cta_essai_clic"
+      data-track-emplacement={emplacement}
+      class="inline-flex min-h-12 w-full items-center justify-center rounded-md bg-thunder px-6 text-body font-semibold text-on-thunder transition-shadow hover:shadow-glow focus-visible:shadow-glow sm:w-auto"
+    >
+      Essayer Pro gratuitement
+    </a>
+    <a
+      href={appHref(APP_ROUTES.analyse)}
+      data-app-link
+      class="inline-flex min-h-12 w-full items-center justify-center rounded-md border border-line-strong px-6 text-body font-semibold text-ink transition-colors hover:border-ink-muted sm:w-auto"
+    >
+      Analyser sans compte
+    </a>
+  </div>
+</section>

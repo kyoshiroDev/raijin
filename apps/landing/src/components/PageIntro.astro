@@ -1,0 +1,24 @@
+---
+import type { Crumb } from '../lib/seo';
+import Breadcrumbs from './Breadcrumbs.astro';
+import Container from './Container.astro';
+
+/** En-tête des pages internes : fil d'Ariane, titre unique (h1), chapeau. */
+interface Props {
+  crumbs: readonly Crumb[];
+  title: string;
+  lead?: string;
+  narrow?: boolean;
+}
+
+const { crumbs, title, lead, narrow = false } = Astro.props;
+---
+
+<div class="border-b border-line">
+  <Container narrow={narrow} class="py-6 md:py-10">
+    <Breadcrumbs crumbs={crumbs} />
+    <h1 class="mt-2 font-display text-h1 font-bold text-ink md:text-display">{title}</h1>
+    {lead && <p class="mt-4 max-w-3xl text-body text-ink-muted md:text-h3">{lead}</p>}
+    <slot />
+  </Container>
+</div>

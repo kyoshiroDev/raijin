@@ -1,0 +1,162 @@
+---
+import LegalPage from '../components/LegalPage.astro';
+import LegalTodo from '../components/LegalTodo.astro';
+import {
+  ATTRIBUTION_COOKIE_MAX_AGE_DAYS,
+  ATTRIBUTION_COOKIE_NAME,
+  ATTRIBUTION_SESSION_KEY,
+  CONSENT_COOKIE_NAME,
+  CONSENT_MAX_AGE_DAYS,
+} from '../lib/analytics/constants';
+
+const cookies = [
+  {
+    name: CONSENT_COOKIE_NAME,
+    where: 'Site raijinshield.com',
+    purpose: 'Mémoriser ton choix sur la mesure d’audience.',
+    duration: `${CONSENT_MAX_AGE_DAYS} jours (6 mois)`,
+    basis: 'Strictement nécessaire',
+  },
+  {
+    name: ATTRIBUTION_COOKIE_NAME,
+    where: 'Site raijinshield.com',
+    purpose: 'Retenir la provenance de ta première visite (paramètres UTM, site référent, page d’arrivée).',
+    duration: `${ATTRIBUTION_COOKIE_MAX_AGE_DAYS} jours`,
+    basis: 'Uniquement si tu acceptes la mesure d’audience',
+  },
+  {
+    name: '_ga, _ga_*',
+    where: 'Site raijinshield.com (Google Analytics 4)',
+    purpose: 'Statistiques de visite anonymisées (pages vues, clics sur les boutons). Aucune publicité.',
+    duration: '13 mois maximum',
+    basis: 'Uniquement si tu acceptes la mesure d’audience',
+  },
+  {
+    name: `${ATTRIBUTION_SESSION_KEY} (sessionStorage)`,
+    where: 'Site et application',
+    purpose:
+      'Même provenance, gardée seulement dans l’onglet en cours et effacée à sa fermeture, pour relier une inscription à sa source (statistique interne).',
+    duration: 'Durée de l’onglet',
+    basis: 'Intérêt légitime, mesure interne sans traceur tiers',
+  },
+  {
+    name: 'rj_at, rj_rt, rj_csrf',
+    where: 'Application app.raijinshield.com',
+    purpose: 'Garder ta session ouverte et protéger les formulaires (cookies httpOnly et sécurisés).',
+    duration: 'Durée de la session, renouvelée à l’usage',
+    basis: 'Strictement nécessaires',
+  },
+];
+---
+
+<LegalPage
+  page="confidentialite"
+  title="Politique de confidentialité"
+  lead="Quelles données Raijin Shield traite, pourquoi, combien de temps, avec qui, et comment exercer tes droits."
+>
+  <h2>Responsable du traitement</h2>
+  <p>
+    <LegalTodo /> (identité et coordonnées de l'éditeur, voir les <a href="/mentions-legales">mentions légales</a>).
+    Contact pour tes données : <LegalTodo />.
+  </p>
+
+  <h2>Ce que Raijin ne fait pas</h2>
+  <p>
+    Raijin ne se connecte à aucun wallet, ne demande aucune clé privée ni phrase de récupération, et ne vend aucune
+    donnée. Il n'y a ni publicité ni traceur publicitaire.
+  </p>
+
+  <h2>Données traitées par l'application</h2>
+  <ul>
+    <li>
+      <strong>Compte</strong> : adresse e-mail, mot de passe haché (argon2id, jamais stocké en clair), date de
+      vérification, plan et dates d'essai. Finalité : fournir le service (exécution du contrat).
+    </li>
+    <li>
+      <strong>Usage</strong> : historique des analyses (adresses publiques de tokens analysés), tokens suivis, alertes
+      envoyées, préférences de notification, abonnements aux notifications push de tes appareils, adresses publiques
+      de wallets que tu choisis de scanner. Finalité : fournir le service.
+    </li>
+    <li>
+      <strong>Provenance de l'inscription</strong> : paramètres UTM, site référent et page d'arrivée transmis par le
+      site, enregistrés sur ton compte. Finalité : mesurer quelles sources amènent des inscriptions (intérêt
+      légitime).
+    </li>
+    <li>
+      <strong>Quotas et prévention des abus</strong> : empreinte <em>hachée</em> de l'adresse IP pour limiter les
+      analyses sans compte, et empreinte hachée (adresse IP et navigateur) pour n'accorder qu'un essai Pro par
+      personne, effacée après 90 jours. Finalité : sécurité du service (intérêt légitime).
+    </li>
+    <li>
+      <strong>Journaux techniques</strong> : erreurs et événements de sécurité, sans contenu sensible. Finalité :
+      sécurité et bon fonctionnement.
+    </li>
+  </ul>
+
+  <h2>Durées de conservation</h2>
+  <ul>
+    <li>Compte et données d'usage : tant que le compte existe ; supprimés à la suppression du compte.</li>
+    <li>Historique détaillé des analyses : 90 jours, puis seules des statistiques agrégées sont gardées.</li>
+    <li>Empreintes anti-abus de l'essai : 90 jours ; trace hachée de l'adresse e-mail ayant déjà bénéficié d'un essai : 2 ans, même après suppression du compte.</li>
+    <li>Journal de sécurité des actions sensibles (connexion, changement de mot de passe), adresse IP hachée : 1 an.</li>
+    <li>Factures : 10 ans, obligation comptable (conservées par Stripe et l'éditeur).</li>
+  </ul>
+
+  <h2>Cookies et stockage du navigateur</h2>
+  <p>
+    Sur le site, aucun cookie de mesure n'est déposé et aucun script Google n'est chargé avant ton choix dans le
+    bandeau. Refuser n'a aucune conséquence. Tu peux changer d'avis à tout moment avec le bouton « Gérer les cookies »
+    en bas de chaque page : en cas de retrait, les cookies <code>_ga</code> et <code>rj_attr</code> sont supprimés.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Nom</th><th>Où</th><th>Finalité</th><th>Durée</th><th>Base</th></tr>
+    </thead>
+    <tbody>
+      {
+        cookies.map((cookie) => (
+          <tr>
+            <td><code>{cookie.name}</code></td>
+            <td>{cookie.where}</td>
+            <td>{cookie.purpose}</td>
+            <td>{cookie.duration}</td>
+            <td>{cookie.basis}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+  <p>
+    L'application garde aussi, dans le stockage local de ton navigateur, deux préférences d'affichage sans donnée
+    personnelle (barre latérale repliée, bandeau d'essai fermé).
+  </p>
+
+  <h2>Sous-traitants</h2>
+  <ul>
+    <li><strong>OVHcloud</strong> (France) : hébergement des serveurs et de la base de données, dans l'Union européenne.</li>
+    <li>
+      <strong>Stripe</strong> : paiement de l'abonnement Pro (e-mail, identifiant client, informations de paiement saisies
+      chez Stripe). Raijin ne reçoit jamais tes numéros de carte.
+    </li>
+    <li><strong>Resend</strong> : envoi des e-mails (vérification, connexion, alertes, factures) : ton adresse e-mail et le contenu du message.</li>
+    <li>
+      <strong>Helius</strong> : accès aux données de la blockchain Solana. Seules des adresses publiques (tokens,
+      wallets scannés) lui sont transmises, jamais ton e-mail.
+    </li>
+    <li><strong>Google (Google Analytics 4)</strong> : mesure d'audience du site, seulement après ton accord, signaux publicitaires désactivés.</li>
+  </ul>
+  <p>
+    Certains sous-traitants peuvent traiter des données hors de l'Union européenne (notamment aux États-Unis) ; ces
+    transferts sont encadrés par les clauses contractuelles types de la Commission européenne ou le cadre de
+    protection des données UE–États-Unis.
+  </p>
+
+  <h2>Tes droits</h2>
+  <p>
+    Conformément au RGPD et à la loi Informatique et Libertés, tu disposes d'un droit d'accès, de rectification,
+    d'effacement, de limitation, d'opposition et de portabilité de tes données, et du droit de retirer ton
+    consentement à tout moment. Depuis l'app, tu peux exporter tes données et supprimer ton compte (Compte). Pour toute
+    autre demande, écris à : <LegalTodo />. Tu peux aussi introduire une réclamation auprès de la CNIL
+    (<a href="https://www.cnil.fr" rel="noopener">cnil.fr</a>).
+  </p>
+</LegalPage>

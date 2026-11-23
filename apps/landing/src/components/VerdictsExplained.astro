@@ -1,0 +1,37 @@
+---
+import { SAFE_VERDICT_REMINDER } from '@raijin/shared-contracts';
+import VerdictBadge from './VerdictBadge.astro';
+
+/** Les 3 verdicts expliqués (PROMPT.md §4.1, §4.5) : icône + mot + phrase, règles déterministes. */
+const VERDICTS = [
+  {
+    verdict: 'safe',
+    text: 'Aucun signal critique ni modéré sur les contrôles disponibles.',
+    detail: SAFE_VERDICT_REMINDER,
+  },
+  {
+    verdict: 'warn',
+    text: 'Des signaux modérés demandent ton attention : liquidité faible, holders concentrés, métadonnées modifiables…',
+    detail: 'Prudence aussi quand trop de contrôles n’ont pas pu être vérifiés.',
+  },
+  {
+    verdict: 'danger',
+    text: 'Un signal critique suffit : autorité de mint ou de freeze active, revente impossible ou liquidité retirée.',
+    detail: 'Raijin te dit lequel, avec sa source.',
+  },
+] as const;
+---
+
+<ul class="grid gap-4 md:grid-cols-3">
+  {
+    VERDICTS.map((item) => (
+      <li class="flex h-full flex-col gap-3 rounded-lg border border-line bg-surface p-4 md:p-6">
+        <span class="self-start">
+          <VerdictBadge verdict={item.verdict} />
+        </span>
+        <p class="text-body text-ink">{item.text}</p>
+        <p class="mt-auto text-body-sm text-ink-muted">{item.detail}</p>
+      </li>
+    ))
+  }
+</ul>

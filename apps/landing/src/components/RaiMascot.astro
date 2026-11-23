@@ -1,0 +1,28 @@
+---
+import bravoSvg from '../../../../libs/brand/mascot/rai-bravo.svg?raw';
+import heroSvg from '../../../../libs/brand/mascot/rai-hero.svg?raw';
+
+/**
+ * Rai, le gardien (libs/brand/mascot) en SVG inline : aucune requête, rendu net à toutes les tailles.
+ * `hero` : respiration 3 s et éclat jaune sur le bouclier au survol (arrêtés sous reduced-motion, voir landing.css).
+ * Une seule apparition par écran (BRAND.md).
+ */
+interface Props {
+  pose: 'hero' | 'bravo';
+  class?: string;
+  /** Texte alternatif ; vide si l'image est décorative. */
+  alt?: string;
+  animated?: boolean;
+}
+
+const { pose, class: className, alt = '', animated = false } = Astro.props;
+const svg = pose === 'hero' ? heroSvg : bravoSvg;
+---
+
+<span
+  class:list={['svg-fill block', animated && 'rai-animated', className]}
+  role={alt ? 'img' : undefined}
+  aria-label={alt || undefined}
+  aria-hidden={alt ? undefined : 'true'}
+  set:html={svg}
+/>

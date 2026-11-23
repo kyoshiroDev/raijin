@@ -1,0 +1,86 @@
+---
+import { APP_ROUTES, appHref } from '../lib/app-url';
+import { PRICING } from '../lib/pricing';
+import Icon from './Icon.astro';
+
+/**
+ * Plans Gratuit et Pro, valeurs lues au build dans `PUBLIC_PLAN_CATALOG` (docs/ARCHITECTURE.md §15.2).
+ * `emplacement` du suivi GA4 : `tarifs`.
+ */
+interface Props {
+  headingLevel?: 'h2' | 'h3';
+}
+
+const { headingLevel = 'h3' } = Astro.props;
+const Heading = headingLevel;
+const { free, pro, trialOffer, trialDays, trialAnalysesPerDay } = PRICING;
+---
+
+<div class="grid gap-4 md:grid-cols-2" data-pricing>
+  <article class="flex h-full flex-col rounded-lg border border-line bg-surface p-4 md:p-6">
+    <Heading class="font-display text-h2 font-bold text-ink">Gratuit</Heading>
+    <p class="mt-2">
+      <span class="tabular text-metric text-ink" data-price="free">0&nbsp;€</span>
+      <span class="ml-1 text-body-sm text-ink-muted">pour toujours</span>
+    </p>
+    <ul class="mt-4 flex-1 space-y-2">
+      {
+        free.lines.map((line) => (
+          <li class="flex gap-2 text-body text-ink">
+            <Icon name="check" size={18} class="mt-1 text-safe" />
+            {line}
+          </li>
+        ))
+      }
+    </ul>
+    <a
+      href={appHref(APP_ROUTES.inscription)}
+      data-app-link
+      data-track="inscription_debut"
+      data-track-emplacement="tarifs"
+      class="mt-6 inline-flex min-h-12 items-center justify-center rounded-md border border-line-strong px-6 text-body font-semibold text-ink transition-colors hover:border-ink-muted"
+    >
+      Créer un compte gratuit
+    </a>
+  </article>
+
+  <article class="flex h-full flex-col rounded-lg border border-thunder bg-surface p-4 md:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <Heading class="font-display text-h2 font-bold text-ink">Pro</Heading>
+      <span class="rounded-sm bg-thunder-soft px-2 py-1 text-label font-semibold text-thunder-ink">
+        Essai {trialDays} jours sans carte
+      </span>
+    </div>
+    <p class="mt-2">
+      <span class="tabular text-metric text-ink" data-price="pro-monthly">{pro.monthly}</span>
+      <span class="ml-1 text-body-sm text-ink-muted">par mois TTC</span>
+    </p>
+    <p class="text-body-sm text-ink-muted">
+      ou <span class="tabular text-ink" data-price="pro-yearly">{pro.yearly}</span> par an TTC
+      {pro.yearlySavingsPercent > 0 && <span>, soit {pro.yearlySavingsPercent}&nbsp;% de moins que 12 mois</span>}
+    </p>
+    <ul class="mt-4 space-y-2">
+      {
+        pro.lines.map((line) => (
+          <li class="flex gap-2 text-body text-ink">
+            <Icon name="check" size={18} class="mt-1 text-safe" />
+            {line}
+          </li>
+        ))
+      }
+    </ul>
+    <p class="mt-auto pt-4 text-body-sm text-ink-muted">
+      {trialOffer}
+      {trialAnalysesPerDay !== null && <> Pendant l'essai, analyses plafonnées à {trialAnalysesPerDay} par jour.</>}
+    </p>
+    <a
+      href={appHref(APP_ROUTES.inscription)}
+      data-app-link
+      data-track="cta_essai_clic"
+      data-track-emplacement="tarifs"
+      class="mt-6 inline-flex min-h-12 items-center justify-center rounded-md bg-thunder px-6 text-body font-semibold text-on-thunder transition-shadow hover:shadow-glow focus-visible:shadow-glow"
+    >
+      Essayer Pro gratuitement
+    </a>
+  </article>
+</div>

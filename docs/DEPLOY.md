@@ -1,7 +1,8 @@
 # Déploiement — Raijin Shield
 
 Ce document est complété phase après phase. La procédure complète du VPS (Docker Compose, Traefik, sauvegardes,
-`infra/deploy.sh`) arrive en phase 8. Ici : **l'espace admin** et **l'accès Google** (phase 6 bis).
+`infra/deploy.sh`) arrive en phase 8. Ici : **l'espace admin** et **l'accès Google** (phase 6 bis), puis **la landing**
+(phase 7, section 6).
 
 Rappels :
 - les secrets ne vont **que** dans le fichier `.env` du serveur (jamais dans Git, jamais dans un ticket ou un chat) ;
@@ -158,3 +159,61 @@ Rien à installer : les jobs tournent dans l'API (file BullMQ `maintenance`, Red
   dans l'app (Compte → Notifications) sur ton téléphone.
 - Plafonds journaliers des API publiques (ratio et alertes) : `JUPITER_DAILY_CALL_BUDGET`, `RUGCHECK_DAILY_CALL_BUDGET`
   (vide = appels comptés sans alerte).
+
+---
+
+## 6. Landing Astro (raijinshield.com)
+
+La landing est un site **statique** : `pnpm nx run landing:build` produit `dist/apps/landing/` (HTML, CSS, JS, images
+Open Graph, `sitemap.xml`, `robots.txt`, icônes). Aucun appel à l'API pendant le build ni à l'exécution : les prix et
+quotas affichés viennent de `PUBLIC_PLAN_CATALOG` (contrats), le verdict de la démonstration du moteur d'analyse.
+
+### 6.1 Variables lues au build
+
+Ce sont des valeurs **publiques** (rien de secret), lues dans l'environnement du processus `astro build`. Le script
+`infra/deploy.sh` (phase 8) doit les **exporter avant le build** de la landing ; les changer impose de reconstruire.
+
+| Variable | Valeur de production | Vide |
+|---|---|---|
+| `APP_URL` | `https://app.raijinshield.com` | valeur par défaut ci-contre |
+| `GA4_MEASUREMENT_ID` | `G-XXXXXXXXXX` (section 2) | ni GA4, ni bannière de consentement |
+| `GOOGLE_SITE_VERIFICATION` | valeur `content` de la balise HTML (section 4, méthode « préfixe d'URL ») | pas de meta (propriété de domaine DNS) |
+
+```bash
+export APP_URL=https://app.raijinshield.com
+export GA4_MEASUREMENT_ID=G-XXXXXXXXXX
+export GOOGLE_SITE_VERIFICATION=   # vide si la propriété Search Console est vérifiée par DNS
+pnpm nx run landing:build
+```
+
+### 6.2 Servir les URL sans `.html`
+
+Le build garde `build.format: 'file'` : `/tarifs` est le fichier `tarifs.html`, `/guides/mint-authority` le fichier
+`guides/mint-authority.html`, `/` le fichier `index.html`. Les URL canoniques, le sitemap et les liens internes
+n'utilisent **jamais** `.html`. Le serveur statique (phase 8, derrière Traefik) doit donc :
+
+1. servir `/x` avec le fichier `x.html` s'il existe (sinon `x/index.html`) ;
+2. répondre `404` avec `404.html` pour toute autre URL ;
+3. rediriger en `301` `/x.html` vers `/x` et `/x/` vers `/x` (une seule URL par page) ;
+4. envoyer `Cache-Control: public, max-age=31536000, immutable` pour `/_astro/*` (fichiers hachés) et un cache court
+   pour le HTML, `sitemap.xml`, `robots.txt` et `/og/*.png`.
+
+Exemple nginx : `try_files $uri $uri.html $uri/index.html =404; error_page 404 /404.html;`. En local, le serveur des
+tests (`apps/web-e2e/scripts/serve-landing.mjs`) applique la même règle.
+
+### 6.3 Search Console et partage
+
+- Sitemap à déclarer dans Search Console (section 4, étape 4) : `https://raijinshield.com/sitemap.xml`. Il liste les
+  pages indexables et les guides avec leur date de mise à jour ; la 404 est en `noindex`.
+- Images de partage : `https://raijinshield.com/og/<page>.png` (1200 × 630, générées au build). Pour vérifier un
+  aperçu après déploiement : l'outil d'inspection d'URL de Search Console, ou le débogueur de partage du réseau visé.
+
+### 6.4 Avant la mise en ligne
+
+- Les pages légales affichent **« À compléter »** pour l'éditeur, le SIRET, l'adresse, le contact, le directeur de la
+  publication et le médiateur de la consommation : à renseigner dans `apps/landing/src/pages/mentions-legales.astro`,
+  `cgu.astro` et `confidentialite.astro` (composant `LegalTodo`), puis reconstruire.
+- CSP cible de la landing (phase 8) : `script-src 'self' https://www.googletagmanager.com` ; aucun script inline
+  exécutable (le JSON-LD est de type `application/ld+json`, non exécuté) ; `style-src 'self'` suffit si Astro ne met
+  pas de CSS en ligne (vérifier `inlineStylesheets` au moment de poser la CSP) ; `font-src 'self'` ; `img-src 'self'
+  data:` + domaines GA4 ; `connect-src 'self'` + domaines GA4.

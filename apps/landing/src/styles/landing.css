@@ -1,0 +1,185 @@
+/* Styles propres à la landing, uniquement à partir des tokens (libs/brand/tokens.css) : aucun code couleur ici. */
+
+/* SVG inline de la charte (logo, Rai) : remplit son conteneur dimensionné. */
+.svg-fill > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Rai, pose héros : respiration 3 s, éclat jaune sur le bouclier au survol (PROMPT.md §2). */
+/* Animation portée par le conteneur HTML (transformation composée par le GPU, sans repeindre le SVG). */
+.rai-animated {
+  transform-origin: 50% 90%;
+  animation: rai-breathe 3s var(--ease-raijin) infinite alternate;
+}
+.rai-animated > svg > g:last-of-type {
+  transition: filter 250ms var(--ease-raijin);
+}
+.rai-animated:hover > svg > g:last-of-type {
+  filter: drop-shadow(0 0 6px var(--color-thunder)) drop-shadow(0 0 14px var(--color-thunder));
+}
+@keyframes rai-breathe {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(-3px) scale(1.025);
+  }
+}
+
+/* Menu mobile : <details> natif, icône qui bascule, marqueur masqué. */
+.menu-mobile > summary::-webkit-details-marker {
+  display: none;
+}
+.menu-mobile .menu-close-icon,
+.menu-mobile[open] .menu-open-icon {
+  display: none;
+}
+.menu-mobile[open] .menu-close-icon {
+  display: block;
+}
+
+/* FAQ : chevron qui pivote à l'ouverture. */
+.faq-item > summary::-webkit-details-marker {
+  display: none;
+}
+.faq-item .faq-chevron {
+  transition: transform 200ms var(--ease-raijin);
+}
+.faq-item[open] .faq-chevron {
+  transform: rotate(180deg);
+}
+
+/* Démonstration : sans JS, le résultat est visible. Avec JS, verdict, statuts et explications sont masqués (place
+   réservée, aucun saut de mise en page ; seuls les noms des 9 contrôles restent) jusqu'au clic sur « Lancer la
+   démonstration », puis révélés contrôle par contrôle. */
+[data-demo='idle'] .demo-reveal {
+  visibility: hidden;
+}
+[data-demo='done'] .demo-check {
+  animation: demo-in 250ms var(--ease-raijin) both;
+}
+[data-demo='done'] .demo-check:nth-child(2) {
+  animation-delay: 60ms;
+}
+[data-demo='done'] .demo-check:nth-child(3) {
+  animation-delay: 120ms;
+}
+[data-demo='done'] .demo-check:nth-child(4) {
+  animation-delay: 180ms;
+}
+[data-demo='done'] .demo-check:nth-child(5) {
+  animation-delay: 240ms;
+}
+[data-demo='done'] .demo-check:nth-child(6) {
+  animation-delay: 300ms;
+}
+[data-demo='done'] .demo-check:nth-child(7) {
+  animation-delay: 360ms;
+}
+[data-demo='done'] .demo-check:nth-child(8) {
+  animation-delay: 420ms;
+}
+[data-demo='done'] .demo-check:nth-child(9) {
+  animation-delay: 480ms;
+}
+@keyframes demo-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rai-animated,
+  [data-demo='done'] .demo-check {
+    animation: none;
+  }
+  .rai-animated > svg > g:last-of-type,
+  .faq-item .faq-chevron {
+    transition: none;
+  }
+}
+
+/* Contenu éditorial (guides, pages légales) : rythme de lecture, liens visibles, tableaux défilants sur mobile. */
+.prose {
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.prose > * + * {
+  margin-top: calc(var(--spacing) * 4);
+}
+.prose h2 {
+  margin-top: calc(var(--spacing) * 10);
+  font-family: var(--font-display);
+  font-size: var(--text-h2);
+  line-height: var(--text-h2--line-height);
+  font-weight: 700;
+}
+.prose h3 {
+  margin-top: calc(var(--spacing) * 8);
+  font-family: var(--font-display);
+  font-size: var(--text-h3);
+  line-height: var(--text-h3--line-height);
+  font-weight: 700;
+}
+.prose a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-thunder);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
+}
+.prose a:hover {
+  color: var(--color-thunder-ink);
+}
+.prose ul,
+.prose ol {
+  padding-left: calc(var(--spacing) * 6);
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li + li {
+  margin-top: calc(var(--spacing) * 2);
+}
+.prose strong {
+  font-weight: 600;
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: var(--text-data);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: var(--text-body-sm);
+  line-height: var(--text-body-sm--line-height);
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--color-line);
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  text-align: left;
+  vertical-align: top;
+  min-width: 8rem;
+}
+.prose th {
+  background: var(--color-surface);
+  font-weight: 600;
+}

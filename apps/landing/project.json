@@ -8,30 +8,51 @@
     "build": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": ["production", "^production", "{workspaceRoot}/libs/brand/**/*"],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/libs/brand/**/*"
+      ],
       "outputs": ["{workspaceRoot}/dist/apps/landing"],
-      "options": { "cwd": "apps/landing", "command": "astro build" }
+      "options": {
+        "cwd": "apps/landing",
+        "command": "astro build"
+      }
     },
     "serve": {
       "executor": "nx:run-commands",
       "continuous": true,
-      "options": { "cwd": "apps/landing", "command": "astro dev --port 4321" }
+      "options": {
+        "cwd": "apps/landing",
+        "command": "astro dev --port 4321"
+      }
     },
     "preview": {
       "executor": "nx:run-commands",
       "continuous": true,
       "dependsOn": ["build"],
-      "options": { "cwd": "apps/landing", "command": "astro preview --port 4321" }
+      "options": {
+        "cwd": "apps/landing",
+        "command": "astro preview --port 4321"
+      }
     },
     "typecheck": {
       "executor": "nx:run-commands",
       "cache": true,
-      "options": { "cwd": "apps/landing", "command": "astro check --minimumFailingSeverity warning" }
+      "options": {
+        "cwd": "apps/landing",
+        "command": "astro check --minimumFailingSeverity warning"
+      }
     },
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "options": { "cwd": "apps/landing", "command": "vitest run" }
+      "options": {
+        "cwd": "apps/landing",
+        "command": "vitest run"
+      },
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production", "{workspaceRoot}/libs/brand/**/*"]
     }
   }
 }

@@ -1,0 +1,57 @@
+---
+import faviconUrl from '../../../../libs/brand/icons/favicon.svg?url';
+import { BRAND_NAME, canonicalUrl, ogImageUrl, serializeJsonLd, SITE_LOCALE } from '../lib/seo';
+
+/**
+ * Balises SEO d'une page (docs/ARCHITECTURE.md §15.6) : title et description uniques, canonical sans `.html`,
+ * Open Graph et Twitter Card avec l'image générée au build, JSON-LD non exécutable et échappé.
+ */
+interface Props {
+  title: string;
+  description: string;
+  /** Chemin de la page (`/tarifs`) : canonical et og:url. */
+  path: string;
+  /** Slug de l'image `/og/<slug>.png`. */
+  og: string;
+  ogAlt: string;
+  type?: 'website' | 'article';
+  noindex?: boolean;
+  jsonLd?: readonly Record<string, unknown>[];
+  publishedAt?: Date | undefined;
+  updatedAt?: Date | undefined;
+}
+
+const { title, description, path, og, ogAlt, type = 'website', noindex = false, jsonLd = [], publishedAt, updatedAt } =
+  Astro.props;
+const canonical = canonicalUrl(path);
+const image = ogImageUrl(og);
+---
+
+<title>{title}</title>
+<meta name="description" content={description} />
+{noindex ? <meta name="robots" content="noindex, follow" /> : <link rel="canonical" href={canonical} />}
+<meta name="theme-color" content="#07090d" />
+<link rel="icon" type="image/svg+xml" href={faviconUrl} />
+<link rel="apple-touch-icon" href="/icon-180.png" />
+
+<meta property="og:type" content={type} />
+<meta property="og:site_name" content={BRAND_NAME} />
+<meta property="og:locale" content={SITE_LOCALE} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:image" content={image} />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content={ogAlt} />
+{publishedAt && <meta property="article:published_time" content={publishedAt.toISOString()} />}
+{updatedAt && <meta property="article:modified_time" content={updatedAt.toISOString()} />}
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={image} />
+<meta name="twitter:image:alt" content={ogAlt} />
+
+{jsonLd.map((data) => <script is:inline type="application/ld+json" set:html={serializeJsonLd(data)} />)}

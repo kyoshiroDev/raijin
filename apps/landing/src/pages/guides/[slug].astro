@@ -1,0 +1,118 @@
+---
+import { render } from 'astro:content';
+import Container from '../../components/Container.astro';
+import CtaFinal from '../../components/CtaFinal.astro';
+import PageIntro from '../../components/PageIntro.astro';
+import Base from '../../layouts/Base.astro';
+import { HOME_CRUMB } from '../../lib/breadcrumbs';
+import { getGuides, guidePath, type Guide } from '../../lib/collections';
+import { DISCLAIMER } from '../../lib/content';
+import { STATIC_PAGES } from '../../lib/pages';
+import { articleLd, breadcrumbLd, ogImageUrl } from '../../lib/seo';
+
+export async function getStaticPaths() {
+  const guides = await getGuides();
+  const bySlug = new Map(guides.map((guide) => [guide.id, guide]));
+  return guides.map((guide) => {
+    const related = guide.data.related.map((slug) => {
+      const target = bySlug.get(slug);
+      if (!target || slug === guide.id) throw new Error(`Guide « ${guide.id} » : lien « ${slug} » invalide.`);
+      return target;
+    });
+    return { params: { slug: guide.id }, props: { guide, related } };
+  });
+}
+
+interface Props {
+  guide: Guide;
+  related: Guide[];
+}
+
+const { guide, related } = Astro.props;
+const { Content } = await render(guide);
+const path = guidePath(guide.id);
+const og = `guide-${guide.id}`;
+const crumbs = [HOME_CRUMB, { name: STATIC_PAGES.guides.heading, path: STATIC_PAGES.guides.path }, { name: guide.data.title, path }];
+const dateFormat = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeZone: 'UTC' });
+const jsonLd = [
+  breadcrumbLd(crumbs),
+  articleLd({
+    title: guide.data.title,
+    description: guide.data.description,
+    path,
+    image: ogImageUrl(og),
+    publishedAt: guide.data.publishedAt,
+    updatedAt: guide.data.updatedAt,
+  }),
+];
+const link = 'font-semibold text-ink underline decoration-thunder decoration-2 underline-offset-4';
+---
+
+<Base
+  title={`${guide.data.title} — Raijin Shield`}
+  description={guide.data.description}
+  path={path}
+  og={og}
+  ogAlt={guide.data.title}
+  type="article"
+  jsonLd={jsonLd}
+  publishedAt={guide.data.publishedAt}
+  updatedAt={guide.data.updatedAt}
+>
+  <article data-guide-slug={guide.id}>
+    <PageIntro crumbs={crumbs} title={guide.data.heading} lead={guide.data.description} narrow>
+      <p class="mt-4 text-body-sm text-ink-muted">
+        Mis à jour le <time datetime={guide.data.updatedAt.toISOString()}>{dateFormat.format(guide.data.updatedAt)}</time>
+        · {guide.data.readingMinutes} min de lecture
+      </p>
+    </PageIntro>
+
+    <Container narrow class="py-10 md:py-14">
+      <div class="prose">
+        <Content />
+      </div>
+
+      <section aria-labelledby="sources-title" class="mt-12 border-t border-line pt-8">
+        <h2 id="sources-title" class="font-display text-h3 font-bold text-ink">Sources</h2>
+        <ul class="mt-3 space-y-2">
+          {
+            guide.data.sources.map((source) => (
+              <li class="text-body-sm text-ink-muted">
+                <a href={source.url} rel="noopener" class={`${link} inline-flex min-h-11 items-center`}>
+                  {source.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <nav aria-labelledby="related-title" class="mt-10 border-t border-line pt-8">
+        <h2 id="related-title" class="font-display text-h3 font-bold text-ink">À lire aussi</h2>
+        <ul class="mt-3 grid gap-3 sm:grid-cols-2">
+          {
+            related.map((item) => (
+              <li>
+                <a
+                  href={guidePath(item.id)}
+                  class="flex h-full min-h-11 flex-col rounded-lg border border-line bg-surface p-4 transition-colors hover:border-ink-muted"
+                >
+                  <span class="font-semibold text-ink">{item.data.title}</span>
+                  <span class="mt-1 text-body-sm text-ink-muted">{item.data.readingMinutes} min de lecture</span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+
+      <p class="mt-10 rounded-lg border border-line bg-surface p-4 text-body-sm text-ink-muted">{DISCLAIMER}</p>
+
+      <div class="mt-10">
+        <CtaFinal emplacement="guide" title="Vérifie un token avec Raijin." />
+      </div>
+    </Container>
+  </article>
+</Base>
+
+<script src="../../scripts/guide-read.ts"></script>

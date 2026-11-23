@@ -1,0 +1,12 @@
+---
+import markSvg from '../../../../libs/brand/logos/raijin-mark-color.svg?raw';
+import wordmarkSvg from '../../../../libs/brand/logos/raijin-wordmark-color.svg?raw';
+
+/**
+ * Logotype de l'en-tête (BRAND.md, PROMPT.md §2) : « Raijin SHIELD » complet, symbole seul sous 360 px.
+ * SVG de libs/brand inline (aucune requête) ; le nom accessible est porté par le lien parent.
+ */
+---
+
+<span class="svg-fill block h-10 w-10 xs:hidden" aria-hidden="true" set:html={markSvg} />
+<span class="svg-fill hidden h-10 w-34 xs:block" aria-hidden="true" set:html={wordmarkSvg} />

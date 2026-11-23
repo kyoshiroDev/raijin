@@ -1,0 +1,27 @@
+---
+import type { FaqItem } from '../lib/seo';
+import Icon from './Icon.astro';
+
+/** FAQ en `<details>` natifs (aucun JS) ; `faq_ouverte { faq_id }` part à l'ouverture (lib/analytics/page-events). */
+interface Props {
+  items: readonly FaqItem[];
+  headingLevel?: 'h2' | 'h3';
+}
+
+const { items, headingLevel = 'h3' } = Astro.props;
+const Heading = headingLevel;
+---
+
+<div class="divide-y divide-line rounded-lg border border-line bg-surface">
+  {
+    items.map((item) => (
+      <details class="faq-item group" data-faq-id={item.id} id={`faq-${item.id}`}>
+        <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 md:px-6">
+          <Heading class="text-body font-semibold text-ink">{item.question}</Heading>
+          <Icon name="chevronDown" class="faq-chevron text-ink-muted" />
+        </summary>
+        <p class="px-4 pb-4 text-body text-ink-muted md:px-6">{item.answer}</p>
+      </details>
+    ))
+  }
+</div>

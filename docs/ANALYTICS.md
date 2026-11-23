@@ -10,7 +10,7 @@ contrats `libs/shared/contracts/src/lib/analytics/ga4.ts`.
 |---|---|---|
 | `GA4_MEASUREMENT_ID` | Flux web GA4 (`G-XXXXXXX`, motif `^G-[A-Z0-9]{4,20}$`) | ni GA4, ni bannière, ni lien « Gérer les cookies » |
 | `GOOGLE_SITE_VERIFICATION` | `<meta name="google-site-verification">` (propriété « préfixe d'URL ») | pas de meta (inutile avec une propriété de domaine DNS) |
-| `APP_URL` | Base des liens vers l'app (`appHref(APP_ROUTES.inscription)` → `/compte/inscription` ; aussi `connexion` → `/compte/connexion`, `analyse` → `/analyse`) | `https://app.raijinshield.com` |
+| `APP_URL` | Base des liens vers l'app (`appHref(APP_ROUTES.inscription)` → `/compte/inscription` ; aussi `connexion` → `/compte/connexion`, `analyse` → `/analyse`) et de l'analyse d'un token (`appAnalyseHref(mint)` → `/analyse/<mint>`, mint validé en base58 puis encodé ; action du formulaire du hero) | `https://app.raijinshield.com` |
 
 Les variables sont lues dans l'environnement du processus de build (`astro build`, lancé depuis `apps/landing`) : le
 script de déploiement doit les exporter. Rien n'est secret ici.
@@ -45,15 +45,18 @@ script de déploiement doit les exporter. Rien n'est secret ici.
 
 ## 3. Événements GA4 (liste fermée, snake_case)
 
-| Événement | Paramètres | Déclencheur (branché en phase 7) | Événement clé |
+| Événement | Paramètres | Déclencheur réel (phase 7) | Événement clé |
 |---|---|---|---|
-| `analyse_demo_lancee` | — | lancement de l'analyse de démonstration | |
-| `analyse_demo_resultat` | `verdict` : `safe` · `warn` · `danger` | affichage du verdict de la démo | |
-| `cta_essai_clic` | `emplacement` : `header` · `hero` · `verdicts` · `tarifs` · `faq` · `final` · `guide` | clic sur un CTA d'essai | oui |
-| `inscription_debut` | `emplacement` (idem) | clic vers `/inscription` de l'app | oui |
-| `voir_tarifs` | — | affichage ou clic vers la section tarifs | |
-| `guide_lu` | `slug` | lecture d'un guide (seuil de défilement) | |
-| `faq_ouverte` | `faq_id` | ouverture d'une question de la FAQ | |
+| `analyse_demo_lancee` | — | envoi **valide** du champ d'analyse du hero (`lib/analyse-form.ts`), juste avant la navigation vers `{APP_URL}/analyse/<mint>` ; rien sur une saisie invalide. Le mint n'est jamais transmis à GA4 | |
+| `analyse_demo_resultat` | `verdict` : `safe` · `warn` · `danger` | clic sur « Lancer la démonstration » (`lib/demo/demo-island.ts`) : verdict de l'**analyse de démonstration** (token fictif « Exemple », calculé au build). Le verdict d'une vraie analyse est rendu par l'app, sans GA4 : il est mesuré en interne (`ProductEvent`, attribution `rj_lp`) | |
+| `cta_essai_clic` | `emplacement` : `header` · `hero` · `tarifs` · `faq` · `final` · `guide` | clic sur un CTA d'essai Pro (« Essayer gratuitement », « Essayer Pro gratuitement », « Créer mon compte » du hero), déclaratif `data-track` | oui |
+| `inscription_debut` | `emplacement` (idem) | clic sur « Créer un compte gratuit » (carte Gratuit des tarifs), déclaratif | oui |
+| `voir_tarifs` | — | clic sur un lien vers `/tarifs` (en-tête, pied de page, accueil) et affichage de la page Tarifs (`[data-track-view="voir_tarifs"]`, envoyé au démarrage si le consentement est déjà donné) | |
+| `guide_lu` | `slug` | défilement au-delà de 60 % de l'article d'un guide, une fois par page vue (`lib/guide-read.ts`) | |
+| `faq_ouverte` | `faq_id` (identifiant de la question, ex. `essai-pro`) | ouverture d'un `<details data-faq-id>` (accueil, `/faq`, `/tarifs`) : événement `toggle` écouté en capture, rien à la fermeture (`lib/analytics/page-events.ts`) | |
+
+L'emplacement `verdicts` reste dans la liste des contrats mais n'est porté par aucun bouton : la section des verdicts
+n'a pas de CTA (un seul bouton principal par écran).
 
 Aucune donnée personnelle, aucune adresse de wallet ni mint saisi dans les paramètres.
 
@@ -76,9 +79,11 @@ Aucune donnée personnelle, aucune adresse de wallet ni mint saisi dans les para
 - Stockage : `sessionStorage` (`rj.attribution`, onglet courant) **sans consentement** ; cookie de premier niveau
   `rj_attr` (JSON, 90 jours, `SameSite=Lax`, `Secure`) **après acceptation** de la mesure d'audience. Refus ou retrait :
   cookie supprimé, retour en session.
-- Transmission à l'app : au démarrage, chaque `<a data-app-link href={appHref(APP_ROUTES.inscription)}>` est complété avec
+- Transmission à l'app : au démarrage, chaque `<a data-app-link href={appHref(…)}>` (inscription, connexion, analyse) est complété avec
   `ATTRIBUTION_QUERY_PARAMS` : `utm_source`, `utm_medium`, `utm_campaign`, `rj_ref` (provenance), `rj_lp` (page
-  d'arrivée). Un paramètre déjà présent dans le lien n'est pas écrasé.
+  d'arrivée). Un paramètre déjà présent dans le lien n'est pas écrasé. Le champ d'analyse ajoute les mêmes paramètres à
+  `{APP_URL}/analyse/<mint>` (`decorateAppUrl`) ; sans JS, le formulaire envoie `GET {APP_URL}/analyse?mint=…` et
+  l'app redirige vers `/analyse/<mint>` en conservant l'attribution.
 - Alignement : `apps/landing/src/lib/analytics/constants.spec.ts` compare les constantes de la landing à celles des
   contrats (événements, emplacements, cookies, durées, paramètres) et valide un relevé avec `signupAttributionSchema`.
 
@@ -94,7 +99,12 @@ identifiant GA transmis à l'app).
 - `apps/landing/src/lib/analytics/` : `constants.ts`, `cookies.ts`, `consent.ts`, `ga4.ts`, `track.ts`,
   `attribution.ts`, `banner.ts`, `boot.ts`, `index.ts` (API publique) ; tests `*.spec.ts` (jsdom).
 - `apps/landing/src/components/consent/` : `ConsentBanner.astro`, `ManageCookiesButton.astro` ;
-  `components/SiteFooter.astro` ; `layouts/Base.astro` (meta de vérification, bannière, script) ; `lib/app-url.ts`.
+  `components/SiteFooter.astro` ; `layouts/Base.astro` (meta de vérification, bannière, script) ; `lib/app-url.ts`
+  (`appHref`, `appAnalyseHref`), `lib/app-links.ts` (`buildAnalyseUrl`, sans `astro:env`).
+- Phase 7 : `lib/analytics/page-events.ts` (`faq_ouverte`, `voir_tarifs` à l'affichage), `lib/analyse-form.ts` +
+  `scripts/analyse-form.ts` (champ du hero), `lib/demo/demo-island.ts` + `scripts/demo.ts` (démonstration),
+  `lib/guide-read.ts` + `scripts/guide-read.ts` (`guide_lu`). Budget mesuré par `src/dist.spec.ts` : JS ≤ 12 ko gzip
+  par page (≈ 6 ko sur l'accueil, ≈ 3 ko ailleurs).
 - Tests : aucun script Google avant acceptation, Échap sans effet, refus respecté et mémorisé, expiration à 182 jours,
   retrait (cookies `_ga` supprimés), `track` no-op sans consentement, suivi déclaratif filtré, attribution (session puis
   cookie, premier contact, valeurs hostiles, décoration des liens).

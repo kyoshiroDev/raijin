@@ -1,0 +1,39 @@
+---
+import Container from '../components/Container.astro';
+import CtaFinal from '../components/CtaFinal.astro';
+import FaqList from '../components/FaqList.astro';
+import PageIntro from '../components/PageIntro.astro';
+import Base from '../layouts/Base.astro';
+import { pageCrumbs } from '../lib/breadcrumbs';
+import { getFaq } from '../lib/collections';
+import { STATIC_PAGES } from '../lib/pages';
+import { breadcrumbLd, faqPageLd } from '../lib/seo';
+
+const page = STATIC_PAGES.faq;
+const crumbs = pageCrumbs('faq');
+const faq = await getFaq();
+---
+
+<Base
+  title={page.title}
+  description={page.description}
+  path={page.path}
+  og={page.og}
+  jsonLd={[breadcrumbLd(crumbs), faqPageLd(faq)]}
+>
+  <PageIntro
+    crumbs={crumbs}
+    title="Questions fréquentes"
+    lead="Tout ce qu'il faut savoir sur l'analyse, les données, l'essai Pro et ton compte."
+    narrow
+  />
+  <Container narrow class="py-10 md:py-14">
+    <FaqList items={faq} headingLevel="h2" />
+    <p class="mt-6 text-body text-ink-muted">
+      Une question sur un mécanisme précis ? Les <a href="/guides" class="font-semibold text-ink underline decoration-thunder decoration-2 underline-offset-4">guides</a> détaillent les pièges les plus courants.
+    </p>
+    <div class="mt-12">
+      <CtaFinal emplacement="faq" />
+    </div>
+  </Container>
+</Base>

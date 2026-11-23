@@ -1,0 +1,145 @@
+---
+import { DEFAULT_RISK_ENGINE_CONFIG } from '@raijin/shared-risk-engine';
+import { SAFE_VERDICT_REMINDER } from '@raijin/shared-contracts';
+import ChecksList from '../components/ChecksList.astro';
+import Container from '../components/Container.astro';
+import CtaFinal from '../components/CtaFinal.astro';
+import VerdictsExplained from '../components/VerdictsExplained.astro';
+import PageIntro from '../components/PageIntro.astro';
+import Base from '../layouts/Base.astro';
+import { pageCrumbs } from '../lib/breadcrumbs';
+import { STATIC_PAGES } from '../lib/pages';
+import { breadcrumbLd } from '../lib/seo';
+
+const page = STATIC_PAGES.commentCaMarche;
+const crumbs = pageCrumbs('commentCaMarche');
+const c = DEFAULT_RISK_ENGINE_CONFIG;
+const fr = (value: number) => new Intl.NumberFormat('fr-FR').format(value);
+const usd = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} $`;
+// Seuils lus dans la configuration du moteur : la page ne peut pas diverger de l'app.
+const thresholds = [
+  { label: 'Liquidité faible', value: `moins de ${usd(c.liquidityLowUsd)}` },
+  {
+    label: 'LP brûlée ou verrouillée insuffisante',
+    value: `moins de ${c.lpBurnedOrLockedMinPct} % (pools de moins de ${c.lpLockCheckMaxPoolAgeDays} jours)`,
+  },
+  { label: 'Top 10 des holders concentré', value: `plus de ${c.top10WarnPct} % du supply` },
+  { label: 'Un seul wallet', value: `plus de ${c.singleHolderWarnPct} % du supply` },
+  { label: 'Taxe implicite à la revente', value: `plus de ${c.sellTaxWarnPct} % (critique à ${c.sellTaxCriticalPct} %)` },
+  { label: 'Impact prix du devis de vente', value: `plus de ${c.priceImpactWarnPct} %` },
+  { label: 'Token très récent', value: `moins de ${c.tokenVeryNewHours} h` },
+  { label: 'Pool très récent', value: `moins de ${c.poolVeryNewHours} h` },
+  { label: 'Créateur aux tokens morts', value: `${c.creatorDeadTokensWarn} tokens ou plus` },
+];
+const steps = [
+  {
+    title: 'Tu colles une adresse',
+    text: "L'adresse du mint, ou un lien DexScreener, pump.fun, Solscan ou Birdeye : Raijin en extrait l'adresse et la valide.",
+  },
+  {
+    title: 'Raijin lit les données publiques',
+    text: 'RPC Solana via Helius, DexScreener, GeckoTerminal, devis Jupiter et RugCheck, interrogés en parallèle. Aucune connexion de wallet, aucune signature.',
+  },
+  {
+    title: 'Les 9 contrôles sont évalués',
+    text: 'Chaque contrôle reçoit un statut : OK, Attention, Danger ou Indisponible si la source n’a pas répondu.',
+  },
+  {
+    title: 'Le verdict tombe',
+    text: 'Des règles fixes et documentées donnent Sain, Prudence ou Danger, avec une phrase qui explique pourquoi.',
+  },
+];
+---
+
+<Base title={page.title} description={page.description} path={page.path} og={page.og} jsonLd={[breadcrumbLd(crumbs)]}>
+  <PageIntro
+    crumbs={crumbs}
+    title="Comment ça marche"
+    lead="Raijin Shield ne devine rien : il lit des données publiques, applique des règles fixes et te montre d'où vient chaque information."
+  />
+
+  <Container class="py-10 md:py-14">
+    <section aria-labelledby="etapes-title">
+      <h2 id="etapes-title" class="font-display text-h2 font-bold text-ink">En quatre étapes</h2>
+      <ol class="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {
+          steps.map((step, index) => (
+            <li class="flex h-full flex-col rounded-lg border border-line bg-surface p-4">
+              <span class="tabular text-metric text-thunder-ink">{index + 1}</span>
+              <h3 class="mt-2 font-display text-h3 font-bold text-ink">{step.title}</h3>
+              <p class="mt-2 text-body-sm text-ink-muted">{step.text}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section aria-labelledby="controles-title" class="mt-14">
+      <h2 id="controles-title" class="font-display text-h2 font-bold text-ink">Les 9 contrôles</h2>
+      <p class="mt-3 max-w-3xl text-body text-ink-muted">
+        Les quatre contrôles critiques (autorités de mint et de freeze, liquidité retirée, revente impossible) suffisent
+        chacun à donner le verdict Danger.
+      </p>
+      <div class="mt-6">
+        <ChecksList />
+      </div>
+    </section>
+
+    <section aria-labelledby="verdict-title" class="mt-14">
+      <h2 id="verdict-title" class="font-display text-h2 font-bold text-ink">Comment le verdict est décidé</h2>
+      <ol class="prose mt-4 max-w-3xl">
+        <li>
+          <strong>Danger</strong> : au moins un signal critique (autorité de mint ou de freeze active, délégué permanent,
+          aucune route de vente, taxe ou frais de transfert confiscatoires, liquidité retirée, token signalé comme
+          victime d'un rug par RugCheck).
+        </li>
+        <li>
+          <strong>Prudence</strong> : des signaux modérés dont le poids cumulé atteint {fr(c.cautionScoreThreshold)} (chaque
+          signal compte pour 1, sauf les métadonnées modifiables, {fr(c.reasonWeights.METADATA_MUTABLE ?? 1)}, et un
+          avertissement RugCheck, {fr(c.reasonWeights.RUGCHECK_WARN ?? 1)}), ou {c.unavailableChecksBlockSafe} contrôles
+          indisponibles ou plus, ou des autorités impossibles à lire.
+        </li>
+        <li><strong>Sain</strong> : aucun des cas précédents. {SAFE_VERDICT_REMINDER}</li>
+      </ol>
+      <div class="mt-6">
+        <VerdictsExplained />
+      </div>
+    </section>
+
+    <section aria-labelledby="seuils-title" class="mt-14">
+      <h2 id="seuils-title" class="font-display text-h2 font-bold text-ink">Les seuils utilisés</h2>
+      <p class="mt-3 max-w-3xl text-body text-ink-muted">
+        Ce sont ceux du moteur d'analyse de l'app (version {c.version}). Un dépassement donne un signal Attention, sauf
+        mention contraire.
+      </p>
+      <dl class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {
+          thresholds.map((item) => (
+            <div class="rounded-lg border border-line bg-surface p-4">
+              <dt class="text-body-sm text-ink-muted">{item.label}</dt>
+              <dd class="tabular mt-1 text-body text-ink">{item.value}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section aria-labelledby="limites-title" class="mt-14">
+      <h2 id="limites-title" class="font-display text-h2 font-bold text-ink">Ce que Raijin ne fait pas</h2>
+      <ul class="prose mt-4 max-w-3xl">
+        <li>Il ne se connecte à aucun wallet, ne signe et n'exécute aucune transaction.</li>
+        <li>Il ne recommande aucun token et ne donne aucun conseil en investissement.</li>
+        <li>Il ne prédit pas le prix : il décrit un risque technique à un instant donné.</li>
+      </ul>
+      <p class="mt-6 text-body text-ink-muted">
+        Pour aller plus loin : <a href="/guides/rug-pull-solana" class="font-semibold text-ink underline decoration-thunder decoration-2 underline-offset-4">repérer un rug pull</a>,
+        <a href="/guides/mint-authority" class="font-semibold text-ink underline decoration-thunder decoration-2 underline-offset-4">comprendre la mint authority</a>
+        et <a href="/guides/honeypot-solana" class="font-semibold text-ink underline decoration-thunder decoration-2 underline-offset-4">détecter un honeypot</a>.
+      </p>
+    </section>
+
+    <div class="mt-14">
+      <CtaFinal />
+    </div>
+  </Container>
+</Base>

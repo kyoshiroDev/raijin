@@ -7,5 +7,6 @@
 @import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import '../../../../libs/web/ui/src/styles/extras.css';
+@import './landing.css' layer(components);
 
 @source '../';

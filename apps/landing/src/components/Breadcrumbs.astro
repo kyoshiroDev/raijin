@@ -1,0 +1,31 @@
+---
+import type { Crumb } from '../lib/seo';
+
+/** Fil d'Ariane visible (le JSON-LD `BreadcrumbList` est émis par la page avec les mêmes éléments). */
+interface Props {
+  crumbs: readonly Crumb[];
+}
+
+const { crumbs } = Astro.props;
+---
+
+<nav aria-label="Fil d'Ariane" class="text-body-sm text-ink-muted">
+  <ol class="flex flex-wrap items-center gap-x-2">
+    {
+      crumbs.map((crumb, index) => (
+        <li class="flex items-center gap-x-2">
+          {index > 0 && <span aria-hidden="true">/</span>}
+          {index < crumbs.length - 1 ? (
+            <a href={crumb.path} class="inline-flex min-h-11 items-center underline-offset-4 hover:text-ink hover:underline">
+              {crumb.name}
+            </a>
+          ) : (
+            <span aria-current="page" class="inline-flex min-h-11 items-center text-ink">
+              {crumb.name}
+            </span>
+          )}
+        </li>
+      ))
+    }
+  </ol>
+</nav>
