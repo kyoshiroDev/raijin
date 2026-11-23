@@ -9,6 +9,7 @@ import { RjAnalysisResult } from '../analysis/analysis-result';
 import { tokenDisplayName } from '../analysis/check-display';
 import { ANALYSIS_CHECK_IDS, ANALYSIS_CHECK_LABELS, LOCAL_ERROR_MESSAGES, VERDICT_LABELS } from '../analysis/labels';
 import { bindPageTitle } from '../analysis/page-title';
+import { sanitizeMintQuery } from './mint-query';
 
 const SOURCE_LABELS: Readonly<Record<AddressInputSource, string>> = {
   raw: '',
@@ -174,7 +175,10 @@ export class AnalysePage {
   private readonly router = inject(Router);
   private readonly field = viewChild.required<RjInputField>('field');
 
-  /** Paramètre de route `:mint` (absent sur `/analyse`). */
+  /**
+   * Paramètre de route `:mint`, ou paramètre de requête `?mint=` sur `/analyse` (repli sans JS de la landing,
+   * invalide : la saisie valide est redirigée par `mintQueryRedirect`).
+   */
   readonly mint = input<string>();
 
   protected readonly input = signal('');
@@ -288,7 +292,7 @@ export class AnalysePage {
       this.store.reset();
       return;
     }
-    this.input.set(mint);
+    this.input.set(sanitizeMintQuery(mint));
     if (!isSolanaAddress(mint)) {
       this.store.setLocalError({ code: 'MINT_INVALID', message: LOCAL_ERROR_MESSAGES.MINT_INVALID, status: 0 });
       return;

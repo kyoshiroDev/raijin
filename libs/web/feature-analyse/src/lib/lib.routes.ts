@@ -1,6 +1,7 @@
 import { Route } from '@angular/router';
 import { AnalysisStore } from '@raijin/web-data-access';
 import { AnalysePage } from './pages/analyse.page';
+import { mintQueryRedirect } from './pages/mint-query';
 import { PublicTokenPage } from './pages/public-token.page';
 
 /**
@@ -14,7 +15,8 @@ export const webFeatureAnalyseRoutes: Route[] = [
     path: '',
     providers: [AnalysisStore],
     children: [
-      { path: '', component: AnalysePage },
+      // `?mint=` : repli sans JS du champ de la landing (redirection vers `/analyse/<mint>`).
+      { path: '', component: AnalysePage, canActivate: [mintQueryRedirect] },
       { path: ':mint', component: AnalysePage, title: 'Analyse — Raijin' },
     ],
   },
