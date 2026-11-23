@@ -21,6 +21,8 @@ psql_su() { docker exec -i "$C" psql -X -q -t -A -U postgres "$@"; }
 users_in_raijin() { psql_su -d raijin -c 'SELECT count(*) FROM rt_users;' 2>/dev/null || echo "?"; }
 cleanup() {
   docker exec -u postgres "$C" pg_ctl stop -m fast -D /var/lib/postgresql/data >/dev/null 2>&1 || true
+  # Filet : le conteneur de CE test seulement (nom fixe, vérifié absent au démarrage).
+  docker rm -f "$C" >/dev/null 2>&1 || true
   [[ -d "$WORK" ]] && find "$WORK" -mindepth 1 -delete && rmdir "$WORK"
 }
 trap cleanup EXIT
@@ -28,7 +30,7 @@ trap cleanup EXIT
 docker inspect "$C" >/dev/null 2>&1 && { echo "le conteneur $C existe déjà : abandon (il n'est pas à ce test)." >&2; exit 1; }
 mkdir -p "$WORK/backups"
 umask 077
-export RAIJIN_PG_CONTAINER="$C" RAIJIN_ENV_FILE=/nonexistent RAIJIN_API_ENV_FILE=/nonexistent BACKUP_DIR="$WORK/backups"
+export RAIJIN_NO_ALERT=1 RAIJIN_PG_CONTAINER="$C" RAIJIN_ENV_FILE=/nonexistent RAIJIN_API_ENV_FILE=/nonexistent BACKUP_DIR="$WORK/backups"
 
 echo "== Démarrage de $C (jetable)"
 docker run -d --rm --name "$C" \
@@ -71,6 +73,16 @@ psql_su -d postgres -c 'CREATE DATABASE raijin_avant_restauration_refus;'
 if RAIJIN_RESTORE_STAMP=refus infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null 2>&1; then ko "restauration acceptée"; else ok "renommage refusé → abandon"; fi
 [[ "$(users_in_raijin)" == 10 ]] && ok "base d'origine intacte après renommage refusé" || ko "base d'origine perdue : $(users_in_raijin)"
 psql_su -d postgres -c 'DROP DATABASE raijin_avant_restauration_refus;'
+
+echo "== --into : requête en échec APRÈS le renommage (piège hérité par un sous-shell)"
+if RAIJIN_TEST_FAULT=summarize RAIJIN_RESTORE_STAMP=fautea infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null 2>&1; then ko "restauration acceptée malgré l'échec"; else ok "échec détecté → retour"; fi
+[[ "$(users_in_raijin)" == 10 ]] && ok "base d'origine intacte et remise sous son nom" || ko "base d'origine perdue : $(users_in_raijin)"
+[[ "$(psql_su -d postgres -c "SELECT count(*) FROM pg_database WHERE datname = 'raijin_avant_restauration_fautea';")" == 0 ]] && ok "aucune base de secours orpheline" || ko "base de secours restante"
+
+echo "== --into : erreur passagère de pg_db_exists"
+if RAIJIN_TEST_FAULT=db_exists:raijin RAIJIN_RESTORE_STAMP=fauteb infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null 2>&1; then ko "restauration acceptée malgré l'erreur"; else ok "arrêt avant toute modification"; fi
+[[ "$(users_in_raijin)" == 10 ]] && ok "base d'origine intacte (pas lue comme absente)" || ko "base d'origine perdue : $(users_in_raijin)"
+[[ "$(psql_su -d postgres -c "SELECT count(*) FROM pg_database WHERE datname = 'raijin_avant_restauration_fauteb';")" == 0 ]] && ok "aucun renommage" || ko "renommage effectué"
 
 echo "== --into réussi"
 RAIJIN_RESTORE_STAMP=ok infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null && ok "restore --into" || ko "restore --into"

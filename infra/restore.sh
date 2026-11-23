@@ -66,7 +66,8 @@ terminate_connections() {
 # Résumé d'une base restaurée : nombre de tables, dernière migration Prisma, quelques comptages.
 summarize() {
   local db="$1" tables migrations last
-  tables="$(pg_sql -d "$db" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';")"
+  # Tests seulement : échec simulé d'une requête après le renommage (dans une substitution de commande).
+  tables="$(if [[ "${RAIJIN_TEST_FAULT:-}" == "summarize" ]]; then false; fi; pg_sql -d "$db" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';")"
   [[ "$tables" -gt 0 ]] || { warn "aucune table restaurée dans $db."; return 1; }
   log "  tables : $tables"
   if [[ "$(pg_sql -d "$db" -c "SELECT to_regclass('public._prisma_migrations') IS NOT NULL;")" == "t" ]]; then
@@ -146,19 +147,30 @@ sessions_on() {
 renamed=0
 original_absent=0
 rollback() {
-  trap - ERR
-  warn "échec : remise en place de la base d'origine."
-  if [[ "$renamed" == 1 || "$original_absent" == 1 ]]; then
+  # Avec set -E, le piège est hérité par les sous-shells ($(...)) : seul le shell principal a le droit d'agir,
+  # un sous-shell se contente d'échouer (le principal reprend ensuite la main avec l'état exact).
+  [[ "$BASHPID" == "$$" ]] || exit 1
+  trap - ERR INT TERM HUP
+  warn "échec ou interruption : remise en place de la base d'origine."
+  if [[ "$renamed" == 1 ]]; then
+    # Ne supprimer la base neuve que si l'originale est bien là, sous son nom de secours.
+    if pg_db_exists "$previous"; then
+      terminate_connections "$target" || true
+      pg_sql -d postgres -c "DROP DATABASE IF EXISTS $target;" || true
+      pg_sql -d postgres -c "ALTER DATABASE $previous RENAME TO $target;" \
+        || warn "remets la base à la main : docker exec -i $RAIJIN_PG_CONTAINER psql -U postgres -c 'ALTER DATABASE $previous RENAME TO $target;'"
+    else
+      warn "base de secours $previous introuvable : rien n'est supprimé. Vérifie : docker exec -i $RAIJIN_PG_CONTAINER psql -U postgres -l"
+    fi
+  elif [[ "$original_absent" == 1 ]]; then
+    # Aucune base d'origine (constat certain, pg_db_exists) : seule la base neuve est supprimée.
     terminate_connections "$target" || true
     pg_sql -d postgres -c "DROP DATABASE IF EXISTS $target;" || true
   fi
-  if [[ "$renamed" == 1 ]]; then
-    pg_sql -d postgres -c "ALTER DATABASE $previous RENAME TO $target;" || warn "remets la base à la main : ALTER DATABASE $previous RENAME TO $target"
-  fi
   [[ "$manage_service" == 1 ]] && { compose up -d "$service" || true; }
-  die "restauration annulée, base d'origine conservée."
+  die "restauration annulée, base d'origine conservée sous le nom $target."
 }
-trap rollback ERR
+trap rollback ERR INT TERM HUP
 
 if pg_db_exists "$target"; then
   if [[ "$manage_service" == 0 ]]; then
@@ -180,7 +192,7 @@ pg_exec sh /docker-entrypoint-initdb.d/10-raijin-databases.sh >/dev/null
 pg_exec pg_restore -U postgres -d "$target" --role="$owner" --no-owner --no-acl --exit-on-error --single-transaction <"$file"
 pg_sql -d "$target" -c "ALTER SCHEMA public OWNER TO $owner;"
 summarize "$target"
-trap - ERR
+trap - ERR INT TERM HUP
 
 if [[ "$manage_service" == 1 ]]; then
   log "redémarrage de $service…"

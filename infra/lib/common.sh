@@ -56,7 +56,19 @@ require_pg_container() {
 # psql / pg_dump / pg_restore dans le conteneur Postgres (socket local, superutilisateur postgres).
 pg_exec() { docker exec -i "$RAIJIN_PG_CONTAINER" "$@"; }
 pg_sql() { pg_exec psql -v ON_ERROR_STOP=1 --no-psqlrc -X -q -t -A -U postgres "$@"; }
-pg_db_exists() { [[ "$(pg_sql -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$1'")" == "1" ]]; }
+# Vrai/faux seulement sur une réponse certaine (« 1 » / « 0 ») ; toute autre réponse (erreur passagère, conteneur
+# injoignable) arrête le script AVANT toute modification : une erreur ne doit jamais être lue comme « base absente ».
+pg_db_exists() {
+  local n
+  n="$(pg_sql -d postgres -c "SELECT count(*) FROM pg_database WHERE datname = '$1'" 2>/dev/null)" || n="erreur"
+  # Tests seulement (infra/ci/test-restore.sh) : erreur simulée.
+  [[ "${RAIJIN_TEST_FAULT:-}" == "db_exists:$1" ]] && n="erreur"
+  case "$n" in
+    1) return 0 ;;
+    0) return 1 ;;
+    *) die "impossible de savoir si la base $1 existe (réponse : $n) : arrêt sans rien modifier." ;;
+  esac
+}
 
 # ---------------------------------------------------------------------------------------------------
 # Alertes (watchdog, backup) : e-mail via l'API HTTP de Resend (indépendant de l'API Raijin, qui peut être
@@ -104,6 +116,7 @@ send_alert_push() {
 
 send_alert() {
   local subject="$1" body="$2" ok=1
+  if [[ "${RAIJIN_NO_ALERT:-0}" == 1 ]]; then log "alerte non envoyée (RAIJIN_NO_ALERT=1) : $subject"; return 0; fi
   send_alert_email "$subject" "$body" && ok=0
   send_alert_push "$subject" "$body" && ok=0
   return "$ok"

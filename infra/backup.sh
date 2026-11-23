@@ -22,6 +22,19 @@ RAIJIN_SCRIPT=backup
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
+on_error() {
+  # set -E : le piège est hérité par les sous-shells ; seul le shell principal alerte (une seule alerte).
+  [[ "$BASHPID" == "$$" ]] || exit 1
+  trap - ERR
+  local line="$1"
+  warn "échec de la sauvegarde (ligne $line)."
+  send_alert "[Raijin] Sauvegarde en échec sur $(hostname)" \
+    "La sauvegarde Postgres de Raijin a échoué le $(date '+%Y-%m-%d à %H:%M') (ligne $line de infra/backup.sh). Journal : journalctl -u raijin-backup.service" || true
+}
+trap 'on_error $LINENO' ERR
+# Toute erreur détectée par le script (die), dès la lecture des options, alerte aussi.
+die() { log "ERREUR : $*" >&2; [[ "$BASHPID" == "$$" ]] || exit 1; on_error "${BASH_LINENO[0]}"; exit 1; }
+
 offsite=1
 for arg in "$@"; do
   case "$arg" in
@@ -40,15 +53,6 @@ REMOTE="${BACKUP_RCLONE_REMOTE:-$(env_get "$RAIJIN_ENV_FILE" BACKUP_RCLONE_REMOT
 [[ "$RETENTION_DAYS" =~ ^[0-9]+$ && "$RETENTION_DAYS" -ge 1 ]] || die "BACKUP_RETENTION_DAYS invalide."
 [[ "$BACKUP_DIR" == /* && "$BACKUP_DIR" != "/" ]] || die "BACKUP_DIR doit être un chemin absolu (pas /)."
 
-on_error() {
-  local line="$1"
-  warn "échec de la sauvegarde (ligne $line)."
-  send_alert "[Raijin] Sauvegarde en échec sur $(hostname)" \
-    "La sauvegarde Postgres de Raijin a échoué le $(date '+%Y-%m-%d à %H:%M') (ligne $line de infra/backup.sh). Journal : journalctl -u raijin-backup.service" || true
-}
-trap 'on_error $LINENO' ERR
-# Toute erreur détectée par le script (die) alerte aussi, pas seulement les commandes en échec.
-die() { log "ERREUR : $*" >&2; trap - ERR; on_error "${BASH_LINENO[0]}"; exit 1; }
 
 require_cmd docker
 require_pg_container
