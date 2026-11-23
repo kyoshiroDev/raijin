@@ -2,6 +2,7 @@
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { APP_URL } from 'astro:env/server';
 import { buildAnalyseUrl, normalizeAppBase } from './app-links';
+import { assertAllowedAppUrl } from './app-url-policy';
 
 /**
  * Routes de l'app visées par la landing (apps/web/src/app/app.routes.ts, contrats `auth/links.ts`) : liste fermée,
@@ -16,7 +17,7 @@ export type AppRoute = (typeof APP_ROUTES)[keyof typeof APP_ROUTES];
 
 /** Base de l'app fixée au build (`APP_URL`), sans barre finale. */
 export function appBase(): string {
-  return normalizeAppBase(APP_URL ?? 'https://app.raijinshield.com');
+  return normalizeAppBase(assertAllowedAppUrl(APP_URL ?? 'https://app.raijinshield.com'));
 }
 
 /**

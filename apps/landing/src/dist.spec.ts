@@ -239,6 +239,36 @@ describe('build : contenu', () => {
 });
 
 describe('build : performance et sécurité', () => {
+  it('les liens externes portent rel="noopener noreferrer"', () => {
+    for (const page of pages) {
+      for (const link of page.doc.querySelectorAll<HTMLAnchorElement>('a[href^="http"]')) {
+        const href = link.getAttribute('href') ?? '';
+        if (href.startsWith(appBase) || href.startsWith(SITE_URL)) continue;
+        const rel = (link.getAttribute('rel') ?? '').split(/\s+/);
+        expect(rel, `${page.path} → ${href}`).toEqual(expect.arrayContaining(['noopener', 'noreferrer']));
+      }
+    }
+  });
+
+  it('aucun style en ligne (CSP style-src self)', () => {
+    for (const page of pages) {
+      expect(page.doc.querySelectorAll('style'), page.path).toHaveLength(0);
+      expect(page.doc.querySelectorAll('[style]'), page.path).toHaveLength(0);
+    }
+  });
+
+  it('chaque tableau est dans une région défilante focalisable et nommée', () => {
+    for (const page of pages) {
+      for (const table of page.doc.querySelectorAll('table')) {
+        const region = table.parentElement;
+        expect(region?.getAttribute('role'), page.path).toBe('region');
+        expect(region?.getAttribute('tabindex'), page.path).toBe('0');
+        expect(region?.getAttribute('aria-label')?.length ?? 0, page.path).toBeGreaterThan(3);
+      }
+    }
+  });
+
+
   it('aucun script inline exécutable ni script Google dans le HTML', () => {
     for (const page of pages) {
       for (const script of page.doc.querySelectorAll('script')) {

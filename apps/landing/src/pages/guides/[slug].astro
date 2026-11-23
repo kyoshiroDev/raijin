@@ -1,5 +1,4 @@
 ---
-import { render } from 'astro:content';
 import Container from '../../components/Container.astro';
 import CtaFinal from '../../components/CtaFinal.astro';
 import PageIntro from '../../components/PageIntro.astro';
@@ -7,6 +6,7 @@ import Base from '../../layouts/Base.astro';
 import { HOME_CRUMB } from '../../lib/breadcrumbs';
 import { getGuides, guidePath, type Guide } from '../../lib/collections';
 import { DISCLAIMER } from '../../lib/content';
+import { wrapTables } from '../../lib/scrollable-tables';
 import { STATIC_PAGES } from '../../lib/pages';
 import { articleLd, breadcrumbLd, ogImageUrl } from '../../lib/seo';
 
@@ -29,7 +29,9 @@ interface Props {
 }
 
 const { guide, related } = Astro.props;
-const { Content } = await render(guide);
+// HTML rendu au build depuis nos fichiers Markdown ; tableaux placés dans une région défilante focalisable.
+const html = wrapTables(guide.rendered?.html ?? '');
+if (!html) throw new Error(`Guide « ${guide.id} » : contenu vide.`);
 const path = guidePath(guide.id);
 const og = `guide-${guide.id}`;
 const crumbs = [HOME_CRUMB, { name: STATIC_PAGES.guides.heading, path: STATIC_PAGES.guides.path }, { name: guide.data.title, path }];
@@ -62,14 +64,14 @@ const link = 'font-semibold text-ink underline decoration-thunder decoration-2 u
   <article data-guide-slug={guide.id}>
     <PageIntro crumbs={crumbs} title={guide.data.heading} lead={guide.data.description} narrow>
       <p class="mt-4 text-body-sm text-ink-muted">
-        Mis à jour le <time datetime={guide.data.updatedAt.toISOString()}>{dateFormat.format(guide.data.updatedAt)}</time>
+        Mis à jour le <time datetime={guide.data.updatedAt.toISOString()}>{dateFormat.format(guide.data.updatedAt)}</time>{' '}
         · {guide.data.readingMinutes} min de lecture
       </p>
     </PageIntro>
 
     <Container narrow class="py-10 md:py-14">
       <div class="prose">
-        <Content />
+        <Fragment set:html={html} />
       </div>
 
       <section aria-labelledby="sources-title" class="mt-12 border-t border-line pt-8">
@@ -78,7 +80,7 @@ const link = 'font-semibold text-ink underline decoration-thunder decoration-2 u
           {
             guide.data.sources.map((source) => (
               <li class="text-body-sm text-ink-muted">
-                <a href={source.url} rel="noopener" class={`${link} inline-flex min-h-11 items-center`}>
+                <a href={source.url} rel="noopener noreferrer" class={`${link} inline-flex min-h-11 items-center`}>
                   {source.label}
                 </a>
               </li>

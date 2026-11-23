@@ -163,10 +163,12 @@
   border-radius: var(--radius-sm);
   padding: 2px 6px;
 }
-.prose table {
-  display: block;
+.prose .table-scroll {
   max-width: 100%;
   overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+.prose table {
   border-collapse: collapse;
   font-size: var(--text-body-sm);
   line-height: var(--text-body-sm--line-height);
