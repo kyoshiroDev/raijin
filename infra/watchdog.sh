@@ -37,6 +37,9 @@ APP_DOMAIN="$(cfg APP_DOMAIN app.raijinshield.com)"
 LANDING_DOMAIN="$(cfg LANDING_DOMAIN raijinshield.com)"
 
 require_cmd docker
+for v in FAILS_BEFORE_ALERT REMIND_HOURS DISK_PCT MIN_MEM_MB; do
+  [[ "${!v}" =~ ^[0-9]+$ ]] || die "WATCHDOG_$v doit être un entier positif."
+done
 [[ "$dry_run" == 1 ]] || mkdir -p "$STATE_DIR"
 
 declare -a problems=() recovered=() reminders=()
@@ -48,6 +51,8 @@ record() {
   file="$STATE_DIR/$key.state"
   count=0 alerted=0 last=0
   [[ -r "$file" ]] && read -r count alerted last <"$file"
+  # Fichier d'état corrompu ou modifié : on repart de zéro plutôt que d'évaluer du texte arbitraire.
+  [[ "$count" =~ ^[0-9]+$ && "$alerted" =~ ^[01]$ && "$last" =~ ^[0-9]+$ ]] || { count=0 alerted=0 last=0; }
   if [[ "$ok" == 1 ]]; then
     [[ "$alerted" == 1 ]] && recovered+=("$message")
     count=0 alerted=0 last=0
@@ -113,6 +118,7 @@ fi
 # --- Sauvegardes ----------------------------------------------------------------------------------------
 if [[ -r "$BACKUP_DIR/.last-success" ]]; then
   last_backup="$(cat "$BACKUP_DIR/.last-success")"
+  [[ "$last_backup" =~ ^[0-9]+$ ]] || last_backup=0
   age_h=$(( (now - last_backup) / 3600 ))
   if (( age_h <= 26 )); then record backup 1 "sauvegarde"; else record backup 0 "dernière sauvegarde réussie il y a ${age_h} h"; fi
 elif [[ -d "$BACKUP_DIR" ]]; then

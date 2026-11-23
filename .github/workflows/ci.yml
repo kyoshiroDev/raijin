@@ -449,8 +449,8 @@ jobs:
 
   images:
     name: images Docker de production (PR vers main ou lancement manuel)
-    # Construit les images de infra/docker/Dockerfile (cibles des services de infra/docker-compose.yml) SANS les
-    # pousser, démarre la pile par infra/deploy.sh --skip-build derrière un Traefik factice (réseau traefik-ci,
+    # Construit les images de infra/docker/Dockerfile (docker compose build) SANS les pousser, teste sauvegarde et
+    # restauration (infra/ci/test-restore.sh), démarre la pile par infra/deploy.sh --skip-build derrière un Traefik factice (réseau traefik-ci,
     # certificat par défaut, certresolver inexistant), puis vérifie healthchecks, routage, règles nginx et en-têtes
     # (infra/ci/check-stack.sh). Trivy en rapport seul (non bloquant). Coût : ARCHITECTURE.md §6.
     if: >-
@@ -469,32 +469,30 @@ jobs:
       - name: Variables factices (infra/.env, infra/.env.api)
         run: infra/ci/fake-env.sh
 
-      - name: Cibles à construire
+      - name: Services à construire
         id: targets
         run: |
-          list="raijin-api,raijin-web,raijin-landing,raijin-migrate"
+          list="raijin-api raijin-web raijin-landing raijin-migrate"
           # Banc : seulement quand son API existe (phase 8 bis) ; sinon ignoré.
-          if [ -d apps/raijin-banc-de-test-api ]; then list="$list,raijin-bench-api,raijin-bench-web"; fi
+          if [ -d apps/raijin-banc-de-test-api ]; then list="$list raijin-bench-api raijin-bench-web"; fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
-          echo "Cibles : $list"
+          echo "Services : $list"
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Commande standard depuis la racine du dépôt (BuildKit), images chargées dans le Docker du runner et
+      # jamais poussées. Sans cache GitHub (l'exposer à `docker compose build` demanderait une action tierce
+      # de plus) : coût accepté, voir ARCHITECTURE.md §6.
+      - name: Build des images (locales, jamais poussées)
+        env:
+          DOCKER_BUILDKIT: '1'
+          TARGETS: ${{ steps.targets.outputs.list }}
+        run: |
+          # shellcheck disable=SC2086
+          docker compose --project-name raijin --env-file infra/.env -f infra/docker-compose.yml \
+            --profile tools --profile bench build $TARGETS
+          docker images 'raijin/*'
 
-      # Une seule exportation de cache (cible raijin-api, mode=max : étapes deps, source, build-api, build-web) pour
-      # rester sous le quota de 10 Go du cache GitHub ; les autres cibles relisent ce cache.
-      - name: Build des images (chargées localement, jamais poussées)
-        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
-        with:
-          source: .
-          # Exécuté depuis infra/ : `context: ..` et `env_file: .env.api` du compose se résolvent comme pour Compose.
-          workdir: infra
-          files: docker-compose.yml
-          targets: ${{ steps.targets.outputs.list }}
-          load: true
-          push: false
-          set: |
-            *.cache-from=type=gha,scope=raijin-images
-            raijin-api.cache-to=type=gha,scope=raijin-images,mode=max
+      - name: Test sauvegarde / restauration (Postgres jetable)
+        run: infra/ci/test-restore.sh
 
       - name: Traefik factice
         run: |

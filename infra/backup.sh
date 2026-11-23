@@ -47,6 +47,8 @@ on_error() {
     "La sauvegarde Postgres de Raijin a échoué le $(date '+%Y-%m-%d à %H:%M') (ligne $line de infra/backup.sh). Journal : journalctl -u raijin-backup.service" || true
 }
 trap 'on_error $LINENO' ERR
+# Toute erreur détectée par le script (die) alerte aussi, pas seulement les commandes en échec.
+die() { log "ERREUR : $*" >&2; trap - ERR; on_error "${BASH_LINENO[0]}"; exit 1; }
 
 require_cmd docker
 require_pg_container
@@ -92,6 +94,10 @@ if [[ "$offsite" == 1 ]]; then
     warn "BACKUP_RCLONE_REMOTE vide : aucune copie hors site (docs/DEPLOY.md A9)."
   else
     require_cmd rclone
+    # Les dumps contiennent des données personnelles : copie hors site uniquement vers un remote chiffré (crypt).
+    remote_name="${REMOTE%%:*}"
+    remote_type="$(rclone listremotes --long 2>/dev/null | awk -v n="$remote_name:" '$1 == n {print $2}')"
+    [[ "$remote_type" == crypt ]] || die "BACKUP_RCLONE_REMOTE « $remote_name » n'est pas un remote rclone de type crypt (type : ${remote_type:-inconnu}) : copie hors site refusée (docs/DEPLOY.md A9)."
     for f in "${dumped[@]}"; do
       log "copie hors site de $(basename "$f")…"
       rclone copy --no-traverse --retries 3 --low-level-retries 5 "$f" "$REMOTE/"

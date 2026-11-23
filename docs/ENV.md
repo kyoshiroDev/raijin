@@ -468,7 +468,7 @@ GOOGLE_SITE_VERIFICATION=
 
 # ---------------------------------------------------------------------
 # Banc (phase 8 bis) : basicAuth Traefik en amont de banc.raijinshield.com
-# Hash bcrypt : htpasswd -nB kyoshiro (paquet apache2-utils). ENTRE APOSTROPHES (le hash contient des $).
+# Hash bcrypt : htpasswd -nBC 12 kyoshiro (paquet apache2-utils, coût bcrypt 12). ENTRE APOSTROPHES (le hash contient des $).
 # ---------------------------------------------------------------------
 BENCH_BASIC_AUTH_USERS='kyoshiro:$2y$05$hash-bcrypt-factice'
 

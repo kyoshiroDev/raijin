@@ -116,6 +116,11 @@ owner="$(owner_of "$target")" || die "--into accepte seulement raijin ou raijin_
 service=raijin-api
 [[ "$target" == raijin_bench ]] && service=raijin-bench-api
 stamp="$(date -u '+%Y%m%d%H%M%S')"
+# Tests seulement (infra/ci/test-restore.sh) : suffixe imposé pour provoquer un renommage refusé.
+if [[ -n "${RAIJIN_RESTORE_STAMP:-}" ]]; then
+  [[ "$RAIJIN_RESTORE_STAMP" =~ ^[a-z0-9_]{1,32}$ ]] || die "RAIJIN_RESTORE_STAMP invalide."
+  stamp="$RAIJIN_RESTORE_STAMP"
+fi
 previous="${target}_avant_restauration_${stamp}"
 
 verify_file
@@ -128,16 +133,27 @@ fi
 
 if [[ "$manage_service" == 1 ]]; then
   log "arrêt de $service…"
-  compose stop "$service" || true
+  # Bloquant : restaurer sous une API encore active mélangerait écritures et restauration.
+  compose stop "$service" || die "impossible d'arrêter $service : restauration annulée, rien n'a été modifié."
 fi
 
+sessions_on() {
+  pg_sql -d postgres -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$1' AND pid <> pg_backend_pid();"
+}
+
+# État : la base d'origine n'est jamais supprimée. Le rollback ne supprime « $target » que si c'est la base
+# NEUVE créée par ce script (base d'origine déjà renommée, ou absente au départ).
 renamed=0
+original_absent=0
 rollback() {
+  trap - ERR
   warn "échec : remise en place de la base d'origine."
-  terminate_connections "$target" || true
-  pg_sql -d postgres -c "DROP DATABASE IF EXISTS $target;" || true
+  if [[ "$renamed" == 1 || "$original_absent" == 1 ]]; then
+    terminate_connections "$target" || true
+    pg_sql -d postgres -c "DROP DATABASE IF EXISTS $target;" || true
+  fi
   if [[ "$renamed" == 1 ]]; then
-    pg_sql -d postgres -c "ALTER DATABASE $previous RENAME TO $target;" || true
+    pg_sql -d postgres -c "ALTER DATABASE $previous RENAME TO $target;" || warn "remets la base à la main : ALTER DATABASE $previous RENAME TO $target"
   fi
   [[ "$manage_service" == 1 ]] && { compose up -d "$service" || true; }
   die "restauration annulée, base d'origine conservée."
@@ -145,10 +161,18 @@ rollback() {
 trap rollback ERR
 
 if pg_db_exists "$target"; then
-  terminate_connections "$target"
+  if [[ "$manage_service" == 0 ]]; then
+    # --no-service : on ne coupe personne ; des sessions ouvertes = l'API tourne encore.
+    open_sessions="$(sessions_on "$target")"
+    [[ "$open_sessions" == 0 ]] || { trap - ERR; die "$open_sessions session(s) ouverte(s) sur $target : arrête l'application (ou retire --no-service). Rien n'a été modifié."; }
+  else
+    terminate_connections "$target"
+  fi
   pg_sql -d postgres -c "ALTER DATABASE $target RENAME TO $previous;"
   renamed=1
   log "base actuelle renommée en $previous."
+else
+  original_absent=1
 fi
 
 # Base vide, propriétaire et droits identiques à une installation neuve.

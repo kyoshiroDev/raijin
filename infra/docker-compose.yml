@@ -135,7 +135,7 @@ services:
   # ---------------------------------------------------------------------------------------------------
   # Migrations Prisma (profil « tools ») : lancé par deploy.sh AVANT de démarrer la nouvelle API.
   #   docker compose … --profile tools run --rm raijin-migrate
-  # Réseau « egress » : la CLI Prisma télécharge son moteur de schéma à la première exécution.
+  # Image minimale (CLI Prisma + schéma + migrations), moteur téléchargé au build : réseau interne seulement.
   # ---------------------------------------------------------------------------------------------------
   raijin-migrate:
     profiles: ['tools']
@@ -146,16 +146,19 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://raijin:${RAIJIN_DB_PASSWORD}@raijin-postgres:5432/raijin?schema=public
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
     networks:
       - raijin-internal
-      - raijin-egress
     depends_on:
       raijin-postgres:
         condition: service_healthy
     mem_limit: 512m
+    memswap_limit: 512m
     cpus: 1.0
-    security_opt:
-      - no-new-privileges:true
+    pids_limit: 100
+    <<: *hardening
     logging: *logging
 
   # ---------------------------------------------------------------------------------------------------
@@ -489,9 +492,6 @@ networks:
   raijin-internal:
     name: raijin-internal
     internal: true
-  # Sortie Internet pour les conteneurs d'outillage (migrations Prisma) uniquement.
-  raijin-egress:
-    name: raijin-egress
   # Réseau du Traefik existant (créé par MTC, jamais modifié ici) : nom vérifié par `docker network ls`.
   traefik:
     name: ${TRAEFIK_NETWORK}

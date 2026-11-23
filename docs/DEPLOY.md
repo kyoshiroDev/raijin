@@ -346,12 +346,14 @@ Dépannage rapide :
 cd /opt/raijin && git pull --ff-only && infra/deploy.sh
 ```
 
-Chaque déploiement étiquette les images précédentes `:previous` et les nouvelles `:<commit>`.
+Chaque build étiquette les images `:<commit>`. Seul un déploiement **réussi** déplace les étiquettes de secours :
+la nouvelle version devient `:deployed` et l'ancienne `:previous` (un déploiement raté ne les touche jamais).
 
 **Retour arrière** (la nouvelle version pose problème) :
 
 ```bash
-infra/deploy.sh --rollback        # remet les images du déploiement précédent, sans build ni migration
+infra/deploy.sh --rollback        # sans build ni migration : après un déploiement raté, revient à `:deployed`
+                                  # (dernière version réussie) ; sinon, à `:previous` (celle d'avant)
 ```
 
 Les **migrations de base ne sont pas annulées** (Prisma ne fait que des migrations vers l'avant). Si une migration a
@@ -388,9 +390,25 @@ Disque : ≈ 3 Go pour les images et le cache de build, plus les sauvegardes (7 
 ## A14. Banc de test (phase 8 bis, pas encore)
 
 Les services `raijin-bench-api` et `raijin-bench-web` sont prêts dans le compose (profil `bench`) mais ne démarrent
-pas tant que l'API du banc n'existe pas. Au moment venu : hash du mot de passe Traefik (`htpasswd -nB kyoshiro`,
+pas tant que l'API du banc n'existe pas. Au moment venu : hash du mot de passe Traefik (`htpasswd -nBC 12 kyoshiro`, bcrypt de coût 12 ;
 résultat **entre apostrophes** dans `BENCH_BASIC_AUTH_USERS`), fichier `infra/.env.bench-api`, puis
 `infra/deploy.sh --bench` ; procédure de bascule dans `docs/BENCH.md`.
+
+## A15. Limites connues (audit de la phase 8, à traiter plus tard)
+
+- **Pas de CDN ni de proxy devant Traefik** (Cloudflare en mode « proxy », etc.). L'API fait confiance à **un seul**
+  saut (`TRUST_PROXY=1`) : avec un proxy de plus, toutes les requêtes auraient l'IP du proxy (quotas et verrouillages
+  communs à tout le monde). Si un jour un CDN est ajouté : `TRUST_PROXY=2` et `forwardedHeaders.trustedIPs` de
+  Traefik limités aux plages du CDN, sinon l'en-tête `X-Forwarded-For` devient falsifiable.
+- **Réseau Traefik partagé** : tout conteneur de ce réseau (MTC compris) peut joindre `raijin-api:3000` sans passer
+  par Traefik et forger `X-Forwarded-For` (contournement des limites par IP, pas d'accès aux comptes). Piste : limiter
+  la confiance de l'API au sous-réseau de Traefik (`trust proxy` sur une liste d'adresses au lieu d'un nombre), ou un
+  réseau dédié Traefik ↔ Raijin si la configuration de Traefik le permet. Décision à prendre avant l'ouverture publique.
+- **Redis partagé par l'API et le banc** (même mot de passe, préfixes de clés différents) : des **ACL Redis** par
+  application (un utilisateur `raijin`, un utilisateur `raijin-bench`, chacun limité à son préfixe) sont prévues avec
+  le banc en phase 8 bis.
+- **Trivy** n'est qu'un rapport dans la CI : il deviendra **bloquant sur les vulnérabilités CRITICAL corrigeables**
+  après la v1.
 
 ---
 

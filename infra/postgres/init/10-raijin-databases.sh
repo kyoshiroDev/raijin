@@ -6,16 +6,18 @@
 #
 # Exécuté automatiquement par l'image postgres au PREMIER démarrage (volume vide), puis à chaque déploiement
 # par infra/deploy.sh (idempotent : crée ce qui manque, remet les mots de passe de infra/.env).
-# Les mots de passe passent par des variables psql (:'…'), jamais dans un journal ni sur une ligne de commande.
+# Les mots de passe sont lus par psql dans l'environnement (\getenv), jamais dans un journal ni sur une ligne de commande.
 set -eu
 
 : "${RAIJIN_DB_PASSWORD:?RAIJIN_DB_PASSWORD manquant}"
 : "${BENCH_DB_PASSWORD:?BENCH_DB_PASSWORD manquant}"
 
 psql -v ON_ERROR_STOP=1 --no-psqlrc --quiet \
-  --username "${POSTGRES_USER:-postgres}" --dbname postgres \
-  -v raijin_pw="$RAIJIN_DB_PASSWORD" -v bench_pw="$BENCH_DB_PASSWORD" <<'SQL'
+  --username "${POSTGRES_USER:-postgres}" --dbname postgres <<'SQL'
 SET client_min_messages = warning;
+-- Mots de passe lus dans l'environnement par psql (\getenv, psql ≥ 15) : jamais dans argv ni dans `ps`.
+\getenv raijin_pw RAIJIN_DB_PASSWORD
+\getenv bench_pw BENCH_DB_PASSWORD
 
 -- Rôles (créés s'ils manquent, mot de passe toujours réaligné sur infra/.env)
 SELECT 'CREATE ROLE raijin LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION'

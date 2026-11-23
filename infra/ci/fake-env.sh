@@ -8,6 +8,10 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 umask 077
+# Jamais d'écrasement : si un vrai fichier de variables existe, on s'arrête.
+for f in infra/.env infra/.env.api; do
+  [[ ! -e "$f" ]] || { echo "fake-env.sh : $f existe déjà, refus de l'écraser." >&2; exit 1; }
+done
 
 rand_hex() { openssl rand -hex 32; }
 rand_b64() { openssl rand -base64 "$1" | tr -d '\n'; }

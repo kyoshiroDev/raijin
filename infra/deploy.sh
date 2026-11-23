@@ -98,11 +98,20 @@ images=(api web landing migrate)
 [[ "$bench" == 1 ]] && images+=(bench-api bench-web)
 
 # --- Retour arrière ---------------------------------------------------------------------------------
+# Étiquettes : « deployed » = dernier déploiement RÉUSSI, « previous » = celui d'avant. Elles ne bougent qu'après
+# un déploiement réussi : un déploiement raté ne remplace jamais la version de secours.
+image_id() { docker image inspect -f '{{.Id}}' "$1" 2>/dev/null || true; }
 if [[ "$rollback" == 1 ]]; then
   for img in "${images[@]}"; do
-    if docker image inspect "raijin/$img:previous" >/dev/null 2>&1; then
+    latest="$(image_id "raijin/$img:latest")" deployed="$(image_id "raijin/$img:deployed")"
+    if [[ -n "$deployed" && "$latest" != "$deployed" ]]; then
+      # Le dernier déploiement a échoué : retour à la dernière version réussie.
+      docker image tag "raijin/$img:deployed" "raijin/$img:latest"
+      log "raijin/$img : dernière version déployée avec succès remise en service."
+    elif [[ -n "$(image_id "raijin/$img:previous")" ]]; then
       docker image tag "raijin/$img:previous" "raijin/$img:latest"
-      log "raijin/$img : image précédente remise en service."
+      docker image tag "raijin/$img:previous" "raijin/$img:deployed"
+      log "raijin/$img : version précédente remise en service."
     fi
   done
   warn "les migrations de base déjà appliquées NE sont PAS annulées (docs/DEPLOY.md A12)."
@@ -126,10 +135,6 @@ export APP_URL GA4_MEASUREMENT_ID GOOGLE_SITE_VERIFICATION
 log "landing : APP_URL=$APP_URL, GA4 $([[ -n "$GA4_MEASUREMENT_ID" ]] && echo activé || echo désactivé)."
 
 if [[ "$skip_build" == 0 ]]; then
-  # Les images actuelles deviennent « previous » (retour arrière en une commande).
-  for img in "${images[@]}"; do
-    docker image inspect "raijin/$img:latest" >/dev/null 2>&1 && docker image tag "raijin/$img:latest" "raijin/$img:previous"
-  done
   # Un build à la fois : la RAM du VPS est partagée avec les autres sites.
   for svc in raijin-api raijin-web raijin-landing; do
     log "build de $svc…"
@@ -187,6 +192,14 @@ if [[ "$external" == 1 ]]; then
   [[ "$failed" == 0 ]] || warn "certains contrôles extérieurs échouent : DNS pas encore propagé, certificat en cours d'émission, ou routeur Traefik (docs/DEPLOY.md A11)."
 fi
 
+# Succès : l'ancienne version réussie devient « previous », la nouvelle « deployed ».
+for img in "${images[@]}"; do
+  [[ -n "$(image_id "raijin/$img:latest")" ]] || continue
+  if [[ -n "$(image_id "raijin/$img:deployed")" && "$(image_id "raijin/$img:deployed")" != "$(image_id "raijin/$img:latest")" ]]; then
+    docker image tag "raijin/$img:deployed" "raijin/$img:previous"
+  fi
+  docker image tag "raijin/$img:latest" "raijin/$img:deployed"
+done
 history_dir="${XDG_STATE_HOME:-$HOME/.local/state}/raijin"
 mkdir -p "$history_dir"
 printf '%s %s@%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$branch" "$commit" >>"$history_dir/deploy-history"

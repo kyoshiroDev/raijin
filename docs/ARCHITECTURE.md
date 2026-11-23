@@ -303,23 +303,31 @@ annulation des exécutions obsolètes. E2E Playwright et Lighthouse uniquement s
 - Nx monté en **24.0.6** (correctif) : apporte `undici` 7.30.1 (alertes hautes corrigées).
 
 - **Job `images`** (phase 8 ; PR vers `main` après le job principal, ou `gh workflow run ci.yml --ref dev -f
-  suite=images`) : construit les images de `infra/docker/Dockerfile` par `docker/bake-action` sur
-  `infra/docker-compose.yml` (cibles `raijin-api`, `raijin-web`, `raijin-landing`, `raijin-migrate` ; `raijin-bench-*`
-  seulement si `apps/raijin-banc-de-test-api` existe), **chargées localement, jamais poussées** (`load: true`,
-  `push: false`). Cache buildx GitHub Actions (`type=gha`, une seule exportation `mode=max` sur `raijin-api`, relue par
-  toutes les cibles, pour rester sous les 10 Go du cache du dépôt). Variables factices tirées au hasard et masquées
-  (`infra/ci/fake-env.sh`, refuse de tourner hors GitHub Actions). Démarrage par `infra/deploy.sh --skip-build --yes
-  --no-external-check` (le script de prod est donc testé) derrière un **Traefik v3.6 factice** (réseau `traefik-ci`,
-  certificat par défaut, certresolver inexistant), puis `infra/ci/check-stack.sh` : 5 conteneurs `healthy`, aucun port
-  publié, routage (`app…/api/*`, `app…/t/*` réécrit vers l'API, `www` → 301 avec chemin et requête), règles nginx
-  (`.html` et `/x/` → 301, 404, 405, cache immuable / `no-cache`, pas de redirection ouverte), en-têtes des labels
-  (CSP exacte par application, HSTS 2 ans + preload, nosniff, DENY, Referrer-Policy, Permissions-Policy, COOP, pas
-  d'en-tête `Server`, gzip), `/api/v1/health` avec base joignable. Trivy 0.70.0 (image épinglée par digest, gratuit)
-  en **rapport seul** dans le résumé (HIGH/CRITICAL corrigeables, non bloquant). Journaux des conteneurs en cas
-  d'échec. Actions et images épinglées par SHA/digest ; `timeout-minutes: 25`.
-  **Coût estimé** : 12 à 15 min à froid (installation pnpm et builds Angular/Astro/Nest en parallèle sur le runner
-  4 vCPU / 16 Go, chargement des images, Trivy ≈ 2 min), 7 à 10 min avec le cache. Lancé seulement sur les PR vers
-  `main` et à la demande : quelques exécutions par mois, soit < 5 % du quota de 2 000 min.
+  suite=images`) : `docker compose -f infra/docker-compose.yml build` depuis la racine du dépôt (BuildKit ; services
+  `raijin-api`, `raijin-web`, `raijin-landing`, `raijin-migrate` ; `raijin-bench-*` seulement si
+  `apps/raijin-banc-de-test-api` existe), images **locales, jamais poussées**. `docker/bake-action` a été abandonné
+  (chemins de `files` et `env_file` résolus hors du dossier du compose) ; **pas de cache GitHub** pour les images
+  (il faudrait une action tierce de plus pour l'exposer à `docker compose build`). Variables factices tirées au hasard
+  et masquées (`infra/ci/fake-env.sh` : refuse de tourner hors GitHub Actions et d'écraser un `infra/.env*` existant).
+  `infra/ci/test-restore.sh` sur un Postgres jetable `raijin-restore-test` (init, cloisonnement des rôles, sauvegarde,
+  `--check`, `--into` réussi, refus si une session est ouverte, **renommage refusé → base d'origine intacte**, retour
+  automatique sur échec). Démarrage par `infra/deploy.sh --skip-build --yes --no-external-check` (le script de prod
+  est testé) derrière un **Traefik v3.6 factice** (réseau `traefik-ci`, certificat par défaut, certresolver
+  inexistant), puis `infra/ci/check-stack.sh` : 5 conteneurs `healthy`, aucun port publié, routage (`app…/api/*`,
+  `app…/t/*` réécrit vers l'API, `www` → 301 avec chemin et requête), règles nginx (`.html` et `/x/` → 301, 404, 405,
+  cache immuable / `no-cache`, pas de redirection ouverte), en-têtes des labels (CSP exacte par application, HSTS
+  2 ans + preload, nosniff, DENY, Referrer-Policy, Permissions-Policy, COOP, pas d'en-tête `Server`, gzip),
+  `/api/v1/health` avec base joignable. Trivy 0.70.0 (image épinglée par digest, gratuit) en **rapport seul** dans le
+  résumé (HIGH/CRITICAL corrigeables) ; **à rendre bloquant sur CRITICAL après la v1** (audit M9). Journaux des
+  conteneurs en cas d'échec. Actions et images épinglées par SHA/digest ; images de base aussi suivies par Dependabot
+  (écosystèmes `docker` et `docker-compose`) ; `timeout-minutes: 25`.
+  **Coût estimé** : 15 à 20 min par exécution sans cache (installation pnpm, builds Angular/Astro/Nest en parallèle
+  sur le runner 4 vCPU / 16 Go, test de restauration ≈ 1 min, Trivy ≈ 2 min). Lancé seulement sur les PR vers `main`
+  et à la demande : quelques exécutions par mois, soit ≈ 5 % du quota de 2 000 min.
+- **Limites connues de l'infra** (audit phase 8, détail dans `docs/DEPLOY.md` A15) : aucun CDN devant Traefik
+  (`TRUST_PROXY=1`) ; réseau Traefik partagé avec MTC (un conteneur voisin peut joindre l'API directement et forger
+  `X-Forwarded-For` : piste du sous-réseau de confiance) (M7) ; ACL Redis par application à poser avec le banc en
+  8 bis (M6).
 
 ## 7. Variables d'environnement
 

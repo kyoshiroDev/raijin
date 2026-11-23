@@ -7,7 +7,7 @@
 #   deps          installation pnpm complète du monorepo (une seule fois, partagée par toutes les cibles)
 #   build-*       build Nx de chaque projet (seule l'étape demandée par la cible est construite)
 #   api           Node 24 + dist/apps/api + dépendances de production seules, utilisateur « node »
-#   migrate       CLI Prisma (migrate deploy), lancée par deploy.sh avant la nouvelle API
+#   migrate       image minimale : CLI Prisma seule + schéma et migrations (migrate deploy), lancée par deploy.sh
 #   web, landing, bench-web   fichiers statiques servis par nginx:alpine, utilisateur « nginx » (101), port 8080
 #   bench-api     API du banc (phase 8 bis : apps/raijin-banc-de-test-api n'existe pas encore)
 #
@@ -15,11 +15,11 @@
 # d'Angular ; les builds sont lancés un par un (docs/DEPLOY.md).
 # =====================================================================================================
 
-ARG NODE_IMAGE=node:24.14.0-bookworm-slim
-ARG NGINX_IMAGE=nginx:1.29-alpine
+# Images de base épinglées par digest, écrites en clair dans chaque FROM pour que Dependabot (écosystème docker,
+# .github/dependabot.yml) puisse proposer leurs mises à jour.
 
 # ---------------------------------------------------------------------------------------------------
-FROM ${NODE_IMAGE} AS base
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     CI=true \
@@ -79,7 +79,7 @@ RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
  && pnpm install --prod --frozen-lockfile
 
 # ---------------------------------------------------------------------------------------------------
-FROM ${NODE_IMAGE} AS api
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS api
 ENV NODE_ENV=production \
     API_PORT=3000 \
     WEB_INDEX_HTML_PATH=/app/web/index.html
@@ -96,18 +96,36 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 CMD ["node", "dist/apps/api/main.js"]
 
 # ---------------------------------------------------------------------------------------------------
-# Migrations Prisma : CLI et migrations du dépôt (libs/api/prisma), DATABASE_URL fournie par Compose.
-FROM build-api AS migrate
-ENV NODE_ENV=production
+# Migrations Prisma : image minimale (CLI Prisma à la version exacte du dépôt + schéma + migrations, sans le
+# monorepo ni ses dépendances). Le moteur de schéma est téléchargé AU BUILD : aucune sortie Internet à l'exécution.
+FROM base AS migrate-cli
+ARG PRISMA_VERSION=7.10.1
+WORKDIR /app
+COPY package.json /tmp/root-package.json
+# Garde-fou : la version doit être celle de package.json (sinon le build échoue).
+RUN node -e "const p=require('/tmp/root-package.json');const v=(p.devDependencies||{}).prisma||(p.dependencies||{}).prisma;if(v!==process.env.PRISMA_VERSION){console.error('PRISMA_VERSION='+process.env.PRISMA_VERSION+' différent de package.json ('+v+')');process.exit(1)}" \
+ && echo '{"private":true}' > package.json \
+ && npm install --no-save --no-audit --no-fund --ignore-scripts "prisma@${PRISMA_VERSION}" \
+ && CHECKPOINT_DISABLE=1 node_modules/.bin/prisma version >/dev/null \
+ && ls node_modules/@prisma/engines | grep -q '^schema-engine-' \
+ && npm cache clean --force
+
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS migrate
+ENV NODE_ENV=production \
+    CHECKPOINT_DISABLE=1 \
+    PRISMA_HIDE_UPDATE_MESSAGE=1 \
+    HOME=/tmp
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+COPY --from=migrate-cli --chown=root:root /app/node_modules /app/node_modules
+COPY --chown=root:root libs/api/prisma/prisma.config.ts /app/libs/api/prisma/prisma.config.ts
+COPY --chown=root:root libs/api/prisma/prisma/schema.prisma /app/libs/api/prisma/prisma/schema.prisma
+COPY --chown=root:root libs/api/prisma/prisma/migrations /app/libs/api/prisma/prisma/migrations
 WORKDIR /app/libs/api/prisma
-# Télécharge le moteur de schéma au build (node_modules/@prisma/engines) : la migration n'a alors plus besoin
-# d'Internet (le réseau raijin-egress reste un filet de sécurité).
-RUN /app/node_modules/.bin/prisma version
 USER node
 CMD ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
 
 # ---------------------------------------------------------------------------------------------------
-FROM ${NGINX_IMAGE} AS nginx-base
+FROM nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de AS nginx-base
 # Configuration principale non root (pid et fichiers temporaires dans /tmp, port 8080, pas de version).
 COPY infra/nginx/nginx.conf /etc/nginx/nginx.conf
 RUN rm -f /etc/nginx/conf.d/default.conf
@@ -138,7 +156,7 @@ RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
  && pnpm install --prod --frozen-lockfile
 
-FROM ${NODE_IMAGE} AS bench-api
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS bench-api
 ENV NODE_ENV=production \
     API_PORT=3000
 WORKDIR /app
