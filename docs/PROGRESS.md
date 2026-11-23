@@ -7,7 +7,7 @@
 
 - **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
 
-## Statut : phase 7 bis — Banc : mesure des verdicts — en cours (phases 1 à 7 terminées ; Lighthouse de l'app sous 95, voir Blocages)
+## Statut : phase 8 — Infra — en cours (phases 1 à 7 bis terminées ; Lighthouse de l'app sous 95, voir Blocages)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -193,7 +193,8 @@
 - Phase 8 (en-têtes recommandés par l'audit) : landing CSP `default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; font-src 'self'; img-src 'self' data: https://*.google-analytics.com https://*.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://app.raijinshield.com; object-src 'none'` ; app : même base + `img-src 'self' data:` (QR admin), connect-src vers l'API ; partout HSTS (2 ans, includeSubDomains, preload), nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy camera/microphone/geolocation/payment=(), COOP same-origin ; redirections `/x.html` et `/x/` → `/x` en 301 ; styles de composants Angular injectés à l'exécution (style-src à trancher, §10).
 - Ouverts : champs légaux « À compléter » (identité de l'éditeur, SIRET, adresse ; hébergeur OVH SAS Roubaix à confirmer) → utilisateur.
 
-### Phase 7 bis — Banc : mesure des verdicts — planifiée (2026-11-23)
+### Phase 7 bis — Banc : mesure des verdicts — terminée (2026-11-23)
+- Clôture : `df258e6` (lib bench-verdicts : 66 tests, 100 % lignes / 97,6 % branches ; écran /justesse sur 600 verdicts simulés, derrière authGuard ; banc 769 tests) ; audit sans point critique/important (mineur : variant.ts:250 réutiliser `parsed.overrides`, phase 9). Activation réelle (persistance, jobs 24 h/72 h/7 j, API du banc) → phase 8 bis.
 - Plan (architect) : décisions dans `docs/ARCHITECTURE.md` §16. Tout ce qui se fait maintenant est du **code pur et testé** dans `libs/bench/verdicts` (`@raijin/bench-verdicts`, `scope:bench`/`type:util`, sans I/O ni horloge), indépendant de Supabase et de l'API du banc, branché en 8 bis. Écran du banc sur données simulées. Aucune écriture sur Supabase/Vercel, aucune nouvelle dépendance.
 - Fait par architect (non commité, non indexé) : lib générée (`@nx/js:library`), config alignée sur `shared-risk-engine` (ESM, typecheck lib + spec, règles « TS pur », couverture ≥ 90 %) ; alias dans `tsconfig.base.json` ; contrats Zod `libs/bench/verdicts/src/lib/contracts.ts` (horizons et fenêtres, `VerdictRecord`, `FollowUpObservation`, événements et statuts d'issue, seuils, `EngineVariant` + `variantEngineVersion`, `Proportion`, `RetentionPolicy`, ratios d'alerte) + `contracts.spec.ts`. Frontières vérifiées par sonde temporaire : imports de `@raijin/bench-verdicts` depuis `web-ui`, `api-solana`, `shared-util` refusés par `@nx/enforce-module-boundaries`. `pnpm nx run-many -t lint typecheck test -p bench-verdicts --parallel=1 --skip-nx-cache` : vert (3 tests, couverture 100 %).
 - Tâches :
