@@ -6,7 +6,7 @@
 #
 #   deps          installation pnpm complète du monorepo (une seule fois, partagée par toutes les cibles)
 #   build-*       build Nx de chaque projet (seule l'étape demandée par la cible est construite)
-#   api           Node 24 + dist/apps/api + dépendances de production seules, utilisateur « node »
+#   api           Node 24 + dist/apps/api + dépendances de production seules (contrôlées par check-externals.cjs), utilisateur « node »
 #   migrate       image minimale : CLI Prisma seule + schéma et migrations (migrate deploy), lancée par deploy.sh
 #   web, landing, bench-web   fichiers statiques servis par nginx:alpine, utilisateur « nginx » (101), port 8080
 #   bench-api     API du banc (phase 8 bis : apps/raijin-banc-de-test-api n'existe pas encore)
@@ -49,7 +49,10 @@ COPY . .
 ENV NODE_OPTIONS=--max-old-space-size=2048
 
 FROM source AS build-api
-RUN pnpm nx run api:prune --parallel=1 --outputStyle=static
+# api:build (webpack, generatePackageJson) écrit dist/apps/api/package.json avec TOUTES les dépendances externes
+# des bundles (libs internes comprises) + pnpm-lock.yaml élagué. NE PAS utiliser api:prune : sa cible
+# prune-lockfile remplace ce package.json par apps/api/package.json (7 dépendances : « Cannot find module 'zod' »).
+RUN pnpm nx run api:build --parallel=1 --outputStyle=static
 
 FROM source AS build-web
 RUN pnpm nx run web:build:production --parallel=1 --outputStyle=static
@@ -66,17 +69,28 @@ FROM source AS build-bench-web
 RUN pnpm nx run raijin-banc-de-test:build:production --parallel=1 --outputStyle=static
 
 FROM source AS build-bench-api
-# Phase 8 bis : le projet sera généré avec les mêmes cibles que api (build, prune).
-RUN pnpm nx run raijin-banc-de-test-api:prune --parallel=1 --outputStyle=static
+# Phase 8 bis : le projet sera généré comme api (webpack, generatePackageJson ; pas de cible prune).
+RUN pnpm nx run raijin-banc-de-test-api:build --parallel=1 --outputStyle=static
 
 # ---------------------------------------------------------------------------------------------------
-# Dépendances de production de l'API (package.json + pnpm-lock.yaml élagués par api:prune).
+# Dépendances de production de l'API (package.json + pnpm-lock.yaml générés par api:build).
 FROM base AS api-prod-deps
 COPY --from=build-api /app/dist/apps/api/package.json /app/dist/apps/api/pnpm-lock.yaml /app/dist/apps/api/pnpm-workspace.yaml /app/dist/apps/api/
+COPY --from=build-api /app/dist/apps/api/main.js /app/dist/apps/api/cli.js /app/dist/apps/api/
+COPY package.json /tmp/root-package.json
+COPY infra/docker/check-externals.cjs /usr/local/bin/check-externals.cjs
 WORKDIR /app/dist/apps/api
+# pnpm à la version EXACTE du dépôt (packageManager de package.json), jamais « la dernière » de Corepack ;
+# node_modules « à plat » dans le dossier (pas de magasin global hors image). Puis contrôle : tous les modules
+# externes requis par main.js et cli.js doivent se résoudre, sinon le build échoue.
 RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
-    pnpm config set store-dir /pnpm/store \
- && pnpm install --prod --frozen-lockfile
+    pm="$(node -p "require('/tmp/root-package.json').packageManager")" \
+ && corepack prepare "$pm" --activate \
+ && node -e "const p=require('./package.json');p.packageManager=process.argv[1];require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))" "$pm" \
+ && pnpm --version \
+ && pnpm install --prod --frozen-lockfile --store-dir /pnpm/store --config.node-linker=hoisted --config.enable-global-virtual-store=false \
+ && node /usr/local/bin/check-externals.cjs /app/dist/apps/api main.js cli.js \
+ && rm -f main.js cli.js
 
 # ---------------------------------------------------------------------------------------------------
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS api
@@ -88,6 +102,9 @@ COPY --from=api-prod-deps --chown=root:root /app/dist/apps/api/node_modules ./di
 COPY --from=build-api --chown=root:root /app/dist/apps/api ./dist/apps/api
 # index.html du build web du MÊME commit (balises OG de /t/<mint>, docs/ARCHITECTURE.md §9.7).
 COPY --from=build-web --chown=root:root /app/dist/apps/web/browser/index.html ./web/index.html
+# Contrôle final dans l'image telle qu'elle sera exécutée (bundles + node_modules réunis).
+COPY --from=api-prod-deps /usr/local/bin/check-externals.cjs /tmp/check-externals.cjs
+RUN node /tmp/check-externals.cjs /app/dist/apps/api main.js cli.js && rm /tmp/check-externals.cjs
 # Fichiers en lecture seule pour l'utilisateur d'exécution (le système de fichiers du conteneur l'est aussi).
 USER node
 EXPOSE 3000
@@ -151,10 +168,17 @@ COPY --from=build-bench-web /app/dist/apps/raijin-banc-de-test/browser /usr/shar
 # ---------------------------------------------------------------------------------------------------
 FROM base AS bench-api-prod-deps
 COPY --from=build-bench-api /app/dist/apps/raijin-banc-de-test-api/package.json /app/dist/apps/raijin-banc-de-test-api/pnpm-lock.yaml /app/dist/apps/raijin-banc-de-test-api/pnpm-workspace.yaml /app/dist/apps/raijin-banc-de-test-api/
+COPY --from=build-bench-api /app/dist/apps/raijin-banc-de-test-api/main.js /app/dist/apps/raijin-banc-de-test-api/
+COPY package.json /tmp/root-package.json
+COPY infra/docker/check-externals.cjs /usr/local/bin/check-externals.cjs
 WORKDIR /app/dist/apps/raijin-banc-de-test-api
 RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
-    pnpm config set store-dir /pnpm/store \
- && pnpm install --prod --frozen-lockfile
+    pm="$(node -p "require('/tmp/root-package.json').packageManager")" \
+ && corepack prepare "$pm" --activate \
+ && node -e "const p=require('./package.json');p.packageManager=process.argv[1];require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))" "$pm" \
+ && pnpm install --prod --frozen-lockfile --store-dir /pnpm/store --config.node-linker=hoisted --config.enable-global-virtual-store=false \
+ && node /usr/local/bin/check-externals.cjs /app/dist/apps/raijin-banc-de-test-api main.js \
+ && rm -f main.js
 
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS bench-api
 ENV NODE_ENV=production \
