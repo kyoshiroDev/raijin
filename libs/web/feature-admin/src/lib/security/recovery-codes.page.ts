@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { ADMIN_PATHS, AdminSessionStore } from '@raijin/web-data-access';
 import { RjButton, RjCheckbox } from '@raijin/web-ui';
 import { RjAdminAlert } from '../ui/alert';
+import { focusStepTitle } from './focus';
 import { RjRecoveryCodesList } from './recovery-codes-list';
 
 /**
@@ -41,6 +42,11 @@ export class AdminRecoveryCodesPage {
   private readonly router = inject(Router);
   protected readonly codes = inject(AdminSessionStore).takePendingRecoveryCodes();
   protected readonly saved = signal(false);
+
+  constructor() {
+    // Arrivée depuis le formulaire d'activation (souvent défilé en bas) : titre visible et lu.
+    focusStepTitle(inject<ElementRef<HTMLElement>>(ElementRef).nativeElement, inject(Injector));
+  }
 
   protected continue(): void {
     void this.router.navigateByUrl(ADMIN_PATHS.root);

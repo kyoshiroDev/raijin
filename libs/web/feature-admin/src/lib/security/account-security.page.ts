@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, computed, inject, signal } from '@angular/core';
 import { type AdminRecoveryCodes } from '@raijin/shared-contracts';
 import { AdminSecurityApi, AdminSessionStore, toClientError } from '@raijin/web-data-access';
 import { RjButton, RjIcon } from '@raijin/web-ui';
 import { RjAdminAlert } from '../ui/alert';
 import { formatTime } from '../ui/format';
 import { RjAdminPageHeader, RjAdminPanel } from '../ui/layout';
+import { focusStepTitle } from './focus';
 import { RjOtpInput } from './otp-input';
 import { RjRecoveryCodesList } from './recovery-codes-list';
 
@@ -54,6 +55,7 @@ import { RjRecoveryCodesList } from './recovery-codes-list';
         description="Les anciens codes cesseront de fonctionner. Saisis un code de ton application pour confirmer."
       >
         @if (codes(); as codes) {
+          <h3 data-new-codes-title class="font-display text-body font-semibold text-ink">Tes nouveaux codes de secours</h3>
           <rj-admin-alert tone="warn">Ces codes ne seront plus jamais affichés. Copie-les ou télécharge le fichier maintenant.</rj-admin-alert>
           <rj-recovery-codes-list [codes]="codes" class="max-w-xl" />
         } @else {
@@ -76,6 +78,8 @@ export class AdminAccountSecurityPage {
   private readonly api = inject(AdminSecurityApi);
   protected readonly session = inject(AdminSessionStore);
 
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
   protected readonly code = signal('');
   protected readonly busy = signal(false);
   protected readonly codeError = signal('');
@@ -99,6 +103,8 @@ export class AdminAccountSecurityPage {
     this.error.set('');
     try {
       this.codes.set(await this.api.regenerateRecoveryCodes(this.code()));
+      // Nouveaux codes affichés : le titre du panneau devient visible et reçoit le focus.
+      focusStepTitle(this.host, this.injector, '[data-new-codes-title]');
       // Le compteur de codes restants est relu (10 nouveaux codes).
       void this.session.ensureStatus(true);
     } catch (error) {

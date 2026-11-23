@@ -13,7 +13,10 @@ import { groupSecret } from './enrollment.page';
 import { recoveryCodesText } from './recovery-codes-list';
 import { normalizeRecovery } from './verify.page';
 
-afterEach(() => TestBed.inject(AdminSessionStore).clear());
+afterEach(() => {
+  TestBed.inject(AdminSessionStore).clear();
+  vi.restoreAllMocks();
+});
 
 function input(root: HTMLElement | null, selector: string): HTMLInputElement {
   const element = root?.querySelector<HTMLInputElement>(selector);
@@ -149,13 +152,17 @@ describe('saisie du code', () => {
   });
 
   it('session expirée : message dédié', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
     const { harness } = await openVerify('/admin/securite/code?retour=%2Fadmin&motif=expiree');
     expect(text(harness)).toContain('Session admin expirée');
+    expect(scrollTo).toHaveBeenCalled();
+    expect(document.activeElement?.textContent).toContain('Session admin expirée');
   });
 });
 
 describe('activation et codes de secours', () => {
   it('confirmation : codes de secours montrés une seule fois', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
     const { harness, ctrl, router } = await setupAdmin();
     const done = navigate(router, '/admin/securite/activation');
     await settle();
@@ -182,6 +189,11 @@ describe('activation et codes de secours', () => {
     await flush(harness, 6);
     expect(router.url).toBe('/admin/securite/codes-de-secours');
     expect(text(harness)).toContain('ABCDE-FGH23');
+    // Changement d'étape : retour en haut, focus sur le titre (paysage mobile : titre visible).
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0 }));
+    expect(document.activeElement?.tagName).toBe('H1');
+    expect(document.activeElement?.textContent).toContain('Range tes codes de secours');
+    expect(document.activeElement?.getAttribute('tabindex')).toBe('-1');
 
     // Retour sur l'écran : les codes ne sont plus jamais remontrés.
     await router.navigateByUrl('/ailleurs');

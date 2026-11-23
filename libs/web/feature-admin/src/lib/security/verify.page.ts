@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, computed, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { ADMIN_EXPIRED_REASON, AdminSecurityApi, AdminSessionStore, safeAdminReturn, toClientError } from '@raijin/web-data-access';
 import { RjButton, RjInputField, RjMascot, RjToastService } from '@raijin/web-ui';
 import { RjAdminAlert } from '../ui/alert';
+import { focusStepTitle } from './focus';
 import { RjOtpInput } from './otp-input';
 
 /**
@@ -88,6 +89,14 @@ export class AdminVerifyPage {
   protected readonly alert = signal<{ tone: 'danger' | 'warn'; message: string } | null>(null);
 
   protected readonly expired = computed(() => this.motif() === ADMIN_EXPIRED_REASON || this.session.lockReason() === 'expired');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
+
+  constructor() {
+    // Session expirée (arrivée depuis un écran de la coque, souvent défilé) : titre visible et lu.
+    focusStepTitle(this.host, this.injector, 'h1', () => this.expired());
+  }
+
   protected readonly ready = computed(() =>
     this.method() === 'totp' ? this.code().length === 6 : /^[A-Za-z2-7]{5}-?[A-Za-z2-7]{5}$/.test(this.recovery().replace(/\s+/g, '')),
   );

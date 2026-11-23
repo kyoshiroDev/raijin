@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { type AdminEnrollmentStart } from '@raijin/shared-contracts';
 import { ADMIN_PATHS, AdminSecurityApi, AdminSessionStore, toClientError } from '@raijin/web-data-access';
 import { RjButton, RjClipboard, RjErrorState, RjIcon, RjInputField, RjSkeleton, RjToastService } from '@raijin/web-ui';
 import { RjAdminAlert } from '../ui/alert';
 import { formatTime } from '../ui/format';
+import { focusStepTitle } from './focus';
 import { RjOtpInput } from './otp-input';
 
 /** Secret base32 en groupes de 4 caractères, plus facile à recopier. */
@@ -138,6 +139,8 @@ export class AdminEnrollmentPage {
   private readonly clipboard = inject(RjClipboard);
   private readonly toasts = inject(RjToastService);
 
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
   protected readonly enrollment = signal<AdminEnrollmentStart | null>(null);
   protected readonly state = signal<'loading' | 'ready' | 'error'>('loading');
   protected readonly starting = signal(false);
@@ -167,8 +170,11 @@ export class AdminEnrollmentPage {
     this.passwordError.set('');
     this.code.set('');
     try {
+      const restarting = this.enrollment() !== null;
       this.enrollment.set(await this.api.startEnrollment());
       this.state.set('ready');
+      // « Recommencer » après une expiration : nouveau QR code, retour en haut de l'étape 1.
+      if (restarting) focusStepTitle(this.host, this.injector);
     } catch (error) {
       const client = toClientError(error);
       if (client.code === 'ADMIN_2FA_ALREADY_ENROLLED') {
