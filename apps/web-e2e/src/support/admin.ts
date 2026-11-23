@@ -215,5 +215,5 @@ export async function typeTotp(page: Page, code: string): Promise<void> {
 export function adminNav(page: Page) {
   return page.getByRole('navigation', { name: 'Écrans de l’admin' });
 }
-export const adminSidebar = (page: Page) => page.locator('rj-admin-shell aside[aria-label="Espace admin"]');
-export const adminTopBar = (page: Page) => page.locator('rj-admin-shell header');
+export const adminSidebar = (page: Page) => page.locator('rj-admin-shell > aside[aria-label="Espace admin"]');
+export const adminTopBar = (page: Page) => page.locator('rj-admin-shell > div > header');
