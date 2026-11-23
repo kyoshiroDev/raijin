@@ -36,13 +36,13 @@ const h2 = 'font-display text-h2 font-bold text-ink md:text-h1';
 
 <Base title={page.title} description={page.description} path={page.path} og={page.og} jsonLd={jsonLd}>
   <section aria-labelledby="hero-title" class="border-b border-line">
-    <Container class="py-10 md:py-16">
+    <Container class="py-10 md:py-16 [@media(max-height:500px)]:py-6">
       <div class="flex min-w-0 flex-col items-center text-center md:flex-row md:items-center md:gap-8 md:text-left">
         <RaiMascot
           pose="hero"
           animated
           alt="Rai, le gardien de Raijin, bouclier en avant"
-          class="size-40 shrink-0 md:order-2 md:size-56 lg:size-72"
+          class="size-40 shrink-0 md:order-2 md:size-56 lg:size-72 [@media(max-height:500px)]:size-24"
         />
         <div class="mt-4 min-w-0 md:order-1 md:mt-0">
           <p class="text-body-sm font-semibold uppercase text-thunder-ink">Raijin Shield</p>

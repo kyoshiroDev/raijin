@@ -8,9 +8,13 @@ const page = STATIC_PAGES.notFound;
 ---
 
 <Base title={page.title} description={page.description} path={page.path} og={page.og} noindex>
-  <Container narrow class="flex flex-col items-center py-16 text-center md:py-24">
-    <RaiMascot pose="bravo" class="size-40 md:size-52" />
-    <h1 class="mt-6 font-display text-h1 font-bold text-ink">Page introuvable</h1>
+  <Container
+    narrow
+    class="flex flex-col items-center py-16 text-center md:py-24 [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:justify-center [@media(max-height:500px)]:gap-6 [@media(max-height:500px)]:py-6 [@media(max-height:500px)]:text-left"
+  >
+    <RaiMascot pose="bravo" class="size-40 shrink-0 md:size-52 [@media(max-height:500px)]:size-28" />
+    <div class="flex flex-col items-center [@media(max-height:500px)]:items-start">
+    <h1 class="mt-6 font-display [@media(max-height:500px)]:mt-0 text-h1 font-bold text-ink">Page introuvable</h1>
     <p class="mt-3 max-w-md text-body text-ink-muted">
       Cette page n'existe pas ou a été déplacée. Rien de grave : Rai garde le reste du site.
     </p>
@@ -27,6 +31,7 @@ const page = STATIC_PAGES.notFound;
       >
         Lire les guides
       </a>
+    </div>
     </div>
   </Container>
 </Base>
