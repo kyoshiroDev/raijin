@@ -123,7 +123,7 @@ interface LegendItem {
           {{ tableVisible() ? 'Masquer les données' : 'Voir les données' }}
         </button>
       </div>
-      <div [id]="tableId" class="min-w-0 overflow-x-auto" [hidden]="!tableVisible()">
+      <div [id]="tableId" class="min-w-0 overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring" role="region" tabindex="0" [attr.aria-label]="'Données : ' + title()" [hidden]="!tableVisible()">
         @if (tableVisible()) {
           <table class="w-full border-collapse text-left text-body-sm">
             <caption class="sr-only">{{ title() }}</caption>

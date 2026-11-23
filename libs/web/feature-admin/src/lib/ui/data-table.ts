@@ -79,7 +79,13 @@ interface Row {
     @if (view().length === 0) {
       <p class="rounded-md border border-dashed border-line px-4 py-6 text-center text-body-sm text-ink-muted">{{ emptyText() }}</p>
     } @else {
-      <div class="hidden max-h-[32rem] overflow-auto rounded-md border border-line md:block">
+      <!-- Région défilante atteignable au clavier (flèches) et nommée : axe scrollable-region-focusable. -->
+      <div
+        class="hidden max-h-[32rem] overflow-auto rounded-md border border-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring md:block"
+        role="region"
+        tabindex="0"
+        [attr.aria-label]="caption()"
+      >
         <table class="w-full border-collapse text-left text-body-sm">
           <caption class="sr-only">{{ caption() }}</caption>
           <thead class="sticky top-0 z-10 bg-surface-raised">

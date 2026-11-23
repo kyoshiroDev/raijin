@@ -28,7 +28,7 @@ const CHIP_ACTIVE = '!border-line-strong !bg-surface-raised !text-ink';
     @if (desktop() !== false) {
       <aside class="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-surface pt-safe lg:flex" aria-label="Espace admin">
         <div class="flex h-16 shrink-0 items-center gap-3 border-b border-line px-5">
-          <a routerLink="/admin" class="inline-flex min-h-11 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring" aria-label="Espace admin Raijin, vue d’ensemble">
+          <a routerLink="/admin" class="inline-flex min-h-11 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring" aria-label="Raijin Shield Admin, vue d’ensemble">
             <rj-logo variant="wordmark" [decorative]="true" />
           </a>
           <span class="rounded-sm border border-line-strong px-1.5 py-0.5 text-label font-semibold tracking-wide text-ink-muted uppercase">Admin</span>
@@ -80,7 +80,7 @@ const CHIP_ACTIVE = '!border-line-strong !bg-surface-raised !text-ink';
       @if (desktop() !== true) {
         <header class="sticky top-0 z-20 border-b border-line bg-base/95 pt-safe backdrop-blur lg:hidden">
           <div class="flex h-14 items-center gap-2 px-4 md:px-6">
-            <a routerLink="/admin" class="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring" aria-label="Espace admin Raijin, vue d’ensemble">
+            <a routerLink="/admin" class="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring" aria-label="Raijin Shield Admin, vue d’ensemble">
               <rj-logo variant="mark" [decorative]="true" />
               <span class="rounded-sm border border-line-strong px-1.5 py-0.5 text-label font-semibold tracking-wide text-ink-muted uppercase">Admin</span>
             </a>

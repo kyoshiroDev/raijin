@@ -236,6 +236,11 @@ describe('rj-service-state et rj-data-table', () => {
     expect(root.querySelector('img')).toBeNull();
     expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(root.querySelector('td')?.textContent?.trim()).toMatch(/^12\s345$/);
+    // Région défilante nommée et atteignable au clavier (axe scrollable-region-focusable).
+    const region = root.querySelector('.overflow-auto');
+    expect(region?.getAttribute('role')).toBe('region');
+    expect(region?.getAttribute('tabindex')).toBe('0');
+    expect(region?.getAttribute('aria-label')).toBe('Pages');
   });
 });
 

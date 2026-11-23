@@ -81,6 +81,14 @@ describe('gardes de l’espace admin', () => {
     }
     expect(harness.routeNativeElement?.querySelector('[aria-current="page"]')?.textContent).toContain('Double authentification');
     expect(text(harness)).toContain('Quitter l’admin');
+    // Nom accessible des liens d'accueil : contient le texte visible (« Raijin SHIELD », « Admin »).
+    const home = Array.from(harness.routeNativeElement?.querySelectorAll<HTMLAnchorElement>('a[href="/admin"][aria-label]') ?? []);
+    expect(home.length).toBeGreaterThan(0);
+    for (const link of home) {
+      const name = (link.getAttribute('aria-label') ?? '').toLowerCase();
+      expect(name).toContain('raijin shield');
+      expect(name).toContain('admin');
+    }
   });
 });
 
