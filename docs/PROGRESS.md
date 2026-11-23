@@ -261,6 +261,15 @@
 - Commits :
 - Décisions : voir « Décisions d'architecture » ci-dessus ; liste « mort, non porté » à compléter par T1.
 
+- [x] T1 inventaire (bench-quant) : docs/BENCH.md — 7 Edge Functions et 12 jobs pg_cron portés (BullMQ), 31 tables (21 portées, 10 abandonnées), 28 fonctions SQL + 9 déclencheurs, 35 policies RLS → garde applicative, 8 RPC → endpoints, Realtime → SSE `tokens`/`paper`, 2 secrets Vault inutiles, 13 fichiers du front sur supabase-js.
+- Décisions de l'orchestrateur (points P1–P10 de BENCH.md §9) :
+  - P1 : wallet-study plafonné par jour (`BENCH_WALLET_STUDY_DAILY_CREDITS`, défaut 2000, dans le budget banc de 10 000/jour) ; si `getTransactionsForAddress` n'est pas disponible sur l'offre Helius, wallet-study est désactivé proprement (« À brancher »).
+  - P2–P5 : propositions retenues (user_id fixé au propriétaire, schéma `archive` à import optionnel, déclencheurs en SQL brut dans les migrations Prisma).
+  - P6 : IP partagée → le banc utilise des débits plus bas que Raijin vers GeckoTerminal/DexScreener/Jupiter (moitié au plus) et s'arrête de lui-même sur 429 (recul exponentiel) ; Raijin reste prioritaire.
+  - P7 : mode ombre sans push, sans e-mail, sans ouverture auto-paper.
+  - P9 : vérification de `cron.job` à faire par l'utilisateur en lecture (facultatif, noté dans BENCH.md).
+  - P10 : aucune donnée de verdict à migrer ; justesse à partir de la mise en service, « échantillon insuffisant » sous n = 30.
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.
