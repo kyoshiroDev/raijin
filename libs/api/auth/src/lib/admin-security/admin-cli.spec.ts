@@ -103,6 +103,7 @@ describe('CLI notify-admins (phase 8 : watchdog, sauvegardes)', () => {
   it('arguments : --title et --stdin obligatoires, titre nettoyé et borné', () => {
     expect(parseAdminCliArgs(['notify-admins', '--title=Sauvegarde échouée', '--stdin'])).toEqual({ command: 'notify-admins', title: 'Sauvegarde échouée', stdin: true });
     expect(parseAdminCliArgs(['notify-admins', '--title', 'x'.repeat(300), '--stdin'])).toMatchObject({ title: 'x'.repeat(120) });
+    expect(parseAdminCliArgs(['notify-admins', '--title=Ligne 1\r\nBcc: x@y.fr\tfin', '--stdin'])).toEqual({ command: 'notify-admins', title: 'Ligne 1 Bcc: x@y.fr fin', stdin: true });
     expect(parseAdminCliArgs(['notify-admins', '--title=Objet'])).toHaveProperty('error');
     expect(parseAdminCliArgs(['notify-admins', '--stdin'])).toHaveProperty('error');
     expect(parseAdminCliArgs(['notify-admins', '--title=\u0000', '--stdin'])).toHaveProperty('error');

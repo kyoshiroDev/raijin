@@ -26,11 +26,24 @@ export function cleanNoticeText(value: string, max: number): string {
 }
 
 /**
+ * Titre d'un avis (sujet de l'e-mail, titre push) : sur une seule ligne. Retours à la ligne, tabulations et caractères
+ * de contrôle deviennent des espaces (pas d'injection d'en-tête), espaces consécutives réduites, longueur bornée.
+ */
+export function cleanNoticeTitle(value: string, max = ADMIN_NOTICE_TITLE_MAX): string {
+  let flat = '';
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    flat += code === 0x09 || code === 0x0a || code === 0x0d || isControl(code) || code === 0x2028 || code === 0x2029 ? ' ' : char;
+  }
+  return flat.replace(/ {2,}/g, ' ').trim().slice(0, max).trim();
+}
+
+/**
  * Avis d'exploitation aux admins (phase 8 : watchdog, sauvegardes, via la CLI `notify-admins`) : thème clair, titre et
  * corps en texte brut fournis par les scripts d'infra, échappés ; aucun lien hors de l'app.
  */
 export function adminNoticeTemplate(ctx: TemplateContext, rawTitle: string, rawBody: string): RenderedMail {
-  const title = cleanNoticeText(rawTitle, ADMIN_NOTICE_TITLE_MAX) || 'Avis d’exploitation';
+  const title = cleanNoticeTitle(rawTitle) || 'Avis d’exploitation';
   const lines = cleanNoticeText(rawBody, ADMIN_NOTICE_BODY_MAX)
     .split(/\n{2,}|\n/)
     .map((line) => line.trim())

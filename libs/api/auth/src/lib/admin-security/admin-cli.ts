@@ -7,6 +7,7 @@ import {
   adminNoticeTemplate,
   ApiNotificationsModule,
   cleanNoticeText,
+  cleanNoticeTitle,
   Mailer,
   PushSender,
 } from '@raijin/api-notifications';
@@ -57,7 +58,8 @@ function parseNotifyArgs(rest: readonly string[]): AdminCliArgs | { error: strin
     else return { error: `Option inconnue : ${arg.slice(0, 40)}` };
   }
   if (!stdin) return { error: '--stdin est obligatoire (corps lu sur l’entrée standard).' };
-  const clean = cleanNoticeText(title ?? '', ADMIN_NOTICE_TITLE_MAX);
+  // Sujet d'e-mail sur une seule ligne : retours à la ligne et contrôles → espace, longueur bornée (M13).
+  const clean = cleanNoticeTitle(title ?? '', ADMIN_NOTICE_TITLE_MAX);
   if (!clean) return { error: 'Titre manquant (--title="…").' };
   return { command: 'notify-admins', title: clean, stdin: true };
 }
