@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { errorCode } from '@raijin/api-core';
+import { errorCode, raijinRedisOptions } from '@raijin/api-core';
 import Redis from 'ioredis';
 
 /**
@@ -38,7 +38,7 @@ export class RedisKeyValueStore extends KeyValueStore {
   }
 
   static connect(url: string): RedisKeyValueStore {
-    const redis = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false, connectTimeout: 2_000 });
+    const redis = new Redis(url, raijinRedisOptions());
     const store = new RedisKeyValueStore(redis);
     redis.on('error', (error: Error) => store.warn(error));
     return store;

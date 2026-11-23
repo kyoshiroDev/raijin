@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { errorCode, type AppConfig } from '@raijin/api-core';
+import { errorCode, raijinRedisOptions, type AppConfig } from '@raijin/api-core';
 import Redis from 'ioredis';
 
 /**
@@ -144,7 +144,7 @@ export class MemoryAdminStore extends AdminStore {
 /** Connexion Redis dédiée de l'admin (échec rapide) ; mémoire sans `REDIS_URL`. */
 export function createAdminStore(config: AppConfig): AdminStore {
   if (!config.redisUrl) return new MemoryAdminStore();
-  const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false, connectTimeout: 2_000 });
+  const redis = new Redis(config.redisUrl, raijinRedisOptions());
   const logger = new Logger('AdminRedis');
   let lastWarning = 0;
   redis.on('error', (error: Error) => {

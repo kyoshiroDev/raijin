@@ -147,3 +147,16 @@ Séquences (transitions des suivis) : `src/fixtures/<source>/<scénario>.step<N>
 l'étape la plus récente ≤ N qui connaît la requête, sinon les fixtures de base). Scénarios synthétiques :
 `watch-lp-removed` (swap puis retrait de 75 %), `watch-mint-reactivated` (mint puis freeze réactivés ; verdict Prudence →
 Danger par `collectFacts`), `watch-holder-sold` (holder de 10 % qui cède 40 %).
+
+## Banc et historique de transactions (phase 8 bis, T4)
+
+- `transactionHistoryPage(address, { cursor, limit ≤ 100 })` : Helius `getTransactionsForAddress` (mode `full`,
+  transactions réussies, ordre croissant ; https://www.helius.dev/docs/rpc/gettransactionsforaddress), file
+  `helius_rpc` partagée, 10 crédits réservés par tentative sur la voie `wallet`, délai 15 s. Méthode absente de
+  l'offre (-32601, -32403, HTTP 403, message citant l'offre ; la doc ne fixe pas l'erreur) :
+  `HeliusMethodUnavailableError`, sans rejeu ni disjoncteur. Utilisé par wallet-study du banc (`@raijin/bench-solana`).
+- `PrefixedRedisCreditBudget` : budget journalier Helius sur Redis à clés préfixées par application
+  (`<prefix>helius:credits:<jour>`, `<prefix>helius:credits:<voie>:<jour>`), client Redis structurel (`eval`, `get`),
+  repli mémoire. L'API Raijin garde pour l'instant `RedisCreditBudget` (`api-analysis`) ; elle peut l'adopter avec
+  `prefix: 'raijin:'`.
+- `requestJson` conserve une `UpstreamError` levée par un `fetch` injecté (refus sans requête, ex. recul du banc).

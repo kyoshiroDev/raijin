@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { APP_CONFIG, errorCode, hmac, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, errorCode, hmac, raijinRedisOptions, type AppConfig } from '@raijin/api-core';
 import Redis from 'ioredis';
 
 /** Stockage minimal d'un compteur à expiration. */
@@ -106,11 +106,7 @@ export class LoginAttemptsService implements OnModuleDestroy {
     if (store) {
       this.primary = store;
     } else if (config.redisUrl) {
-      const redis = new Redis(config.redisUrl, {
-        maxRetriesPerRequest: 1,
-        enableOfflineQueue: false,
-        connectTimeout: 2_000,
-      });
+      const redis = new Redis(config.redisUrl, raijinRedisOptions());
       redis.on('error', (error: Error) => this.warn(`Redis indisponible (${errorCode(error)})`));
       this.primary = new RedisAttemptStore(redis);
     } else {

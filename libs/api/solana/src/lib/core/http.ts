@@ -81,8 +81,10 @@ export async function requestJson(fetchFn: FetchLike, request: JsonRequest): Pro
         redirect: 'error',
         signal: controller.signal,
       });
-    } catch {
-      // Erreur volontairement ignorée : elle peut contenir l'URL (et la clé).
+    } catch (error) {
+      // `UpstreamError` levée par un `fetch` injecté (refus sans requête, ex. recul du banc sur 429) :
+      // conservée telle quelle (ni URL ni cause). Toute autre erreur est ignorée : elle peut contenir l'URL (et la clé).
+      if (error instanceof UpstreamError) throw error;
       if (timedOut) throw new UpstreamError(source, 'timeout');
       if (request.signal?.aborted) throw new UpstreamError(source, 'aborted');
       throw new UpstreamError(source, 'network');

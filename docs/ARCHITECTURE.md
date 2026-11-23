@@ -1613,6 +1613,10 @@ Vercel par un agent ; migration et bascule lancées par l'utilisateur.
 - `apps/raijin-banc-de-test-api` (`scope:bench`, `type:app`, `@nx/nest`) : app **fine** (bootstrap, `main.ts`,
   `cli.ts` en T6) ; le métier vit dans les libs. Port `API_PORT` (3000 dans le conteneur `raijin-bench-api`).
 - `libs/bench/contracts` (`@raijin/bench-contracts`, `type:contracts`) : contrats Zod du banc (§17.3).
+- `libs/bench/solana` (`@raijin/bench-solana`, `type:data-access`, T4) : `createBenchSolana` instancie
+  `SolanaDataService` de `api-solana` avec les paramètres du banc (§17.5), budget Redis préfixé
+  (`PrefixedRedisCreditBudget` de `api-solana`), recul sur 429 des sources à IP partagée et source
+  `getTransactionsForAddress` de wallet-study (désactivation propre, `wallet_study` de `GET /api/status`).
 - À créer par leurs agents (T5–T8) : `bench-prisma` (data-access, schéma et client séparés de `api-prisma`),
   `bench-core` (config, auth, jobs, SSE), `bench-collect`, `bench-trading`, `bench-quality`,
   `bench-data-access` (client Angular). `bench-verdicts` (§16) reste du code pur.
@@ -1645,8 +1649,28 @@ Vercel par un agent ; migration et bascule lancées par l'utilisateur.
 ### 17.5 Helius et Redis
 - `api-solana` instancié par le banc avec ses propres paramètres (`BENCH_HELIUS_API_KEY`, 3 req/s RPC,
   0,5 req/s DAS, 10 000 crédits/jour, compteurs `raijin-bench:`), sans jamais lire `HELIUS_API_KEY` (T4).
+  Wallet-study : voie de crédits `wallet` plafonnée à `BENCH_WALLET_STUDY_DAILY_CREDITS` (2 000 par défaut) dans
+  les 10 000. Sources publiques (DexScreener, GeckoTerminal, Jupiter, RugCheck, RPC public) à la moitié des débits
+  de Raijin, pause dès le 1er 429 puis recul exponentiel 30 s → 15 min (BENCH.md §9 P6) : Raijin reste prioritaire.
 - Redis : ACL par application, `raijin-api` limité à `~raijin:*`, `raijin-bench` à `~raijin-bench:*`,
   `default` désactivé (T10) ; toutes les clés de l'API Raijin passent sous `raijin:` (T3).
+- Préfixe posé **par connexion** (`keyPrefix` d'ioredis, `raijinRedisOptions()` / `REDIS_KEY_PREFIX` d'`api-core`) sur
+  les six connexions de l'API : throttler, tentatives de connexion, analyse (cache, verrous, quotas, budget Helius,
+  compteurs d'usage), `RedisKeyValueStore.connect`, admin, analytics. Il couvre GET/SET, MULTI, pipelines et les
+  `KEYS[]` des scripts Lua (`call('eval')` du throttler compris) ; aucun `KEYS`/`SCAN` (non préfixés) dans l'API.
+  BullMQ refuse `keyPrefix` : ses connexions gardent `BULLMQ_PREFIX=raijin` (clés `raijin:<file>:*`).
+  Changement de clé sans migration : compteurs, verrous et caches repartent à neuf, aucune clé n'est supprimée.
+- Motifs de clés de l'API (tous sous `raijin:`) :
+  throttler `{<traceur>:<throttler>}:hits|blocked` ; tentatives `rj:auth-fail:<hmac>`, `rj:admin-2fa-fail:<userId>` ;
+  verrous `lock:watch-planner`, `lock:watch:mint:<mint>`, `lock:trial-tick`, `lock:admin-alerts`,
+  `lock:metrics-aggregate`, `analysis:lock:<mint>`, `wallet:lock:<clé>` ; analyse `analysis:result|notfound|unanalyzable|unavailable:…`,
+  `og:<mint>:…`, `quota:<service>:<jour>`, `quota:seen:<type>:<sujet>:<mint>` ; Helius `helius:credits:<jour>`,
+  `helius:credits:watch|wallet:<jour>` ; cache Solana `solana:rugcheck|token-created|creator|token-owner|account-program|light-facts:v1|wallet-pairs:…` ;
+  wallet `wallet:scan|verdict|rejected:…` ; essai `trial-email:…`, `trial-fp:…` ; admin `admin:counters:<jour>`,
+  `admin:live:v1:<jour>`, `admin:acquisition:v1:…` ; analytics `analytics:v1:<service>:<sha256>` ; BullMQ `raijin:<file>:*`.
+  Attention au double préfixe : un `PrefixedRedisCreditBudget` (T4) branché sur une connexion `raijinRedisOptions()`
+  écrirait `raijin:raijin:helius:…` ; l'API Raijin garde donc `RedisCreditBudget`, le banc (connexion sans
+  `keyPrefix`) passe `raijin-bench:` au budget préfixé.
 
 ### 17.6 Mode ombre
 - `BENCH_MODE=shadow` : collecte et jobs actifs, **aucune notification** (push, e-mail), pas d'ouverture

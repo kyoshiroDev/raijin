@@ -2,6 +2,7 @@ export * from './lib/api-core.module';
 export * from './lib/config/app-config';
 export * from './lib/config/config.module';
 export * from './lib/config/duration';
+export * from './lib/config/redis';
 export * from './lib/errors/api-exception';
 export * from './lib/errors/api-exception.filter';
 export * from './lib/errors/error-code';

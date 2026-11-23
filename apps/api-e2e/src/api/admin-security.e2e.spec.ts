@@ -202,7 +202,7 @@ describe('Espace admin : sécurité, comptes, audit', () => {
     // Fin du blocage (compteur Redis de l'instance de test) pour la suite du parcours.
     const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: 1 });
     try {
-      await redis.del(`rj:admin-2fa-fail:${adminId}`);
+      await redis.del(`raijin:rj:admin-2fa-fail:${adminId}`); // préfixe de connexion `raijin:` (ARCHITECTURE.md §17.5)
     } finally {
       redis.disconnect();
     }

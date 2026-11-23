@@ -69,9 +69,9 @@ est journalisée `skipped`), ligne `job_runs` (début, fin, statut, durée, erre
 | `raijin-purge-lab` | `schedule_backtest.sql` | `30 3 * * *` | `backtest_events` > 30 j ; `backtest_event_state` (hors `cursor`) > 7 j ; `label_runs` > 7 j | **J** `purge` (étape `lab`) |
 | `raijin-early`, `raijin-purge-early`, `raijin-fast`, `raijin-purge-fast-ticks` | retirés par `unschedule_slim_down.sql` (21/11) | — | — | **Ab.** (déjà morts) |
 
-Nouveaux jobs sans équivalent Supabase (§16) : `verdict-followup` (fenêtres 24 h / 72 h / 7 j), `daily-metrics`
-(agrégats avant purge), `db-size` (alerte 80 % / 95 %), purge `job_runs` 30 j. Les 4 purges nocturnes sont regroupées
-en un job `purge` à étapes ordonnées (03:15 → 03:30) ; à défaut, 4 jobs aux mêmes motifs (à trancher en T6, sans effet
+Nouveaux jobs sans équivalent Supabase (§16 ; noms de `BENCH_JOB_NAMES`, `@raijin/bench-contracts`) : `verdict-follow-up` (fenêtres 24 h / 72 h / 7 j), `verdict-aggregate`
+(agrégats avant purge), `storage-check` (alerte 80 % / 95 %), purge `job_runs` 30 j. Les 4 purges nocturnes sont regroupées
+en un job `retention-purge` à étapes ordonnées (03:15 → 03:30) ; à défaut, 4 jobs aux mêmes motifs (à trancher en T6, sans effet
 sur les données).
 
 ## 4. Tables (31) → `raijin_bench`
@@ -117,9 +117,12 @@ ou RPC `security definer`. Clés étrangères vers `auth.users` notées **(U)**.
 Repère d'ensemble : base ≈ 133 Mo à la date du contrat strategy-lab (19/11, offre gratuite 500 Mo) ; dominée par
 `token_snapshots` et `ohlcv_candles`.
 
-Tables ajoutées sur le VPS (T5) : `bench_owner`, `bench_sessions`, `job_runs`, `verdict_records`,
-`follow_up_observations`, `daily_verdict_metrics`, `engine_variants`, `variant_replays`, schéma `shadow_ref` (copie
-de comparaison, T9).
+Tables ajoutées sur le VPS (T5, `libs/bench/prisma`) : `bench_owner` (compte unique, remplace `auth.users`),
+`bench_owner_totp` (secret chiffré), `bench_recovery_codes` (hachés), `bench_sessions`, `job_runs` (statut
+`running|success|failed|skipped`), `bench_state` (niveau d'alerte de stockage…), `verdict_records`,
+`follow_up_observations`, `daily_verdict_metrics`, `engine_variants` (drapeau `enabled`), `variant_replays` ;
+schéma `shadow_ref` (7 tables comparées + `snapshot_meta`, rempli par T9) et schéma `archive` vide (import
+facultatif, P3/P4). Colonnes archivées retirées de `public` et exceptions encore lues : `libs/bench/prisma/README.md`.
 
 **Vue** `ohlcv_candles_flat` (19/11, `security_invoker`, une ligne par bougie via `unnest`) : lisibilité seule, lue par
 aucun code → **Ab.** (requête équivalente documentée dans `libs/bench/prisma` si besoin).
@@ -152,8 +155,8 @@ les autres, des méthodes de service transactionnelles (Prisma `$transaction` + 
 | `wallet_study_reserve/refund(…)` | `service_role` | `wallet-study-collect` | réservation atomique de crédits | conservé (UPDATE atomique) + plafond journalier |
 | `wallet_study_queue(limit)` | `service_role` | `wallet-study-collect` | file des mints | `WalletStudyRepository` |
 | `claim_test_push(p_user)` | definer, interne | `send-test-push` | 1 test / min | **Ab.** → throttler Redis |
-| `enforce_push_subscription_cap()` | déclencheur `push_subscriptions` | — | ≤ 10 abonnements | contrôle dans `PushSubscriptionService` |
-| `touch_updated_at()` | déclencheur `alert_settings` | — | `updated_at = now()` | Prisma `@updatedAt` |
+| `enforce_push_subscription_cap()` | déclencheur `push_subscriptions` | — | ≤ 10 abonnements | conservé en SQL (T5, P5) ; le service peut aussi le contrôler |
+| `touch_updated_at()` | déclencheur `alert_settings` | — | `updated_at = now()` | conservé en SQL (T5, P5) |
 | `paper_positions_before_insert()` | déclencheur | — | normalisation / contrôles à l'insertion | conservé en SQL brut (migration Prisma) ou porté en service : §9 P5 |
 | `set_first_label_checkpoint()` | 3 déclencheurs (`signal_outcomes`, `early_outcomes`, `preset_signals`) | — | `next_label_at = détection + 12 h` | conservé en SQL (2 tables ; `early_outcomes` Ab.) |
 | `set_first_candle_checkpoint()` | 2 déclencheurs (`signal_outcomes`, `preset_signals`) | — | `candles_1m_at` / `candles_5m_at` | conservé en SQL |
@@ -206,7 +209,7 @@ Autres fichiers contenant le mot « supabase » (commentaires, types, données d
 
 Tables : `watchlist`, `model_weights`, `paper_orders_v1`, `early_candidates`, `early_observations`, `early_outcomes`,
 `early_runs`, `fast_watch`, `fast_ticks`, `test_push_throttle` (→ Redis). Vue : `ohlcv_candles_flat`. Fonctions :
-`claim_test_push`, `enforce_push_subscription_cap`, `touch_updated_at` (remplacées), `paper_apply`, `paper_cancel_order`,
+`claim_test_push` (remplacée par Redis), `paper_apply`, `paper_cancel_order`,
 `paper_orders_before_insert` (déjà supprimées). Crons : `raijin-early`, `raijin-purge-early`, `raijin-fast`,
 `raijin-purge-fast-ticks` (retirés 21/11). Vault : `raijin_project_url`, `raijin_cron_secret`. Secrets : `CRON_SECRET`,
 `ALLOWED_ORIGINS`, `SUPABASE_*`. Extensions `pg_cron`, `pg_net`. Auth : inscription (déjà coupée), mot de passe oublié,

@@ -16,6 +16,7 @@ import {
 } from '@nestjs/throttler';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
+import { raijinRedisOptions } from '../config/redis';
 import { ApiException } from '../errors/api-exception';
 import { errorCode } from '../errors/error-code';
 import { ipBucket } from '../security/ip-bucket';
@@ -101,11 +102,7 @@ export class ResilientThrottlerStorage implements ThrottlerStorage, OnApplicatio
 
 export function createThrottlerStorage(redisUrl: string | null): ResilientThrottlerStorage {
   if (!redisUrl) return new ResilientThrottlerStorage(null);
-  const redis = new ThrottlerStorageRedisService(redisUrl, {
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-    connectTimeout: 2_000,
-  });
+  const redis = new ThrottlerStorageRedisService(redisUrl, raijinRedisOptions());
   const storage = new ResilientThrottlerStorage(redis, () => redis.redis.disconnect());
   redis.redis.on('error', (error: Error) => storage.warn(`Redis indisponible (${errorCode(error)})`));
   return storage;

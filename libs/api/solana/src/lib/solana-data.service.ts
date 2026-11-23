@@ -1,6 +1,7 @@
 import { DexScreenerClient } from './clients/dexscreener';
 import { GeckoTerminalClient } from './clients/geckoterminal';
 import { HeliusDasClient } from './clients/helius-das';
+import { HeliusHistoryClient, type HistoryPage, type HistoryPageOptions } from './clients/helius-history';
 import type { JsonRpcTransport } from './clients/json-rpc';
 import { JupiterQuoteClient } from './clients/jupiter';
 import type { RestTransport } from './clients/rest';
@@ -68,6 +69,7 @@ export class SolanaDataService {
   private readonly watchCollector: WatchCollector;
   private readonly walletCollector: WalletCollector;
   private readonly dexscreener: DexScreenerClient;
+  private readonly history: HeliusHistoryClient;
   private readonly gates: ReadonlyMap<UpstreamId, UpstreamGate>;
   private readonly heliusKey: string | null;
   /** Lecteur des compteurs d'appels (instantané d'un jour UTC, disjoncteurs, quotas du contrat santé). */
@@ -148,6 +150,8 @@ export class SolanaDataService {
     );
     const das = new HeliusDasClient(this.heliusKey === null ? null : rpcTransport('helius_das', heliusUrl), budget);
     this.dexscreener = new DexScreenerClient(rest('dexscreener', config.dexscreenerBaseUrl));
+    // Même file `helius_rpc` que les autres appels RPC (débit partagé), crédits sur la voie `wallet`.
+    this.history = new HeliusHistoryClient(this.heliusKey === null ? null : rpcTransport('helius_rpc', heliusUrl), budget, 'wallet');
 
     const collectorDeps = {
       config,
@@ -256,5 +260,15 @@ export class SolanaDataService {
    */
   collectFactsLightBatch(mints: readonly string[], options?: LightFactsBatchOptions): Promise<LightFactsBatch> {
     return this.walletCollector.collectLightBatch(mints, options);
+  }
+
+  /**
+   * Une page d'historique de transactions d'une adresse (Helius `getTransactionsForAddress`, mode `full`,
+   * transactions réussies, 10 crédits la page sur la voie `wallet`). Usage hors ligne (étude du banc).
+   * Lève `UpstreamError` (dont `not_configured` sans clé, `budget_exhausted`) ou
+   * `HeliusMethodUnavailableError` si l'offre Helius ne propose pas la méthode. **Lecture seule.**
+   */
+  transactionHistoryPage(address: string, options?: HistoryPageOptions): Promise<HistoryPage> {
+    return this.history.page(address, options);
   }
 }

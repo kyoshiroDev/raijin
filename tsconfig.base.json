@@ -51,7 +51,9 @@
       "@raijin/bench-verdicts": ["./libs/bench/verdicts/src/index.ts"],
       "@raijin/bench-contracts": ["./libs/bench/contracts/src/index.ts"],
       "@raijin/server-push": ["./libs/server/push/src/index.ts"],
-      "@raijin/server-security": ["./libs/server/security/src/index.ts"]
+      "@raijin/server-security": ["./libs/server/security/src/index.ts"],
+      "@raijin/bench-solana": ["./libs/bench/solana/src/index.ts"],
+      "@raijin/bench-prisma": ["./libs/bench/prisma/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

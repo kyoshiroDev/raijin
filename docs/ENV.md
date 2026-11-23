@@ -498,3 +498,33 @@ Valeurs de `infra/.env.api` propres à la production (le reste : blocs ci-dessus
 `VAPID_PRIVATE_KEY` (paire **de production**, distincte de celle de dev), `TOTP_ENCRYPTION_KEY`, `IP_HASH_SECRET`,
 `JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `SENTRY_ENVIRONMENT=production`. Les blocs « Seed de développement » et les
 variables `SMTP_*` sont inutiles en production.
+
+## Banc (`infra/.env.bench-api`) — Helius et sources Solana (phase 8 bis, T4)
+
+Lues par `@raijin/bench-solana` (`loadBenchSolanaSettings`, `libs/bench/solana`). Seules les variables `BENCH_*`
+ci-dessous sont lues : la clé de Raijin (`HELIUS_API_KEY`) n'est jamais vue par le banc. Les valeurs ne peuvent que
+**baisser** les plafonds (au-delà : refus de démarrer, message citant le nom de la variable, jamais sa valeur).
+Débits vers DexScreener, GeckoTerminal, Jupiter, RugCheck et le RPC public : moitié de ceux de Raijin (même IP sur
+le VPS), fixés dans le code, avec arrêt sur 429 et recul exponentiel (30 s, 60 s… 15 min ; BENCH.md §9 P6).
+Compteurs et cache dans Redis sous `raijin-bench:` (`raijin-bench:helius:credits:<jour>`,
+`raijin-bench:helius:credits:wallet:<jour>`, `raijin-bench:solana:*`).
+
+```dotenv
+# ---------------------------------------------------------------------
+# Helius du banc — clé distincte de celle de Raijin : https://dashboard.helius.dev/api-keys
+#   (copiée par toi dans infra/.env.bench-api, jamais affichée ni journalisée). Vide = RPC public + « indisponible ».
+# ---------------------------------------------------------------------
+BENCH_HELIUS_API_KEY=factice-a-remplacer
+# Débits réservés au banc (plan Free : 10 req/s RPC et 2 req/s DAS partagés avec Raijin 7 / 1,5,
+#   https://www.helius.dev/docs/billing/rate-limits). Défauts et maximums : 3 et 0.5.
+BENCH_HELIUS_RPC_RPS=3
+BENCH_HELIUS_DAS_RPS=0.5
+# Crédits Helius par jour UTC (https://www.helius.dev/docs/billing/credits). Défaut et maximum : 10000
+#   (Raijin 22000 ; ~1 M/mois au total). Au-delà : plus d'appel Helius, contrôles « indisponible ».
+BENCH_HELIUS_DAILY_CREDIT_BUDGET=10000
+# Part journalière de wallet-study (étude des premiers acheteurs, getTransactionsForAddress, 10 crédits la page
+#   de 100 transactions : https://www.helius.dev/docs/rpc/gettransactionsforaddress), comprise dans le budget
+#   ci-dessus (les verdicts gardent le reste). Défaut 2000 ; 0 = étude désactivée. Si l'offre Helius ne propose pas
+#   la méthode, l'étude se désactive jusqu'au lendemain et GET /api/status l'indique (wallet_study.state).
+BENCH_WALLET_STUDY_DAILY_CREDITS=2000
+```

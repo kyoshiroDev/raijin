@@ -8,10 +8,10 @@
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@raijin/api-core": "*",
+    "@raijin/server-push": "*",
     "@raijin/shared-contracts": "*",
     "@raijin/shared-util": "*",
     "nodemailer": "^10.6.1",
-    "tslib": "^2.3.0",
-    "web-push": "~3.6.7"
+    "tslib": "^2.3.0"
   }
 }

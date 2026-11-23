@@ -12,6 +12,8 @@ export const BENCH_JOB_NAMES = [
   'label-outcomes',
   'paper-engine',
   'backtest-run',
+  /** Ex-pg_cron `raijin-backtest-nightly` (03:40 UTC) : met en file le run nocturne. */
+  'backtest-nightly',
   'wallet-study-collect',
   'verdict-follow-up',
   'verdict-aggregate',
@@ -21,7 +23,12 @@ export const BENCH_JOB_NAMES = [
 export const benchJobNameSchema = z.enum(BENCH_JOB_NAMES);
 export type BenchJobName = z.infer<typeof benchJobNameSchema>;
 
-export const BENCH_JOB_STATUSES = ['running', 'success', 'failed', 'skipped'] as const;
+export const BENCH_JOB_STATUSES = [
+  'running',
+  'success',
+  'failed',
+  'skipped',
+] as const;
 export const benchJobStatusSchema = z.enum(BENCH_JOB_STATUSES);
 export type BenchJobStatus = z.infer<typeof benchJobStatusSchema>;
 
@@ -47,5 +54,8 @@ export const jobRunsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(JOB_RUNS_LIMIT_MAX).default(50),
 });
 export type JobRunsQuery = z.infer<typeof jobRunsQuerySchema>;
-export const jobRunsResponseSchema = listResponseSchema(jobRunSchema, JOB_RUNS_LIMIT_MAX);
+export const jobRunsResponseSchema = listResponseSchema(
+  jobRunSchema,
+  JOB_RUNS_LIMIT_MAX,
+);
 export type JobRunsResponse = z.infer<typeof jobRunsResponseSchema>;

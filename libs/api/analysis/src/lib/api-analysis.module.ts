@@ -1,7 +1,7 @@
 import { Logger, Module, OnApplicationShutdown } from '@nestjs/common';
 import { RedisUsageCounterStore } from '@raijin/api-analytics';
 import { ApiAuthModule } from '@raijin/api-auth';
-import { APP_CONFIG, errorCode, type AppConfig } from '@raijin/api-core';
+import { APP_CONFIG, errorCode, raijinRedisOptions, type AppConfig } from '@raijin/api-core';
 import {
   loadSolanaDataConfig,
   MemoryCacheStore,
@@ -55,7 +55,7 @@ export const ANALYSIS_REDIS = Symbol('ANALYSIS_REDIS');
 
 export function createAnalysisRedis(config: AppConfig): Redis | null {
   if (!config.redisUrl) return null;
-  const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false, connectTimeout: 2_000 });
+  const redis = new Redis(config.redisUrl, raijinRedisOptions());
   const logger = new Logger('AnalysisRedis');
   let lastWarning = 0;
   redis.on('error', (error: Error) => {

@@ -7,7 +7,19 @@ import { countSchema, isoDateTimeSchema, isoDaySchema } from './common';
  * `shadow_ref` (instantané Supabase copié par `infra/bench-migrate.sh --shadow-snapshot`, lancé
  * par l'utilisateur). L'API n'a aucun accès à Supabase : elle ne lit que `raijin_bench`.
  */
-export const SHADOW_TABLES = ['tokens', 'token_snapshots', 'scan_runs', 'alert_log', 'paper_positions', 'outcome_labels'] as const;
+/**
+ * Tables copiées dans `shadow_ref` (même liste que `SHADOW_REF_DAY_COLUMNS` de `@raijin/bench-prisma`,
+ * qui fixe la colonne de date de chaque table). Les issues sont `signal_outcomes` et `preset_signals`.
+ */
+export const SHADOW_TABLES = [
+  'tokens',
+  'token_snapshots',
+  'scan_runs',
+  'alert_log',
+  'paper_positions',
+  'signal_outcomes',
+  'preset_signals',
+] as const;
 export const shadowTableSchema = z.enum(SHADOW_TABLES);
 export type ShadowTable = z.infer<typeof shadowTableSchema>;
 
@@ -17,12 +29,24 @@ export const SHADOW_MINT_SAMPLE_MAX = 20;
 
 /** `GET /api/shadow/comparison?from=&to=&table=`. */
 export const shadowComparisonQuerySchema = z
-  .object({ from: isoDaySchema, to: isoDaySchema, table: shadowTableSchema.optional() })
-  .refine((q) => q.from <= q.to, { message: 'La date de début doit précéder la date de fin.', path: ['to'] })
-  .refine((q) => Date.parse(q.to) - Date.parse(q.from) <= SHADOW_WINDOW_MAX_DAYS * 86_400_000, {
-    message: `Fenêtre de ${SHADOW_WINDOW_MAX_DAYS} jours au plus.`,
+  .object({
+    from: isoDaySchema,
+    to: isoDaySchema,
+    table: shadowTableSchema.optional(),
+  })
+  .refine((q) => q.from <= q.to, {
+    message: 'La date de début doit précéder la date de fin.',
     path: ['to'],
-  });
+  })
+  .refine(
+    (q) =>
+      Date.parse(q.to) - Date.parse(q.from) <=
+      SHADOW_WINDOW_MAX_DAYS * 86_400_000,
+    {
+      message: `Fenêtre de ${SHADOW_WINDOW_MAX_DAYS} jours au plus.`,
+      path: ['to'],
+    },
+  );
 export type ShadowComparisonQuery = z.infer<typeof shadowComparisonQuerySchema>;
 
 export const shadowDayRowSchema = z.object({
@@ -45,6 +69,8 @@ export const shadowComparisonSchema = z.object({
   snapshot_at: isoDateTimeSchema.nullable(),
   from: isoDaySchema,
   to: isoDaySchema,
-  rows: z.array(shadowDayRowSchema).max(SHADOW_TABLES.length * (SHADOW_WINDOW_MAX_DAYS + 1)),
+  rows: z
+    .array(shadowDayRowSchema)
+    .max(SHADOW_TABLES.length * (SHADOW_WINDOW_MAX_DAYS + 1)),
 });
 export type ShadowComparison = z.infer<typeof shadowComparisonSchema>;

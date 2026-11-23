@@ -95,4 +95,12 @@ describe('requestJson', () => {
     });
     expect(response).toEqual({ status: 400, body: { errorCode: 'NO_ROUTES_FOUND' } });
   });
+
+  it('UpstreamError levée par un fetch injecté (refus sans requête) : conservée telle quelle', async () => {
+    const error = await failure(async () => {
+      throw new UpstreamError('dexscreener', 'circuit_open');
+    });
+    expect(error).toMatchObject({ source: 'dexscreener', kind: 'circuit_open' });
+    expect(error.cause).toBeUndefined();
+  });
 });
