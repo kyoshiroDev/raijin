@@ -48,7 +48,10 @@
       "@raijin/api-admin": ["./libs/api/admin/src/index.ts"],
       "@raijin/api-analytics": ["./libs/api/analytics/src/index.ts"],
       "@raijin/web-feature-admin": ["./libs/web/feature-admin/src/index.ts"],
-      "@raijin/bench-verdicts": ["./libs/bench/verdicts/src/index.ts"]
+      "@raijin/bench-verdicts": ["./libs/bench/verdicts/src/index.ts"],
+      "@raijin/bench-contracts": ["./libs/bench/contracts/src/index.ts"],
+      "@raijin/server-push": ["./libs/server/push/src/index.ts"],
+      "@raijin/server-security": ["./libs/server/security/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

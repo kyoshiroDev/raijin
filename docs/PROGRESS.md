@@ -262,6 +262,7 @@
 - Décisions : voir « Décisions d'architecture » ci-dessus ; liste « mort, non porté » à compléter par T1.
 
 - [x] T1 inventaire (bench-quant) : docs/BENCH.md — 7 Edge Functions et 12 jobs pg_cron portés (BullMQ), 31 tables (21 portées, 10 abandonnées), 28 fonctions SQL + 9 déclencheurs, 35 policies RLS → garde applicative, 8 RPC → endpoints, Realtime → SSE `tokens`/`paper`, 2 secrets Vault inutiles, 13 fichiers du front sur supabase-js.
+- [x] T2 structure Nx (architect) : apps/raijin-banc-de-test-api (squelette, /api/health), libs/bench/contracts (13 modules Zod), libs/server/push et libs/server/security (vides, scope:server), règle de frontières `scope:server`, ARCHITECTURE.md §17. Libs bench-prisma/core/collect/trading/quality/data-access créées par T5–T8. Lint des 35 projets vert.
 - Décisions de l'orchestrateur (points P1–P10 de BENCH.md §9) :
   - P1 : wallet-study plafonné par jour (`BENCH_WALLET_STUDY_DAILY_CREDITS`, défaut 2000, dans le budget banc de 10 000/jour) ; si `getTransactionsForAddress` n'est pas disponible sur l'offre Helius, wallet-study est désactivé proprement (« À brancher »).
   - P2–P5 : propositions retenues (user_id fixé au propriétaire, schéma `archive` à import optionnel, déclencheurs en SQL brut dans les migrations Prisma).

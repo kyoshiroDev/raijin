@@ -1585,3 +1585,82 @@ Préparée maintenant en code pur et testé dans `libs/bench/verdicts` (`@raijin
   < 768 px, tableau au-delà. Badge « BANC DE TEST », pas de mascotte, thème du banc.
 - Données : **simulées** (`simulation.ts` de la lib, jeu déterministe à graine, bandeau « Données simulées »)
   tant que l'API du banc n'existe pas ; un port `VerdictQualitySource` est remplacé par le client HTTP en 8 bis.
+
+## 17. Banc sur le VPS (phase 8 bis)
+
+Portage de Raijin-banc-de-test (Supabase + Vercel) sur le VPS : API NestJS `apps/raijin-banc-de-test-api`,
+base `raijin_bench`, BullMQ préfixé `raijin-bench`, front `apps/raijin-banc-de-test` branché sur l'API.
+Inventaire de l'existant et équivalents cibles : `docs/BENCH.md` (T1). Aucune écriture sur Supabase ni
+Vercel par un agent ; migration et bascule lancées par l'utilisateur.
+
+### 17.1 Scopes et frontières
+| Tag | Projets | Peut dépendre de |
+|---|---|---|
+| `scope:bench` | `raijin-banc-de-test`, `raijin-banc-de-test-api`, `libs/bench/*` | `bench`, `server`, `solana`, `shared` |
+| `scope:server` | `libs/server/push` (`@raijin/server-push`), `libs/server/security` (`@raijin/server-security`) | `server`, `shared` |
+| `scope:api` | `api`, `libs/api/*` | `api`, `server`, `solana`, `shared` |
+
+- `scope:server` : briques Node **sans métier** partagées par les deux API (envoi web-push VAPID ;
+  argon2id, TOTP, codes de secours, secret-box). Elles ne lisent aucune variable d'environnement : clés,
+  paires VAPID et paramètres sont passés par l'application appelante (paires et secrets distincts par API).
+  Le code est extrait de `libs/api/notifications` et `libs/api/auth` en T3 ; un éventuel `server-http`
+  (filtre d'erreur, pipe Zod, CSRF, cookies) ne sera créé que si l'extraction depuis `api-core` est sans métier.
+- Inchangé : aucun projet Raijin (`web`, `api`, `landing`, `shared`, `solana`, `server`) ne dépend de
+  `scope:bench` ; `scope:bench` ne dépend jamais de `scope:api`. Règle dans `eslint.config.mjs`
+  (`@nx/enforce-module-boundaries`), vérifiée par sondes temporaires et par `nx graph`.
+
+### 17.2 Projets
+- `apps/raijin-banc-de-test-api` (`scope:bench`, `type:app`, `@nx/nest`) : app **fine** (bootstrap, `main.ts`,
+  `cli.ts` en T6) ; le métier vit dans les libs. Port `API_PORT` (3000 dans le conteneur `raijin-bench-api`).
+- `libs/bench/contracts` (`@raijin/bench-contracts`, `type:contracts`) : contrats Zod du banc (§17.3).
+- À créer par leurs agents (T5–T8) : `bench-prisma` (data-access, schéma et client séparés de `api-prisma`),
+  `bench-core` (config, auth, jobs, SSE), `bench-collect`, `bench-trading`, `bench-quality`,
+  `bench-data-access` (client Angular). `bench-verdicts` (§16) reste du code pur.
+
+### 17.3 Contrats (`@raijin/bench-contracts`)
+- Propres au banc, donc hors `shared-contracts` ; ils réutilisent les schémas partagés (`mintAddressSchema`,
+  `emailSchema`, `currentPasswordSchema`, `totpCodeSchema`, `pushSubscriptionRequestSchema`) et les seuils de
+  stockage de `bench-verdicts`. Types par `z.infer` uniquement : le front et l'API du banc n'en dupliquent aucun.
+- Format : noms de colonnes `snake_case` identiques aux tables Supabase portées (les parseurs et libellés du
+  front restent valables), dates ISO 8601, `numeric` sérialisé en `number` fini. Textes externes bornés et
+  nettoyés à l'affichage.
+- Modules : `common` (préfixe `/api`, erreurs `{ code, message }`, listes `{ items, truncated }`), `mode`
+  (`shadow` | `primary`), `auth`, `jobs` (`job_runs`, statut `running|success|failed|skipped`, erreur ≤ 500
+  caractères sans secret), `tokens` (tokens, briefs, snapshots, taux `scan_runs`), `alerts` (journal, réglages,
+  push de test), `paper` (carnets, positions + jambes, ouverture / annulation / remise à zéro, ex-RPC
+  `paper_*`), `performance` (ex-RPC `performance_by_preset`, `paper_book_comparison`, `performance_breakdown`),
+  `lab` (runs et résultats de backtest, ex-`backfill_progress` et `backtest_request_run`), `shadow`
+  (comparaison), `health` (liveness publique derrière basicAuth, statut authentifié, stockage), `sse`
+  (événements), `routes` (table unique `BENCH_ROUTES` partagée par le contrôleur et le client).
+- Les contrats suivent l'inventaire de T1 : une table, vue ou RPC « morte, non portée » dans `docs/BENCH.md`
+  n'a pas d'endpoint ; une entrée portée absente d'ici est ajoutée avant T6.
+
+### 17.4 SSE (remplace Supabase Realtime)
+- `GET /api/events`, authentifié, `text/event-stream` ; `event: <type>` + `data: <JSON>` (`benchEventSchema`,
+  union discriminée sur `type`) : `heartbeat` (25 s), `token.upsert` / `token.delete` (ex-canal `tokens-live`),
+  `paper.changed` (ex-`paper-positions-live`, le front recharge), `job.finished`, `backtest.progress`.
+- Pas de rejeu : après reconnexion (`EventSource`), le front recharge ses listes. Traefik : ni compression ni
+  tampon sur ce chemin (T10).
+
+### 17.5 Helius et Redis
+- `api-solana` instancié par le banc avec ses propres paramètres (`BENCH_HELIUS_API_KEY`, 3 req/s RPC,
+  0,5 req/s DAS, 10 000 crédits/jour, compteurs `raijin-bench:`), sans jamais lire `HELIUS_API_KEY` (T4).
+- Redis : ACL par application, `raijin-api` limité à `~raijin:*`, `raijin-bench` à `~raijin-bench:*`,
+  `default` désactivé (T10) ; toutes les clés de l'API Raijin passent sous `raijin:` (T3).
+
+### 17.6 Mode ombre
+- `BENCH_MODE=shadow` : collecte et jobs actifs, **aucune notification** (push, e-mail), pas d'ouverture
+  automatique de positions paper (`BENCH_SHADOW_MODE`). `primary` après bascule.
+- Comparaison sans accès Supabase depuis l'API : `infra/bench-migrate.sh --shadow-snapshot --since <date>`
+  (utilisateur, `pg_dump` en lecture) copie la fenêtre dans le schéma `shadow_ref` ; `GET /api/shadow/comparison`
+  confronte `public` et `shadow_ref` par table et par jour (écart en %, mints d'un seul côté), 31 jours au plus.
+
+### 17.7 Authentification du banc
+- Un seul compte (`BENCH_OWNER_EMAIL`) ; ni inscription ni réinitialisation par e-mail. Mot de passe argon2id
+  et TOTP posés par CLI dans le conteneur (`set-password`, `enroll-totp`, `reset-totp`, lancés par l'utilisateur).
+- Connexion en une étape (`email`, `password`, `totp`) : une seule erreur `AUTH_INVALID_CREDENTIALS`, throttler
+  renforcé. Session httpOnly courte (2 h d'inactivité, 12 h au plus), CSRF double-submit (`X-CSRF-Token`).
+- Cookies `__Host-rjb_session` / `__Host-rjb_csrf` (sans préfixe en HTTP local), distincts de ceux de Raijin
+  (`rj_*`), secrets de signature distincts : un cookie ou jeton Raijin, même admin, vaut 401 côté banc.
+- Double verrou : basicAuth Traefik en amont, puis cette auth applicative sur toute route sauf `health` et
+  `auth/login`.
