@@ -1,6 +1,41 @@
 import { createECDH, randomBytes } from 'node:crypto';
 import * as z from 'zod';
+import { PUBLIC_PLAN_CATALOG } from '@raijin/shared-contracts';
 import { parseDuration } from './duration';
+
+/**
+ * Défauts des prix et quotas publics : **une seule source**, le catalogue affiché par la landing
+ * (`PUBLIC_PLAN_CATALOG`, docs/ARCHITECTURE.md §15.2). Une variable d'environnement peut s'en écarter ; en production,
+ * l'écart est journalisé au démarrage (`catalogDriftWarnings`).
+ */
+const CATALOG = PUBLIC_PLAN_CATALOG;
+/** Plafonds d'analyses du catalogue (`null` = illimité, refusé pour ces plans : repli sur 1). */
+const CATALOG_FREE_ANALYSES = CATALOG.free.entitlements.analysesPerDay ?? 1;
+const CATALOG_TRIAL_ANALYSES = CATALOG.trial.entitlements.analysesPerDay ?? 1;
+
+/** Variables de `loadConfig` dont la valeur par défaut vient du catalogue public. */
+export const CATALOG_DEFAULTS: Readonly<Record<string, number>> = {
+  ANON_ANALYSIS_DAILY_LIMIT: CATALOG.anonAnalysesPerDay,
+  FREE_ANALYSIS_DAILY_LIMIT: CATALOG_FREE_ANALYSES,
+  TRIAL_ANALYSIS_DAILY_LIMIT: CATALOG_TRIAL_ANALYSES,
+  FREE_WATCH_LIMIT: CATALOG.free.entitlements.maxActiveWatches,
+  PRO_WATCH_LIMIT: CATALOG.pro.entitlements.maxActiveWatches,
+  FREE_ALERT_HISTORY_DAYS: CATALOG.free.entitlements.alertHistoryDays,
+  PRO_ALERT_HISTORY_DAYS: CATALOG.pro.entitlements.alertHistoryDays,
+  WALLET_SCAN_DAILY_LIMIT_PRO: CATALOG.pro.entitlements.walletScansPerDay,
+  WALLET_SCAN_DAILY_LIMIT_TRIAL: CATALOG.trial.entitlements.walletScansPerDay,
+  TRIAL_DAYS: CATALOG.trial.days,
+};
+
+/**
+ * Variables qui s'écartent du catalogue public (valeur effective ≠ défaut) : noms seulement, jamais la valeur.
+ * Partagée avec `api-billing` (prix).
+ */
+export function catalogDriftWarnings(effective: Readonly<Record<string, number | string>>, defaults: Readonly<Record<string, number | string>>): string[] {
+  return Object.keys(defaults)
+    .filter((name) => effective[name] !== undefined && effective[name] !== defaults[name])
+    .map((name) => `${name} diffère du catalogue public (PUBLIC_PLAN_CATALOG) : la landing affiche une autre valeur (à aligner, puis reconstruire API et landing).`);
+}
 
 /** Configuration typée de l'API, construite une seule fois au démarrage depuis `process.env`. */
 export interface AppConfig {
@@ -231,9 +266,9 @@ const envSchema = z.object({
   RATE_LIMIT_ANALYSIS_PER_MINUTE: z.coerce.number().int().min(1).optional(),
   RATE_LIMIT_WALLET_SCAN_PER_MINUTE: z.coerce.number().int().min(1).max(600).optional(),
   IP_HASH_SECRET: optionalString,
-  ANON_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(3),
-  FREE_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(5),
-  TRIAL_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(50),
+  ANON_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(CATALOG.anonAnalysesPerDay),
+  FREE_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(CATALOG_FREE_ANALYSES),
+  TRIAL_ANALYSIS_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(CATALOG_TRIAL_ANALYSES),
   ANALYSIS_FAILED_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(20),
   ANALYSIS_UPSTREAM_FAILED_DAILY_LIMIT: z.coerce.number().int().min(0).max(10_000).default(10),
   ANALYSIS_CACHE_TTL_S: z.coerce.number().int().min(5).max(3_600).default(60),
@@ -255,10 +290,10 @@ const envSchema = z.object({
   JOBS_ENABLED: optionalString,
   BULLMQ_PREFIX: z.string().trim().regex(/^[a-z0-9-]{1,32}$/).default('raijin'),
   JOBS_TEST_TRIGGER: optionalString,
-  FREE_WATCH_LIMIT: z.coerce.number().int().min(0).max(1_000).default(3),
-  PRO_WATCH_LIMIT: z.coerce.number().int().min(1).max(1_000).default(50),
-  FREE_ALERT_HISTORY_DAYS: z.coerce.number().int().min(1).max(366).default(30),
-  PRO_ALERT_HISTORY_DAYS: z.coerce.number().int().min(1).max(366).default(90),
+  FREE_WATCH_LIMIT: z.coerce.number().int().min(0).max(1_000).default(CATALOG.free.entitlements.maxActiveWatches),
+  PRO_WATCH_LIMIT: z.coerce.number().int().min(1).max(1_000).default(CATALOG.pro.entitlements.maxActiveWatches),
+  FREE_ALERT_HISTORY_DAYS: z.coerce.number().int().min(1).max(366).default(CATALOG.free.entitlements.alertHistoryDays),
+  PRO_ALERT_HISTORY_DAYS: z.coerce.number().int().min(1).max(366).default(CATALOG.pro.entitlements.alertHistoryDays),
   WATCH_TICK_SECONDS: z.coerce.number().int().min(5).max(3_600).default(60),
   WATCH_FAST_INTERVAL_MIN: z.coerce.number().int().min(1).max(1_440).default(5),
   WATCH_HOLDERS_INTERVAL_MIN: z.coerce.number().int().min(1).max(10_080).default(30),
@@ -266,8 +301,8 @@ const envSchema = z.object({
   WATCH_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(12_000),
   HELIUS_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(22_000),
   // Scan de wallet (docs/ENV.md, docs/ARCHITECTURE.md §12).
-  WALLET_SCAN_DAILY_LIMIT_PRO: z.coerce.number().int().min(1).max(10_000).default(20),
-  WALLET_SCAN_DAILY_LIMIT_TRIAL: z.coerce.number().int().min(1).max(10_000).default(10),
+  WALLET_SCAN_DAILY_LIMIT_PRO: z.coerce.number().int().min(1).max(10_000).default(CATALOG.pro.entitlements.walletScansPerDay),
+  WALLET_SCAN_DAILY_LIMIT_TRIAL: z.coerce.number().int().min(1).max(10_000).default(CATALOG.trial.entitlements.walletScansPerDay),
   WALLET_DAILY_CREDIT_BUDGET: z.coerce.number().int().min(0).max(10_000_000).default(3_000),
   WALLET_SCAN_MAX_TOKENS: z.coerce.number().int().min(1).max(100).default(20),
   WALLET_SCAN_MAX_TOKENS_NO_KEY: z.coerce.number().int().min(1).max(100).default(8),
@@ -283,7 +318,7 @@ const envSchema = z.object({
   ALERT_EMAIL_BATCH_DELAY_S: z.coerce.number().int().min(0).max(3_600).default(120),
   ALERT_EMAIL_DAILY_MAX: z.coerce.number().int().min(0).max(500).default(20),
   RETENTION_DAYS: z.coerce.number().int().min(7).max(3_650).default(90),
-  TRIAL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  TRIAL_DAYS: z.coerce.number().int().min(1).max(30).default(CATALOG.trial.days),
   TRIAL_JOB_CRON: z
     .string()
     .trim()
@@ -525,6 +560,11 @@ export function loadConfig(
   if (isProduction && e.ANALYTICS_PROVIDER === 'fake') problems.push('ANALYTICS_PROVIDER : fake interdit en production (données simulées)');
   // Vide = google si le JSON est fourni, sinon « Non connecté » ; google sans JSON = « Non connecté ».
   const analyticsProvider: 'google' | 'fake' | 'none' = e.ANALYTICS_PROVIDER === 'fake' ? 'fake' : serviceAccountJson ? 'google' : 'none';
+
+  // Landing désalignée : avertissement en production seulement (le démarrage n'est jamais refusé pour ça).
+  if (isProduction) {
+    for (const message of catalogDriftWarnings(e as unknown as Record<string, number>, CATALOG_DEFAULTS)) warn(message);
+  }
 
   const config: AppConfig = {
     env: e.NODE_ENV,

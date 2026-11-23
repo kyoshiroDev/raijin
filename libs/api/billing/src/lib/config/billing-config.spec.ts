@@ -1,4 +1,5 @@
 import { ConfigError } from '@raijin/api-core';
+import { PUBLIC_PLAN_CATALOG } from '@raijin/shared-contracts';
 import { loadBillingConfig, stripeConfigured } from './billing-config';
 
 const DEV = { isProduction: false, appUrl: 'http://localhost:4200' };
@@ -80,5 +81,32 @@ describe('loadBillingConfig', () => {
   it('options : configuration du portail, limite par minute (vide = 10)', () => {
     expect(loadBillingConfig({ STRIPE_PORTAL_CONFIGURATION_ID: 'bpc_1abcdefg', RATE_LIMIT_BILLING_PER_MINUTE: '3' }, DEV)).toMatchObject({ portalConfigurationId: 'bpc_1abcdefg', perMinute: 3 });
     expect(loadBillingConfig({ RATE_LIMIT_BILLING_PER_MINUTE: '' }, DEV).perMinute).toBe(10);
+  });
+});
+
+describe('loadBillingConfig — prix du catalogue public (phase 7, §15.2)', () => {
+  it('prix et devise par défaut = PUBLIC_PLAN_CATALOG (une seule source)', () => {
+    const config = loadBillingConfig({}, DEV);
+    expect(config.prices).toMatchObject({
+      monthlyCents: PUBLIC_PLAN_CATALOG.pro.monthly.amountCents,
+      yearlyCents: PUBLIC_PLAN_CATALOG.pro.yearly.amountCents,
+      currency: PUBLIC_PLAN_CATALOG.pro.monthly.currency,
+    });
+  });
+
+  it('production : un prix différent du catalogue est journalisé (nom seulement), sans refuser de démarrer', () => {
+    const warn = jest.fn();
+    const config = loadBillingConfig({ ...STRIPE, PRO_PRICE_MONTHLY_CENTS: '1290' }, PROD, warn);
+    expect(config.prices.monthlyCents).toBe(1290);
+    const drift = warn.mock.calls.map((call) => String(call[0])).filter((message) => message.includes('catalogue'));
+    expect(drift).toEqual([expect.stringContaining('PRO_PRICE_MONTHLY_CENTS')]);
+    expect(drift.join(' ')).not.toContain('1290');
+    const aligned = jest.fn();
+    loadBillingConfig(STRIPE, PROD, aligned);
+    expect(aligned.mock.calls.some((call) => String(call[0]).includes('catalogue'))).toBe(false);
+    // Hors production : aucun avertissement d'écart.
+    const dev = jest.fn();
+    loadBillingConfig({ PRO_PRICE_MONTHLY_CENTS: '1290' }, DEV, dev);
+    expect(dev.mock.calls.some((call) => String(call[0]).includes('catalogue'))).toBe(false);
   });
 });

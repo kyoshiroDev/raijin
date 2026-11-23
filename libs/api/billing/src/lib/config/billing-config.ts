@@ -1,6 +1,14 @@
 import { randomBytes } from 'node:crypto';
-import { ConfigError, type AppConfig } from '@raijin/api-core';
+import { catalogDriftWarnings, ConfigError, type AppConfig } from '@raijin/api-core';
+import { PUBLIC_PLAN_CATALOG } from '@raijin/shared-contracts';
 import * as z from 'zod';
+
+/** Prix publics par défaut : catalogue affiché par la landing (docs/ARCHITECTURE.md §15.2), une seule source. */
+export const CATALOG_PRICES = {
+  PRO_PRICE_MONTHLY_CENTS: PUBLIC_PLAN_CATALOG.pro.monthly.amountCents,
+  PRO_PRICE_YEARLY_CENTS: PUBLIC_PLAN_CATALOG.pro.yearly.amountCents,
+  BILLING_CURRENCY: PUBLIC_PLAN_CATALOG.pro.monthly.currency,
+} as const;
 
 /**
  * Configuration de l'abonnement (bloc « Stripe » de docs/ENV.md, docs/ARCHITECTURE.md §13.8), lue une fois au
@@ -52,13 +60,13 @@ const billingEnvSchema = z.object({
   STRIPE_PRICE_PRO_MONTHLY: optional,
   STRIPE_PRICE_PRO_YEARLY: optional,
   STRIPE_PORTAL_CONFIGURATION_ID: optional,
-  PRO_PRICE_MONTHLY_CENTS: z.coerce.number().int().min(50).max(1_000_000).default(990),
-  PRO_PRICE_YEARLY_CENTS: z.coerce.number().int().min(50).max(10_000_000).default(9900),
+  PRO_PRICE_MONTHLY_CENTS: z.coerce.number().int().min(50).max(1_000_000).default(CATALOG_PRICES.PRO_PRICE_MONTHLY_CENTS),
+  PRO_PRICE_YEARLY_CENTS: z.coerce.number().int().min(50).max(10_000_000).default(CATALOG_PRICES.PRO_PRICE_YEARLY_CENTS),
   BILLING_CURRENCY: z
     .string()
     .trim()
     .regex(/^[A-Za-z]{3}$/, { message: 'code ISO 4217 attendu (ex. EUR)' })
-    .default('EUR')
+    .default(CATALOG_PRICES.BILLING_CURRENCY)
     .transform((value) => value.toUpperCase()),
   RATE_LIMIT_BILLING_PER_MINUTE: z.preprocess((value) => (value === '' ? undefined : value), z.coerce.number().int().min(1).max(600).optional()),
 });
@@ -108,6 +116,10 @@ export function loadBillingConfig(
   const yearlyId = real(e.STRIPE_PRICE_PRO_YEARLY, PRICE_ID);
   if (monthlyId && monthlyId === yearlyId) problems.push('STRIPE_PRICE_PRO_MONTHLY / STRIPE_PRICE_PRO_YEARLY : deux prix distincts attendus');
   if (e.PRO_PRICE_YEARLY_CENTS <= e.PRO_PRICE_MONTHLY_CENTS) problems.push('PRO_PRICE_YEARLY_CENTS : doit dépasser PRO_PRICE_MONTHLY_CENTS');
+  // Landing désalignée (prix affichés au build) : avertissement en production, jamais de refus de démarrer.
+  if (app.isProduction) {
+    for (const message of catalogDriftWarnings(e as unknown as Record<string, number | string>, CATALOG_PRICES)) warn(message);
+  }
 
   if (provider === 'fake') {
     if (!webhookSecret) {

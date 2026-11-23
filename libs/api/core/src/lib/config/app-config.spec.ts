@@ -1,3 +1,5 @@
+import { PUBLIC_PLAN_CATALOG } from '@raijin/shared-contracts';
+import { planPolicyLimits } from '../plan/plan-policy';
 import { ConfigError, generateVapidKeys, loadConfig } from './app-config';
 import { parseDuration } from './duration';
 
@@ -275,5 +277,48 @@ describe('loadConfig — espace admin (phase 6 bis)', () => {
     expect(google.analytics).toMatchObject({ provider: 'google', ga4PropertyId: '123456', searchConsoleSiteUrl: 'sc-domain:raijinshield.com' });
     expect(() => loadConfig({ NODE_ENV: 'test', GA4_PROPERTY_ID: 'G-ABC' })).toThrow(/GA4_PROPERTY_ID/);
     expect(loadConfig({ NODE_ENV: 'test', GA4_PROPERTY_ID: '', JUPITER_DAILY_CALL_BUDGET: '', RUGCHECK_DAILY_CALL_BUDGET: '500' }).admin).toMatchObject({ jupiterDailyCallBudget: null, rugcheckDailyCallBudget: 500 });
+  });
+});
+
+describe('loadConfig — quotas du catalogue public (phase 7, §15.2)', () => {
+  it('défauts = PUBLIC_PLAN_CATALOG (une seule source)', () => {
+    const config = loadConfig({ NODE_ENV: 'test' });
+    expect(config.analysis).toMatchObject({
+      anonDailyLimit: PUBLIC_PLAN_CATALOG.anonAnalysesPerDay,
+      freeDailyLimit: PUBLIC_PLAN_CATALOG.free.entitlements.analysesPerDay,
+      trialDailyLimit: PUBLIC_PLAN_CATALOG.trial.entitlements.analysesPerDay,
+    });
+    expect(config.watch).toMatchObject({
+      freeLimit: PUBLIC_PLAN_CATALOG.free.entitlements.maxActiveWatches,
+      proLimit: PUBLIC_PLAN_CATALOG.pro.entitlements.maxActiveWatches,
+      freeAlertHistoryDays: PUBLIC_PLAN_CATALOG.free.entitlements.alertHistoryDays,
+      proAlertHistoryDays: PUBLIC_PLAN_CATALOG.pro.entitlements.alertHistoryDays,
+    });
+    expect(config.wallet).toMatchObject({
+      dailyLimitPro: PUBLIC_PLAN_CATALOG.pro.entitlements.walletScansPerDay,
+      dailyLimitTrial: PUBLIC_PLAN_CATALOG.trial.entitlements.walletScansPerDay,
+    });
+    expect(config.trial.days).toBe(PUBLIC_PLAN_CATALOG.trial.days);
+    // Les droits calculés (essai, Gratuit, Pro) correspondent donc à ceux affichés par la landing.
+    const limits = planPolicyLimits(config);
+    expect(limits.free).toEqual(PUBLIC_PLAN_CATALOG.free.entitlements);
+    expect(limits.trial).toEqual(PUBLIC_PLAN_CATALOG.trial.entitlements);
+    expect(limits.subscription).toEqual(PUBLIC_PLAN_CATALOG.pro.entitlements);
+  });
+
+  it('production : variable différente du catalogue → avertissement (nom seulement), démarrage maintenu', () => {
+    const warnings: string[] = [];
+    const config = loadConfig({ ...prodEnv, FREE_WATCH_LIMIT: '5', TRIAL_DAYS: '14' }, (message) => warnings.push(message));
+    expect(config.watch.freeLimit).toBe(5);
+    const drift = warnings.filter((message) => message.includes('catalogue'));
+    expect(drift).toHaveLength(2);
+    expect(drift.join(' ')).toMatch(/FREE_WATCH_LIMIT[\s\S]*TRIAL_DAYS/);
+    expect(drift.join(' ')).not.toMatch(/\b(5|14)\b/);
+    const aligned: string[] = [];
+    loadConfig(prodEnv, (message) => aligned.push(message));
+    expect(aligned.filter((message) => message.includes('catalogue'))).toEqual([]);
+    const dev: string[] = [];
+    loadConfig({ NODE_ENV: 'development', FREE_WATCH_LIMIT: '5' }, (message) => dev.push(message));
+    expect(dev.filter((message) => message.includes('catalogue'))).toEqual([]);
   });
 });
