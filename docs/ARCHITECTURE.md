@@ -427,8 +427,11 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
 | Postgres / Redis | `localhost:5433` / `localhost:6380` | réseau interne Docker |
 
 - En dev, le front appelle `API_BASE_URL = '/api/v1'` (relatif) : `apps/web/proxy.conf.json` relaie
-  vers l'API, donc pas de CORS ni de cookie inter-origines en local. En prod, `API_BASE_URL` vaut
-  `https://api.raijinshield.com/api/v1` et les requêtes partent avec `withCredentials: true`.
+  vers l'API, donc pas de CORS ni de cookie inter-origines en local. **En prod aussi (décision phase 8)** :
+  `API_BASE_URL` reste `/api/v1` (relatif) et Traefik route `app.raijinshield.com/api/*` directement vers
+  `raijin-api` (un seul proxy, `TRUST_PROXY=1` exact), ainsi que `app.raijinshield.com/t/*` réécrit en
+  `/api/v1/share/t/*` (§9.7). Cookies liés à l'hôte de l'app, `CORS_ORIGINS=https://app.raijinshield.com`.
+  `api.raijinshield.com` reste servi (webhook Stripe, images OG, santé). Voir `infra/docker-compose.yml`.
 - `*.localhost` (`app.localhost`, `api.localhost`) reste possible pour reproduire le schéma
   inter-origines de la prod, mais n'est pas la configuration par défaut (pas de `Domain` sur les
   cookies, donc rien à changer côté API).

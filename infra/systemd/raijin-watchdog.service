@@ -1,0 +1,15 @@
+# Veille des services Raijin (infra/watchdog.sh) : alerte e-mail (Resend) + push admin. Installation : docs/DEPLOY.md A11.
+[Unit]
+Description=Raijin - veille des healthchecks
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=docker
+WorkingDirectory=/opt/raijin
+StateDirectory=raijin-watchdog
+Environment=WATCHDOG_STATE_DIR=/var/lib/raijin-watchdog
+ExecStart=/opt/raijin/infra/watchdog.sh
+TimeoutStartSec=2min

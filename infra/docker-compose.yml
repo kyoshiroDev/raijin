@@ -1,0 +1,502 @@
+# =====================================================================================================
+# Raijin Shield — production sur le VPS (projet Compose « raijin », PROMPT.md §7, docs/DEPLOY.md).
+#
+# Lancé UNIQUEMENT par l'utilisateur, via infra/deploy.sh (jamais par un agent) :
+#   docker compose --env-file infra/.env -f infra/docker-compose.yml -p raijin …
+#
+# Cohabitation avec MyTradingCoach / XMR Trader : Raijin ne publie AUCUN port sur l'hôte (pas de 80/443),
+# ne lance pas de second reverse proxy et ne touche à aucun conteneur, volume ou réseau existant. Il rejoint
+# seulement le réseau EXTERNE du Traefik déjà en place (nom dans TRAEFIK_NETWORK) et s'y déclare par labels.
+# Tous les noms (conteneurs, routeurs, middlewares, volumes, réseaux) commencent par « raijin- ».
+#
+# Fichiers de variables (jamais commités, ignorés par .gitignore) :
+#   infra/.env      → interpolation de ce fichier : domaines, Traefik, mots de passe Postgres/Redis, basicAuth,
+#                     variables publiques du build de la landing (docs/ENV.md, bloc « Production (VPS) »).
+#   infra/.env.api  → variables applicatives de raijin-api (docs/ENV.md, blocs applicatifs).
+# Les valeurs qui doivent être justes en production sont IMPOSÉES ci-dessous (environment l'emporte sur
+# env_file) : NODE_ENV, API_PORT, DATABASE_URL, REDIS_URL, TRUST_PROXY, COOKIE_SECURE, URLs, CORS.
+#
+# Profils : (aucun) = Raijin ; « bench » = banc de test (phase 8 bis) ; « tools » = migrations Prisma.
+# Mots de passe Postgres/Redis : hexadécimaux (openssl rand -hex 32), insérés tels quels dans des URL.
+# =====================================================================================================
+name: raijin
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  init: true
+
+x-build: &build
+  context: ..
+  dockerfile: infra/docker/Dockerfile
+
+services:
+  # ---------------------------------------------------------------------------------------------------
+  # Base de données : bases « raijin » et « raijin_bench », un utilisateur chacune, aucun droit croisé
+  # (infra/postgres/init/10-raijin-databases.sh). Superutilisateur « postgres » réservé à l'administration
+  # (sauvegardes, restauration). Réseau interne seulement : jamais exposé.
+  # ---------------------------------------------------------------------------------------------------
+  raijin-postgres:
+    image: postgres:17.12-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+    container_name: raijin-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD manquant (infra/.env)}
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256 --encoding=UTF8 --locale=C.UTF-8'
+      RAIJIN_DB_PASSWORD: ${RAIJIN_DB_PASSWORD:?RAIJIN_DB_PASSWORD manquant (infra/.env)}
+      BENCH_DB_PASSWORD: ${BENCH_DB_PASSWORD:?BENCH_DB_PASSWORD manquant (infra/.env)}
+    # Réglages pour ~512 Mo : la RAM du VPS est partagée avec MTC.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=60
+      - -c
+      - log_min_duration_statement=2000
+    volumes:
+      - raijin-pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    shm_size: 128m
+    networks:
+      - raijin-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres -q']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    pids_limit: 200
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  # ---------------------------------------------------------------------------------------------------
+  # Redis : rate limiting, caches (TTL) et files BullMQ. noeviction obligatoire (une clé de job évincée
+  # corromprait les files, docs/ARCHITECTURE.md §11.3). AOF pour ne pas perdre les jobs au redémarrage.
+  # Mot de passe écrit dans un fichier de configuration en mémoire (jamais sur la ligne de commande).
+  # ---------------------------------------------------------------------------------------------------
+  raijin-redis:
+    image: redis:8.10.3-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
+    container_name: raijin-redis
+    restart: unless-stopped
+    user: redis
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        umask 077 &&
+        printf 'requirepass %s\n' "$$REDIS_PASSWORD" > /tmp/redis.conf &&
+        exec redis-server /tmp/redis.conf
+        --appendonly yes --appendfsync everysec --save ''
+        --maxmemory 200mb --maxmemory-policy noeviction
+        --protected-mode yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD manquant (infra/.env)}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - raijin-redisdata:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,mode=0700,uid=999
+    networks:
+      - raijin-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    <<: *hardening
+    logging: *logging
+
+  # ---------------------------------------------------------------------------------------------------
+  # Migrations Prisma (profil « tools ») : lancé par deploy.sh AVANT de démarrer la nouvelle API.
+  #   docker compose … --profile tools run --rm raijin-migrate
+  # Réseau « egress » : la CLI Prisma télécharge son moteur de schéma à la première exécution.
+  # ---------------------------------------------------------------------------------------------------
+  raijin-migrate:
+    profiles: ['tools']
+    image: raijin/migrate:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: migrate
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://raijin:${RAIJIN_DB_PASSWORD}@raijin-postgres:5432/raijin?schema=public
+    networks:
+      - raijin-internal
+      - raijin-egress
+    depends_on:
+      raijin-postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  # ---------------------------------------------------------------------------------------------------
+  # API NestJS : api.raijinshield.com (webhook Stripe, images OG, santé) ET app.raijinshield.com/api/*
+  # (le front appelle « /api/v1 » en relatif : même origine, pas de CORS ni de cookie inter-domaines).
+  # /t/<mint> de l'app est réécrit vers /api/v1/share/t/<mint> (balises Open Graph, §9.7).
+  # Toutes les requêtes passent par UN seul proxy (Traefik) : TRUST_PROXY=1 est exact.
+  # ---------------------------------------------------------------------------------------------------
+  raijin-api:
+    image: raijin/api:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: api
+    container_name: raijin-api
+    restart: unless-stopped
+    env_file:
+      - path: .env.api
+        required: true
+    environment:
+      NODE_ENV: production
+      API_PORT: '3000'
+      NODE_OPTIONS: --max-old-space-size=384
+      APP_URL: https://${APP_DOMAIN:?APP_DOMAIN manquant}
+      LANDING_URL: https://${LANDING_DOMAIN:?LANDING_DOMAIN manquant}
+      API_URL: https://${API_DOMAIN:?API_DOMAIN manquant}
+      CORS_ORIGINS: https://${APP_DOMAIN}
+      DATABASE_URL: postgresql://raijin:${RAIJIN_DB_PASSWORD}@raijin-postgres:5432/raijin?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@raijin-redis:6379
+      BULLMQ_PREFIX: raijin
+      TRUST_PROXY: '1'
+      COOKIE_SECURE: 'true'
+      COOKIE_DOMAIN: ''
+      WEB_INDEX_HTML_PATH: /app/web/index.html
+      ANALYSIS_FIXTURES: '0'
+      JOBS_TEST_TRIGGER: '0'
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    networks:
+      - raijin-internal
+      - traefik
+    depends_on:
+      raijin-postgres:
+        condition: service_healthy
+      raijin-redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    pids_limit: 200
+    <<: *hardening
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK manquant}
+      - traefik.http.services.raijin-api.loadbalancer.server.port=3000
+      - traefik.http.services.raijin-api.loadbalancer.healthcheck.path=/api/v1/health
+      - traefik.http.services.raijin-api.loadbalancer.healthcheck.interval=30s
+      # api.raijinshield.com
+      - traefik.http.routers.raijin-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.raijin-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-api.tls=true
+      - traefik.http.routers.raijin-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:?TRAEFIK_CERTRESOLVER manquant}
+      - traefik.http.routers.raijin-api.service=raijin-api
+      - traefik.http.routers.raijin-api.middlewares=raijin-api-ratelimit,raijin-api-headers,raijin-api-compress
+      # app.raijinshield.com/api/* (priorité au-dessus du routeur du front)
+      - traefik.http.routers.raijin-app-api.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/api/`)
+      - traefik.http.routers.raijin-app-api.priority=100
+      - traefik.http.routers.raijin-app-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-app-api.tls=true
+      - traefik.http.routers.raijin-app-api.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-app-api.service=raijin-api
+      - traefik.http.routers.raijin-app-api.middlewares=raijin-api-ratelimit,raijin-api-headers,raijin-api-compress
+      # app.raijinshield.com/t/<mint> → /api/v1/share/t/<mint> (CSP posée par l'API, alignée sur celle de l'app)
+      - traefik.http.routers.raijin-app-share.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/t/`)
+      - traefik.http.routers.raijin-app-share.priority=100
+      - traefik.http.routers.raijin-app-share.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-app-share.tls=true
+      - traefik.http.routers.raijin-app-share.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-app-share.service=raijin-api
+      - traefik.http.routers.raijin-app-share.middlewares=raijin-api-ratelimit,raijin-share-errors,raijin-share-rewrite,raijin-share-headers,raijin-api-compress
+      - traefik.http.middlewares.raijin-share-rewrite.replacepathregex.regex=^/t/(.*)
+      - traefik.http.middlewares.raijin-share-rewrite.replacepathregex.replacement=/api/v1/share/t/$${1}
+      # API indisponible sur /t : page statique de maintenance servie par raijin-web
+      - traefik.http.middlewares.raijin-share-errors.errors.status=502-504
+      - traefik.http.middlewares.raijin-share-errors.errors.service=raijin-web
+      - traefik.http.middlewares.raijin-share-errors.errors.query=/maintenance-static.html
+      # Débit global par IP (l'API a en plus ses limites fines par route et par compte)
+      - traefik.http.middlewares.raijin-api-ratelimit.ratelimit.average=20
+      - traefik.http.middlewares.raijin-api-ratelimit.ratelimit.period=1s
+      - traefik.http.middlewares.raijin-api-ratelimit.ratelimit.burst=60
+      # En-têtes de l'API (Helmet pose déjà CSP default-src 'none', nosniff, Referrer-Policy no-referrer)
+      - traefik.http.middlewares.raijin-api-headers.headers.stsSeconds=63072000
+      - traefik.http.middlewares.raijin-api-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.raijin-api-headers.headers.stsPreload=true
+      - traefik.http.middlewares.raijin-api-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.raijin-api-headers.headers.frameDeny=true
+      - traefik.http.middlewares.raijin-api-headers.headers.customResponseHeaders.X-Robots-Tag=noindex, nofollow
+      - traefik.http.middlewares.raijin-api-headers.headers.customResponseHeaders.Server=
+      # En-têtes de /t (document HTML de l'app ; la CSP vient de l'API, sharePageCsp)
+      - traefik.http.middlewares.raijin-share-headers.headers.stsSeconds=63072000
+      - traefik.http.middlewares.raijin-share-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.raijin-share-headers.headers.stsPreload=true
+      - traefik.http.middlewares.raijin-share-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.raijin-share-headers.headers.frameDeny=true
+      - traefik.http.middlewares.raijin-share-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.raijin-share-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), payment=()
+      - traefik.http.middlewares.raijin-share-headers.headers.customResponseHeaders.Cross-Origin-Opener-Policy=same-origin
+      - traefik.http.middlewares.raijin-share-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.raijin-api-compress.compress=true
+      - traefik.http.middlewares.raijin-api-compress.compress.excludedcontenttypes=text/event-stream
+
+  # ---------------------------------------------------------------------------------------------------
+  # App Angular (fichiers statiques, nginx non root) : app.raijinshield.com
+  # style-src 'unsafe-inline' : Angular injecte les styles de composants dans des <style> à l'exécution
+  # (décision phase 8, PROGRESS.md) ; script-src reste strict ('self' seulement). img-src data: : QR de la 2FA.
+  # ---------------------------------------------------------------------------------------------------
+  raijin-web:
+    image: raijin/web:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: web
+    container_name: raijin-web
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid=101
+    networks:
+      - traefik
+    mem_limit: 48m
+    memswap_limit: 48m
+    cpus: 0.25
+    pids_limit: 50
+    <<: *hardening
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.services.raijin-web.loadbalancer.server.port=8080
+      - traefik.http.routers.raijin-web.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.raijin-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-web.tls=true
+      - traefik.http.routers.raijin-web.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-web.service=raijin-web
+      - traefik.http.routers.raijin-web.middlewares=raijin-web-headers,raijin-web-compress
+      - "traefik.http.middlewares.raijin-web-headers.headers.contentSecurityPolicy=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://${API_DOMAIN}; font-src 'self'; connect-src 'self' https://${API_DOMAIN}; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      - traefik.http.middlewares.raijin-web-headers.headers.stsSeconds=63072000
+      - traefik.http.middlewares.raijin-web-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.raijin-web-headers.headers.stsPreload=true
+      - traefik.http.middlewares.raijin-web-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.raijin-web-headers.headers.frameDeny=true
+      - traefik.http.middlewares.raijin-web-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.raijin-web-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), payment=()
+      - traefik.http.middlewares.raijin-web-headers.headers.customResponseHeaders.Cross-Origin-Opener-Policy=same-origin
+      - traefik.http.middlewares.raijin-web-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.raijin-web-compress.compress=true
+
+  # ---------------------------------------------------------------------------------------------------
+  # Landing Astro (fichiers statiques, nginx non root) : raijinshield.com ; www → 301 vers la racine.
+  # Variables publiques lues AU BUILD (args) : APP_URL, GA4_MEASUREMENT_ID, GOOGLE_SITE_VERIFICATION.
+  # ---------------------------------------------------------------------------------------------------
+  raijin-landing:
+    image: raijin/landing:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: landing
+      args:
+        APP_URL: https://${APP_DOMAIN}
+        GA4_MEASUREMENT_ID: ${GA4_MEASUREMENT_ID:-}
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
+    container_name: raijin-landing
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid=101
+    networks:
+      - traefik
+    mem_limit: 48m
+    memswap_limit: 48m
+    cpus: 0.25
+    pids_limit: 50
+    <<: *hardening
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.services.raijin-landing.loadbalancer.server.port=8080
+      - traefik.http.routers.raijin-landing.rule=Host(`${LANDING_DOMAIN}`)
+      - traefik.http.routers.raijin-landing.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-landing.tls=true
+      - traefik.http.routers.raijin-landing.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-landing.service=raijin-landing
+      - traefik.http.routers.raijin-landing.middlewares=raijin-landing-headers,raijin-landing-compress
+      # www.raijinshield.com → https://raijinshield.com (301, chemin et requête conservés)
+      - traefik.http.routers.raijin-www.rule=Host(`www.${LANDING_DOMAIN}`)
+      - traefik.http.routers.raijin-www.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-www.tls=true
+      - traefik.http.routers.raijin-www.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-www.service=raijin-landing
+      - traefik.http.routers.raijin-www.middlewares=raijin-www-redirect
+      - traefik.http.middlewares.raijin-www-redirect.redirectregex.regex=^https?://www\.([^/:]+)(?::\d+)?/(.*)$$
+      - traefik.http.middlewares.raijin-www-redirect.redirectregex.replacement=https://$${1}/$${2}
+      - traefik.http.middlewares.raijin-www-redirect.redirectregex.permanent=true
+      - "traefik.http.middlewares.raijin-landing-headers.headers.contentSecurityPolicy=default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; font-src 'self'; img-src 'self' data: https://*.google-analytics.com https://*.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://${APP_DOMAIN}; object-src 'none'"
+      - traefik.http.middlewares.raijin-landing-headers.headers.stsSeconds=63072000
+      - traefik.http.middlewares.raijin-landing-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.raijin-landing-headers.headers.stsPreload=true
+      - traefik.http.middlewares.raijin-landing-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.raijin-landing-headers.headers.frameDeny=true
+      - traefik.http.middlewares.raijin-landing-headers.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.raijin-landing-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), payment=()
+      - traefik.http.middlewares.raijin-landing-headers.headers.customResponseHeaders.Cross-Origin-Opener-Policy=same-origin
+      - traefik.http.middlewares.raijin-landing-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.raijin-landing-compress.compress=true
+
+  # ===================================================================================================
+  # Banc de test (profil « bench », phase 8 bis) : banc.raijinshield.com, double verrou (PROMPT.md §4.8) :
+  # basicAuth Traefik en amont (hash bcrypt dans BENCH_BASIC_AUTH_USERS) + auth propre de l'API du banc.
+  # NE PAS activer avant la phase 8 bis : apps/raijin-banc-de-test-api n'existe pas encore.
+  # ===================================================================================================
+  raijin-bench-api:
+    profiles: ['bench']
+    image: raijin/bench-api:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: bench-api
+    container_name: raijin-bench-api
+    restart: unless-stopped
+    env_file:
+      - path: .env.bench-api
+        required: false
+    environment:
+      NODE_ENV: production
+      API_PORT: '3000'
+      NODE_OPTIONS: --max-old-space-size=320
+      DATABASE_URL: postgresql://raijin_bench:${BENCH_DB_PASSWORD}@raijin-postgres:5432/raijin_bench?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@raijin-redis:6379
+      BULLMQ_PREFIX: raijin-bench
+      TRUST_PROXY: '1'
+      COOKIE_SECURE: 'true'
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    networks:
+      - raijin-internal
+      - traefik
+    depends_on:
+      raijin-postgres:
+        condition: service_healthy
+      raijin-redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.75
+    pids_limit: 200
+    <<: *hardening
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.services.raijin-bench-api.loadbalancer.server.port=3000
+      - traefik.http.routers.raijin-bench-api.rule=Host(`${BENCH_DOMAIN:-banc.raijinshield.com}`) && PathPrefix(`/api/`)
+      - traefik.http.routers.raijin-bench-api.priority=100
+      - traefik.http.routers.raijin-bench-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-bench-api.tls=true
+      - traefik.http.routers.raijin-bench-api.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-bench-api.service=raijin-bench-api
+      - traefik.http.routers.raijin-bench-api.middlewares=raijin-bench-auth,raijin-bench-api-ratelimit,raijin-bench-api-headers,raijin-bench-api-compress
+      - traefik.http.middlewares.raijin-bench-auth.basicauth.users=${BENCH_BASIC_AUTH_USERS:-}
+      - traefik.http.middlewares.raijin-bench-auth.basicauth.removeheader=true
+      - traefik.http.middlewares.raijin-bench-auth.basicauth.realm=Raijin-banc-de-test
+      - traefik.http.middlewares.raijin-bench-api-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.raijin-bench-api-ratelimit.ratelimit.period=1s
+      - traefik.http.middlewares.raijin-bench-api-ratelimit.ratelimit.burst=40
+      - traefik.http.middlewares.raijin-bench-api-headers.headers.stsSeconds=63072000
+      - traefik.http.middlewares.raijin-bench-api-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.raijin-bench-api-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.raijin-bench-api-headers.headers.frameDeny=true
+      - traefik.http.middlewares.raijin-bench-api-headers.headers.customResponseHeaders.X-Robots-Tag=noindex, nofollow
+      - traefik.http.middlewares.raijin-bench-api-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.raijin-bench-api-compress.compress=true
+      - traefik.http.middlewares.raijin-bench-api-compress.compress.excludedcontenttypes=text/event-stream
+
+  raijin-bench-web:
+    profiles: ['bench']
+    image: raijin/bench-web:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: bench-web
+    container_name: raijin-bench-web
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid=101
+    networks:
+      - traefik
+    mem_limit: 48m
+    memswap_limit: 48m
+    cpus: 0.25
+    pids_limit: 50
+    <<: *hardening
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.services.raijin-bench-web.loadbalancer.server.port=8080
+      - traefik.http.routers.raijin-bench-web.rule=Host(`${BENCH_DOMAIN:-banc.raijinshield.com}`)
+      - traefik.http.routers.raijin-bench-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-bench-web.tls=true
+      - traefik.http.routers.raijin-bench-web.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-bench-web.service=raijin-bench-web
+      - traefik.http.routers.raijin-bench-web.middlewares=raijin-bench-auth,raijin-bench-web-headers,raijin-bench-web-compress
+      - "traefik.http.middlewares.raijin-bench-web-headers.headers.contentSecurityPolicy=default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.stsSeconds=63072000
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.frameDeny=true
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.referrerPolicy=no-referrer
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), payment=()
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.customResponseHeaders.X-Robots-Tag=noindex, nofollow
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.customResponseHeaders.Cross-Origin-Opener-Policy=same-origin
+      - traefik.http.middlewares.raijin-bench-web-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.raijin-bench-web-compress.compress=true
+
+networks:
+  # Postgres et Redis : réseau interne Docker, sans accès extérieur ni port publié.
+  raijin-internal:
+    name: raijin-internal
+    internal: true
+  # Sortie Internet pour les conteneurs d'outillage (migrations Prisma) uniquement.
+  raijin-egress:
+    name: raijin-egress
+  # Réseau du Traefik existant (créé par MTC, jamais modifié ici) : nom vérifié par `docker network ls`.
+  traefik:
+    name: ${TRAEFIK_NETWORK}
+    external: true
+
+volumes:
+  raijin-pgdata:
+    name: raijin-pgdata
+  raijin-redisdata:
+    name: raijin-redisdata

@@ -408,3 +408,93 @@ SENTRY_ENVIRONMENT=development
 - L'état `configured` / `not_configured` des services (ex-`GET /api/v1/health/config`, public) n'est plus servi que
   par `GET /api/v1/admin/health` (champ `services`), sans aucune valeur (phase 6 bis, mineur M3).
 
+
+## Production (VPS) — phase 8
+
+Sur le VPS, **deux** fichiers, dans `infra/` du dépôt cloné (ignorés par Git, droits `chmod 600`) ; procédure
+complète dans `docs/DEPLOY.md`, partie A :
+
+| Fichier | Lu par | Contenu |
+|---|---|---|
+| `infra/.env` | `docker compose` (interpolation de `infra/docker-compose.yml`) et les scripts `infra/*.sh` | domaines, Traefik, mots de passe Postgres/Redis, basicAuth du banc, variables publiques du build de la landing, sauvegardes, veille |
+| `infra/.env.api` | conteneur `raijin-api` (`env_file`) | variables applicatives : blocs ci-dessus (secrets JWT, cookies, Resend, Stripe, Helius, VAPID, Google…) |
+| `infra/.env.bench-api` | conteneur `raijin-bench-api` (phase 8 bis) | variables du banc (à définir en 8 bis) |
+
+**Imposées par `infra/docker-compose.yml`** (inutile de les mettre dans `infra/.env.api`, elles seraient ignorées) :
+`NODE_ENV=production`, `API_PORT=3000`, `APP_URL`, `LANDING_URL`, `API_URL`, `CORS_ORIGINS` (calculées depuis les
+domaines), `DATABASE_URL`, `REDIS_URL`, `BULLMQ_PREFIX=raijin`, `TRUST_PROXY=1` (un seul proxy : Traefik),
+`COOKIE_SECURE=true`, `COOKIE_DOMAIN` vide, `WEB_INDEX_HTML_PATH=/app/web/index.html` (copié du build web du même
+commit), `ANALYSIS_FIXTURES=0`, `JOBS_TEST_TRIGGER=0`.
+
+Modèle de `infra/.env` (valeurs **factices**) :
+
+```dotenv
+# ---------------------------------------------------------------------
+# Traefik existant (NE PAS le modifier : on ne fait que s'y raccorder)
+# ---------------------------------------------------------------------
+# Nom exact du réseau Docker de Traefik : docker network ls (docs/DEPLOY.md A2)
+TRAEFIK_NETWORK=traefik_factice
+# Nom de l'entrypoint HTTPS de Traefik (souvent websecure) : docker inspect <conteneur traefik> (A2)
+TRAEFIK_ENTRYPOINT=websecure
+# Nom du certresolver Let's Encrypt déjà configuré (souvent letsencrypt ou le) (A2)
+TRAEFIK_CERTRESOLVER=letsencrypt
+
+# ---------------------------------------------------------------------
+# Domaines (OVH, enregistrements A/AAAA vers le VPS : docs/DEPLOY.md A3)
+# ---------------------------------------------------------------------
+LANDING_DOMAIN=raijinshield.com
+APP_DOMAIN=app.raijinshield.com
+API_DOMAIN=api.raijinshield.com
+BENCH_DOMAIN=banc.raijinshield.com
+
+# ---------------------------------------------------------------------
+# Postgres et Redis (réseau interne, jamais exposés). À générer : openssl rand -hex 32
+# Hexadécimal uniquement (insérés tels quels dans DATABASE_URL / REDIS_URL).
+# Changer RAIJIN_DB_PASSWORD / BENCH_DB_PASSWORD : appliqué au déploiement suivant (ALTER ROLE).
+# POSTGRES_SUPERUSER_PASSWORD : fixé à la création du volume ; le changer ensuite n'a plus d'effet.
+# ---------------------------------------------------------------------
+POSTGRES_SUPERUSER_PASSWORD=changeme-factice-hex
+RAIJIN_DB_PASSWORD=changeme-factice-hex
+BENCH_DB_PASSWORD=changeme-factice-hex
+REDIS_PASSWORD=changeme-factice-hex
+
+# ---------------------------------------------------------------------
+# Landing : valeurs PUBLIQUES lues au build (exportées par infra/deploy.sh ; APP_URL = https://APP_DOMAIN)
+# ---------------------------------------------------------------------
+# GA4 — https://analytics.google.com/ → Administration → Flux de données (« G-XXXXXXXXXX ») ; vide = pas de GA4
+GA4_MEASUREMENT_ID=
+# Search Console — valeur content de la balise HTML ; vide si la propriété est vérifiée par DNS
+GOOGLE_SITE_VERIFICATION=
+
+# ---------------------------------------------------------------------
+# Banc (phase 8 bis) : basicAuth Traefik en amont de banc.raijinshield.com
+# Hash bcrypt : htpasswd -nB kyoshiro (paquet apache2-utils). ENTRE APOSTROPHES (le hash contient des $).
+# ---------------------------------------------------------------------
+BENCH_BASIC_AUTH_USERS='kyoshiro:$2y$05$hash-bcrypt-factice'
+
+# ---------------------------------------------------------------------
+# Sauvegardes (infra/backup.sh, docs/DEPLOY.md A9)
+# ---------------------------------------------------------------------
+BACKUP_DIR=/var/backups/raijin
+BACKUP_RETENTION_DAYS=7
+# Remote rclone chiffré vers le bucket B2 dédié (rclone config ; vide = pas de copie hors site)
+#   B2 — https://secure.backblaze.com/b2_buckets.htm (bucket privé raijin-backups) et
+#   https://secure.backblaze.com/app_keys.htm (clé limitée à ce bucket)
+BACKUP_RCLONE_REMOTE=raijin-b2-crypt:postgres
+
+# ---------------------------------------------------------------------
+# Veille (infra/watchdog.sh, docs/DEPLOY.md A11). E-mail envoyé avec RESEND_API_KEY et MAIL_FROM de infra/.env.api
+# ---------------------------------------------------------------------
+WATCHDOG_ALERT_EMAIL=toi@exemple.invalid
+WATCHDOG_FAILS_BEFORE_ALERT=2
+WATCHDOG_REMIND_HOURS=6
+WATCHDOG_DISK_PCT=85
+WATCHDOG_MIN_MEM_MB=200
+WATCHDOG_EXTERNAL=1
+```
+
+Valeurs de `infra/.env.api` propres à la production (le reste : blocs ci-dessus, avec de vraies valeurs) :
+`MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `BILLING_PROVIDER=stripe`, `PUSH_PROVIDER=webpush`, `VAPID_PUBLIC_KEY` /
+`VAPID_PRIVATE_KEY` (paire **de production**, distincte de celle de dev), `TOTP_ENCRYPTION_KEY`, `IP_HASH_SECRET`,
+`JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `SENTRY_ENVIRONMENT=production`. Les blocs « Seed de développement » et les
+variables `SMTP_*` sont inutiles en production.

@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# =====================================================================================================
+# Restauration d'une sauvegarde Raijin (fichier .dump de infra/backup.sh) — lancée par l'utilisateur.
+#
+#   infra/restore.sh --check FICHIER.dump
+#       Restaure dans une base de TEST jetable « raijin_restore_check » (recréée à chaque fois, puis
+#       supprimée ; --keep pour la garder), contrôle le contenu (tables, migrations Prisma, comptes) et
+#       affiche un résumé. Ne touche à aucune autre base. À faire chaque mois (docs/DEPLOY.md A10).
+#
+#   infra/restore.sh --into raijin|raijin_bench FICHIER.dump
+#       Restauration RÉELLE, après confirmation tapée au clavier. Sans rien supprimer :
+#         1. contrôle du fichier (sha256 s'il existe, pg_restore --list) ;
+#         2. arrêt de l'API concernée (docker compose stop, jamais down) ;
+#         3. la base actuelle est RENOMMÉE en <base>_avant_restauration_<date> (retour arrière possible) ;
+#         4. base vide recréée (infra/postgres/init/10-raijin-databases.sh), restauration, contrôle ;
+#         5. redémarrage de l'API et attente du healthcheck.
+#       En cas d'échec à l'étape 4, la base d'origine est remise en place automatiquement.
+#       L'ancienne base renommée est à supprimer à la main quand tout va bien (commande affichée).
+#
+# Options : --yes (sans question), --no-service (n'arrête ni ne redémarre l'API : déjà arrêtée, ou test).
+# Variable : RAIJIN_PG_CONTAINER (raijin-postgres par défaut ; seuls les conteneurs raijin-… sont acceptés).
+# =====================================================================================================
+set -Eeuo pipefail
+umask 077
+RAIJIN_SCRIPT=restore
+# shellcheck source=infra/lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+CHECK_DB=raijin_restore_check
+mode="" target="" file="" keep=0 assume_yes=0 manage_service=1
+
+usage() { sed -n '2,25p' "$0"; exit "${1:-0}"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --check) mode=check; shift ;;
+    --into) mode=into; target="${2:-}"; shift 2 || usage 1 ;;
+    --keep) keep=1; shift ;;
+    --yes) assume_yes=1; shift ;;
+    --no-service) manage_service=0; shift ;;
+    -h|--help) usage 0 ;;
+    -*) die "option inconnue : $1" ;;
+    *) file="$1"; shift ;;
+  esac
+done
+
+[[ -n "$mode" && -n "$file" ]] || usage 1
+[[ -r "$file" ]] || die "fichier illisible : $file"
+require_cmd docker
+require_pg_container
+
+owner_of() { case "$1" in raijin) echo raijin ;; raijin_bench) echo raijin_bench ;; *) return 1 ;; esac; }
+
+verify_file() {
+  if [[ -r "$file.sha256" ]]; then
+    log "contrôle sha256…"
+    (cd "$(dirname "$file")" && sha256sum --quiet -c "$(basename "$file").sha256") || die "sha256 différent : fichier corrompu."
+  fi
+  pg_exec pg_restore --list <"$file" >/dev/null || die "fichier non reconnu par pg_restore."
+}
+
+terminate_connections() {
+  pg_sql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$1' AND pid <> pg_backend_pid();" >/dev/null
+}
+
+# Résumé d'une base restaurée : nombre de tables, dernière migration Prisma, quelques comptages.
+summarize() {
+  local db="$1" tables migrations last
+  tables="$(pg_sql -d "$db" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';")"
+  [[ "$tables" -gt 0 ]] || { warn "aucune table restaurée dans $db."; return 1; }
+  log "  tables : $tables"
+  if [[ "$(pg_sql -d "$db" -c "SELECT to_regclass('public._prisma_migrations') IS NOT NULL;")" == "t" ]]; then
+    migrations="$(pg_sql -d "$db" -c "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;")"
+    last="$(pg_sql -d "$db" -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1;")"
+    log "  migrations Prisma appliquées : $migrations (dernière : ${last:-aucune})"
+  else
+    warn "  pas de table _prisma_migrations dans $db."
+  fi
+  local t n
+  for t in User TokenAnalysis Watch Alert Subscription AuditLog; do
+    if [[ "$(pg_sql -d "$db" -c "SELECT to_regclass('public.\"$t\"') IS NOT NULL;")" == "t" ]]; then
+      n="$(pg_sql -d "$db" -c "SELECT count(*) FROM \"$t\";")"
+      log "  $t : $n ligne(s)"
+    fi
+  done
+}
+
+if [[ "$mode" == check ]]; then
+  verify_file
+  log "restauration de test dans $CHECK_DB…"
+  terminate_connections "$CHECK_DB"
+  pg_sql -d postgres -c "DROP DATABASE IF EXISTS $CHECK_DB;"
+  pg_sql -d postgres -c "CREATE DATABASE $CHECK_DB TEMPLATE template0 ENCODING 'UTF8';"
+  pg_sql -d postgres -c "REVOKE ALL ON DATABASE $CHECK_DB FROM PUBLIC;"
+  if ! pg_exec pg_restore -U postgres -d "$CHECK_DB" --no-owner --no-acl --exit-on-error <"$file"; then
+    pg_sql -d postgres -c "DROP DATABASE IF EXISTS $CHECK_DB;" || true
+    die "la restauration de test a échoué."
+  fi
+  if ! summarize "$CHECK_DB"; then
+    pg_sql -d postgres -c "DROP DATABASE IF EXISTS $CHECK_DB;" || true
+    die "contrôle de la base restaurée en échec."
+  fi
+  if [[ "$keep" == 1 ]]; then
+    log "base $CHECK_DB conservée (à supprimer : docker exec raijin-postgres dropdb -U postgres $CHECK_DB)."
+  else
+    pg_sql -d postgres -c "DROP DATABASE $CHECK_DB;"
+  fi
+  log "RESTAURATION DE TEST RÉUSSIE : $(basename "$file")"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------------------------------
+# Restauration réelle
+# ---------------------------------------------------------------------------------------------------
+owner="$(owner_of "$target")" || die "--into accepte seulement raijin ou raijin_bench."
+service=raijin-api
+[[ "$target" == raijin_bench ]] && service=raijin-bench-api
+stamp="$(date -u '+%Y%m%d%H%M%S')"
+previous="${target}_avant_restauration_${stamp}"
+
+verify_file
+log "Base cible : $target (utilisateur $owner). Fichier : $file"
+log "La base actuelle sera renommée « $previous » (rien n'est supprimé) ; $service sera arrêtée pendant l'opération."
+if [[ "$assume_yes" != 1 ]]; then
+  read -r -p "Pour continuer, tape exactement : RESTAURER $target > " answer
+  [[ "$answer" == "RESTAURER $target" ]] || die "abandon (confirmation différente)."
+fi
+
+if [[ "$manage_service" == 1 ]]; then
+  log "arrêt de $service…"
+  compose stop "$service" || true
+fi
+
+renamed=0
+rollback() {
+  warn "échec : remise en place de la base d'origine."
+  terminate_connections "$target" || true
+  pg_sql -d postgres -c "DROP DATABASE IF EXISTS $target;" || true
+  if [[ "$renamed" == 1 ]]; then
+    pg_sql -d postgres -c "ALTER DATABASE $previous RENAME TO $target;" || true
+  fi
+  [[ "$manage_service" == 1 ]] && { compose up -d "$service" || true; }
+  die "restauration annulée, base d'origine conservée."
+}
+trap rollback ERR
+
+if pg_db_exists "$target"; then
+  terminate_connections "$target"
+  pg_sql -d postgres -c "ALTER DATABASE $target RENAME TO $previous;"
+  renamed=1
+  log "base actuelle renommée en $previous."
+fi
+
+# Base vide, propriétaire et droits identiques à une installation neuve.
+pg_exec sh /docker-entrypoint-initdb.d/10-raijin-databases.sh >/dev/null
+pg_exec pg_restore -U postgres -d "$target" --role="$owner" --no-owner --no-acl --exit-on-error --single-transaction <"$file"
+pg_sql -d "$target" -c "ALTER SCHEMA public OWNER TO $owner;"
+summarize "$target"
+trap - ERR
+
+if [[ "$manage_service" == 1 ]]; then
+  log "redémarrage de $service…"
+  compose up -d --wait "$service"
+fi
+log "RESTAURATION RÉUSSIE dans $target."
+if [[ "$renamed" == 1 ]]; then
+  log "Quand tout est vérifié, supprime l'ancienne base :"
+  log "  docker exec raijin-postgres dropdb -U postgres $previous"
+fi
