@@ -6,7 +6,7 @@ import {
   TotpClock,
   adminNav,
   adminSidebar,
-  fillEnrollmentPassword,
+  submitEnrollment,
   ageAdminSession,
   newAdminAccount,
   sql,
@@ -95,11 +95,9 @@ test.describe('espace admin', () => {
       await expect(page.getByText(`Clé secrète : ${secret}`)).toBeAttached();
       await expect(page.getByRole('button', { name: 'Copier la clé' })).toBeVisible();
       // Un code faux est refusé sans quitter l'écran.
-      await fillEnrollmentPassword(page, admin.password);
-      await typeTotp(page, '000000');
+      await submitEnrollment(page, admin.password, '000000');
       await expect(page.getByText(ADMIN_LABELS.invalidCode)).toBeVisible({ timeout: 15_000 });
-      await fillEnrollmentPassword(page, admin.password);
-      await typeTotp(page, await clock.next());
+      await submitEnrollment(page, admin.password, await clock.next());
       await expect(page).toHaveURL(/\/admin\/securite\/codes-de-secours$/, { timeout: 15_000 });
     });
 

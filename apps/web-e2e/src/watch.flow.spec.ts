@@ -434,11 +434,19 @@ test('e-mail d’alerte (Mailpit) : Rai en PNG avec alt, lien vers l’analyse, 
   expect(mail.html).toContain(`/analyse/${M}`);
   expect(mail.html).toContain('/compte?section=notifications');
   expect(mail.html).toContain('pas un conseil en investissement');
-  // E-mails groupés, sans doublon même après un rejeu de l'envoi.
-  await runJob(internal, 'alert-email');
-  // Laisse passer la fenêtre de regroupement (ALERT_EMAIL_BATCH_DELAY_S=1) avant de compter.
+  // Sans doublon, même après un rejeu de l'envoi. Les deux alertes du compte (mint réactivé : passe rapide ; verdict
+  // dégradé : passe complète) naissent de deux jobs successifs : selon la durée de la passe complète, elles tombent
+  // dans la même fenêtre de regroupement (ALERT_EMAIL_BATCH_DELAY_S=1, un e-mail groupé) ou dans deux (deux e-mails).
+  // Le test vérifie donc l'absence de doublon (au plus un e-mail par alerte, aucun e-mail de plus après le rejeu),
+  // pas un nombre d'e-mails qui dépend de la vitesse du runner.
   await new Promise((resolve) => setTimeout(resolve, 1_500));
-  expect(await mailsFor(free.email, ALERT_SUBJECT), 'un seul e-mail d’alerte (groupé)').toHaveLength(1);
+  const before = await mailsFor(free.email, ALERT_SUBJECT);
+  expect(before.length, 'au plus un e-mail par alerte (mint réactivé, verdict dégradé)').toBeLessThanOrEqual(2);
+  expect(new Set(before.map((m) => m.Subject)).size, 'aucun e-mail en double').toBe(before.length);
+  await runJob(internal, 'alert-email');
+  // Laisse passer la fenêtre de regroupement avant de recompter.
+  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  expect(await mailsFor(free.email, ALERT_SUBJECT), 'aucun nouvel e-mail après le rejeu de l’envoi').toHaveLength(before.length);
 
   // Rendu : image de Rai chargée (servie par le front sur APP_URL/email/), captures 390 et 1440.
   for (const width of [390, 1440]) {

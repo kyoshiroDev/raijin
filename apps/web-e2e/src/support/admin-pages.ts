@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { loginViaApi } from './auth';
-import { ADMIN_SCREENS, fillEnrollmentPassword, loginVerifiedAdmin, sharedAdmin, typeTotp } from './admin';
+import { ADMIN_SCREENS, loginVerifiedAdmin, sharedAdmin, submitEnrollment } from './admin';
 import { LANDING_ORIGIN, consentBanner, interceptGoogle } from './landing';
 import { type PageEntry } from './pages';
 
@@ -97,8 +97,7 @@ export const ADMIN_2FA_PAGES: readonly ShelllessEntry[] = [
     },
     act: async (page) => {
       await expect(page.getByRole('img', { name: 'QR code à scanner avec ton application d’authentification' })).toBeVisible({ timeout: 15_000 });
-      await fillEnrollmentPassword(page, (await sharedAdmin('pending')).password);
-      await typeTotp(page, '123456');
+      await submitEnrollment(page, (await sharedAdmin('pending')).password, '123456');
       await expect(page.getByRole('list', { name: 'Codes de secours' }).getByRole('listitem')).toHaveCount(10, { timeout: 15_000 });
     },
   },

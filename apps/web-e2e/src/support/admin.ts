@@ -193,15 +193,18 @@ export async function ageAdminSession(ctx: APIRequestContext, minutes: number): 
 }
 
 /**
- * Écran d'activation : mot de passe actuel, exigé avec le code depuis l'audit (contrat `adminEnrollmentConfirmRequestSchema`).
- * Rempli s'il est demandé, avant le code (6 chiffres saisis = envoi du formulaire).
+ * Écran d'activation : code de l'application **et** mot de passe actuel (contrat `adminEnrollmentConfirmRequestSchema`,
+ * audit phase 6 bis), puis « Confirmer le code » (la saisie des 6 chiffres n'envoie plus le formulaire sur cet écran).
+ * Champ ciblé par son libellé exact : le bouton « Afficher le mot de passe » contient aussi « mot de passe ».
  */
-export async function fillEnrollmentPassword(page: Page, password: string): Promise<void> {
-  const field = page.locator('rj-admin-enrollment-page').getByLabel(/mot de passe/i);
-  if ((await field.count()) > 0) await field.fill(password);
+export async function submitEnrollment(page: Page, password: string, code: string): Promise<void> {
+  const screen = page.locator('rj-admin-enrollment-page');
+  await screen.getByLabel('Mot de passe actuel', { exact: true }).fill(password);
+  await typeTotp(page, code);
+  await screen.getByRole('button', { name: 'Confirmer le code' }).click();
 }
 
-/** Saisit un code dans le champ à 6 chiffres (la saisie complète envoie le formulaire). */
+/** Saisit un code dans le champ à 6 chiffres (sur l'écran de saisie du code, 6 chiffres envoient le formulaire). */
 export async function typeTotp(page: Page, code: string): Promise<void> {
   const field = page.getByLabel('Code à 6 chiffres');
   await field.fill('');
