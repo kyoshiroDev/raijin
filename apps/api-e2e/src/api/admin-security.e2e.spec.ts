@@ -314,7 +314,8 @@ describe('Espace admin : sécurité, comptes, audit', () => {
     const status = adminSecurityStatusSchema.parse((await admin.get('/admin/security/status')).data);
     expect(status).toMatchObject({ enrolled: false, verified: false });
     expect((await cli('make-admin', `--email=${adminEmail}`, '--revoke')).code).toBe(0);
-    expect((await admin.get('/admin/security/status')).status).toBe(401);
+    // Rôle retiré et sessions révoquées : plus admin en base → espace invisible (404, m3).
+    expect((await admin.get('/admin/security/status')).status).toBe(404);
     const actions = (await sql<{ action: string }>(`SELECT "action" FROM "AuditLog" WHERE "userId" = $1::uuid AND "actorKind" = 'cli'`, [adminId])).map((row) => row.action);
     expect(actions).toEqual(expect.arrayContaining(['admin.role_granted', 'admin.2fa_reset', 'admin.role_revoked']));
   }, 120_000);

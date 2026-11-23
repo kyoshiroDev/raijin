@@ -272,7 +272,8 @@ describe('API Raijin : essai Pro 7 jours (anti-abus, fin d’essai sous horloge 
     const hidden = await client.get('/admin/trial-conversion');
     expect(hidden.status).toBe(404);
     expect(hidden.data['code']).toBe('NOT_FOUND');
-    expect((await (await new ApiClient().init()).get('/admin/trial-conversion')).status).toBe(401);
+    // Anonyme : 404 aussi (filtre d'entrée de l'espace admin, m3).
+    expect((await (await new ApiClient().init()).get('/admin/trial-conversion')).status).toBe(404);
     const { id } = await me(client);
     await sql(`UPDATE "User" SET "role" = 'ADMIN' WHERE "id" = $1`, [id]);
     const enrollment = await client.get('/admin/trial-conversion');

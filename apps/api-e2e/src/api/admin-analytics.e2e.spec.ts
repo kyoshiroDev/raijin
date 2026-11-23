@@ -98,14 +98,15 @@ describe('Espace admin : écrans statistiques, agrégats, alertes', () => {
     admin = await adminClient(adminEmail);
   });
 
-  it('compte non admin : chaque route répond 404 (espace invisible) ; anonyme : 401', async () => {
+  it('compte non admin : chaque route répond 404 (espace invisible) ; anonyme : 404 aussi', async () => {
     const user = await verifiedUser(uniqueEmail('pas-admin'));
     const anonymous = await new ApiClient().init();
     for (const route of ROUTES) {
       const res = await user.get(`/admin/${route}`);
       expect([route, res.status]).toEqual([route, 404]);
       expect(JSON.stringify(res.data)).not.toMatch(/mrr|sessions|jobs/i);
-      expect((await anonymous.get(`/admin/${route}`)).status).toBe(401);
+      // Anonyme : 404 aussi (filtre d'entrée de l'espace admin, m3).
+      expect((await anonymous.get(`/admin/${route}`)).status).toBe(404);
     }
   });
 
