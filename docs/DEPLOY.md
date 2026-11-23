@@ -59,7 +59,8 @@ Connecte-toi au VPS (`ssh ton-utilisateur@ip-du-vps`) puis vérifie :
 free -h                     # colonne « disponible » : au moins 2,6 Go pour le premier build, 1,5 Go ensuite
 df -h /                     # au moins 10 Go libres (images, build, sauvegardes)
 docker version              # Docker 24 ou plus
-docker compose version      # 2.24 ou plus (sinon : mets à jour le paquet docker-compose-plugin)
+docker compose version      # 2.24 ou plus (sinon : mets à jour le paquet docker-compose-plugin) ;
+                            # deploy.sh affiche la version et refuse en dessous (env_file « required », up --wait)
 git --version && curl --version | head -1
 ```
 

@@ -46,6 +46,9 @@ require_cmd docker git curl awk grep
 # --- 1. Prérequis ---------------------------------------------------------------------------------------
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 manquant (docs/DEPLOY.md A1)."
 compose_version="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
+log "Docker $(docker version -f '{{.Server.Version}}' 2>/dev/null || echo '?'), Docker Compose $compose_version."
+# Options utilisées : env_file.required (2.24), up --wait / --wait-timeout / --no-build, run --rm (sans --no-build,
+# absent de certaines versions : l'image est vérifiée avant).
 if [[ "$(printf '%s\n2.24.0\n' "$compose_version" | sort -V | head -n1)" != "2.24.0" ]]; then
   die "Docker Compose $compose_version trop ancien (2.24 minimum)."
 fi
@@ -161,7 +164,10 @@ if [[ "$(pg_sql -d raijin -c "SELECT to_regclass('public._prisma_migrations') IS
   "$RAIJIN_INFRA/backup.sh" --no-offsite || die "sauvegarde avant migration en échec : migration annulée."
 fi
 log "migrations Prisma (migrate deploy)…"
-compose --profile tools run --rm --no-build raijin-migrate
+# `run` ne construit pas une image déjà présente ; on vérifie qu'elle l'est pour ne jamais lancer de build ici.
+docker image inspect "raijin/migrate:${RAIJIN_TAG:-latest}" >/dev/null 2>&1 \
+  || die "image raijin/migrate absente : relance sans --skip-build."
+compose --profile tools run --rm raijin-migrate
 
 # --- 4. Démarrage -----------------------------------------------------------------------------------
 log "démarrage de ${services[*]}…"

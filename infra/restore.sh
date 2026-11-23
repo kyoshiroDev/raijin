@@ -145,12 +145,15 @@ sessions_on() {
 # État : la base d'origine n'est jamais supprimée. Le rollback ne supprime « $target » que si c'est la base
 # NEUVE créée par ce script (base d'origine déjà renommée, ou absente au départ).
 renamed=0
+renaming=0
 original_absent=0
 rollback() {
   # Avec set -E, le piège est hérité par les sous-shells ($(...)) : seul le shell principal a le droit d'agir,
   # un sous-shell se contente d'échouer (le principal reprend ensuite la main avec l'état exact).
   [[ "$BASHPID" == "$$" ]] || exit 1
-  trap - ERR INT TERM HUP
+  # Le retour arrière lui-même ne doit pas être interrompu (Ctrl+C répété, arrêt du terminal).
+  trap - ERR
+  trap '' INT TERM HUP
   warn "échec ou interruption : remise en place de la base d'origine."
   if [[ "$renamed" == 1 ]]; then
     # Ne supprimer la base neuve que si l'originale est bien là, sous son nom de secours.
@@ -161,6 +164,13 @@ rollback() {
         || warn "remets la base à la main : docker exec -i $RAIJIN_PG_CONTAINER psql -U postgres -c 'ALTER DATABASE $previous RENAME TO $target;'"
     else
       warn "base de secours $previous introuvable : rien n'est supprimé. Vérifie : docker exec -i $RAIJIN_PG_CONTAINER psql -U postgres -l"
+    fi
+  elif [[ "$renaming" == 1 ]]; then
+    # Interruption entre le RENAME et « renamed=1 » : le renommage a peut-être eu lieu. On ne fait que le défaire,
+    # et seulement si la situation est certaine (secours présent, cible absente) ; aucune suppression.
+    if pg_db_exists "$previous" && ! pg_db_exists "$target"; then
+      pg_sql -d postgres -c "ALTER DATABASE $previous RENAME TO $target;" \
+        || warn "remets la base à la main : docker exec -i $RAIJIN_PG_CONTAINER psql -U postgres -c 'ALTER DATABASE $previous RENAME TO $target;'"
     fi
   elif [[ "$original_absent" == 1 ]]; then
     # Aucune base d'origine (constat certain, pg_db_exists) : seule la base neuve est supprimée.
@@ -180,6 +190,7 @@ if pg_db_exists "$target"; then
   else
     terminate_connections "$target"
   fi
+  renaming=1
   pg_sql -d postgres -c "ALTER DATABASE $target RENAME TO $previous;"
   renamed=1
   log "base actuelle renommée en $previous."
