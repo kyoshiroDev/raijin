@@ -36,6 +36,7 @@ dans `.gitignore`). Pour le consulter : `pnpm nx graph` (navigateur) ou
 | `api-prisma` | `libs/api/prisma` | Schéma Prisma, migrations, client généré, `PrismaService` | `scope:api`, `type:data-access` |
 | `api-core` | `libs/api/core` | Socle Nest transverse : config Zod, filtre d'erreurs, Helmet, CORS, throttler, CSRF, cookies | `scope:api`, `type:util` |
 | `raijin-banc-de-test` | `apps/raijin-banc-de-test` | Front Angular 22 zoneless du banc (importé de `raijin-old`, phase 1 bis) | `scope:bench`, `type:app` |
+| `bench-verdicts` | `libs/bench/verdicts` | Justesse des verdicts (phase 7 bis) : contrats du suivi, issues, métriques, variantes, rétention (TS pur) | `scope:bench`, `type:util` |
 
 Prévus plus tard : `raijin-banc-de-test-api` (phase 8 bis), `libs/bench/*` (`scope:bench`),
 `libs/web/feature-admin`, `libs/api/admin`, `libs/api/analytics`.
@@ -1493,3 +1494,64 @@ Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (répon
   ligne de flottaison. Poids total de l'accueil ≤ 200 ko transférés (hors GA4 après consentement).
 - Mesure : cible `web-e2e:lighthouse` étendue aux pages de la landing (accueil, tarifs, un guide), médiane de 3 sur le
   runner GitHub ; Performance, Accessibilité, Bonnes pratiques, SEO ≥ 95.
+
+## 16. Banc : mesure des verdicts (phase 7 bis)
+
+Préparée maintenant en code pur et testé dans `libs/bench/verdicts` (`@raijin/bench-verdicts`, `scope:bench`,
+`type:util`, sans I/O ni horloge : `now` est toujours un paramètre). Branchée en phase 8 bis sur la base
+`raijin_bench` et les jobs BullMQ. Aucune écriture sur Supabase ni Vercel. Contrats Zod dans
+`libs/bench/verdicts/src/lib/contracts.ts` (propres au banc, donc hors `shared-contracts`).
+
+### 16.1 Enregistrement et fenêtres de suivi
+- Un `VerdictRecord` par token analysé et version du moteur : verdict, codes de raison, contrôles en `warn`/`danger`,
+  `baseline` (prix USD, liquidité USD, supply brute en chaîne décimale comparée en `bigint`), et les `RiskFacts`
+  complets (rejeu des variantes). `verdictAt` = `facts.observedAt`.
+- Horizons : 24 h (tolérance + 6 h), 72 h (+ 12 h), 7 j (+ 24 h) après `verdictAt`. Une observation hors fenêtre
+  est écartée (comptée comme « manquante »), jamais réaffectée à un autre horizon.
+
+### 16.2 Définition des issues (`DEFAULT_OUTCOME_THRESHOLDS`, configurables)
+- `LP_REMOVED` : `lpRemoved === true`, ou liquidité ≤ 10 % de la liquidité au verdict si celle-ci ≥ 1 000 $.
+- `PRICE_CRASH_90` : prix ≤ 10 % du prix au verdict (chute ≥ 90 %).
+- `MINT_USED` : supply brute observée > supply au verdict (nouveaux tokens émis).
+- `TOKEN_DEAD` : aucun pool trouvé, ou liquidité < 1 000 $, ou volume 24 h < 100 $.
+- Statut : `rug` si au moins un des trois premiers événements ; sinon `dead` si `TOKEN_DEAD` ; sinon `alive` ;
+  `unknown` si prix et liquidité sont tous deux inconnus et qu'aucun événement n'est constaté. **Cumulatif** :
+  un événement constaté à 24 h reste acquis à 72 h et 7 j (l'issue à un horizon = union des observations
+  jusqu'à cet horizon). Les `unknown` sont exclus des métriques, et leur nombre est affiché.
+
+### 16.3 Métriques de justesse (par horizon, par version du moteur)
+- Classe positive par défaut : `rug` (« X % des rugs signalés à l'avance ») ; vue secondaire `rug` ∪ `dead`.
+- Précision du verdict Danger = rugs parmi les Danger ; rappel = Danger parmi les rugs ; taux de faux « Sain » =
+  rugs parmi les Sain. Prudence n'est ni positif ni négatif prédit : affiché à part (taux de rug des Prudence).
+- Pouvoir prédictif par code de raison et par contrôle signalé : taux de rug avec / sans le signal, et lift
+  (taux avec / taux global). Classement seulement pour un support ≥ 10 tokens portant le signal.
+- Chaque proportion porte son effectif et un **intervalle de Wilson à 95 %** (z = 1,96). Effectif < 30 :
+  `insufficient = true`, l'écran affiche « échantillon insuffisant » au lieu du pourcentage, et aucun chiffre
+  n'est réutilisable pour le marketing (PROMPT.md §4.8 : « uniquement si les chiffres le justifient »).
+
+### 16.4 Variantes du moteur
+- `EngineVariant` = identifiant (`^[a-z0-9][a-z0-9-]{0,31}$`, `reference` réservé), libellé, surcharges numériques
+  de `RiskEngineConfig` et poids de raisons ; moteur = `createRiskEngine({ ...overrides, version })`, la config
+  étant validée par `resolveRiskEngineConfig` (une surcharge inconnue est refusée par la lib du banc).
+- Version : `<RISK_ENGINE_VERSION>-variante.<id>` (`variantEngineVersion`) + **empreinte** déterministe
+  (FNV-1a 32 bits sur le JSON à clés triées de la config résolue) stockée avec chaque rejeu : deux contenus
+  différents sous le même identifiant ne sont jamais confondus.
+- Rejeu : sur les `VerdictRecord` dont `facts.version === RISK_FACTS_VERSION` (les autres sont comptés et
+  écartés), mêmes issues pour la référence et la variante. Sortie : métriques des deux côtés, matrice des
+  changements de verdict (de → vers) et changements « corrigés » / « dégradés » par rapport à l'issue.
+- Une variante ne passe dans Raijin que via une PR qui modifie `DEFAULT_RISK_ENGINE_CONFIG` et la version du
+  moteur (docs/SCORING.md) ; le banc ne modifie jamais le moteur de Raijin.
+
+### 16.5 Rétention et alerte de taille (`DEFAULT_RETENTION_POLICY`)
+- Snapshots détaillés de collecte : 30 j ; verdicts et observations de suivi : 365 j (minimum 30 j, toujours
+  au-delà de la fenêtre 7 j + tolérance) ; `job_runs` : 30 j ; agrégats quotidiens : conservés.
+  Les agrégats sont calculés avant la purge (même ordre que Raijin, §14.5).
+- Alerte de taille : `used / allocated` ≥ 0,8 → `warn`, ≥ 0,95 → `critical` ; notification seulement au
+  changement de niveau à la hausse (pas de répétition). Envoi (e-mail + push du banc) en phase 8 bis.
+
+### 16.6 Écran du banc
+- Route `/justesse` dans la zone connectée de `apps/raijin-banc-de-test` (lien dans l'onglet Performance) :
+  tableau de justesse par horizon et comparaison côte à côte référence / variante. Mobile first : cartes empilées
+  < 768 px, tableau au-delà. Badge « BANC DE TEST », pas de mascotte, thème du banc.
+- Données : **simulées** (`simulation.ts` de la lib, jeu déterministe à graine, bandeau « Données simulées »)
+  tant que l'API du banc n'existe pas ; un port `VerdictQualitySource` est remplacé par le client HTTP en 8 bis.
