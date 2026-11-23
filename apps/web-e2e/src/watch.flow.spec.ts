@@ -395,7 +395,11 @@ test('Alertes : badge de non-lues, filtres en bottom sheet (type, état, token),
   await expect(page).not.toHaveURL(/type=|statut=/);
   await sheet.getByRole('combobox', { name: 'Token' }).selectOption(WATCH_MINTS.lp);
   await expect(page).toHaveURL(new RegExp(`mint=${WATCH_MINTS.lp}`));
-  await sheet.getByRole('button', { name: /^Voir 1 alerte/ }).click();
+  // Bouton de résultats du bottom sheet (« Voir les alertes » pendant le chargement, « Aucune alerte », « Voir N
+  // alerte(s) ») : son libellé réel est affiché en cas d'échec, au lieu d'un clic qui attend jusqu'au délai du test.
+  const results = sheet.getByRole('button', { name: /^(Voir |Aucune alerte)/ });
+  await expect(results).toHaveText(/^Voir 1 alerte$/, { timeout: 15_000 });
+  await results.click();
   await expect(alertItems(page)).toHaveCount(1);
   await expect(list).toContainText('Liquidité retirée');
 

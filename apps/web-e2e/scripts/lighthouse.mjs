@@ -3,7 +3,7 @@
 // scripts/serve-prod.mjs (port 4310), API réelle en mode fixtures (port 3100, `ANALYSIS_FIXTURES=1`).
 // Landing (phase 7, docs/ARCHITECTURE.md §15.7) : accueil, tarifs et un guide, build statique de mesure
 // (identifiant GA4 factice : la bannière de consentement d'une première visite est rendue, aucune requête
-// Google avant l'accord) servi compressé par scripts/serve-landing.mjs (port 4332, cible web-e2e:serve-landing-lighthouse).
+// Google avant l'accord) servi compressé par scripts/serve-landing.mjs (port 4332, cibles web-e2e:build-landing-lighthouse puis serve-landing-lighthouse).
 // Chromium de Playwright (pas de téléchargement de navigateur). Médiane de RUNS passages par page.
 // Sorties : rapports complets dans dist/lighthouse/ (non versionnés), résumé léger (scores, métriques,
 // audits fautifs) dans docs/lighthouse/<phase>/summary.json et summary.md.
@@ -145,7 +145,7 @@ if (PAGES.some((page) => page.site === 'app')) {
   await waitFor(`${API}/api/v1/health`, 'API');
   await waitFor(`${BASE}/manifest.webmanifest`, 'Serveur de production');
 }
-// La cible de la landing construit le site avant de le servir (Astro, ~1 min sur le runner) : 5 min au plus.
+// Le serveur de la landing (tâche continue) démarre après son build (dépendance Nx) : marge de 5 min.
 if (PAGES.some((page) => page.site === 'landing')) await waitFor(`${LANDING}/robots.txt`, 'Landing', 300_000);
 
 const summary = {

@@ -408,7 +408,7 @@ jobs:
         run: pnpm nx run api-prisma:migrate-deploy
 
       # Build de production web + api (dépendances de serve-prod et serve-api-fixtures) et build statique de la
-      # landing (serve-landing-lighthouse : GA4 factice, bannière rendue, servi compressé sur le port 4332), puis
+      # landing (build-landing-lighthouse : GA4 factice, bannière rendue ; servie compressée sur le port 4332), puis
       # médiane de LH_RUNS passages par page (app : /analyse, /analyse/<BONK>, /t/<BONK> ; landing : /, /tarifs,
       # un guide). Le script sort en erreur si une catégorie < 95 : bloquant sur PR, ignoré en lancement manuel
       # (continue-on-error), l'étape suivante vérifiant qu'un résumé existe.

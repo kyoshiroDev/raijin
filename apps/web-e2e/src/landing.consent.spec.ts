@@ -126,7 +126,9 @@ test.describe('landing : attribution jusqu’au compte', () => {
     await consentBanner(page).getByRole('button', { name: 'Tout refuser' }).click();
     expect(await cookieValue(page, ATTRIBUTION_COOKIE)).toBeUndefined();
 
-    const cta = page.getByRole('link', { name: 'Essayer Raijin' });
+    // CTA d'inscription du hero (landing complète de la phase 7 : « Créer mon compte », emplacement `hero`).
+    const cta = page.getByRole('main').getByRole('link', { name: 'Créer mon compte', exact: true });
+    await expect(cta).toHaveAttribute('data-track-emplacement', 'hero');
     await expect(cta).toHaveAttribute('href', new RegExp(`utm_source=${source}`));
     const href = new URL(String(await cta.getAttribute('href')));
     expect(href.origin, 'lien vers l’app de test (APP_URL)').toBe(new URL(APP_ORIGIN).origin);
@@ -135,13 +137,12 @@ test.describe('landing : attribution jusqu’au compte', () => {
     );
     expect(href.searchParams.get('rj_ref') ?? '').toMatch(/^https:\/\/x\.com/);
     // L'inscription de l'app est /compte/inscription (libs/web/feature-compte) : le lien doit y mener directement.
-    expect.soft(href.pathname, 'le lien « Essayer Raijin » mène à l’écran d’inscription de l’app').toBe('/compte/inscription');
+    expect(href.pathname, 'le lien « Créer mon compte » mène à l’écran d’inscription de l’app').toBe('/compte/inscription');
 
     await cta.click();
     await expect(page).toHaveURL(new RegExp(`^${APP_ORIGIN}`));
     await expect(page.locator('main h1').first()).toBeVisible();
-    // Même onglet : l'attribution relevée au démarrage de l'app (sessionStorage) est conservée ; si le lien mène
-    // ailleurs (assertion souple ci-dessus), la suite du parcours reste testée.
+    // Même onglet : l'attribution relevée au démarrage de l'app (sessionStorage) est conservée.
     await page.goto('/compte/inscription');
     await expect(page.locator('main h1').first()).toHaveText('Créer ton compte');
     const email = uniqueFreeEmail('attribution');

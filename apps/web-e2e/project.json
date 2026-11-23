@@ -80,17 +80,30 @@
         }
       }
     },
+    "build-landing-lighthouse": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "apps/landing",
+        "command": "../../node_modules/.bin/astro build --outDir ../../dist/apps/landing-lighthouse",
+        "env": {
+          "GA4_MEASUREMENT_ID": "G-E2ETEST01",
+          "APP_URL": "http://127.0.0.1:4310"
+        }
+      }
+    },
     "serve-landing-lighthouse": {
       "continuous": true,
       "executor": "nx:run-commands",
+      "dependsOn": [
+        "build-landing-lighthouse"
+      ],
       "options": {
-        "cwd": "apps/landing",
-        "command": "../../node_modules/.bin/astro build --outDir ../../dist/apps/landing-lighthouse && node ../web-e2e/scripts/serve-landing.mjs --port 4332",
+        "cwd": "{workspaceRoot}",
+        "command": "node apps/web-e2e/scripts/serve-landing.mjs --port 4332",
         "readyWhen": "Landing de test sur",
         "env": {
-          "GA4_MEASUREMENT_ID": "G-E2ETEST01",
-          "APP_URL": "http://127.0.0.1:4310",
-          "LANDING_DIST": "../../dist/apps/landing-lighthouse"
+          "LANDING_DIST": "dist/apps/landing-lighthouse"
         }
       }
     },
@@ -110,5 +123,5 @@
   },
   "// implicitDependencies": "landing : consentement, GA4 et attribution testés sur le build Astro servi par scripts/serve-landing.mjs (phase 6 bis) ; une modification de la landing rend web-e2e affecté.",
   "// e2e": "Le plugin @nx/playwright passe parallelism à false quand webServer est un tableau (API + web) ; or e2e dépend du serveur continu web:serve, ce que Nx refuse sans parallélisme. Valeur d'origine rétablie (les deux serveurs ont des ports fixes et reuseExistingServer). Entrées : celles inférées, plus E2E_LOT et E2E_SHARD (lot et part de la matrice CI, lus par playwright.config.mts) pour que le cache Nx ne rejoue jamais le résultat d'un autre lot.",
-  "// lighthouse": "Lighthouse mobile (phases 3 et 7) : build de production de l'app (serve-prod, port 4310) + API en mode fixtures (serve-api-fixtures, port 3100 ; arrêter toute autre API sur ce port avant) + landing (serve-landing-lighthouse : build statique dans dist/apps/landing-lighthouse avec un identifiant GA4 factice, bannière de consentement rendue, servi compressé sur le port 4332). Options : --args=\"--runs 3 --phase phase-7 --pages all|app|landing\". Résumé dans docs/lighthouse/<phase>/, rapports complets dans dist/lighthouse/."
+  "// lighthouse": "Lighthouse mobile (phases 3 et 7) : build de production de l'app (serve-prod, port 4310) + API en mode fixtures (serve-api-fixtures, port 3100 ; arrêter toute autre API sur ce port avant) + landing (build-landing-lighthouse : build statique dans dist/apps/landing-lighthouse avec un identifiant GA4 factice, bannière de consentement rendue ; puis serve-landing-lighthouse, tâche continue qui le sert compressé sur le port 4332 : build et service séparés, sinon Nx voit la tâche continue se terminer à la fin du build). Options : --args=\"--runs 3 --phase phase-7 --pages all|app|landing\". Résumé dans docs/lighthouse/<phase>/, rapports complets dans dist/lighthouse/."
 }
