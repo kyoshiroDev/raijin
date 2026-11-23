@@ -7,7 +7,7 @@
 
 - **`.env.example` à créer par toi** : les permissions de Claude Code (règle `Read(./.env.*)`) empêchent aussi d'écrire ce fichier. Le modèle complet (variables commentées avec l'URL où les obtenir) est dans `docs/ENV.md`. Deux options : lancer `cp` du bloc de `docs/ENV.md` vers `.env.example`, ou ajouter dans `.claude/settings.json` une règle `allow` `Write(./.env.example)` (c'est à toi de décider de modifier les permissions).
 
-## Statut : phase 7 — Landing Astro — en cours (phases 1 à 6 bis terminées ; Lighthouse 2 pages à 87-88, voir Blocages)
+## Statut : phase 7 bis — Banc : mesure des verdicts — en cours (phases 1 à 7 terminées ; Lighthouse de l'app sous 95, voir Blocages)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -172,7 +172,8 @@
 - Mineurs à reprendre (phase 9) : variante admin du contrat de charge push ; rétention AuditLog dans la purge ; taux d'erreur 24 h estimé, `analyses_failed` = résultats partiels, entonnoir plafonné à 100 %, `nextRunAt` null ; lien dashboard Stripe test/réel selon NODE_ENV ; CSP `img-src data:` pour le QR (phase 8) ; bundle initial 467 kB à réduire.
 - Points pour la phase 7 : `data-app-link`/`appHref()` et `data-track` à poser sur les pages, politique de confidentialité citant rj_consent, rj_attr, _ga et sessionStorage ; canonical en `/index.html` (build.format: 'file') à corriger. Les variables publiques de la landing (GA4_MEASUREMENT_ID, GOOGLE_SITE_VERIFICATION, APP_URL) sont lues au build : infra/deploy.sh devra les exporter.
 
-### Phase 7 — Landing Astro — planifiée (2026-11-23)
+### Phase 7 — Landing Astro — terminée (2026-11-23)
+- Clôture : suite e2e complète verte sur GitHub (run 45243131544, `1ce1525`) ; **Lighthouse runner (run 45245131547, `e660c1b`) : landing /, /tarifs, guide = 100/100/100/100** ; CI push verte ; audit sans point critique/important (mineurs corrigés `8c482ab`).
 - Plan (architect) : décisions dans `docs/ARCHITECTURE.md` §15. (1) **Prix et quotas** : catalogue `PUBLIC_PLAN_CATALOG` (contrats, sans Zod) lu **au build** par la landing ; l'API en tire ses défauts et journalise en production toute variable qui s'en écarte ; ni appel API au build, ni à l'exécution. (2) **Analyse sans compte** : le champ du hero **redirige vers `app…/analyse/<mint>`** (l'app fait l'analyse anonyme, quota 3/j par IP, CSRF même site déjà audité) ; POST depuis la landing écarté (CORS avec credentials pour une origine de plus, rendu du verdict dupliqué, JS). **Aucune modification de CORS ni de CSRF.** (3) **Démo** : token fictif « Exemple », verdict calculé au build par `shared-risk-engine`. (4) Content collections (`guides`, `faq`). (5) Canonical sans `.html` ni `/index` (`canonicalUrl`), sitemap par endpoint statique, OG au build (satori + resvg-wasm, couleurs de `tokens.json`). (6) Budget : JS ≤ 12 ko gzip/page, accueil ≤ 200 ko, Lighthouse mobile ≥ 95 sur 4 catégories. Aucune nouvelle dépendance npm.
 - Contrat ajouté (non commité) : `libs/shared/contracts/src/lib/billing/catalog.ts` (`PUBLIC_PLAN_CATALOG`, `PublicPlanCatalog` avec `anonAnalysesPerDay`), exporté par `billing/index.ts`, test d'alignement dans `billing.spec.ts`. `pnpm nx run-many -t lint typecheck test -p shared-contracts --parallel=1 --skip-nx-cache` : vert.
 - Tâches :
@@ -232,6 +233,7 @@
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
 
 ## Blocages
+- **Lighthouse de l'app en recul** (run 45245131547) : /analyse 88 (96 en phase 3), /analyse/<mint> 79 (88), /t/<mint> 78 (87) ; Access./BP/SEO 100. Cause probable : bundle initial passé de ~430 kB à 468 kB (phases 4–6 bis) et TBT 430–970 ms. À traiter en phase 9 (polish) : audit du bundle initial (ce qui est chargé au démarrage hors /analyse et /t), pistes déjà notées (chunk framework, zod/mini).
 - ~~CI rouge sur `8950294`~~ : corrigée par `66ce851` (run 45054867280 vert) ; cause supplémentaire : un `git mv` indexé par un agent embarqué dans un commit d'intégration → commits désormais par chemins explicites.
 - ~~CI rouge sur `6b51330`~~ : corrigée par `ccb8c8e` (run 45024211188 vert).
 - ~~CI rouge sur dev depuis ad912a8~~ : corrigée (`10c8d7c`, run 45017043102 vert).
