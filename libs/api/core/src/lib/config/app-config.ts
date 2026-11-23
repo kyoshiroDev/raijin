@@ -409,6 +409,16 @@ function isReal(value: string | undefined): value is string {
   return !!value && !PLACEHOLDER.test(value);
 }
 
+/** URL Redis valide (schéma, hôte, port facultatif), identifiants compris. */
+export function isRedisUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'redis:' || url.protocol === 'rediss:') && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
@@ -463,6 +473,11 @@ export function loadConfig(
   }
 
   let redisUrl: string | null = e.REDIS_URL ?? null;
+  // URL redis:// ou rediss://, mot de passe accepté (`redis://:<hex>@raijin-redis:6379`) ; jamais citée dans l'erreur.
+  if (redisUrl && !isRedisUrl(redisUrl)) {
+    problems.push('REDIS_URL : URL redis:// ou rediss:// attendue (ex. redis://:mot-de-passe@raijin-redis:6379)');
+    redisUrl = null;
+  }
   if (!redisUrl) {
     if (isProduction) problems.push('REDIS_URL : obligatoire en production (rate limiting partagé)');
     redisUrl = e.NODE_ENV === 'development' ? DEV_REDIS_URL : null;

@@ -322,3 +322,26 @@ describe('loadConfig — quotas du catalogue public (phase 7, §15.2)', () => {
     expect(dev.filter((message) => message.includes('catalogue'))).toEqual([]);
   });
 });
+
+describe('loadConfig — REDIS_URL avec mot de passe (phase 8)', () => {
+  const url = 'redis://:9f8e7d6c5b4a39281706f5e4d3c2b1a0@raijin-redis:6379';
+
+  it('URL avec mot de passe acceptée en production, transmise telle quelle aux clients', () => {
+    expect(loadConfig({ ...prodEnv, REDIS_URL: url }).redisUrl).toBe(url);
+    expect(loadConfig({ NODE_ENV: 'test', REDIS_URL: 'rediss://:abc@redis.exemple:6380/0' }).redisUrl).toBe('rediss://:abc@redis.exemple:6380/0');
+  });
+
+  it('URL invalide refusée sans jamais citer la valeur (mot de passe)', () => {
+    let message = '';
+    try {
+      loadConfig({ ...prodEnv, REDIS_URL: 'http://:9f8e7d6c5b4a39281706f5e4d3c2b1a0@raijin-redis:6379' });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('REDIS_URL');
+    expect(message).not.toContain('9f8e7d6c5b4a39281706f5e4d3c2b1a0');
+    const warnings: string[] = [];
+    loadConfig({ ...prodEnv, REDIS_URL: url }, (warning) => warnings.push(warning));
+    expect(warnings.join(' ')).not.toContain('9f8e7d6c5b4a39281706f5e4d3c2b1a0');
+  });
+});

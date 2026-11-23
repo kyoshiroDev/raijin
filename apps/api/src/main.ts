@@ -6,7 +6,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { BILLING_WEBHOOK_PATH, billingWebhookRawBody, loadBillingConfig } from '@raijin/api-billing';
-import { ConfigError, GLOBAL_PREFIX, loadConfig, setupApp } from '@raijin/api-core';
+import { ConfigError, GLOBAL_PREFIX, loadConfig, redactCredentials, setupApp } from '@raijin/api-core';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { AppModule } from './app/app.module';
@@ -44,7 +44,8 @@ bootstrap().catch((error: unknown) => {
   if (error instanceof ConfigError) {
     new Logger('Bootstrap').error(error.message);
   } else {
-    new Logger('Bootstrap').error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+    // Jamais d'URL de connexion en clair (mot de passe Redis / Postgres) dans les journaux.
+    new Logger('Bootstrap').error(redactCredentials(error instanceof Error ? (error.stack ?? error.message) : String(error)));
   }
   process.exit(1);
 });

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { ThrottlerStorage } from '@nestjs/throttler';
 import { createThrottlerStorage, ResilientThrottlerStorage, throttleTracker } from './throttler';
 
@@ -49,5 +50,19 @@ describe('throttleTracker', () => {
     expect(throttleTracker({ ip: '64:ff9b::198.51.100.5' })).toBe('198.51.100.5');
     expect(throttleTracker({ ip: '64:ff9b::c633:6404' })).not.toBe(throttleTracker({ ip: '64:ff9b::c633:6405' }));
     expect(throttleTracker({})).toBe('unknown');
+  });
+});
+
+describe('createThrottlerStorage avec mot de passe Redis (phase 8)', () => {
+  it('URL redis://:<hex>@hôte acceptée (mot de passe transmis à ioredis) ; jamais dans les journaux', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const storage = createThrottlerStorage('redis://:0a1b2c3d4e5f60718293a4b5c6d7e8f9@127.0.0.1:1');
+    const primary = (storage as unknown as { primary: { redis: { options: { password?: string; host: string; port: number } } } }).primary;
+    expect(primary.redis.options).toMatchObject({ password: '0a1b2c3d4e5f60718293a4b5c6d7e8f9', host: '127.0.0.1', port: 1 });
+    const record = await storage.increment('k', 60_000, 5, 0, 'default');
+    expect(record.totalHits).toBe(1);
+    storage.onApplicationShutdown();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('0a1b2c3d4e5f60718293a4b5c6d7e8f9');
+    warn.mockRestore();
   });
 });

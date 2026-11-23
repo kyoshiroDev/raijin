@@ -16,3 +16,4 @@ export * from './lib/templates/alert-text';
 export * from './lib/trial-mail.service';
 export * from './lib/templates/trial-templates';
 export * from './lib/templates/admin-alert-templates';
+export * from './lib/templates/admin-notice-templates';

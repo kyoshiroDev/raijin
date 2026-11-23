@@ -10,6 +10,7 @@ import { ThrottlerException } from '@nestjs/throttler';
 import type { ApiErrorCode } from '@raijin/shared-contracts';
 import type { Response } from 'express';
 import { ApiException, defaultMessage } from './api-exception';
+import { redactCredentials } from '../security/redact';
 
 const STATUS_CODES: Readonly<Record<number, ApiErrorCode>> = {
   400: 'VALIDATION_ERROR',
@@ -45,11 +46,11 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const { status, body } = this.toBody(exception);
     if (status >= 500) {
       this.logger.error(
-        exception instanceof Error ? `${exception.name}: ${exception.message}` : 'Erreur inconnue',
-        exception instanceof Error ? exception.stack : undefined,
+        exception instanceof Error ? redactCredentials(`${exception.name}: ${exception.message}`) : 'Erreur inconnue',
+        exception instanceof Error && exception.stack ? redactCredentials(exception.stack) : undefined,
       );
       if (this.exposeStack && exception instanceof Error && exception.stack) {
-        body.stack = exception.stack;
+        body.stack = redactCredentials(exception.stack);
       }
     }
     if (response.headersSent) return;
