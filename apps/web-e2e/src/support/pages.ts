@@ -633,15 +633,31 @@ export interface TargetIssue {
  * Cibles interactives visibles plus petites que `min` px dans une dimension.
  * Exclut les éléments visuellement masqués (lien d'évitement `sr-only`) et le conteneur `main`
  * (tabindex=-1, cible du lien d'évitement, non interactif).
+ *
+ * Exception WCAG 2.5.8 « inline » (décision orchestrateur, phase 7), appliquée strictement : un `<a>` est exempté
+ * seulement si son parent direct est un bloc de texte rédigé (`p`, `li`, `td`, `dd`, `figcaption`) qui contient aussi
+ * du texte hors du lien (lettres ou chiffres, hors autres liens/boutons et hors contenu `aria-hidden`) : le lien fait
+ * partie d'une phrase. Tout le reste reste soumis aux 44 px : lien seul dans un `li` de navigation, carte, CTA,
+ * pied de page, boutons, champs.
  */
 export function findSmallTargets(page: Page, min: number): Promise<TargetIssue[]> {
   return page.evaluate((minSize) => {
     const selector =
       'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="tab"], [role="link"], [role="switch"], [role="checkbox"], [tabindex]:not([tabindex="-1"])';
     const issues: { label: string; width: number; height: number }[] = [];
+    const TEXT_BLOCKS = ['P', 'LI', 'TD', 'DD', 'FIGCAPTION'];
+    /** Lien dans une phrase : parent direct = bloc de texte, avec du texte rédigé hors de tout lien ou bouton. */
+    const isInlineSentenceLink = (el: HTMLElement): boolean => {
+      const parent = el.parentElement;
+      if (el.tagName !== 'A' || !parent || !TEXT_BLOCKS.includes(parent.tagName)) return false;
+      const clone = parent.cloneNode(true) as HTMLElement;
+      for (const node of Array.from(clone.querySelectorAll('a, button, [role="button"], [role="link"], [aria-hidden="true"]'))) node.remove();
+      return /[\p{L}\p{N}]/u.test(clone.textContent ?? '');
+    };
     for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
       const style = getComputedStyle(el);
       if (style.visibility === 'hidden' || style.display === 'none') continue;
+      if (isInlineSentenceLink(el)) continue;
       let rect: { width: number; height: number } = el.getBoundingClientRect();
       // Masqué visuellement (sr-only : 1 px, clip) ou hors rendu.
       if (rect.width <= 1 || rect.height <= 1) continue;
