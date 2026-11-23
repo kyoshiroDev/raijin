@@ -5,14 +5,15 @@ on:
     branches: [dev]
   pull_request:
     branches: [main]
-  # Lancement manuel (bouton « Run workflow » ou `gh workflow run ci.yml --ref dev -f suite=e2e|lighthouse`) :
-  # seul le job choisi tourne (lighthouse en mode diagnostic ; e2e complet, utile quand la machine locale manque de mémoire).
+  # Lancement manuel (bouton « Run workflow » ou `gh workflow run ci.yml --ref dev -f suite=e2e|lighthouse|images`) :
+  # seul le job choisi tourne (lighthouse en mode diagnostic ; e2e complet, utile quand la machine locale manque de mémoire ;
+  # images : build des images Docker de production et contrôle de la pile derrière un Traefik factice).
   workflow_dispatch:
     inputs:
       suite:
         description: Job à lancer
         type: choice
-        options: ['lighthouse', 'e2e']
+        options: ['lighthouse', 'e2e', 'images']
         default: 'lighthouse'
       runs:
         description: Passages Lighthouse par page (médiane retenue)
@@ -302,7 +303,7 @@ jobs:
     # workflow_dispatch : job principal ignoré, mesure seule pour diagnostic (aucun échec sur les scores).
     if: >-
       !cancelled() && (
-        (github.event_name == 'workflow_dispatch' && inputs.suite != 'e2e') ||
+        (github.event_name == 'workflow_dispatch' && inputs.suite == 'lighthouse') ||
         (github.event_name == 'pull_request' && github.base_ref == 'main' && needs.verifier.result == 'success')
       )
     needs: verifier
@@ -445,3 +446,93 @@ jobs:
             dist/lighthouse/${{ env.LH_PHASE }}/**
           retention-days: 7
           if-no-files-found: ignore
+
+  images:
+    name: images Docker de production (PR vers main ou lancement manuel)
+    # Construit les images de infra/docker/Dockerfile (cibles des services de infra/docker-compose.yml) SANS les
+    # pousser, démarre la pile par infra/deploy.sh --skip-build derrière un Traefik factice (réseau traefik-ci,
+    # certificat par défaut, certresolver inexistant), puis vérifie healthchecks, routage, règles nginx et en-têtes
+    # (infra/ci/check-stack.sh). Trivy en rapport seul (non bloquant). Coût : ARCHITECTURE.md §6.
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'workflow_dispatch' && inputs.suite == 'images') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'main' && needs.verifier.result == 'success')
+      )
+    needs: verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TRAEFIK_CI_PORT: '8443'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Variables factices (infra/.env, infra/.env.api)
+        run: infra/ci/fake-env.sh
+
+      - name: Cibles à construire
+        id: targets
+        run: |
+          list="raijin-api,raijin-web,raijin-landing,raijin-migrate"
+          # Banc : seulement quand son API existe (phase 8 bis) ; sinon ignoré.
+          if [ -d apps/raijin-banc-de-test-api ]; then list="$list,raijin-bench-api,raijin-bench-web"; fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "Cibles : $list"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Une seule exportation de cache (cible raijin-api, mode=max : étapes deps, source, build-api, build-web) pour
+      # rester sous le quota de 10 Go du cache GitHub ; les autres cibles relisent ce cache.
+      - name: Build des images (chargées localement, jamais poussées)
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          source: .
+          files: infra/docker-compose.yml
+          targets: ${{ steps.targets.outputs.list }}
+          load: true
+          push: false
+          set: |
+            *.cache-from=type=gha,scope=raijin-images
+            raijin-api.cache-to=type=gha,scope=raijin-images,mode=max
+
+      - name: Traefik factice
+        run: |
+          docker network create traefik-ci
+          docker run -d --name traefik-ci --network traefik-ci -p "127.0.0.1:${TRAEFIK_CI_PORT}:443" \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            traefik:v3.6@sha256:31267173a15b4944e797a76ffd9c419707c8d8b32fe5b610f80cd0cfa05f372d \
+            --providers.docker=true --providers.docker.exposedbydefault=false --providers.docker.network=traefik-ci \
+            --entrypoints.websecure.address=:443 --log.level=WARN
+
+      - name: Démarrage par infra/deploy.sh (sans build ni contrôle extérieur)
+        run: infra/deploy.sh --skip-build --yes --no-external-check
+
+      - name: Contrôles (healthchecks, routage, nginx, en-têtes)
+        run: |
+          sleep 5
+          infra/ci/check-stack.sh
+
+      - name: Trivy (vulnérabilités HIGH/CRITICAL corrigeables, rapport seul)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          {
+            echo "### Trivy (rapport, non bloquant)"
+            for img in raijin/api:latest raijin/web:latest raijin/landing:latest; do
+              echo ""
+              echo "#### $img"
+              echo '```'
+              docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro \
+                aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e \
+                image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 \
+                --format table "$img" 2>&1 | tail -n 60
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Journaux de la pile (en cas d'échec)
+        if: failure()
+        run: |
+          docker compose --project-name raijin --env-file infra/.env -f infra/docker-compose.yml ps -a || true
+          for c in raijin-api raijin-web raijin-landing raijin-postgres raijin-redis traefik-ci; do
+            echo "::group::$c"; docker logs --tail 150 "$c" 2>&1 || true; echo "::endgroup::"
+          done
