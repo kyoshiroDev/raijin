@@ -61,6 +61,12 @@ export const routes: Routes = [
         loadComponent: () => import('./features/strategy-lab/strategy-lab-page').then((m) => m.StrategyLabPage),
       },
       {
+        // Justesse des verdicts du moteur (phase 7 bis, docs/ARCHITECTURE.md §16.6) : données simulées jusqu'à la phase 8 bis.
+        path: 'justesse',
+        title: 'Justesse des verdicts · Raijin-banc-de-test',
+        loadComponent: () => import('./features/verdict-quality/verdict-quality-page').then((m) => m.VerdictQualityPage),
+      },
+      {
         path: 'settings',
         title: 'Réglages · Raijin-banc-de-test',
         loadComponent: () => import('./features/settings/settings-page').then((m) => m.SettingsPage),

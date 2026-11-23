@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, type OnInit, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { PageHeader } from '../../shared/ui/page-header';
 import { PerformanceSwitch } from '../../shared/ui/performance-switch';
 import { BreakdownOverview } from './components/breakdown-overview';
@@ -15,7 +16,7 @@ import { BOOKS_LOAD_ERROR, PRESET_LOAD_ERROR, PerformanceStore } from './perform
  */
 @Component({
   selector: 'app-performance-page',
-  imports: [BreakdownOverview, BucketList, PageHeader, PerformanceSwitch, PresetSection, TestBooksSection],
+  imports: [BreakdownOverview, BucketList, PageHeader, PerformanceSwitch, PresetSection, RouterLink, TestBooksSection],
   providers: [PerformanceStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -24,6 +25,14 @@ import { BOOKS_LOAD_ERROR, PRESET_LOAD_ERROR, PerformanceStore } from './perform
     </app-page-header>
     <main class="mx-auto max-w-lg space-y-4 px-safe pt-4">
       <app-performance-switch active="signals" />
+      <a
+        routerLink="/justesse"
+        class="card press flex min-h-11 items-center justify-between gap-3 text-sm font-semibold hover:border-line-strong"
+        data-verdict-quality-link
+      >
+        <span>Justesse des verdicts du moteur</span>
+        <span aria-hidden="true" class="text-muted">→</span>
+      </a>
       <section aria-labelledby="perf-test-books">
         <app-test-books-section
           [state]="store.bookState()"
