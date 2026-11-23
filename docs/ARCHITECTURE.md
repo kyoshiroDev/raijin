@@ -1394,3 +1394,102 @@ Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (répon
 - `GET health/config` retiré (404) ; état des services dans `GET admin/health`.
 - `GOOGLE_SERVICE_ACCOUNT_JSON`, `TOTP_ENCRYPTION_KEY` : jamais journalisés ; portées Google en lecture seule ; hôtes Google
   fixes ; `ANALYTICS_PROVIDER=fake` refusé en production.
+
+## 15. Landing Astro (phase 7)
+
+### 15.1 Découpage et propriété des fichiers
+- **seo-astro** : tout `apps/landing/**` (pages, contenus, composants, îlots, OG, sitemap, tests Vitest), `docs/ANALYTICS.md`
+  (mise à jour des déclencheurs), `docs/DEPLOY.md` (section landing : variables du build, sitemap Search Console, URLs
+  sans `.html`). Aucune lib nouvelle : le contenu est propre à la landing (pas de logique métier, seulement de la
+  présentation ; le verdict de démonstration est calculé par `@raijin/shared-risk-engine`).
+- **ui-mobile-first** : `libs/web/feature-analyse` (repli sans JS `/analyse?mint=` → `/analyse/<mint>`).
+- **nestjs-api** : défauts de configuration tirés de `PUBLIC_PLAN_CATALOG` (`api-core`, `api-billing`) + avertissement
+  de désalignement au démarrage en production.
+- **test-e2e** : `apps/web-e2e` (specs landing, `scripts/serve-landing.mjs`, cible `lighthouse`).
+- Dépendances autorisées pour la landing : `scope:shared` uniquement (`shared-contracts` en `import type` côté client,
+  valeurs au build ; `shared-util` pour `isSolanaAddress` ; `shared-risk-engine` au build seulement). **Aucune nouvelle
+  dépendance npm** (pas de `@astrojs/sitemap`, pas de framework d'îlot : scripts TypeScript natifs d'Astro).
+
+### 15.2 Source des prix et des quotas affichés : catalogue partagé, lu au build
+- Tranché : `PUBLIC_PLAN_CATALOG` (`libs/shared/contracts/src/lib/billing/catalog.ts`, sans Zod, testé contre
+  `billingPlansResponseSchema`) est importé au build par la landing (tarifs, hero « N analyses gratuites sans compte »,
+  FAQ, JSON-LD `offers`).
+- Écartés : **lecture de `GET billing/plans` au build** (le build et la CI dépendraient d'une API démarrée ; une API
+  injoignable casserait le déploiement) ; **lecture à l'exécution** (JS client, requête inter-origines, CLS, Lighthouse) ;
+  **duplication** dans la landing (dérive silencieuse).
+- Alignement : l'API tire ses défauts (`PRO_PRICE_*_CENTS`, `ANON_/FREE_/TRIAL_ANALYSIS_DAILY_LIMIT`, `*_WATCH_LIMIT`,
+  `*_ALERT_HISTORY_DAYS`, `WALLET_SCAN_DAILY_LIMIT_*`, `TRIAL_DAYS`) du catalogue ; en production, toute variable qui
+  s'en écarte est journalisée au démarrage (`warn`, nom de la variable seulement). Changer un prix = modifier le
+  catalogue, reconstruire API et landing. L'app continue d'afficher `GET billing/plans` (valeurs effectives).
+- Format des prix : `Intl.NumberFormat('fr-FR', { style: 'currency', currency })` au build, mention « TTC ».
+
+### 15.3 Analyse sans compte depuis la landing : redirection vers l'app (tranché)
+- Le champ du hero est un `<form method="get" action="{APP_URL}/analyse">` (`name="mint"`, `inputmode="text"`,
+  `autocomplete="off"`, `spellcheck="false"`). Îlot `analyse-form.ts` (≤ 2 ko gzip) : `isSolanaAddress` (shared-util, sans
+  Zod), message d'erreur inline (`aria-describedby`, `aria-invalid`), puis navigation vers
+  `{APP_URL}/analyse/<mint>` + paramètres d'attribution (`decorateAppUrl` existant), `track('analyse_demo_lancee')`
+  en `transport_type: 'beacon'`. Sans JS : le GET arrive sur `/analyse?mint=…`, l'app redirige (ui-mobile-first).
+- L'analyse est faite par l'app, qui sait déjà le faire sans compte (quota anonyme par empreinte d'IP,
+  `ANON_ANALYSIS_DAILY_LIMIT`, CSRF double-submit **même site** `app` ↔ `api`, déjà audité). « Une analyse gratuite sans
+  compte » est tenue (3 par jour, valeur du catalogue).
+- **Écarté : POST depuis la landing** (`GET auth/csrf` avec `credentials: 'include'` puis `POST /analyses`). Techniquement
+  possible (`raijinshield.com` et `api.raijinshield.com` sont même site, les cookies `SameSite=Lax` partiraient), mais
+  il faut ajouter l'origine de la landing à `CORS_ORIGINS` avec credentials (surface d'attaque élargie : tout XSS de la
+  landing devient un client authentifié de l'API), dupliquer le rendu du verdict dans la landing (JS, Zod ou parsing
+  maison, données hostiles à échapper une seconde fois) et alourdir la page (Lighthouse ≥ 95). Aucune modification
+  de l'API : `CORS_ORIGINS` de production reste `https://app.raijinshield.com` (celui de dev garde `:4321` pour les e2e
+  existants).
+- Le verdict réel n'est donc pas visible par GA4 (l'app n'embarque pas GA4) : mesuré en interne (`ProductEvent`
+  + attribution `rj_lp`). `analyse_demo_resultat` correspond à l'**analyse de démonstration** (§15.4).
+
+### 15.4 Visuel du verdict et analyse de démonstration
+- Token fictif, explicitement nommé « Exemple » (aucun mint réel, aucune marque, aucune promesse) : faits définis dans
+  `apps/landing/src/lib/demo/facts.ts`, verdict et contrôles calculés **au build** par `evaluateRisk` /
+  `summarizeCheck` de `shared-risk-engine` → la démo ne peut pas contredire le moteur. Un test Vitest fige le verdict attendu
+  (`warn` recommandé : montre les 3 statuts).
+- Rendu HTML statique (icône + mot + couleur de verdict, liste des 9 contrôles avec `ANALYSIS_CHECK_LABELS`,
+  `VERDICT_LABELS`, `CHECK_STATUS_LABELS`). Bouton « Lancer la démonstration » : révèle le résultat (classe CSS,
+  animation désactivée en reduced-motion) et envoie `analyse_demo_resultat { verdict }`. Sans JS : résultat visible.
+
+### 15.5 Contenus : content collections Astro
+- `src/content.config.ts` : collection `guides` (loader `glob` sur `src/content/guides/*.md`), schéma
+  `astro/zod` (title ≤ 60 car., description 120–160 car., `publishedAt`, `updatedAt`, `related: slug[]`, `faq?`).
+  Zod reste au build (aucun JS client). Collection `faq` (fichier YAML/JSON unique) partagée par l'accueil et `/faq`.
+- Guides minimum : `rug-pull-solana` (« Comment repérer un rug pull sur Solana »), `mint-authority`
+  (« Mint authority : c'est quoi ? »), `honeypot-solana` (« Honeypot : comment le détecter »). Liens internes croisés
+  (`related`), CTA vers l'analyse, mention légale en pied d'article.
+- Pages : `/`, `/tarifs`, `/comment-ca-marche`, `/faq`, `/guides`, `/guides/<slug>`, `/mentions-legales`, `/cgu`
+  (CGU + CGV), `/confidentialite`, `404`. Mentions légales et CGV : éditeur, SIRET, adresse, contact, médiateur marqués
+  **« À compléter »** (constante `LEGAL_TODO` affichée visiblement, jamais d'identité inventée) ; hébergeur : OVHcloud
+  (raison sociale publique) ; la confidentialité cite `rj_consent` (182 j), `rj_attr` (90 j, après consentement),
+  `_ga`/`_ga_*` (GA4, après consentement), le `sessionStorage` d'attribution (onglet, sans consentement, finalité interne),
+  les cookies de session de l'app (`rj_at`, `rj_rt`, `rj_csrf`, strictement nécessaires) et l'empreinte d'IP hachée du
+  quota anonyme.
+
+### 15.6 SEO technique
+- **Canonical corrigé** : `build.format: 'file'` conservé (URLs sans barre finale, `trailingSlash: 'never'`) ;
+  `canonicalUrl(pathname)` (`src/lib/seo.ts`, testé) retire `.html` et `/index` → `https://raijinshield.com/`,
+  `https://raijinshield.com/tarifs`. Même fonction pour `og:url`, sitemap et `BreadcrumbList`. Le serveur (Traefik /
+  serveur statique, phase 8) sert `/tarifs` → `tarifs.html` ; `serve-landing.mjs` fait de même pour les e2e.
+- `sitemap.xml` : endpoint statique `src/pages/sitemap.xml.ts` (pages + guides avec `lastmod`), sans dépendance ;
+  `robots.txt` existant. `404` en `noindex`.
+- Composant `Seo.astro` : title/description uniques (test qui parcourt `dist` : unicité, longueurs), `lang="fr"`,
+  OG + Twitter `summary_large_image`, JSON-LD dans `<script type="application/ld+json">` (non exécutable, compatible
+  `script-src 'self'`) : `Organization` + `SoftwareApplication` (offers depuis le catalogue) sur l'accueil, `FAQPage`
+  (accueil et `/faq`), `BreadcrumbList` (pages internes), `Article` (guides). Échappement de `<` dans le JSON.
+- **Images OG au build** : endpoint `src/pages/og/[slug].png.ts` (`getStaticPaths` : une image par page et par guide),
+  `satori` + `@resvg/resvg-wasm` (déjà dans le workspace, aucun binaire natif), polices WOFF `@fontsource` (comme
+  `api-analysis/og`), couleurs lues dans `libs/brand/tokens.json` (aucune valeur en dur), Rai et logo depuis
+  `libs/brand`. 1200 × 630, PNG ≤ 150 ko.
+
+### 15.7 Performance et budget (Lighthouse mobile ≥ 95 sur chaque page, PROMPT.md §9.5)
+- Zéro JS par défaut ; JS total par page ≤ 12 ko gzip (analytics + consentement ≤ 4 ko, formulaire ≤ 2 ko, démo ≤ 1 ko,
+  suivi de lecture des guides ≤ 1 ko). Aucun script inline.
+- CSS : Tailwind + tokens, ≤ 20 ko gzip, critique inline toléré par Astro (`inlineStylesheets: 'auto'`) — à vérifier
+  contre la CSP `style-src` de la phase 8 ; sinon fichier unique.
+- Polices : 2 graisses préchargées max (Space Grotesk 700 du hero, Inter 400), `font-display: swap`, latin seulement.
+- Rai du hero : SVG inline (≈ LCP texte, pas d'image bitmap), 160 px sur mobile, respiration 3 s et éclat au survol en
+  CSS, arrêtés sous `prefers-reduced-motion`. Images : `astro:assets`, dimensions explicites, `loading="lazy"` sous la
+  ligne de flottaison. Poids total de l'accueil ≤ 200 ko transférés (hors GA4 après consentement).
+- Mesure : cible `web-e2e:lighthouse` étendue aux pages de la landing (accueil, tarifs, un guide), médiane de 3 sur le
+  runner GitHub ; Performance, Accessibilité, Bonnes pratiques, SEO ≥ 95.

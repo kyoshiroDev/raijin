@@ -1,5 +1,7 @@
 import {
   BILLING_ERROR_CODES,
+  DEFAULT_TRIAL_DAYS,
+  PUBLIC_PLAN_CATALOG,
   BILLING_ERROR_MESSAGES,
   TRIAL_INELIGIBLE_NOTICE,
   apiErrorCodeSchema,
@@ -36,6 +38,24 @@ const PRO: Entitlements = {
 };
 
 describe('plans et prix', () => {
+  it('le catalogue public de la landing respecte le contrat de GET billing/plans', () => {
+    const { anonAnalysesPerDay, ...plans } = PUBLIC_PLAN_CATALOG;
+    expect(
+      billingPlansResponseSchema.safeParse({ ...plans, mode: 'stripe' }).success,
+    ).toBe(true);
+    expect(Number.isInteger(anonAnalysesPerDay)).toBe(true);
+    expect(anonAnalysesPerDay).toBeGreaterThan(0);
+    expect(PUBLIC_PLAN_CATALOG.trial.days).toBe(DEFAULT_TRIAL_DAYS);
+    expect(PUBLIC_PLAN_CATALOG.free.entitlements).toEqual(FREE);
+    expect(PUBLIC_PLAN_CATALOG.pro.entitlements).toEqual(PRO);
+    expect(
+      yearlySavingsPercent(
+        PUBLIC_PLAN_CATALOG.pro.monthly.amountCents,
+        PUBLIC_PLAN_CATALOG.pro.yearly.amountCents,
+      ),
+    ).toBe(17);
+  });
+
   it('valide la réponse publique des plans', () => {
     const plans = {
       free: { plan: 'FREE', entitlements: FREE },
