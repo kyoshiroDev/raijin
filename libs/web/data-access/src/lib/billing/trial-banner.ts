@@ -29,7 +29,7 @@ export function localDay(now: number): string {
 /** Texte du bandeau : factuel, sans urgence ni compte à rebours. */
 export function trialBannerText(days: number): string {
   if (days <= 1) return 'Essai Pro : se termine aujourd’hui';
-  return `Essai Pro : plus que ${days} jours`;
+  return `Essai Pro : il reste ${days} jours`;
 }
 
 export interface TrialBanner {

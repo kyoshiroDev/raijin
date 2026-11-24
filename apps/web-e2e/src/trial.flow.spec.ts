@@ -46,7 +46,7 @@ async function captureMail(page: Page, html: string, name: string): Promise<void
   }
 }
 
-test('inscription → vérification → essai Pro : bandeau « plus que 7 jours », refermable, de retour le lendemain, dernier jour', async ({ page }) => {
+test('inscription → vérification → essai Pro : bandeau « il reste 7 jours », refermable, de retour le lendemain, dernier jour', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await useFreshIp(page);
   const email = uniqueEmail('essai-ui');
@@ -59,7 +59,7 @@ test('inscription → vérification → essai Pro : bandeau « plus que 7 jours 
   await openPage(page, '/analyse');
   const banner = trialBanner(page);
   await expect(banner).toBeVisible({ timeout: 15_000 });
-  await expect(banner.locator('[data-trial-text]')).toHaveText('Essai Pro : plus que 7 jours');
+  await expect(banner.locator('[data-trial-text]')).toHaveText('Essai Pro : il reste 7 jours');
   await expect(banner.getByRole('link', { name: 'Voir les offres' })).toHaveAttribute('href', '/abonnement');
   // Aucune animation dans le bandeau (sobre, sans compte à rebours).
   expect(await banner.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
@@ -82,7 +82,7 @@ test('inscription → vérification → essai Pro : bandeau « plus que 7 jours 
   // Le lendemain (horloge du navigateur avancée d'un jour) : de retour, un jour de moins.
   await page.clock.setFixedTime(new Date(Date.now() + DAY));
   await openPage(page, '/analyse');
-  await expect(trialBanner(page).locator('[data-trial-text]')).toHaveText('Essai Pro : plus que 6 jours', { timeout: 15_000 });
+  await expect(trialBanner(page).locator('[data-trial-text]')).toHaveText('Essai Pro : il reste 6 jours', { timeout: 15_000 });
 
   // Dernier jour : « se termine aujourd'hui », lien vers le récapitulatif (écran de fin déjà disponible).
   await page.clock.setFixedTime(new Date((row.trialEndsAt as Date).getTime() - 6 * HOUR));

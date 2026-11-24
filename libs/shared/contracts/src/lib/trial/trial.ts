@@ -13,7 +13,7 @@ import { trialStateSchema } from '../auth/user';
 const DAY_MS = 86_400_000;
 
 /**
- * Jours restants affichés (« Essai Pro : plus que N jours ») : arrondi au jour supérieur, 0 si terminé.
+ * Jours restants affichés (« Essai Pro : il reste N jours ») : arrondi au jour supérieur, 0 si terminé.
  * Même calcul côté API (e-mail J-2) et côté front (bandeau), à partir de `endsAt`.
  */
 export function trialDaysRemaining(

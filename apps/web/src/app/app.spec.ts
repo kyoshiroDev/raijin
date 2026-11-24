@@ -80,7 +80,7 @@ describe('App', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await fixture.whenStable();
     }
-    expect(host.querySelector('rj-trial-banner')?.textContent).toContain('Essai Pro : plus que 3 jours');
+    expect(host.querySelector('rj-trial-banner')?.textContent).toContain('Essai Pro : il reste 3 jours');
     host.querySelector<HTMLButtonElement>('rj-trial-banner button')?.click();
     await fixture.whenStable();
     expect(host.querySelector('rj-trial-banner')).toBeNull();

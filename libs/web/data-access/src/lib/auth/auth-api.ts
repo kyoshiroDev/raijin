@@ -71,6 +71,16 @@ export class AuthApi {
     );
   }
 
+  /**
+   * GET /auth/session sans refresh automatique : relecture après un 409 du refresh (un autre onglet vient de
+   * faire la rotation et de poser les nouveaux cookies). Un 401 ressort tel quel.
+   */
+  peekSession(): Observable<SessionState> {
+    return this.http
+      .get(this.url('auth/session'), { context: NO_REFRESH() })
+      .pipe(switchMap((body) => (isAnonymousState(body) ? of<SessionState>({ authenticated: false }) : of(body).pipe(parseWith((c) => c.sessionStateSchema)))));
+  }
+
   /** GET /users/me : profil à jour. */
   me(): Observable<PublicUser> {
     return this.http.get(this.url('users/me')).pipe(parseWith((c) => c.publicUserSchema));

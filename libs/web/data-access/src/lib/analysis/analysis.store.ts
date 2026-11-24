@@ -7,6 +7,9 @@ import { AnalysisPrefetch } from './analysis-prefetch';
 import { readAnalysisResponse, readAnalysisResult } from './analysis-shape';
 import { runWhenIdle } from '../util/idle';
 
+/** Repli si le chunk des messages d'erreur est injoignable (hors ligne) : même texte que `NETWORK_ERROR`. */
+const OFFLINE_MESSAGE = 'Raijin ne répond pas. Vérifie ta connexion puis réessaie.';
+
 /** Égalité de données JSON (ordre des clés indifférent ; une clé `undefined` vaut une clé absente). */
 export function sameData(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -169,10 +172,17 @@ export class AnalysisStore {
     this.currentStatus.set('ready');
   }
 
+  /** Chunk des messages d'erreur d'analyse (Zod des contrats), chargé à la première erreur. */
+  private readonly loadErrors = () => import('./analysis-errors');
+
   private async fail(error: unknown, id: number, withQuota = false): Promise<void> {
-    const { toAnalysisError } = await import('./analysis-errors');
+    // Hors ligne sans service worker, le chunk des messages peut manquer : repli sur l'erreur réseau,
+    // pour ne jamais rester bloqué sur « Analyse en cours ».
+    const clientError = await this.loadErrors().then(
+      (m) => m.toAnalysisError(error),
+      (): ClientError => ({ code: 'NETWORK_ERROR', message: OFFLINE_MESSAGE, status: 0 }),
+    );
     if (id !== this.sequence) return;
-    const clientError = toAnalysisError(error);
     if (clientError.code === 'QUOTA_EXCEEDED') {
       this.currentQuota.update((quota) => (quota ? { ...quota, remaining: 0, used: quota.limit ?? quota.used } : quota));
     } else if (withQuota && !this.currentQuota()) {

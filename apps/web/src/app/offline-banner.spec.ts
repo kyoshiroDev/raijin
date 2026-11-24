@@ -32,6 +32,8 @@ describe('RjOfflineBanner', () => {
     window.dispatchEvent(new Event('offline'));
     await fixture.whenStable();
     expect(host.querySelector('[data-offline]')?.textContent).toContain('Tu es hors ligne.');
+    // Icône dessinée dans le bandeau : aucun chunk d'icônes à charger hors ligne.
+    expect(host.querySelector('[data-offline] svg path')).not.toBeNull();
 
     onLine.mockReturnValue(true);
     window.dispatchEvent(new Event('online'));

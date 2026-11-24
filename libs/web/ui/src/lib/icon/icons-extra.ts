@@ -10,7 +10,6 @@ import {
   SlidersHorizontal,
   Smartphone,
   Trash2,
-  WifiOff,
   type IconNode,
 } from 'lucide';
 
@@ -31,5 +30,4 @@ export const RjExtraIcons = {
   filter: SlidersHorizontal,
   checkAll: CheckCheck,
   smartphone: Smartphone,
-  wifiOff: WifiOff,
 } as const satisfies Record<string, IconNode>;

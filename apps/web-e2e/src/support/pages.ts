@@ -519,7 +519,7 @@ export const BILLING_PAGES: readonly PageEntry[] = [
     heading: ANALYSE_H1,
     account: () => billingAccount('essai'),
     act: async (page) => {
-      await expect(trialBanner(page)).toContainText('Essai Pro : plus que', { timeout: 15_000 });
+      await expect(trialBanner(page)).toContainText('Essai Pro : il reste', { timeout: 15_000 });
     },
   },
 ];

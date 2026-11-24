@@ -194,7 +194,7 @@ describe('bandeau d’essai', () => {
   });
 
   it('texte sobre, « aujourd’hui » le dernier jour, rien hors essai actif', () => {
-    expect(trialBannerText(3)).toBe('Essai Pro : plus que 3 jours');
+    expect(trialBannerText(3)).toBe('Essai Pro : il reste 3 jours');
     expect(trialBannerText(1)).toBe('Essai Pro : se termine aujourd’hui');
     expect(trialBannerFor(trialUser('2026-11-25T10:00:00.000Z'), NOW)?.linkPath).toBe('/abonnement');
     expect(trialBannerFor(trialUser('2026-11-22T20:00:00.000Z'), NOW)?.linkPath).toBe('/abonnement/fin-essai');
@@ -208,14 +208,14 @@ describe('bandeau d’essai', () => {
     TestBed.inject(AuthStore).applySession(fakeSession({ plan: 'PRO', trial: { status: 'active', startedAt: '2026-11-20T10:00:00.000Z', endsAt: '2026-11-26T10:00:00.000Z' } }));
     const state = TestBed.inject(TrialBannerState);
     state.tick(NOW);
-    expect(state.banner()?.text).toBe('Essai Pro : plus que 4 jours');
+    expect(state.banner()?.text).toBe('Essai Pro : il reste 4 jours');
     state.dismiss(NOW);
     expect(state.banner()).toBeNull();
     expect(localStorage.getItem(TRIAL_BANNER_STORAGE_KEY)).toBe(localDay(NOW));
     state.tick(NOW + 3_600_000);
     expect(state.banner()).toBeNull();
     state.tick(NOW + 86_400_000);
-    expect(state.banner()?.text).toBe('Essai Pro : plus que 3 jours');
+    expect(state.banner()?.text).toBe('Essai Pro : il reste 3 jours');
   });
 
   it('fermeture du jour relue au démarrage', () => {

@@ -6,6 +6,7 @@ import { CSRF_HEADER } from '@raijin/shared-contracts';
 import { firstValueFrom } from 'rxjs';
 import { AuthStore } from '../auth/auth.store';
 import { CsrfToken } from '../auth/csrf-token';
+import { CONFLICT_ATTEMPTS } from '../auth/session-refresher';
 import { CSRF_ANON, fakeSession } from '../testing/fixtures';
 import { AUTH_INTERCEPTORS } from './interceptors';
 
@@ -26,6 +27,9 @@ function setup() {
 
 /** Laisse les promesses et microtâches se résoudre (requêtes enchaînées). */
 const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Attend la prochaine requête vers `url` (délais réels de quelques centaines de ms, garde-fou 5 s). */
+const nextRequest = (ctrl: HttpTestingController, url: string) =>
+  vi.waitFor(() => ctrl.expectOne(url), { timeout: 5_000, interval: 20 });
 
 afterEach(() => TestBed.inject(HttpTestingController).verify());
 
@@ -140,23 +144,38 @@ describe('sessionRefreshInterceptor', () => {
     expect(csrf.token()).toBeNull();
   });
 
-  it('refresh en 409 CONFLICT (autre onglet) : pas de déconnexion, rejeu unique avec un nouveau jeton CSRF', async () => {
+  it('refresh en 409 CONFLICT (autre onglet) : pas de déconnexion, session relue puis rejeu unique avec son jeton CSRF', async () => {
     const { http, ctrl, store } = setup();
     store.applySession(fakeSession({}, 'ancien-jeton-0123456789abcdefghijklmn'));
     const result = firstValueFrom(http.post(`${API}/suivis`, { mint: 'x' }));
     ctrl.expectOne(`${API}/suivis`).flush(expired, { status: 401, statusText: 'Unauthorized' });
     await flushMicrotasks();
     ctrl.expectOne(`${API}/auth/refresh`).flush({ code: 'CONFLICT', message: 'x' }, { status: 409, statusText: 'Conflict' });
-    await flushMicrotasks();
+    // L'autre onglet n'a pas encore reçu sa réponse : 1re relecture encore en 401, sans nouveau refresh.
+    (await nextRequest(ctrl, `${API}/auth/session`)).flush(expired, { status: 401, statusText: 'Unauthorized' });
     expect(store.isAuthenticated()).toBe(true);
-    // Le jeton lié à l'ancienne session est oublié : un nouveau est demandé (cookies déjà à jour).
-    ctrl.expectOne(`${API}/auth/csrf`).flush({ csrfToken: CSRF_ANON });
-    await flushMicrotasks();
-    const retry = ctrl.expectOne(`${API}/suivis`);
-    expect(retry.request.headers.get(CSRF_HEADER)).toBe(CSRF_ANON);
+    const fresh = fakeSession({}, 'nouveau-jeton-0123456789abcdefghijklm');
+    (await nextRequest(ctrl, `${API}/auth/session`)).flush({ ...fresh, authenticated: true });
+    const retry = await nextRequest(ctrl, `${API}/suivis`);
+    expect(retry.request.headers.get(CSRF_HEADER)).toBe('nouveau-jeton-0123456789abcdefghijklm');
     retry.flush({ ok: true });
     await expect(result).resolves.toEqual({ ok: true });
+    expect(store.isAuthenticated()).toBe(true);
     ctrl.expectNone(`${API}/auth/refresh`);
+  });
+
+  it('refresh en 409 puis session jamais relue : session oubliée après les essais, erreur d’origine', async () => {
+    const { http, ctrl, store } = setup();
+    store.applySession(fakeSession({}, 'ancien-jeton-0123456789abcdefghijklmn'));
+    const me = firstValueFrom(http.get(`${API}/users/me`));
+    ctrl.expectOne(`${API}/users/me`).flush(expired, { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+    ctrl.expectOne(`${API}/auth/refresh`).flush({ code: 'CONFLICT', message: 'x' }, { status: 409, statusText: 'Conflict' });
+    for (let i = 0; i < CONFLICT_ATTEMPTS; i++) {
+      (await nextRequest(ctrl, `${API}/auth/session`)).flush(expired, { status: 401, statusText: 'Unauthorized' });
+    }
+    await expect(me).rejects.toMatchObject({ status: 401 });
+    expect(store.isAuthenticated()).toBe(false);
   });
 
   it('après un refresh refusé, la mutation suivante redemande un jeton CSRF anonyme', async () => {

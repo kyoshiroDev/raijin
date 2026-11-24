@@ -176,6 +176,18 @@ describe('AnalysisStore', () => {
     expect(prefetch.take(FAKE_MINTS.safe)).toBeNull();
   });
 
+  it('hors ligne, chunk des messages injoignable : repli NETWORK_ERROR, jamais bloqué sur le chargement', async () => {
+    const { store, ctrl } = await setup();
+    (store as unknown as { loadErrors: () => Promise<never> }).loadErrors = () => Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
+    const done = store.analyze(FAKE_MINTS.safe);
+    ctrl.expectOne(`${API}/analyses`).error(new ProgressEvent('error'), { status: 0, statusText: '' });
+    await done;
+    expect(store.status()).toBe('error');
+    expect(store.error()).toEqual({ code: 'NETWORK_ERROR', message: 'Raijin ne répond pas. Vérifie ta connexion puis réessaie.', status: 0 });
+    // Le quota est redemandé (une erreur ne le porte pas) : la requête échoue aussi, sans autre effet.
+    for (const req of ctrl.match(`${API}/analyses/quota`)) req.error(new ProgressEvent('error'), { status: 0, statusText: '' });
+  });
+
   it('quota dépassé : quota connu ramené à 0', async () => {
     const { store, ctrl } = await setup();
     const quota = store.refreshQuota();
