@@ -5,7 +5,7 @@ import type { ClientError } from '../http/api-error';
 import { AnalysisApi } from './analysis-api';
 import { AnalysisPrefetch } from './analysis-prefetch';
 import { readAnalysisResponse, readAnalysisResult } from './analysis-shape';
-import { runWhenIdle } from '../util/idle';
+import { nextTask, runWhenIdle } from '../util/idle';
 
 /** Égalité de données JSON (ordre des clés indifférent ; une clé `undefined` vaut une clé absente). */
 export function sameData(a: unknown, b: unknown): boolean {
@@ -65,6 +65,8 @@ export class AnalysisStore {
     try {
       // Requête lancée au démarrage sur `/analyse/<mint>` (même saisie) : réutilisée, jamais rejouée.
       const body = await firstValueFrom(this.prefetch.take(trimmed) ?? this.api.analyze({ input: trimmed }));
+      // Réponse souvent déjà là au démarrage : verdict rendu dans une tâche à part de celle d'Angular.
+      await nextTask();
       if (id !== this.sequence) return false;
       // Affichage d'abord (contrôle de forme), validation complète par les contrats ensuite.
       const response = readAnalysisResponse(body);
@@ -88,6 +90,7 @@ export class AnalysisStore {
     try {
       // Lecture lancée avec le HTML (`analyse-prefetch.js`) : reprise, jamais rejouée.
       const body = await firstValueFrom(this.prefetch.takeLatest(mint) ?? this.api.latest(mint));
+      await nextTask();
       if (id !== this.sequence) return false;
       this.succeed(readAnalysisResult(body));
       this.validateWhenIdle(id, () => this.api.validateResult(body), (valid) => this.replaceIfChanged(valid));

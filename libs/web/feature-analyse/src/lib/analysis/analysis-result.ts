@@ -15,17 +15,18 @@ const VERDICT_TONES = {
   danger: 'border-danger/40 bg-danger/10 text-danger',
 } as const;
 
-/** Formateur créé au premier usage (un `Intl.DateTimeFormat` coûte au chargement du module). */
-let dateFormat: Intl.DateTimeFormat | null = null;
-function formatDate(iso: string): string {
-  dateFormat ??= new Intl.DateTimeFormat('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  return dateFormat.format(new Date(iso)).replace(/\u202f/g, '\u00a0');
+/** Mois abrégés en français (mêmes libellés que `Intl.DateTimeFormat('fr-FR', { month: 'short' })`). */
+const MONTHS_FR = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'] as const;
+
+/**
+ * « 24 nov. 2026, 17:40 » à l'heure locale, sans `Intl.DateTimeFormat` : sa création (données ICU fr-FR) coûtait
+ * plusieurs dizaines de ms dans la tâche du rendu du verdict sur téléphone (TBT de /t, docs/ARCHITECTURE.md §10.6).
+ */
+export function formatAnalysisDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getDate()}\u00a0${MONTHS_FR[date.getMonth()]}\u00a0${date.getFullYear()}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /**
@@ -224,7 +225,7 @@ export class RjAnalysisResult {
   protected readonly verdictLabel = computed(() => VERDICT_LABELS[this.result().verdict]);
   protected readonly tone = computed(() => VERDICT_TONES[this.result().verdict]);
   protected readonly counts = computed(() => statusCounts(this.result().checks));
-  protected readonly analyzedAt = computed(() => formatDate(this.result().analyzedAt));
+  protected readonly analyzedAt = computed(() => formatAnalysisDate(this.result().analyzedAt));
   protected readonly unavailableText = computed(() => {
     const count = this.result().checks.filter((check) => check.status === 'unavailable').length;
     return count > 1 ? `${count} contrôles n’ont pas pu être vérifiés` : count === 1 ? '1 contrôle n’a pas pu être vérifié' : 'certaines données manquent';

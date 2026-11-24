@@ -4,7 +4,7 @@ import { DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/test
 import { provideRouter } from '@angular/router';
 import { ANALYSIS_DISCLAIMER, SAFE_VERDICT_REMINDER, type AnalysisCheck, type AnalysisResult } from '@raijin/shared-contracts';
 import { fakeAnalysis } from '@raijin/web-data-access';
-import { RjAnalysisResult } from './analysis-result';
+import { RjAnalysisResult, formatAnalysisDate } from './analysis-result';
 import { RjCheckItem } from './check-item';
 
 function checkAt(index: number): AnalysisCheck {
@@ -181,5 +181,16 @@ describe('RjAnalysisResult', () => {
   it('aucune action jaune dans le résultat privé', async () => {
     const { host } = await renderResult(fakeAnalysis('safe'));
     expect(host.querySelectorAll('.bg-thunder')).toHaveLength(0);
+  });
+});
+
+describe('formatAnalysisDate', () => {
+  it('même rendu que Intl fr-FR (jour, mois abrégé, année, heure locale)', () => {
+    const intl = new Intl.DateTimeFormat('fr-FR', { month: 'short' });
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(2026, month, 5, 7, 3);
+      expect(formatAnalysisDate(date.toISOString())).toBe(`5\u00a0${intl.format(date)}\u00a02026, 07:03`);
+    }
+    expect(formatAnalysisDate('pas une date')).toBe('');
   });
 });
