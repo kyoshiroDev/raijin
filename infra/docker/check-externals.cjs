@@ -6,6 +6,8 @@
  *
  * Usage : node check-externals.cjs <dossier du bundle> [fichier.js…]   (défaut : main.js cli.js)
  * Les modules sont lus dans les `require("…")` littéraux émis par webpack pour les dépendances externes.
+ * Refuse aussi toute lib interne `@raijin/*` (require d'un bundle, dépendance du package.json généré ou entrée
+ * `file:`/`link:` du lockfile élagué) : les libs du monorepo doivent être bundlées par webpack, jamais installées.
  */
 'use strict';
 const { readFileSync, existsSync } = require('node:fs');
@@ -41,8 +43,31 @@ for (const id of [...found].sort()) {
   }
 }
 
+// Libs internes : jamais externes (le nom du package.json de l'app elle-même est autorisé).
+const INTERNAL = /^@raijin\//;
+const internal = [...found].filter((id) => INTERNAL.test(id)).map((id) => `require("${id}")`);
+const manifestPath = join(dir, 'package.json');
+if (existsSync(manifestPath)) {
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+    for (const name of Object.keys(manifest[section] || {})) {
+      if (INTERNAL.test(name)) internal.push(`package.json ${section} ${name}`);
+    }
+  }
+}
+const lockPath = join(dir, 'pnpm-lock.yaml');
+if (existsSync(lockPath)) {
+  for (const line of readFileSync(lockPath, 'utf8').split('\n')) {
+    if (/['"]?@raijin\/[^'":\s]+['"]?:|workspace_modules|:\s*['"]?(?:file|link):/.test(line)) internal.push(`pnpm-lock.yaml « ${line.trim()} »`);
+  }
+}
+
 console.log(`check-externals : ${found.size} module(s) externe(s) requis par ${files.join(', ')}`);
 console.log([...found].sort().map((id) => `  ${missing.includes(id) ? 'MANQUANT' : 'ok      '} ${id}`).join('\n'));
+if (internal.length > 0) {
+  console.error(`check-externals : lib(s) interne(s) @raijin/* non bundlée(s) :\n  ${[...new Set(internal)].join('\n  ')}`);
+  process.exit(1);
+}
 if (missing.length > 0) {
   console.error(`check-externals : ${missing.length} module(s) introuvable(s) : ${missing.join(', ')}`);
   process.exit(1);
