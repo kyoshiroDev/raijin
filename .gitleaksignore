@@ -1,0 +1,31 @@
+# Faux positifs connus de gitleaks (job CI « secrets », docs/SECURITY.md menace 9), relevés sur l'historique
+# complet le 2026-11-24 : clés et secrets factices des tests et fixtures, mots de passe Redis d'exemple,
+# JWT forgé du test du banc, exemple curl de docs/BENCH.md. Format : commit:fichier:règle:ligne.
+# Toute nouvelle ligne doit être relue (jamais un vrai secret : le révoquer et le retirer de l'historique).
+16da0dee179eb1ca2bfd19f45809b03c6623fda8:libs/bench/solana/src/lib/bench-solana.spec.ts:generic-api-key:6
+16da0dee179eb1ca2bfd19f45809b03c6623fda8:libs/bench/solana/src/lib/bench-solana.spec.ts:generic-api-key:7
+16da0dee179eb1ca2bfd19f45809b03c6623fda8:libs/bench/solana/src/lib/config.spec.ts:generic-api-key:4
+16da0dee179eb1ca2bfd19f45809b03c6623fda8:libs/bench/solana/src/lib/config.spec.ts:generic-api-key:5
+16da0dee179eb1ca2bfd19f45809b03c6623fda8:libs/bench/solana/src/lib/wallet-study-source.spec.ts:generic-api-key:7
+1df4841c239b80de7b96ca8e3888217fa92e6a53:libs/bench/engine/src/ported/wallet_collect_run.spec.ts:generic-api-key:20
+1df4841c239b80de7b96ca8e3888217fa92e6a53:libs/bench/engine/src/ported/wallet_collect.spec.ts:generic-api-key:19
+2ba464762db34b3a27196914fb4bb019d6b10fa3:libs/bench/core/src/lib/auth/auth.e2e.spec.ts:jwt:141
+2ba464762db34b3a27196914fb4bb019d6b10fa3:libs/bench/core/src/lib/config/bench-config.spec.ts:generic-api-key:14
+2ba464762db34b3a27196914fb4bb019d6b10fa3:libs/bench/core/src/lib/jobs/job-runner.spec.ts:generic-api-key:57
+439026324813f5247054bd03089db90d3eff8d34:libs/api/auth/src/lib/admin-security/recovery-codes.spec.ts:generic-api-key:25
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:apps/raijin-banc-de-test/src/app/features/performance/performance-breakdown.ts:generic-api-key:198
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:apps/raijin-banc-de-test/src/app/features/performance/performance-breakdown.ts:generic-api-key:199
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:apps/raijin-banc-de-test/src/app/features/performance/preset-performance.ts:generic-api-key:146
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:apps/raijin-banc-de-test/src/app/features/performance/preset-performance.ts:generic-api-key:147
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:apps/raijin-banc-de-test/src/app/features/performance/preset-performance.ts:generic-api-key:213
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:apps/raijin-banc-de-test/src/app/features/performance/preset-performance.ts:generic-api-key:214
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:legacy/supabase/functions/_shared/wallet_collect_run_test.ts:generic-api-key:20
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:legacy/supabase/functions/_shared/wallet_collect_test.ts:generic-api-key:19
+6731ad1b47573fae3d63f882b7f9b9e73e6c6cbf:legacy/supabase/functions/_shared/webpush_test.ts:generic-api-key:131
+6b51330b36cb68d9d189e1a9f3f48952f2b21a36:libs/api/solana/src/lib/collect/wallet-collector.spec.ts:generic-api-key:18
+8d0874b7eefdab114d3c7db8ba8aa3b199aa879b:docs/BENCH.md:curl-auth-user:357
+9553c52f5d5aab0a0880714dedbeac6a34e11ae1:libs/api/solana/src/lib/collect/facts-collector.spec.ts:generic-api-key:25
+9553c52f5d5aab0a0880714dedbeac6a34e11ae1:libs/api/solana/src/lib/config.spec.ts:generic-api-key:14
+bb831f16b4d3334540f38f764c8e7b8b0cfa19c3:libs/api/solana/src/lib/collect/watch-collector.spec.ts:generic-api-key:26
+f98641096a2f2de94c9e94b785f2d24eb3436976:libs/api/alerts/src/lib/jobs/redis-url.spec.ts:generic-api-key:11
+f98641096a2f2de94c9e94b785f2d24eb3436976:libs/api/core/src/lib/throttler/throttler.spec.ts:generic-api-key:61

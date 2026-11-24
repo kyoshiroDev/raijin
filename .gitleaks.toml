@@ -1,0 +1,8 @@
+# Configuration gitleaks (job CI `secrets`, docs/SECURITY.md menace 9) : règles par défaut, une seule exception.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Adresses Solana publiques (base58, 32 à 44 caractères) des fixtures : identifiants publics, pas des secrets"
+regexTarget = "secret"
+regexes = ['''^[1-9A-HJ-NP-Za-km-z]{32,44}$''']

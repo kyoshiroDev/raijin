@@ -141,10 +141,17 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   TOTP chiffré AES-256-GCM (`secret-box.ts`), codes de secours HMAC ; mots de passe Postgres/Redis par fichiers,
   pgpass en tmpfs (m3 phase 8 bis) ; sauvegardes chiffrées (rclone crypt, `infra/backup.sh`) ; URL Supabase
   saisie masquée et jamais écrite (`infra/bench-migrate.sh`) ; CI sans secret GitHub (valeurs éphémères).
+- **Scan de secrets en CI** : job `secrets` de `.github/workflows/ci.yml`, gitleaks v8.30.1 (image officielle
+  épinglée par digest, sans réseau, sortie expurgée) sur les commits du push ou de la PR, historique complet si
+  la base est inconnue ; bloquant. Exceptions : `.gitleaks.toml` (règles par défaut + adresses Solana publiques
+  en base58) et `.gitleaksignore` (empreintes des faux positifs connus de l'historique : clés factices des
+  tests, mots de passe Redis d'exemple, jeton JWT forgé du test du banc, exemple `curl` de `docs/BENCH.md`).
 - **Tests** : `app-config.spec.ts`, `redact.spec.ts` (api-core et server-security), `throttler.spec.ts`
-  (mot de passe jamais journalisé) ; audit phase 1 : aucun secret dans l'historique.
-- **Risque résiduel** : pas de scanner de secrets automatique en CI (type gitleaks) ; qui lit `infra/.env.api`
-  sur le VPS obtient tout (clé de chiffrement TOTP comprise) : la protection repose sur l'accès au VPS.
+  (mot de passe jamais journalisé) ; audit phase 1 : aucun secret dans l'historique ; scan gitleaks de
+  l'historique local complet (190 commits, 2026-11-24) : seulement des faux positifs, mis en exception.
+- **Risque résiduel** : gitleaks ne repère que des motifs connus (un secret sans forme reconnaissable passe) ;
+  une valeur ajoutée à `.gitleaksignore` doit être relue ; qui lit `infra/.env.api` sur le VPS obtient tout
+  (clé de chiffrement TOTP comprise) : la protection repose sur l'accès au VPS.
 
 ### 10. Accès à l'espace admin
 - **Parades** : rôle relu en base, `AdminGuard` + `@AdminRoute` ; non-admin et anonyme reçoivent un **404**
@@ -185,10 +192,12 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   paquet tranché dans `allowBuilds` (`pnpm-workspace.yaml`) ; `overrides` de sécurité justifiés ; actions GitHub
   épinglées par SHA + Dependabot (`.github/dependabot.yml`, M2 phase 1) ; aucune dépendance téléchargée au
   runtime (liste des domaines jetables copiée dans le dépôt) ; contrôle des modules externes de l'image
-  (`infra/docker/check-externals.cjs`) ; `pnpm audit --prod` à 0 à chaque audit (section « Dépendances »).
-- **Tests** : CI (install figée, build des images) ; audits de phase.
-- **Risque résiduel** : `pnpm audit` et l'analyse des images (Trivy, M9 phase 8) ne sont **pas** des étapes de
-  CI : ils dépendent des audits manuels ; 3 alertes modérées d'outillage justifiées (ci-dessous).
+  (`infra/docker/check-externals.cjs`) ; **`pnpm audit --prod --audit-level=high` bloquant** dans le job
+  `verifier` de la CI (section « Dépendances ») ; scan de secrets gitleaks (menace 9).
+- **Tests** : CI (install figée, audit des dépendances de production, build des images) ; audits de phase.
+- **Risque résiduel** : les vulnérabilités **modérées et basses** de production ne bloquent pas la CI (relevées
+  aux audits de phase) ; les dépendances de développement ne sont pas auditées en CI (3 alertes modérées
+  d'outillage justifiées ci-dessous) ; l'analyse des images (Trivy, M9 phase 8) n'est pas une étape de CI.
 
 ### 14. Déni de service
 - **Parades** : throttler NestJS global (Redis, repli mémoire) et renforcé sur l'auth et l'analyse anonyme
@@ -229,7 +238,7 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
 
 1. Pas de CDN ni de protection volumétrique ; API joignable depuis le réseau Traefik partagé (IP forgeable).
 2. Budget Helius global épuisable par un attaquant à nombreuses IP (dégradation de l'analyse pour tous).
-3. `pnpm audit`, scan de secrets et Trivy absents de la CI (contrôles manuels à chaque audit).
+3. CI : audit bloquant seulement à partir de `high` en production ; pas d'analyse des images (Trivy).
 4. `style-src 'unsafe-inline'` sur l'app et le banc.
 5. Webhooks et facturation jamais éprouvés contre le compte Stripe réel (« À brancher »).
 
@@ -237,8 +246,8 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
 
 Relevé du 2026-11-24 (phase 9, T2), Nx 24.0.6, pnpm 11.6.0.
 
-- `pnpm audit --prod` : **0 vulnérabilité** (critère bloquant de chaque audit de phase ; lancé à la main, il
-  n'est pas encore une étape de `.github/workflows/ci.yml`, voir la menace 13).
+- `pnpm audit --prod` : **0 vulnérabilité** (critère de chaque audit de phase). En CI, `pnpm audit --prod
+  --audit-level=high` bloque le job `verifier` dès une vulnérabilité haute ou critique en production.
 - `pnpm audit` (dépendances de développement comprises) : 3 alertes **modérées**, toutes transitives d'outillage,
   absentes des images de production (`dist/apps/*/package.json` générés ne les contiennent pas). Aucune n'est
   corrigée en amont à ce jour (dernières versions de Nx, Jest, test-exclude et sockjs vérifiées) ; un `overrides`

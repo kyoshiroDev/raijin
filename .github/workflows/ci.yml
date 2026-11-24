@@ -56,6 +56,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Bloquant (docs/SECURITY.md, menace 13) : aucune vulnérabilité haute ou critique dans les dépendances
+      # de production. Les 3 alertes modérées d'outillage justifiées dans SECURITY.md sont hors --prod.
+      - name: Audit des dépendances de production
+        run: pnpm audit --prod --audit-level=high
+
       - uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4.4.0
 
       - name: Cache Nx
@@ -68,6 +73,38 @@ jobs:
             nx-${{ runner.os }}-
 
       - run: pnpm nx affected -t lint typecheck test build --parallel=3
+
+  secrets:
+    name: scan de secrets (gitleaks, commits du push ou de la PR)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      # Binaire gitleaks officiel dans son image épinglée par digest (v8.30.1), sans réseau, sortie expurgée
+      # (aucune valeur de secret dans les journaux). Plage : commits nouveaux du push (ou de la PR) ; historique
+      # complet si la base est inconnue (premier push d'une branche). Exceptions : .gitleaks.toml.
+      - name: gitleaks
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          base="$BEFORE"
+          if [ "$EVENT" = "pull_request" ]; then base="$PR_BASE"; fi
+          range=()
+          if [ -n "$base" ] && ! printf '%s' "$base" | grep -qE '^0+$' && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            range=("--log-opts=$base..$HEAD_SHA")
+          fi
+          echo "Plage analysée : ${range[*]:-historique complet}"
+          docker run --rm --network none -v "$PWD:/repo:ro" \
+            ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --config /repo/.gitleaks.toml --gitleaks-ignore-path /repo/.gitleaksignore \
+            --redact=100 --no-banner --exit-code 1 "${range[@]}"
 
   e2e:
     name: e2e ${{ matrix.id }} (PR vers main ou lancement manuel)
