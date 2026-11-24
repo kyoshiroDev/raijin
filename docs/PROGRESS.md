@@ -392,6 +392,9 @@
 
 ## Après la v1 (décisions de l'utilisateur, 2026-11-24)
 - **v1.1 — Radar des nouveaux tokens Solana** (après l'ouverture de la PR v1, sur une branche dédiée) : liste purement informative des tokens récents, triée par date (jamais par potentiel de gain), avec verdict Raijin et contrôles clés ; aucun « opportunité / top / à acheter » ; réservé au Pro ; budget Helius dédié.
+- **Prix du Pro : 14,90 € TTC/mois et 149 € TTC/an** (décision du 2026-11-24, à appliquer **juste après le verdict du final-reviewer**, avant la PR : PUBLIC_PLAN_CATALOG, PRO_PRICE_MONTHLY_CENTS=1490 / PRO_PRICE_YEARLY_CENTS=14900, landing, app, e-mails, tests, docs ; puis nouvelle relecture finale).
+- **Helius** : rester sur l'offre Free tant que les abonnés ne financent pas Developer (≈ 4 Pro à 14,90 €) ; pas de second compte gratuit (CGU Helius §3.2 (v) : contournement des limites interdit, suspension §6.2). Part du banc à réduire au lancement (10 000 → 3 000 crédits/jour). Piste v1.1 : un second fournisseur RPC (quota gratuit propre) en relais.
+- **Radar v1.1 sans Helius** : découverte via DexScreener, contrôles via RugCheck (autorités, top holders, LP) et cache mutualisé ; volume plafonné ; Helius réservé aux analyses à la demande.
 - **Chiffrage préalable** : coût Helius du radar et des usages Pro actuels, puis rentabilité du Pro à 9,90 € TTC/mois (99 €/an) ; si le Pro n'est pas rentable, revoir le tarif.
 
 ## Blocages
