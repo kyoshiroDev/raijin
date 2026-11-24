@@ -77,4 +77,10 @@ describe('gardes de route', () => {
     expect(ok.router.url).toBe('/export');
     expect(fakeSession().user.emailVerified).toBe(true);
   });
+
+  it('verifiedEmailGuard : API injoignable (hors ligne) → l’écran s’affiche avec son erreur, pas la connexion', async () => {
+    const { router } = setup('error');
+    await router.navigateByUrl('/export');
+    expect(router.url).toBe('/export');
+  });
 });

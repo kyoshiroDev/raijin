@@ -11,6 +11,14 @@
       }
     },
     {
+      "name": "mascot",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": ["/brand/mascot/rai-alerte.svg", "/brand/mascot/rai-bravo.svg"]
+      }
+    },
+    {
       "name": "assets",
       "installMode": "lazy",
       "updateMode": "prefetch",

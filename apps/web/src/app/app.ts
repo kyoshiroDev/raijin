@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { ResolveEnd, Router, RouterOutlet, type ActivatedRouteSnapshot } from '@angular/router';
-import { AuthStore, UnreadAlerts } from '@raijin/web-data-access';
+import { UnreadAlerts } from '@raijin/web-data-access';
 import { RjAppShell, type RjNavItem } from '@raijin/web-ui';
-import { RjTrialBannerHost } from './trial-banner-host';
+import { RjShellBanners } from './shell-banners';
 
 /** Entrées de la barre d'onglets (4 max, PROMPT.md §3) et du haut de la barre latérale. */
 export const NAV_ITEMS: readonly RjNavItem[] = [
@@ -33,7 +33,7 @@ export function hidesAppChrome(snapshot: ActivatedRouteSnapshot | null): boolean
 /** Coquille de l'app : volontairement fine, la mise en page vit dans @raijin/web-ui. */
 @Component({
   selector: 'rj-root',
-  imports: [RouterOutlet, RjAppShell, RjTrialBannerHost],
+  imports: [RouterOutlet, RjAppShell, RjShellBanners],
   template: `
     <rj-app-shell
       [chrome]="appChrome()"
@@ -42,10 +42,10 @@ export function hidesAppChrome(snapshot: ActivatedRouteSnapshot | null): boolean
       [notificationCount]="unread.count()"
       (notifications)="openAlerts()"
     >
-      <!-- Bandeau d'essai : chunk à part, chargé seulement pour un compte en essai (ou essai terminé). -->
+      <!-- Bandeaux « hors ligne » et d'essai Pro : chunk à part, chargé quand le navigateur est inactif (hors chemin du LCP). -->
       @if (appChrome()) {
-        @defer (when trialAccount()) {
-          <rj-trial-banner-host />
+        @defer (on idle) {
+          <rj-shell-banners />
         }
       }
       <router-outlet />
@@ -58,12 +58,6 @@ export class App {
   protected readonly unread = inject(UnreadAlerts);
   protected readonly navItems = computed(() => navItemsWithUnread(this.unread.count()));
   protected readonly secondaryItems = SECONDARY_NAV_ITEMS;
-  private readonly auth = inject(AuthStore);
-  /** Essai en cours, ou terminé sans abonnement (écran de fin peut-être à voir) : déclenche le `@defer`. */
-  protected readonly trialAccount = computed(() => {
-    const trial = this.auth.user()?.trial.status;
-    return trial === 'active' || (trial === 'ended' && this.auth.user()?.plan === 'FREE');
-  });
 
   /** Barre d'onglets, barre latérale et en-tête de l'app ; masqués dans l'espace admin. */
   protected readonly appChrome = signal(true);

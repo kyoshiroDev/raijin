@@ -112,6 +112,25 @@ describe('WalletPage', () => {
     expect(root(harness).textContent).toContain('Adresse reconnue');
   });
 
+  it('phrase de récupération via le bouton « Coller » : champ vidé, aucun scan, message affiché (phase 5 m4)', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const seed = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
+    Object.defineProperty(navigator, 'clipboard', { value: { readText: vi.fn(async () => seed) }, configurable: true });
+    try {
+      const { harness, ctrl } = await openPro();
+      button(harness, 'Coller')?.click();
+      await waitFor(() => (root(harness).textContent ?? '').includes('On ne te demande jamais ta phrase de récupération'));
+      await stable(harness);
+      expect(query<HTMLInputElement>(harness, 'input[name="wallet"]')?.value).toBe('');
+      expect(root(harness).innerHTML).not.toContain('sausage');
+      submitForm(harness);
+      ctrl.expectNone(SCANS);
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else delete (navigator as { clipboard?: Clipboard }).clipboard;
+    }
+  });
+
   it('scan : adresse dans le corps du POST seulement, jamais dans l’URL ni dans le stockage du navigateur', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     const env = await openPro();

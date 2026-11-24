@@ -343,7 +343,7 @@ describe('Fin d’essai (J0)', () => {
     expect(env.q('rj-mascot img')?.getAttribute('src')).toContain('rai-bravo');
     expect(env.q('[data-stat="analyses"]')?.textContent).toContain('42');
     expect(env.q('[data-stat="alerts"]')?.textContent).toContain('alertes reçues');
-    expect(env.q('[data-stat="danger"]')?.textContent).toContain('tokens Danger évités');
+    expect(env.q('[data-stat="danger"]')?.textContent).toContain('tokens Danger repérés');
     expect(env.q('[data-stat="danger"] rj-icon')).not.toBeNull();
     expect(env.q('[data-pause-note]')?.textContent).toContain('jamais supprimés');
     expect(env.q('[data-keep-pro]')?.getAttribute('href')).toBe('/abonnement');

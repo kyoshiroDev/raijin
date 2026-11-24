@@ -35,11 +35,15 @@ export const guestGuard: CanActivateFn = async (route) => {
   return router.parseUrl(safeRedirect(route.queryParamMap.get('redirect')));
 };
 
-/** Écran réservé aux e-mails vérifiés : sinon, écran « Vérifie ta boîte ». */
+/**
+ * Écran réservé aux e-mails vérifiés : sinon, écran « Vérifie ta boîte ». Comme `authGuard`, si l'API ne répond
+ * pas (hors ligne), l'écran s'affiche avec son état d'erreur et « Réessayer » plutôt que la connexion.
+ */
 export const verifiedEmailGuard: CanActivateFn = async (_route, state) => {
   const store = inject(AuthStore);
   const router = inject(Router);
   await store.whenReady();
+  if (store.status() === 'error') return true;
   if (!store.isAuthenticated()) return loginTree(router, state.url);
   if (store.emailVerified()) return true;
   return router.createUrlTree([AUTH_ROUTES.verifyEmail]);

@@ -31,7 +31,10 @@ import { alertSentence, alertTitle, formatFullDate, formatRelative, tokenLabel }
       </div>
       <p class="text-body text-ink">{{ sentence() }}</p>
       <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm text-ink-muted">
-        <span class="min-w-0 truncate font-medium text-ink">{{ token() }}</span>
+        <!-- Token sans nom publié : l'adresse seule (pas deux fois la même adresse tronquée). -->
+        @if (named()) {
+          <span class="min-w-0 truncate font-medium text-ink" [attr.title]="token()">{{ token() }}</span>
+        }
         <span class="tabular text-data" [attr.title]="alert().mint">{{ shortMint() }}</span>
         <span aria-hidden="true">·</span>
         <time [attr.datetime]="alert().createdAt" [attr.title]="fullDate()">{{ relative() }}</time>
@@ -67,6 +70,7 @@ export class RjAlertItem {
   protected readonly title = computed(() => alertTitle(this.alert()));
   protected readonly sentence = computed(() => alertSentence(this.alert()));
   protected readonly token = computed(() => tokenLabel(this.alert().token, this.alert().mint));
+  protected readonly named = computed(() => Boolean(this.alert().token?.name || this.alert().token?.symbol));
   protected readonly shortMint = computed(() => truncateMiddle(this.alert().mint, 4, 4));
   protected readonly relative = computed(() => formatRelative(this.alert().createdAt, this.now()));
   protected readonly fullDate = computed(() => formatFullDate(this.alert().createdAt));

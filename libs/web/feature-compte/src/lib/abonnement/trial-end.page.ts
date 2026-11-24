@@ -24,7 +24,7 @@ export function watchesToChoose(recap: TrialRecap): number {
 
 /**
  * Écran de fin d'essai (`/abonnement/fin-essai`, PROMPT.md §4.4) : Rai bravo résume l'essai (analyses, alertes,
- * tokens Danger évités), dit ce qui change en Gratuit, puis « Garder Pro » (seule action jaune) ou « Continuer en
+ * tokens Danger repérés), dit ce qui change en Gratuit, puis « Garder Pro » (seule action jaune) ou « Continuer en
  * Gratuit » (écran marqué vu, puis choix des suivis à garder si le compte en a plus que le plan Gratuit).
  */
 @Component({
@@ -130,7 +130,7 @@ export class TrialEndPage {
       {
         key: 'danger',
         value: recap.dangerTokensCount,
-        label: recap.dangerTokensCount > 1 ? 'tokens Danger évités' : 'token Danger évité',
+        label: recap.dangerTokensCount > 1 ? 'tokens Danger repérés' : 'token Danger repéré',
         icon: 'danger',
         iconClass: 'text-danger',
       },
