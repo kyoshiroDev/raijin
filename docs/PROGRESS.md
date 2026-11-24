@@ -1,7 +1,6 @@
 # PROGRESS — Raijin Shield
 
 ## ACTION REQUISE (vide si rien)
-- **Limite d'utilisation atteinte** jusqu'au 28/11 à 5 h (Paris) : après cette heure, dis « reprends » (le travail en cours de la phase 9 n'est pas commité, ne le supprime pas).
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
 - **Helius : clés à copier dans ton `.env`** (https://dashboard.helius.dev → API Keys → bouton copier) : ligne « raijin-api » → `HELIUS_API_KEY` ; ligne « raijin-banc-de-test » → `BENCH_HELIUS_API_KEY`. Coche ensuite `docs/SECRETS-CHECKLIST.md`.
 - **Question Helius** : la clé existante « Raijin » (créée le 21/11) a été utilisée le 22/11 vers 1 h 15 : sert-elle à l'ancien scanner en production ? (on n'y touche pas). Veux-tu renommer le projet auto-nommé « Singerrag » en « raijin » ? La clé inutilisée « Llamasage » peut être supprimée par toi si tu veux.
@@ -336,6 +335,7 @@
 
 - [x] CI `e16cbba` vert ; job images 45319632838 vert.
 - **Interruption (2026-11-24)** : limite hebdomadaire d'utilisation atteinte, réinitialisée le **28/11 à 5 h (Paris)**. Quatre agents arrêtés en cours de tâche, travail **non commité** laissé dans la copie de travail (56 fichiers) : T3 performance (ui-mobile-first : apps/web, libs/web), T6 mineurs API (nestjs-api : libs/server/push, libs/api), T8 métriques admin (admin-analytics : libs/api/admin, libs/api/analytics, libs/web/feature-admin), T9 mineurs du banc (bench-quant : banc, legacy/, docs/BENCH.md ; il attendait la fin de ses tests avant l'e2e du banc). À la reprise : relancer chacun de ces agents pour qu'il termine et revérifie ses fichiers, puis commits par chemins ; ensuite T4 polish (ui-mobile-first), T10 si besoin, T11 tests, T12 audit, liste des menaces dans docs/SECURITY.md, puis phase 10.
+- Reprise : T3, T6, T8 et T9 relancés là où ils s'étaient arrêtés.
 
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
