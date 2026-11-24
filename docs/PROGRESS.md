@@ -1,6 +1,7 @@
 # PROGRESS — Raijin Shield
 
 ## ACTION REQUISE (vide si rien)
+- **Clés Helius** : après les avoir copiées dans `.env`, coche `HELIUS_API_KEY` et `BENCH_HELIUS_API_KEY` dans `docs/SECRETS-CHECKLIST.md` (ou dis-le-moi et je coche).
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
 - **Helius : clés à copier dans ton `.env`** (https://dashboard.helius.dev → API Keys → bouton copier) : ligne « raijin-api » → `HELIUS_API_KEY` ; ligne « raijin-banc-de-test » → `BENCH_HELIUS_API_KEY`. Coche ensuite `docs/SECRETS-CHECKLIST.md`.
 - **Question Helius** : la clé existante « Raijin » (créée le 21/11) a été utilisée le 22/11 vers 1 h 15 : sert-elle à l'ancien scanner en production ? (on n'y touche pas). Veux-tu renommer le projet auto-nommé « Singerrag » en « raijin » ? La clé inutilisée « Llamasage » peut être supprimée par toi si tu veux.
@@ -389,6 +390,10 @@
   - [ ] Sélecteurs `app-` conservés (renommage éventuel au portage) ; `strictTemplates` actif et vert.
   - [ ] `pnpm` signale des avertissements de dépendances pairs (préexistants, à examiner par architect).
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
+
+### Phase 10 — Relecture finale et livraison — en cours
+- Tour 1 (final-reviewer, 2026-11-24) : **REFUSÉ** (docs/REVIEW.md). Bloquants : (1) Lighthouse /t 93 < 95 ; (2) captures finales pas aux 5 largeurs (320/390/768/1024/1440), admin jamais en 768, banc seulement 768/1280 ; (3) tailles en dur (landing.css ; check-item.ts:24, data-table.ts:84, otp-input.ts:58) ; (4) logique métier dans apps/raijin-banc-de-test (backtest, performance-breakdown, preset-performance, paper, price-chart-data) ; (5) README racine du kit ; (6) docs/API.md absent ; (7) action utilisateur : clés Helius non cochées dans SECRETS-CHECKLIST.md. Vert : 166/166 tâches locales, e2e, images, sécurité, secrets, essai, admin, GA4, UTM, frontières, juridique.
+- Corrections du tour 1 + passage du Pro à 14,90 €/149 € (décision utilisateur) en cours.
 
 ## Après la v1 (décisions de l'utilisateur, 2026-11-24)
 - **v1.1 — Radar des nouveaux tokens Solana** (après l'ouverture de la PR v1, sur une branche dédiée) : liste purement informative des tokens récents, triée par date (jamais par potentiel de gain), avec verdict Raijin et contrôles clés ; aucun « opportunité / top / à acheter » ; réservé au Pro ; budget Helius dédié.
