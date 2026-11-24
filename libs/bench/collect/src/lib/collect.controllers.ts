@@ -198,7 +198,9 @@ export class BenchAlertsController {
 
   @Get(BENCH_ROUTES.preferences)
   async preferences(): Promise<UserPreferences> {
-    return userPreferencesSchema.parse(await this.settings());
+    // Seuls les deux champs prévus par le contrat : le schéma est strict (`AlertSettings` en porte d'autres).
+    const { stake_sol, paper_sl_pct } = await this.settings();
+    return userPreferencesSchema.parse({ stake_sol, paper_sl_pct });
   }
 }
 

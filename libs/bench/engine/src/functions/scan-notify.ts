@@ -48,6 +48,7 @@ import {
   calmFrenzyRpcArgs,
   existingReadComplete,
 } from '../ported/calm-frenzy-wiring';
+import { engineLog } from './log';
 
 const MAX_USERS = 25;
 const MAX_SUBS_PER_USER = 5;
@@ -139,7 +140,7 @@ async function loadPreviousSnapshots(
     .order('captured_at', { ascending: false })
     .limit(MAX_PREVIOUS_ROWS);
   if (error) {
-    console.warn('push: previous snapshots unavailable, no alert this scan');
+    engineLog.warn('push: previous snapshots unavailable, no alert this scan');
     return new Map();
   }
   return previousSnapshotsFromRows(data, scanStartedAt);
@@ -229,7 +230,7 @@ export async function notifyUsers(
   // Fail CLOSED: without a trustworthy position / alert history the guard cannot be proven → no alert this scan.
   const calmPositions = guardPositions.error ? null : parseCalmPositions(guardPositions.data);
   if (calmPositions === null || guardAlerts.error || (guardAlerts.data ?? []).length >= 1000) {
-    console.warn('push: alert guard unavailable, no alert this scan', guardPositions.error?.code ?? guardAlerts.error?.code ?? 'full page');
+    engineLog.warn('push: alert guard unavailable, no alert this scan', guardPositions.error?.code ?? guardAlerts.error?.code ?? 'full page');
     return stats;
   }
   const logData: LogRow[] = [];
@@ -322,7 +323,7 @@ export async function notifyUsers(
 
   if (gone.size > 0) {
     const { error } = await db.from('push_subscriptions').delete().in('id', [...gone]);
-    if (error) console.warn('push: cleanup failed');
+    if (error) engineLog.warn('push: cleanup failed');
     else stats.removed = gone.size;
   }
 
@@ -381,7 +382,7 @@ export async function autoPaperCalmFrenzy(
       .order('user_id')
       .limit(CALM_FRENZY_MAX_USERS);
     if (usersRes.error) {
-      console.warn('calm/frenzy: users unavailable', usersRes.error.code ?? '');
+      engineLog.warn('calm/frenzy: users unavailable', usersRes.error.code ?? '');
       return stats;
     }
     const userIds = autoPaperUserIds(usersRes.data);
@@ -399,7 +400,7 @@ export async function autoPaperCalmFrenzy(
       .or(`status.in.(pending,open),closed_at.gt."${cooldownSince}"`)
       .limit(CALM_FRENZY_EXISTING_LIMIT);
     if (existingRes.error || !existingReadComplete(existingRes.data)) {
-      console.warn('calm/frenzy: existing positions unavailable, nothing opened', existingRes.error?.code ?? 'full page');
+      engineLog.warn('calm/frenzy: existing positions unavailable, nothing opened', existingRes.error?.code ?? 'full page');
       return stats;
     }
     const jobs = calmFrenzyRpcArgs(calmFrenzyOpenings(matches, userIds, existingRes.data, now));
@@ -416,7 +417,7 @@ export async function autoPaperCalmFrenzy(
     stats.placed = results.filter((r) => r === true).length;
     stats.skipped = jobs.length - stats.placed;
   } catch (e) {
-    console.warn('calm/frenzy skipped', (e instanceof Error ? e.message : String(e)).slice(0, 120));
+    engineLog.warn('calm/frenzy skipped', (e instanceof Error ? e.message : String(e)).slice(0, 120));
   }
   return stats;
 }
@@ -430,7 +431,7 @@ export async function autoPaperCalmFrenzy(
 async function writeAlertLog(db: SupabaseClient, fullRows: readonly object[]): Promise<void> {
   const first = await db.from('alert_log').insert([...fullRows]);
   if (!first.error) return;
-  console.warn('push: alert_log insert failed, retrying', first.error.code ?? '');
+  engineLog.warn('push: alert_log insert failed, retrying', first.error.code ?? '');
   const retry = await db.from('alert_log').insert([...fullRows]);
   if (!retry.error) return;
   for (const row of fullRows) {
@@ -445,7 +446,7 @@ async function writeAlertLog(db: SupabaseClient, fullRows: readonly object[]): P
       ...(typeof r.preset === 'string' ? { preset: r.preset } : {}),
     };
     const { error: degErr } = await db.from('alert_log').insert(degraded);
-    if (degErr) console.warn('push: alert_log row lost', degErr.code ?? '');
+    if (degErr) engineLog.warn('push: alert_log row lost', degErr.code ?? '');
   }
 }
 
@@ -529,7 +530,7 @@ export async function sendFollowUps(
     .is('followup_sent_at', null)
     .select('id');
   if (claimErr) {
-    console.warn('push: followup claim failed', claimErr.code ?? '');
+    engineLog.warn('push: followup claim failed', claimErr.code ?? '');
     return stats;
   }
   const claimedIds = new Set(((claimed ?? []) as { id: number }[]).map((r) => r.id));
@@ -548,7 +549,7 @@ export async function sendFollowUps(
   });
   if (gone.size > 0) {
     const { error } = await db.from('push_subscriptions').delete().in('id', [...gone]);
-    if (error) console.warn('push: cleanup failed');
+    if (error) engineLog.warn('push: cleanup failed');
     else stats.removed = gone.size;
   }
   const sentIds = items.filter((i) => i.delivered && claimedIds.has(i.f.position.id)).map((i) => i.f.position.id);
@@ -558,7 +559,7 @@ export async function sendFollowUps(
   const release = [...claimedIds].filter((id) => !sent.has(id));
   if (release.length > 0) {
     const { error } = await db.from('alert_log').update({ followup_sent_at: null }).in('id', release);
-    if (error) console.warn('push: followup release failed', error.code ?? '');
+    if (error) engineLog.warn('push: followup release failed', error.code ?? '');
   }
   return stats;
 }

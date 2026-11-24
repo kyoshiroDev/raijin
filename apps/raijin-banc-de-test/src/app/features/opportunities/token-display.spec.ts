@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isTokenRow } from '../../shared/models/token';
-import { CONFIDENCE_BADGE, buyImpactLabel, confidenceBadge, narrativeLabel, retainedLiquidity, rugcheckStats } from './token-display';
+import { CONFIDENCE_BADGE, buyImpactLabel, confidenceBadge, narrativeLabel, retainedLiquidity, rugcheckStats, tokenLinks } from './token-display';
+import type { TokenRow } from '../../shared/models/token';
 
 /** liquidity_jup_usd is passed on purpose: it must never change the retained value. */
 const liq = (liquidity_usd: number, liquidity_jup_usd: number | null) => ({ liquidity_usd, liquidity_jup_usd });
@@ -71,5 +72,17 @@ describe('narrativeLabel', () => {
     expect(narrativeLabel({ narrative: 'GTA', narrative_rank: 2 })).toBe('Narratif GTA · n°2');
     expect(narrativeLabel({ narrative: 'GTA', narrative_rank: null })).toBe('Narratif GTA');
     expect(narrativeLabel({ narrative: null, narrative_rank: 1 })).toBeNull();
+  });
+});
+
+describe('tokenLinks (read-only)', () => {
+  const MINT = 'D9EcoQZeAytCrF1kQFSpRNpoPhibJUvJcmRHXhubpump';
+  it('points Jupiter to the token page, never to a swap', () => {
+    const links = tokenLinks({ mint: MINT, symbol: 'AAA', flags: [], pair_address: null } as unknown as TokenRow);
+    expect(links.find((l) => l.label === 'Jupiter')?.href).toBe(`https://jup.ag/tokens/${MINT}`);
+    expect(links.some((l) => l.href.includes('/swap'))).toBe(false);
+  });
+  it('no Jupiter link for an invalid mint', () => {
+    expect(tokenLinks({ mint: 'not-a-mint', symbol: 'AAA', flags: [], pair_address: null } as unknown as TokenRow)).toEqual([]);
   });
 });

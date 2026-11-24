@@ -11,6 +11,7 @@ import {
   type ShadowTable,
 } from '@raijin/bench-contracts';
 import { BenchException, BenchZodPipe } from '@raijin/bench-core';
+import { mintAddressSchema } from '@raijin/shared-contracts';
 import { BenchSqlService, SHADOW_REF_DAY_COLUMNS } from '@raijin/bench-prisma';
 import { buildQualityReport, type QualityReport } from '@raijin/bench-verdicts';
 import { QualityStore } from './quality-store';
@@ -22,7 +23,13 @@ const QUALITY_MAX_RECORDS = 20_000;
 /** Tables de `shadow_ref` sans colonne `mint` (pas de comparaison des mints). */
 const WITHOUT_MINT: ReadonlySet<ShadowTable> = new Set(['scan_runs']);
 
-/** Ligne du jour (pure) : écart en %, mints d'un seul côté (nombre + échantillon trié). */
+const validMint = (m: string): boolean => mintAddressSchema.safeParse(m).success;
+
+/**
+ * Ligne du jour (pure) : écart en %, mints d'un seul côté (nombre + échantillon trié). Une adresse invalide en base
+ * reste comptée dans `only_*_count` mais sort de l'échantillon (sinon le contrat de sortie échoue → 500) ; leur nombre
+ * est rendu dans `invalid_mint_count`.
+ */
 export function shadowDayRow(
   table: ShadowTable,
   day: string,
@@ -38,8 +45,9 @@ export function shadowDayRow(
     diff_pct: ref === 0 ? null : Math.round(((vps - ref) / ref) * 10_000) / 100,
     only_vps_count: mints ? mints.onlyVps.length : null,
     only_ref_count: mints ? mints.onlyRef.length : null,
-    only_vps_sample: mints ? [...mints.onlyVps].sort().slice(0, SHADOW_MINT_SAMPLE_MAX) : [],
-    only_ref_sample: mints ? [...mints.onlyRef].sort().slice(0, SHADOW_MINT_SAMPLE_MAX) : [],
+    only_vps_sample: mints ? mints.onlyVps.filter(validMint).sort().slice(0, SHADOW_MINT_SAMPLE_MAX) : [],
+    only_ref_sample: mints ? mints.onlyRef.filter(validMint).sort().slice(0, SHADOW_MINT_SAMPLE_MAX) : [],
+    invalid_mint_count: mints ? [...mints.onlyVps, ...mints.onlyRef].filter((m) => !validMint(m)).length : null,
   };
 }
 

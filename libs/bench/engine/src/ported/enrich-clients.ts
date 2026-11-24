@@ -14,6 +14,7 @@ import {
 } from './enrich-schemas';
 import { sanitizeText } from './sanitize';
 import { isSolanaAddress } from './solana';
+import { engineLog } from '../functions/log';
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 /** Round-trip size: 0.1 SOL. */
@@ -41,7 +42,7 @@ export interface ClientOptions {
   timeoutMs?: number;
   /** Extra headers (e.g. Jupiter x-api-key from the environment). Never logged. */
   headers?: Record<string, string>;
-  /** Receives host + status only. Defaults to console.warn. */
+  /** Receives host + status only. Defaults to engineLog.warn (redacted, bounded). */
   log?: (message: string) => void;
   /** Run-wide abort (RunBudget.signal): an aborted signal means no new request and in-flight ones are cancelled. */
   signal?: AbortSignal;
@@ -53,7 +54,7 @@ export interface ClientOptions {
 
 /** GET a JSON document from an allowed host. Returns null on any failure (bad URL/host, non-2xx, timeout, bad JSON). */
 export async function getJson(url: string, opts: ClientOptions = {}): Promise<unknown | null> {
-  const log = opts.log ?? ((m: string) => console.warn(m));
+  const log = opts.log ?? ((m: string) => engineLog.warn(m));
   let u: URL;
   try {
     u = new URL(url);

@@ -102,6 +102,7 @@ import { MAX_ENGINE_ORDERS, parsePaperMints } from '../ported/paper-engine';
 import { sparkColumns, splitBySpark } from '../ported/sparkline';
 import { knownChange1h, knownTxns1h, pointInTimeColumns, youngPointInTimeColumns } from '../ported/snapshot-pit';
 import { structureBroken } from '../ported/structure';
+import { engineLog } from './log';
 
 const DS = 'https://api.dexscreener.com';
 /** JUP_API_BASE accepted on a Jupiter host only (resolveJupBase), so x-api-key never leaves Jupiter. */
@@ -135,7 +136,7 @@ async function fetchPairs(mints: string[], budget: ScanBudget, stop: BudgetMiles
   const out: DexPair[] = [];
   for (let i = 0; i < chunks.length; i += PAIR_CONCURRENCY) {
     if (budget.passed(stop)) {
-      console.warn('pairs: budget reached', chunks.length - i, 'batches skipped');
+      engineLog.warn('pairs: budget reached', chunks.length - i, 'batches skipped');
       break;
     }
     const res = await Promise.all(
@@ -161,14 +162,14 @@ async function loadMigrationWatch(db: SupabaseClient, now: number): Promise<Map<
       .order('updated_at', { ascending: false })
       .limit(MIGRATION_WATCH_MAX);
     if (error) {
-      console.warn('migration watch', error.message.slice(0, 200));
+      engineLog.warn('migration watch', error.message.slice(0, 200));
       return out;
     }
     for (const r of (data ?? []) as { mint: unknown; dex_id: unknown }[]) {
       if (typeof r.mint === 'string' && isSolanaAddress(r.mint) && r.dex_id === 'pumpfun') out.set(r.mint, 'pumpfun');
     }
   } catch (e) {
-    console.warn('migration watch', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+    engineLog.warn('migration watch', (e instanceof Error ? e.message : String(e)).slice(0, 200));
   }
   return out;
 }
@@ -188,12 +189,12 @@ async function loadYoungWatch(db: SupabaseClient, now: number): Promise<string[]
       .order('liquidity_usd', { ascending: false })
       .limit(YOUNG_WATCH_MAX);
     if (error) {
-      console.warn('young watch', error.message.slice(0, 200));
+      engineLog.warn('young watch', error.message.slice(0, 200));
       return [];
     }
     return parseYoungWatchRows(data, now);
   } catch (e) {
-    console.warn('young watch', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+    engineLog.warn('young watch', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     return [];
   }
 }
@@ -257,7 +258,7 @@ async function loadEnrichment(
     const { data, error } = await db.from('tokens').select(ENRICHMENT_SELECT).in('mint', mints.slice(i, i + ENRICHMENT_CHUNK));
     if (error) {
       complete = false;
-      console.warn('enrichment load', error.message.slice(0, 200));
+      engineLog.warn('enrichment load', error.message.slice(0, 200));
       continue;
     }
     for (const row of (data ?? []) as unknown as EnrichmentRow[]) {
@@ -280,12 +281,12 @@ async function loadOpenPositions(db: SupabaseClient, now: number): Promise<OpenP
       .order('sent_at', { ascending: false })
       .limit(MAX_OPEN_POSITIONS);
     if (error) {
-      console.warn('tracking positions', error.message.slice(0, 200));
+      engineLog.warn('tracking positions', error.message.slice(0, 200));
       return [];
     }
     return parseOpenPositions(data);
   } catch (e) {
-    console.warn('tracking positions', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+    engineLog.warn('tracking positions', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     return [];
   }
 }
@@ -305,12 +306,12 @@ async function loadPaperMints(db: SupabaseClient): Promise<ForcedMints> {
       .order('created_at', { ascending: false })
       .limit(MAX_ENGINE_ORDERS);
     if (error) {
-      console.warn('paper mints', error.message.slice(0, 200));
+      engineLog.warn('paper mints', error.message.slice(0, 200));
       return none;
     }
     return parsePaperMints(data);
   } catch (e) {
-    console.warn('paper mints', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+    engineLog.warn('paper mints', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     return none;
   }
 }
@@ -364,7 +365,7 @@ async function trackPositions(
 
   if (extra.length > 0) {
     const { data: last, error } = await db.from('tokens').select('mint, symbol').in('mint', extra.map((t) => t.mint));
-    if (error) console.warn('tracking tokens', error.message.slice(0, 200));
+    if (error) engineLog.warn('tracking tokens', error.message.slice(0, 200));
     const lastByMint = new Map<string, { symbol: unknown }>();
     for (const r of (last ?? []) as { mint: string; symbol: unknown }[]) lastByMint.set(r.mint, r);
     const snaps = [];
@@ -377,7 +378,7 @@ async function trackPositions(
     }
     if (snaps.length > 0) {
       const { error: snapErr } = await db.from('token_snapshots').insert(snaps);
-      if (snapErr) console.warn('tracking snapshots', snapErr.message.slice(0, 200));
+      if (snapErr) engineLog.warn('tracking snapshots', snapErr.message.slice(0, 200));
       else stats.snapshots = snaps.length;
     }
   }
@@ -396,7 +397,7 @@ async function trackPositions(
   if (patches.length > 0) {
     const { data, error } = await db.rpc('apply_alert_tracking', { p_rows: patches });
     if (error) {
-      console.warn('tracking update', error.message.slice(0, 200));
+      engineLog.warn('tracking update', error.message.slice(0, 200));
       return stats; // positions unchanged in the DB: no follow-up decided from them this scan
     }
     stats.updated = patches.length;
@@ -412,7 +413,7 @@ async function trackPositions(
       const f = await sendFollowUps(db, due, undefined, pushDeadline);
       stats.followUps = f.sent;
     } catch (e) {
-      console.warn('follow-ups skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+      engineLog.warn('follow-ups skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     }
   }
   return stats;
@@ -433,12 +434,12 @@ async function loadHistory(db: SupabaseClient, mints: string[], now: number): Pr
   try {
     const hist = await db.rpc('x3_snapshot_history', { p_mints: mints, p_since: new Date(now - HISTORY_WINDOW_MS).toISOString() });
     if (hist.error) {
-      console.warn('history', hist.error.message.slice(0, 200));
+      engineLog.warn('history', hist.error.message.slice(0, 200));
       return { history: new Map(), historyMints: null };
     }
     return { history: parseHistoryRows(hist.data), historyMints: new Set(mints) };
   } catch (e) {
-    console.warn('history', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+    engineLog.warn('history', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     return { history: new Map(), historyMints: null };
   }
 }
@@ -473,10 +474,10 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
       .lt('id', run.id)
       .gte('started_at', new Date(Date.now() - OVERLAP_WINDOW_MS).toISOString())
       .limit(5);
-    if (runningErr) console.warn('overlap guard', runningErr.message.slice(0, 200));
+    if (runningErr) engineLog.warn('overlap guard', runningErr.message.slice(0, 200));
     else if (isOverlapping(run.id, running, Date.now())) {
       await db.from('scan_runs').update({ finished_at: new Date().toISOString(), error: 'skipped: overlap' }).eq('id', run.id);
-      console.warn('scan skipped: overlap');
+      engineLog.warn('scan skipped: overlap');
       return { skipped: 'overlap' };
     }
   }
@@ -642,7 +643,7 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
     } catch (e) {
       x3Cols.clear();
       outcomeRows.length = 0;
-      console.warn('features skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+      engineLog.warn('features skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     }
     const fullRows: (TokenUpsertRow & Partial<X3TokenColumns> & { sources: string[] })[] = rows.map((r) => ({
       ...r,
@@ -654,7 +655,7 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
       const inputs = await historyP;
       spark = sparkColumns(flagged.map((s) => ({ mint: s.t.mint, price: s.t.priceUsd })), inputs.history, inputs.historyMints, rowsAt);
     } catch (e) {
-      console.warn('spark_6h skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+      engineLog.warn('spark_6h skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     }
     const featuresMs = Date.now() - featuresStarted;
 
@@ -669,13 +670,13 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
         const { withSpark, without } = splitBySpark(fullRows, spark);
         ({ error } = await db.from('tokens').upsert(withSpark, { onConflict: 'mint' }));
         if (!error && without.length > 0) ({ error } = await db.from('tokens').upsert(without, { onConflict: 'mint' }));
-        if (error) console.warn('upsert tokens with spark_6h', error.message.slice(0, 200));
+        if (error) engineLog.warn('upsert tokens with spark_6h', error.message.slice(0, 200));
       }
       if (spark.size === 0 || error) ({ error } = await db.from('tokens').upsert(fullRows, { onConflict: 'mint' }));
       if (error && /sources/i.test(error.message)) {
         // tokens_sources_check rejects the chore/slim-down names (migration 20261121020000 not applied yet): same
         // payload with the names accepted before it.
-        console.warn('upsert tokens with new source names', error.message.slice(0, 200));
+        engineLog.warn('upsert tokens with new source names', error.message.slice(0, 200));
         ({ error } = await db.from('tokens').upsert(
           fullRows.map((r) => ({ ...r, sources: legacySourcesColumn(r.sources) })),
           { onConflict: 'mint' },
@@ -683,7 +684,7 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
       }
       if (error) {
         // Feature / narrative columns rejected: the scan itself must still be written.
-        console.warn('upsert tokens with feature columns', error.message.slice(0, 200));
+        engineLog.warn('upsert tokens with feature columns', error.message.slice(0, 200));
         const { error: baseErr } = await db.from('tokens').upsert(
           rows.map((r) => ({ ...r, sources: legacySourcesColumn(r.sources) })),
           { onConflict: 'mint' },
@@ -720,9 +721,9 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
       }));
       const { error: snapErr } = await db.from('token_snapshots').insert(snapRows);
       if (snapErr) {
-        console.warn('snapshots', snapErr.message.slice(0, 200));
+        engineLog.warn('snapshots', snapErr.message.slice(0, 200));
         const { error: baseSnapErr } = await db.from('token_snapshots').insert(baseSnapshots);
-        if (baseSnapErr) console.warn('snapshots (base)', baseSnapErr.message.slice(0, 200));
+        if (baseSnapErr) engineLog.warn('snapshots (base)', baseSnapErr.message.slice(0, 200));
       }
 
       // First detections (after the tokens upsert: FK). ON CONFLICT (mint) DO NOTHING keeps the earliest entry.
@@ -732,10 +733,10 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
             .from('signal_outcomes')
             .upsert(outcomeRows, { onConflict: 'mint', ignoreDuplicates: true })
             .select('mint');
-          if (outErr) console.warn('signal_outcomes', outErr.message.slice(0, 200));
+          if (outErr) engineLog.warn('signal_outcomes', outErr.message.slice(0, 200));
           else outcomesInserted = inserted?.length ?? 0;
         } catch (e) {
-          console.warn('signal_outcomes', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+          engineLog.warn('signal_outcomes', (e instanceof Error ? e.message : String(e)).slice(0, 200));
         }
       }
 
@@ -771,19 +772,19 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
           const { error: presetErr } = await db
             .from('preset_signals')
             .upsert(presetRows, { onConflict: 'preset,mint', ignoreDuplicates: true });
-          if (presetErr) console.warn('preset_signals', presetErr.message.slice(0, 200));
+          if (presetErr) engineLog.warn('preset_signals', presetErr.message.slice(0, 200));
         }
       } catch (e) {
-        console.warn('preset_signals', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+        engineLog.warn('preset_signals', (e instanceof Error ? e.message : String(e)).slice(0, 200));
       }
 
       // « Jeune calme » Web Push alerts: best effort, must never fail the scan. No endpoint, key or payload in logs.
       const pushStarted = Date.now();
       try {
         const stats = await notifyUsers(db, alertRows, started, undefined, pushDeadline);
-        if (stats.notifications > 0 || stats.removed > 0) console.log('push', JSON.stringify(stats));
+        if (stats.notifications > 0 || stats.removed > 0) engineLog.info('push', JSON.stringify(stats));
       } catch (e) {
-        console.warn('push skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+        engineLog.warn('push skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
       }
       pushMs = Date.now() - pushStarted;
 
@@ -791,9 +792,9 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
       // Bounded and fail-closed inside; never fails the scan.
       try {
         const cf = await autoPaperCalmFrenzy(db, alertRows, rowsAt);
-        if (cf.calm > 0 || cf.frenzy > 0) console.log('calm/frenzy', JSON.stringify(cf));
+        if (cf.calm > 0 || cf.frenzy > 0) engineLog.info('calm/frenzy', JSON.stringify(cf));
       } catch (e) {
-        console.warn('calm/frenzy skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+        engineLog.warn('calm/frenzy skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
       }
     }
 
@@ -803,9 +804,9 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
     try {
       const { positions, forced, pairs: extraPairs } = await trackingP;
       tracking = await trackPositions(db, positions, new Map(flagged.map((s) => [s.t.mint, s.t])), extraPairs, now, pushDeadline, forced);
-      if (tracking.positions > 0 || tracking.paper > 0) console.log('tracking', JSON.stringify(tracking));
+      if (tracking.positions > 0 || tracking.paper > 0) engineLog.info('tracking', JSON.stringify(tracking));
     } catch (e) {
-      console.warn('tracking skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
+      engineLog.warn('tracking skipped', (e instanceof Error ? e.message : String(e)).slice(0, 200));
     }
     const trackingMs = Date.now() - trackingStarted;
 
@@ -822,7 +823,7 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
         eur_usd: quotes.eurUsd,
       }).eq('id', run.id);
       if (runErr) {
-        console.warn('scan_runs', runErr.message.slice(0, 200));
+        engineLog.warn('scan_runs', runErr.message.slice(0, 200));
         await db.from('scan_runs').update({ finished_at: new Date().toISOString(), tokens_seen: pairs.length, tokens_kept: rows.length }).eq('id', run.id);
       }
     }
@@ -843,11 +844,11 @@ export async function runScanTokens(deps: ScanTokensDeps): Promise<Record<string
       rateLimited: collected.rateLimited,
       counts: sourceCounts,
     };
-    console.log('scan', JSON.stringify({ seen: pairs.length, kept: rows.length, enriched: enrichment.size, sources, detections, tracking, timings, ms }));
+    engineLog.info('scan', JSON.stringify({ seen: pairs.length, kept: rows.length, enriched: enrichment.size, sources, detections, tracking, timings, ms }));
     return { seen: pairs.length, kept: rows.length, sources, detections, tracking, timings, ms };
   } catch (e) {
     const message = (e instanceof Error ? e.message : String(e)).slice(0, 1000);
-    console.error('scan failed', message);
+    engineLog.error('scan failed', message);
     if (run) await db.from('scan_runs').update({ finished_at: new Date().toISOString(), error: message }).eq('id', run.id);
     throw new Error('Scan failed', { cause: e });
   } finally {

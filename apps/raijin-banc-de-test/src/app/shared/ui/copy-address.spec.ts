@@ -37,4 +37,16 @@ describe('CopyAddress', () => {
     expect(writeText).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('button').disabled).toBe(true);
   });
+
+  it('accessible name starts with the visible text (WCAG 2.5.3)', async () => {
+    const fixture = create(VALID);
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    const visible = () => (button.textContent ?? '').replace(/\s+/g, ' ').trim();
+    expect(button.getAttribute('aria-label')!.startsWith(visible())).toBe(true);
+    expect(button.getAttribute('aria-label')).toContain('TEST');
+    await fixture.componentInstance.copy();
+    fixture.detectChanges();
+    expect(visible()).toContain('Copié');
+    expect(button.getAttribute('aria-label')!.startsWith(visible())).toBe(true);
+  });
 });

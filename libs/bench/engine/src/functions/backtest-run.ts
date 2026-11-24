@@ -100,6 +100,7 @@ import {
   snapshotKeyset,
   tokenFactsFromRow,
 } from '../ported/event-scanner';
+import { engineLog } from './log';
 
 const MAX_DETECTIONS_PER_CALL = 200;
 const CANDLE_SELECT = 'mint, tf, ts_start, step_s, ts, o, h, l, c, v';
@@ -458,7 +459,7 @@ async function runSummary(db: SupabaseClient, runId: number, c: WorkerCursor, nD
     // n_events = events of the young event presets (legacy exploratory events of an in-flight cursor excluded).
     return buildRunSummary(results, { run_at: runAt ?? new Date().toISOString(), n_detections: nDetections, n_events: confirmatoryEvents(c) });
   } catch (e) {
-    console.warn('backtest summary', msg(e));
+    engineLog.warn('backtest summary', msg(e));
     return null;
   }
 }
@@ -499,7 +500,7 @@ async function finishRun(db: SupabaseClient, runId: number, c: WorkerCursor, run
     if (tradesBelow !== null) await check(db.from('backtest_trades').delete().lt('run_id', tradesBelow), 'purge trades');
     if (resultsBelow !== null) await check(db.from('backtest_results').delete().lt('run_id', resultsBelow), 'purge results');
   } catch (e) {
-    console.warn('backtest retention', msg(e));
+    engineLog.warn('backtest retention', msg(e));
   }
 }
 
@@ -708,7 +709,7 @@ export async function runBacktestRun(deps: BacktestRunDeps): Promise<Record<stri
     if (runs.length === 0 || (runs[0]!.status === 'queued' && !runMayStart(await readScannerCursor(db), Date.parse(runs[0]!.created_at), Date.now()))) {
       const scanner = await scannerSlice(db, started);
       const out = { idle: runs.length === 0, waiting: runs.length > 0 ? 'scanner' : undefined, scanner, ms: Date.now() - started };
-      console.log('backtest scanner', JSON.stringify(out));
+      engineLog.info('backtest scanner', JSON.stringify(out));
       return out;
     }
     const run = runs[0];
@@ -777,10 +778,10 @@ export async function runBacktestRun(deps: BacktestRunDeps): Promise<Record<stri
       await saveCursor(db, runId, cursor, { locked_until: null, error: null });
     }
     const out = { run: runId, phase: cursor.phase, ...stats, progress: progressOf(cursor), ms: Date.now() - started };
-    console.log('backtest', JSON.stringify(out));
+    engineLog.info('backtest', JSON.stringify(out));
     return out;
   } catch (e) {
-    console.error('backtest failed', msg(e));
+    engineLog.error('backtest failed', msg(e));
     if (runId !== null) {
       // The error counter was charged before the work; keep it, store the reason, release the lease.
       await db.from('backtest_runs').update({ error: `Échec d'une tranche du backtest : ${msg(e)}`.slice(0, 500), locked_until: null })

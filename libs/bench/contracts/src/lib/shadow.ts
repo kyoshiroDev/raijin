@@ -61,6 +61,11 @@ export const shadowDayRowSchema = z.object({
   only_ref_count: countSchema.nullable(),
   only_vps_sample: z.array(mintAddressSchema).max(SHADOW_MINT_SAMPLE_MAX),
   only_ref_sample: z.array(mintAddressSchema).max(SHADOW_MINT_SAMPLE_MAX),
+  /**
+   * Mints d'un seul côté dont l'adresse n'est pas une adresse Solana valide : comptés dans `only_*_count`,
+   * exclus des échantillons. `null` pour les tables sans colonne `mint` ; absent dans les anciennes réponses.
+   */
+  invalid_mint_count: countSchema.nullable().optional(),
 });
 export type ShadowDayRow = z.infer<typeof shadowDayRowSchema>;
 

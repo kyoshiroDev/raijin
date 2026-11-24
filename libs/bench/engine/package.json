@@ -7,6 +7,7 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "zod": "^4.6.7",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "@raijin/server-security": "*"
   }
 }

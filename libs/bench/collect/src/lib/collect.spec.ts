@@ -83,6 +83,14 @@ describe('lectures du front', () => {
     expect(saved.enabled).toBe(true);
     expect(exec.table('alert_settings')[0]!['user_id']).toBe('6f1c2a5e-8d3b-4f7a-9c1e-2b4d6f8a0c11');
   });
+
+  it('GET /api/settings/preferences : seulement stake_sol et paper_sl_pct (schéma strict, pas de 500)', async () => {
+    const exec = new MemoryDbExecutor({
+      tables: { alert_settings: [{ user_id: '6f1c2a5e-8d3b-4f7a-9c1e-2b4d6f8a0c11', enabled: true, hide_bonding_curve: true, quiet_start: 23, quiet_end: 7, max_per_hour: 4, max_per_day: 30, stake_sol: 0.1, auto_paper: false, paper_sl_pct: 25 }] },
+    });
+    const ctrl = new BenchAlertsController(sqlOver(exec));
+    expect(await ctrl.preferences()).toEqual({ stake_sol: 0.1, paper_sl_pct: 25 });
+  });
 });
 
 describe('POST /api/push/test (ex-send-test-push)', () => {

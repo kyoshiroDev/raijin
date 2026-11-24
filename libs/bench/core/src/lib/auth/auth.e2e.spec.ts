@@ -2,7 +2,7 @@ import { BENCH_CSRF_HEADER, BENCH_ROUTES, benchSessionSchema, benchStatusSchema 
 import request from 'supertest';
 import { cookiesOf, createTestBench, ORIGIN, OWNER_EMAIL, OWNER_PASSWORD, type TestBench } from '../../testing/test-app';
 import { BENCH_LOGIN_PER_MINUTE } from '../http/bench-throttler';
-import { BENCH_LOCKOUT_MS, BENCH_LOCKOUT_THRESHOLD } from './auth.service';
+import { BENCH_GLOBAL_LOCKOUT_THRESHOLD, BENCH_LOCKOUT_MS, BENCH_LOCKOUT_THRESHOLD, BenchAuthService } from './auth.service';
 
 const HOUR = 3600_000;
 
@@ -91,6 +91,38 @@ describe('auth du banc (HTTP)', () => {
     expect(locked.body.code).toBe('AUTH_INVALID_CREDENTIALS');
     bench.clock.advance(BENCH_LOCKOUT_MS + 1_000);
     await login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }).expect(200);
+  });
+
+  it(`verrouillage par IP : ${BENCH_LOCKOUT_THRESHOLD} échecs depuis une IP ne bloquent pas le propriétaire sur une autre`, async () => {
+    const auth = bench.app.get(BenchAuthService);
+    const attacker = { ip: '203.0.113.7', userAgent: null };
+    const ownerIp = { ip: '198.51.100.20', userAgent: null };
+    for (let index = 0; index < BENCH_LOCKOUT_THRESHOLD; index += 1) {
+      await expect(auth.login({ email: OWNER_EMAIL, password: 'faux', totp: bench.totp() }, attacker)).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+    }
+    // L'IP de l'attaquant est verrouillée, même avec les bons identifiants.
+    await expect(auth.login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }, attacker)).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+    // Le propriétaire, depuis une autre IP, se connecte.
+    await expect(auth.login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }, ownerIp)).resolves.toMatchObject({ body: { email: OWNER_EMAIL } });
+  });
+
+  it(`verrouillage global : ${BENCH_GLOBAL_LOCKOUT_THRESHOLD} échecs toutes IP confondues → compte verrouillé 15 min`, async () => {
+    const auth = bench.app.get(BenchAuthService);
+    for (let index = 0; index < BENCH_GLOBAL_LOCKOUT_THRESHOLD; index += 1) {
+      // Une IP différente à chaque essai (sous le seuil par IP) : seul le compteur global monte jusqu'au seuil.
+      await expect(auth.login({ email: OWNER_EMAIL, password: 'faux', totp: '000000' }, { ip: `192.0.2.${index + 1}`, userAgent: null })).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+    }
+    const fresh = { ip: '198.51.100.20', userAgent: null };
+    await expect(auth.login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }, fresh)).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+    bench.clock.advance(BENCH_LOCKOUT_MS + 1_000);
+    await expect(auth.login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }, fresh)).resolves.toMatchObject({ body: { email: OWNER_EMAIL } });
+  });
+
+  it('aucune IP en clair dans les clés de verrouillage', async () => {
+    const auth = bench.app.get(BenchAuthService) as unknown as { ipLockKey(ip: string | null): string };
+    const key = auth.ipLockKey('203.0.113.7');
+    expect(key).toMatch(/^auth:fail:ip:[A-Za-z0-9_-]{43}$/);
+    expect(key).not.toContain('203.0.113');
   });
 
   it(`limite de connexion : au-delà de ${BENCH_LOGIN_PER_MINUTE}/min par IP → 429 RATE_LIMITED`, async () => {

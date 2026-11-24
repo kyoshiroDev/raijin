@@ -13,12 +13,15 @@ import { BenchAuthStore } from './auth.store';
 import { BenchSecondFactor } from './second-factor';
 import type { BenchRequestSession } from './session';
 
-/** Échecs avant verrouillage du compte, et durée de la fenêtre / du verrouillage. */
+/** Échecs avant verrouillage d'une IP (empreinte HMAC de son préfixe), et durée de la fenêtre / du verrouillage. */
 export const BENCH_LOCKOUT_THRESHOLD = 5;
 export const BENCH_LOCKOUT_MS = 15 * 60_000;
+/** Échecs, toutes IP confondues, avant verrouillage global du compte (attaque distribuée), même fenêtre. */
+export const BENCH_GLOBAL_LOCKOUT_THRESHOLD = 50;
 /** `last_seen_at` n'est réécrit qu'une fois par minute au plus. */
 export const BENCH_SESSION_TOUCH_MS = 60_000;
-const LOCK_KEY = 'auth:fail:owner';
+const GLOBAL_LOCK_KEY = 'auth:fail:owner';
+const IP_LOCK_PREFIX = 'auth:fail:ip:';
 const SESSION_TOKEN_MAX = 256;
 
 export interface LoginContext {
@@ -34,9 +37,11 @@ export interface LoginResult {
 
 /**
  * Authentification du propriétaire unique (docs/ARCHITECTURE.md §17.7) : e-mail + mot de passe argon2id +
- * TOTP (ou code de secours) en une seule étape, une seule erreur `AUTH_INVALID_CREDENTIALS`. Verrouillage du
- * compte après 5 échecs en 15 min (compteur Redis `raijin-bench:auth:fail:owner`, repli mémoire), même avec
- * les bons identifiants ensuite. Le mot de passe est toujours vérifié (factice si besoin) : temps comparable.
+ * TOTP (ou code de secours) en une seule étape, une seule erreur `AUTH_INVALID_CREDENTIALS`. Verrouillage de
+ * l'IP après 5 échecs en 15 min (compteur Redis `raijin-bench:auth:fail:ip:<HMAC du préfixe d'IP>`, comme Raijin :
+ * aucune IP en clair), et du compte entier après 50 échecs toutes IP confondues (`raijin-bench:auth:fail:owner`) ;
+ * repli mémoire si Redis tombe ; même les bons identifiants sont refusés pendant le verrouillage. Un tiers ne peut
+ * donc plus bloquer le propriétaire avec 5 essais depuis une autre adresse. Le mot de passe est toujours vérifié (factice si besoin) : temps comparable.
  * Sessions opaques (HMAC en base), 2 h d'inactivité, 12 h au plus.
  */
 @Injectable()
@@ -60,9 +65,15 @@ export class BenchAuthService {
     return hmac(this.config.auth.sessionSecret, `session:${token}`);
   }
 
+  private ipLockKey(ip: string | null): string {
+    return `${IP_LOCK_PREFIX}${hmac(this.config.auth.sessionSecret, `lock-ip:${ipBucket(ip)}`)}`;
+  }
+
   async login(input: BenchLoginRequest, context: LoginContext): Promise<LoginResult> {
     const now = this.clock();
-    const locked = (await this.attempts.get(LOCK_KEY)) >= BENCH_LOCKOUT_THRESHOLD;
+    const ipKey = this.ipLockKey(context.ip);
+    const [ipFailures, globalFailures] = await Promise.all([this.attempts.get(ipKey), this.attempts.get(GLOBAL_LOCK_KEY)]);
+    const locked = ipFailures >= BENCH_LOCKOUT_THRESHOLD || globalFailures >= BENCH_GLOBAL_LOCKOUT_THRESHOLD;
     const owner = locked ? null : await this.store.findOwner();
     let passwordOk = false;
     if (owner?.passwordHash) passwordOk = await verifyPassword(owner.passwordHash, input.password);
@@ -80,13 +91,17 @@ export class BenchAuthService {
     }
 
     if (!ok || !owner) {
-      const count = await this.attempts.increment(LOCK_KEY, BENCH_LOCKOUT_MS);
-      if (count === BENCH_LOCKOUT_THRESHOLD) this.logger.warn(`Connexion verrouillée ${BENCH_LOCKOUT_MS / 60_000} min après ${BENCH_LOCKOUT_THRESHOLD} échecs`);
+      const [ipCount, globalCount] = await Promise.all([
+        this.attempts.increment(ipKey, BENCH_LOCKOUT_MS),
+        this.attempts.increment(GLOBAL_LOCK_KEY, BENCH_LOCKOUT_MS),
+      ]);
+      if (globalCount === BENCH_GLOBAL_LOCKOUT_THRESHOLD) this.logger.warn(`Connexion verrouillée pour toutes les IP ${BENCH_LOCKOUT_MS / 60_000} min après ${BENCH_GLOBAL_LOCKOUT_THRESHOLD} échecs`);
+      else if (ipCount === BENCH_LOCKOUT_THRESHOLD) this.logger.warn(`IP verrouillée ${BENCH_LOCKOUT_MS / 60_000} min après ${BENCH_LOCKOUT_THRESHOLD} échecs`);
       else this.logger.warn('Échec de connexion au banc');
       throw BenchException.invalidCredentials();
     }
 
-    await this.attempts.reset(LOCK_KEY);
+    await this.attempts.reset(ipKey);
     const token = randomToken(32);
     const expiresAt = new Date(now.getTime() + BENCH_SESSION_MAX_SECONDS * 1000);
     const sessionId = await this.store.createSession({

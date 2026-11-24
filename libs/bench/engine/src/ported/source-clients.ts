@@ -31,6 +31,7 @@ import {
   type SourceName,
   sourcesColumn,
 } from './sources';
+import { engineLog } from '../functions/log';
 
 export const DEX_BASE = 'https://api.dexscreener.com';
 /** The only hosts the candidate sources may call. */
@@ -452,7 +453,7 @@ export function sourceJobs(
  * an exception in one source (fetch or parser) never reaches the others.
  */
 export async function collectSources(deps: CollectDeps): Promise<CollectResult> {
-  const log = deps.log ?? ((m: string) => console.warn(m));
+  const log = deps.log ?? ((m: string) => engineLog.warn(m));
   const now = deps.now ?? Date.now;
   const jobs = sourceJobs(deps.jupBase, deps.keywords ?? [], now).filter((j) => deps.includeGecko !== false || j.group !== 'gecko');
   const lists: SourceList[] = [];

@@ -23,6 +23,7 @@ import { type EarlyBuyerRow } from '../ported/wallet-collect';
 import { HistoryError, parseHistoryResponse } from '../ported/wallet-collect';
 import type { TxHistorySource } from '../ported/wallet-collect-helius';
 import { type CollectStore, type QueueRow, runCollectCall, type StateRow } from '../ported/wallet-collect-run';
+import { engineLog } from './log';
 
 const STATE_COLUMNS = 'status, cursor, pages, buyers, creator, creator_checked, pool_creator, attempts, dropped_txs';
 
@@ -136,7 +137,7 @@ export async function runWalletStudyCollect(deps: WalletStudyCollectDeps) {
   try {
     const stats = await runCollectCall({ store: supabaseStore(deps.db), source: historySourceFromPort(deps.history), secret: '' });
     // Counters + secret-free reason only: never a URL, a key or a raw upstream payload.
-    console.log(JSON.stringify({ fn: 'wallet-study-collect', ...stats }));
+    engineLog.info(JSON.stringify({ fn: 'wallet-study-collect', ...stats }));
     return stats;
   } catch (e) {
     // claim() failed (DB unreachable): nothing was requested.

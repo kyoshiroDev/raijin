@@ -29,6 +29,7 @@ import {
   type RugInfo,
 } from '../ported/enrich-clients';
 import type { TokenMetrics } from '../ported/types';
+import { engineLog } from './log';
 
 const FRESH_MS = 10 * 60_000;
 const TOP_N = 30; // GeckoTerminal multi max per call, and RugCheck candidates
@@ -147,7 +148,7 @@ export async function runEnrichTokens(deps: EnrichTokensDeps): Promise<EnrichTok
       const { data: written, error: upErr } = await q.select('mint');
       if (upErr) {
         failed++;
-        console.warn('enrich update', upErr.message.slice(0, 200));
+        engineLog.warn('enrich update', upErr.message.slice(0, 200));
       } else if (!written || written.length === 0) {
         stale++; // row re-scanned meanwhile: the next enrich run picks it up with the fresh data
       }
@@ -161,10 +162,10 @@ export async function runEnrichTokens(deps: EnrichTokensDeps): Promise<EnrichTok
       quotes: quotes.filter((q) => q).length,
       ms: Date.now() - started,
     };
-    console.log('enrich', JSON.stringify({ ...stats, rugTargets: rugTargets.length, failed, aborted }));
+    engineLog.info('enrich', JSON.stringify({ ...stats, rugTargets: rugTargets.length, failed, aborted }));
     return stats;
   } catch (e) {
-    console.error('enrich failed', (e instanceof Error ? e.message : String(e)).slice(0, 500));
+    engineLog.error('enrich failed', (e instanceof Error ? e.message : String(e)).slice(0, 500));
     throw new Error('Enrich failed', { cause: e });
   }
 }

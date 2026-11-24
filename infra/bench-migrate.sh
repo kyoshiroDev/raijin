@@ -23,8 +23,9 @@
 # --yes : sans question.
 #
 # Source (Supabase) : URL Postgres lue dans la variable BENCH_SOURCE_DATABASE_URL, ou demandée au clavier
-# (saisie masquée). Elle n'est jamais écrite sur disque, jamais affichée, jamais passée en argument :
-# découpée en variables PG* transmises par nom à un conteneur jetable (docker run -e NOM). Connexion en
+# (saisie masquée). Elle n'est jamais écrite sur disque persistant, jamais affichée, jamais passée en argument :
+# découpée en variables PG* transmises par nom à un conteneur jetable (docker run -e NOM) ; le mot de passe passe
+# par un PGPASSFILE en volume tmpfs (0600, monté en lecture seule, supprimé à la sortie : absent de docker inspect). Connexion en
 # lecture seule (default_transaction_read_only=on, vérifié avant tout) ; pg_dump --data-only seulement.
 # Cible : raijin_bench dans le conteneur raijin-postgres (RAIJIN_PG_CONTAINER, seuls les raijin-… acceptés),
 # rôle raijin_bench, UNE transaction (identifiants d'origine gardés : OVERRIDING SYSTEM VALUE puis setval ;
@@ -50,7 +51,7 @@ SHADOW_TABLES=(tokens token_snapshots scan_runs alert_log paper_positions signal
 
 mode=migrate archive=0 assume_yes=0 since="" until="" source_user=""
 
-usage() { sed -n '2,33p' "$0"; exit "${1:-0}"; }
+usage() { sed -n '2,34p' "$0"; exit "${1:-0}"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -166,15 +167,40 @@ DUMP_NETWORK="${BENCH_MIGRATE_DUMP_NETWORK:-host}"
 [[ "$DUMP_NETWORK" =~ ^[A-Za-z0-9_.-]+$ ]] || die "BENCH_MIGRATE_DUMP_NETWORK invalide."
 
 # Client Postgres (pg_dump / psql, même version que raijin-postgres) dans un conteneur jetable : raijin-postgres
-# est sur un réseau interne sans sortie. Les paramètres de connexion passent par l'environnement, par NOM.
+# est sur un réseau interne sans sortie. Les paramètres de connexion passent par l'environnement, par NOM ; le mot de
+# passe, lui, jamais (`docker inspect` montrerait la valeur d'une variable -e) : il est écrit, par l'entrée standard,
+# dans un fichier pgpass (0600) d'un volume Docker tmpfs (RAM, jamais sur disque persistant) tenu monté par un
+# conteneur gardien sans réseau, puis monté EN LECTURE SEULE dans chaque conteneur de lecture (PGPASSFILE). Les
+# conteneurs tournent avec l'uid de l'appelant (propriétaire du fichier). À la sortie, gardien et volume sont
+# supprimés (cleanup) ; si le script est tué, le gardien s'arrête seul au bout de 6 h et le tmpfs est démonté.
+PASS_NAME="raijin-bench-migrate-src-$$-pass"
+PASS_MOUNT=/run/raijin-pgpass
+PASS_READY=0
+make_pgpass() {
+  local uid gid escaped
+  uid="$(id -u)" gid="$(id -g)"
+  docker volume create --driver local --opt type=tmpfs --opt device=tmpfs \
+    --opt "o=size=64k,mode=0700,uid=$uid,gid=$gid" "$PASS_NAME" >/dev/null
+  docker run -d --rm --name "$PASS_NAME" --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --user "$uid:$gid" -v "$PASS_NAME:$PASS_MOUNT" "$DUMP_IMAGE" sleep 21600 >/dev/null
+  # Format pgpass : hôte:port:base:utilisateur:mot de passe ; « \ » et « : » échappés. Jokers pour la connexion seule.
+  escaped="${SRC_PASSWORD//\\/\\\\}"
+  escaped="${escaped//:/\\:}"
+  printf '*:*:*:*:%s\n' "$escaped" | docker exec -i "$PASS_NAME" sh -c "umask 077 && cat > $PASS_MOUNT/pgpass"
+  escaped="" SRC_PASSWORD=""
+  PASS_READY=1
+}
+
 src_run() {
-  PGHOST="$SRC_HOST" PGPORT="$SRC_PORT" PGUSER="$SRC_USER" PGPASSWORD="$SRC_PASSWORD" PGDATABASE="$SRC_DB" \
+  local pass_args=()
+  (( PASS_READY )) && pass_args=(-v "$PASS_NAME:$PASS_MOUNT:ro" -e "PGPASSFILE=$PASS_MOUNT/pgpass")
+  PGHOST="$SRC_HOST" PGPORT="$SRC_PORT" PGUSER="$SRC_USER" PGDATABASE="$SRC_DB" \
   PGSSLMODE="$SRC_SSLMODE" PGOPTIONS='-c default_transaction_read_only=on' PGAPPNAME=raijin-bench-migrate \
   PGCONNECT_TIMEOUT=20 \
     docker run --rm -i --name "raijin-bench-migrate-src-$$-$RANDOM" --network "$DUMP_NETWORK" \
-      --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --user postgres \
-      -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE -e PGSSLMODE -e PGOPTIONS -e PGAPPNAME \
-      -e PGCONNECT_TIMEOUT "$DUMP_IMAGE" "$@"
+      --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" \
+      -e PGHOST -e PGPORT -e PGUSER -e PGDATABASE -e PGSSLMODE -e PGOPTIONS -e PGAPPNAME \
+      -e PGCONNECT_TIMEOUT "${pass_args[@]}" "$DUMP_IMAGE" "$@"
 }
 
 cleanup() {
@@ -182,6 +208,9 @@ cleanup() {
   ids="$(docker ps -aq --filter "name=^raijin-bench-migrate-src-$$-" 2>/dev/null || true)"
   # shellcheck disable=SC2086
   [[ -n "$ids" ]] && docker rm -f $ids >/dev/null 2>&1 || true
+  # Conteneurs de lecture et gardien supprimés d'abord (le volume tmpfs se démonte alors), puis le volume.
+  docker volume rm -f "$PASS_NAME" >/dev/null 2>&1 || true
+  PASS_READY=0
 }
 on_abort() {
   # Avec set -E, le piège est hérité par les sous-shells : seul le shell principal agit.
@@ -203,6 +232,7 @@ if [[ -z "$source_url" ]]; then
 fi
 parse_source_url "$source_url"
 unset source_url
+[[ -n "$SRC_PASSWORD" ]] && make_pgpass
 log "source : hôte $SRC_HOST, port $SRC_PORT, base $SRC_DB (identifiants non affichés)."
 
 src_info="$(src_run psql -X -q -t -A -v ON_ERROR_STOP=1 -c "SELECT current_setting('default_transaction_read_only') || ' ' || current_setting('server_version_num');" </dev/null)" \

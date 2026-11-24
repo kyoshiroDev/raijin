@@ -199,7 +199,10 @@ describe('TokenCard', () => {
     );
     expect(el.querySelector('[data-badge="frenzy"]')?.textContent).toContain('Frénésie');
     const ko = el.querySelector('[data-badge="safety-ko"]');
-    expect(ko?.classList).toContain('text-bear');
+    // Contraste AA : texte fg sur teinte bear (bear/15 + text-bear = 4,39:1), sémantique via l'icône et le liseré bear.
+    expect(ko?.classList).toContain('text-fg');
+    expect(ko?.classList).toContain('ring-bear/50');
+    expect(ko?.querySelector('app-icon')?.classList).toContain('text-bear');
     expect(ko?.querySelector('.sr-only')?.textContent).toContain('Mint authority active ; Top 10 holders à 40,0 % (max 25 %) ; Coût aller-retour inconnu ; Structure cassée');
   });
 

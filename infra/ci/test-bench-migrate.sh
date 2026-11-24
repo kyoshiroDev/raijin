@@ -92,7 +92,7 @@ docker run -d --rm --name "$DST" \
 for c in "$SRC" "$DST"; do
   for _ in $(seq 1 60); do docker exec "$c" pg_isready -U postgres -h 127.0.0.1 -q 2>/dev/null && break; sleep 1; done
 done
-for _ in $(seq 1 30); do docker logs "$DST" 2>&1 | grep -q 'bases raijin et raijin_bench prêtes' && break; sleep 1; done
+for _ in $(seq 1 30); do grep -q 'bases raijin et raijin_bench prêtes' < <(docker logs "$DST" 2>&1) && break; sleep 1; done
 sleep 1
 
 echo "== Faux Supabase : schéma rejoué depuis legacy/supabase/migrations + données factices"
@@ -195,10 +195,12 @@ echo "== Refus avant toute lecture de la source"
 if infra/bench-migrate.sh --dry-run >"$WORK/out" 2>&1 </dev/null; then ko "accepté sans bench_owner"; else said "bench_owner" && ok "refus sans compte bench_owner" || ko "message bench_owner : $(tail -n 1 "$WORK/out")"; fi
 dst_q -c "INSERT INTO public.bench_owner (email) VALUES ('owner@example.test');" >/dev/null
 if infra/bench-migrate.sh --dry-run >"$WORK/out" 2>&1 </dev/null; then ko "accepté sans URL"; else said "BENCH_SOURCE_DATABASE_URL absente" && ok "refus sans URL (pas de terminal)" || ko "message sans URL"; fi
-docker exec -d "$DST" psql -U postgres -d raijin_bench -c 'SELECT pg_sleep(8);'
+# Session tenue ouverte le temps du contrôle (large : la préparation du pgpass précède la vérification), puis coupée.
+docker exec -d "$DST" psql -U postgres -d raijin_bench -c 'SELECT pg_sleep(120);'
 sleep 1
 if run --dry-run --source-user "$OWNER_UUID"; then ko "accepté avec une session ouverte"; else said "session(s) ouverte(s)" && ok "refus avec une session ouverte (API du banc)" || ko "message session"; fi
-sleep 8
+dst_q -c "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE query = 'SELECT pg_sleep(120);' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
+sleep 1
 if run --shadow-snapshot --since 2026-01-01 --until 2026-03-01; then ko "fenêtre de 59 jours acceptée"; else said "31 jours" && ok "fenêtre > 31 jours refusée" || ko "message fenêtre : $(tail -n 3 "$WORK/out")"; fi
 BENCH_SOURCE_DATABASE_URL="postgresql://postgres:mauvais-${HEX_PART}@127.0.0.1:${PORT}/postgres?sslmode=disable" \
   infra/bench-migrate.sh --dry-run >"$WORK/out" 2>&1 </dev/null && ko "mauvais mot de passe accepté" || ok "mauvais mot de passe refusé"
@@ -287,6 +289,42 @@ done
   && ok "snapshot_meta : une ligne par instantané, volumes enregistrés" || ko "snapshot_meta"
 said "VPS (public, même fenêtre)" && ok "volumes VPS de la même fenêtre affichés" || ko "volumes VPS absents"
 
+echo "== Mot de passe source : PGPASSFILE en tmpfs, jamais dans l'environnement du conteneur (docker inspect)"
+# Enveloppe de docker sur le PATH pour UNE exécution : note les arguments des conteneurs de lecture puis passe la main.
+REAL_DOCKER="$(command -v docker)"
+mkdir -p "$WORK/bin"
+cat >"$WORK/bin/docker" <<'SHIM'
+#!/usr/bin/env bash
+if printf '%s\n' "$@" | grep -q '^raijin-bench-migrate-src-'; then
+  printf 'CMD %s\n' "${1:-}" >>"$SHIM_LOG"
+  printf 'ARG %s\n' "$@" >>"$SHIM_LOG"
+  env | grep -q '^PGPASSWORD=' && echo 'ENV PGPASSWORD' >>"$SHIM_LOG"
+  if [[ "${1:-}" == run ]] && [[ " $* " == *":/run/raijin-pgpass:ro "* ]]; then
+    for a in "$@"; do [[ "$a" == *:/run/raijin-pgpass:ro ]] && vol="${a%%:*}"; done
+    # Pendant la lecture : options du volume (tmpfs) et droits du fichier vus depuis un conteneur jetable.
+    printf 'VOL %s %s\n' "$vol" "$("$REAL_DOCKER" volume inspect -f '{{index .Options "type"}}' "$vol")" >>"$SHIM_LOG"
+    printf 'PERM %s\n' "$("$REAL_DOCKER" run --rm --network none --user "$(id -u):$(id -g)" -v "$vol:/p:ro" "$PG_IMAGE" \
+      sh -c 'm=ro; touch /p/x 2>/dev/null && m=rw; echo "$(stat -c "%a %u" /p/pgpass) $m"')" >>"$SHIM_LOG"
+  fi
+fi
+exec "$REAL_DOCKER" "$@"
+SHIM
+chmod 700 "$WORK/bin/docker"
+: >"$WORK/shim.log"
+SHIM_LOG="$WORK/shim.log" REAL_DOCKER="$REAL_DOCKER" PG_IMAGE="$IMAGE" PATH="$WORK/bin:$PATH" run --check --source-user "$OWNER_UUID" \
+  && said "CONTRÔLE RÉUSSI" && ok "--check vert via PGPASSFILE" || { tail -n 30 "$WORK/out"; ko "--check via PGPASSFILE"; }
+grep -q '^CMD run$' "$WORK/shim.log" && ok "conteneurs de lecture observés" || ko "enveloppe docker inopérante"
+grep -qF -e "$HEX_PART" -e "$SRC_PW_ENC" "$WORK/shim.log" && ko "mot de passe dans les arguments de docker" || ok "mot de passe absent des arguments de docker"
+grep -qE '^ARG PGPASSWORD|^ENV PGPASSWORD' "$WORK/shim.log" && ko "PGPASSWORD transmis au conteneur" || ok "PGPASSWORD jamais transmis (absent de docker inspect)"
+grep -q '^ARG PGPASSFILE=/run/raijin-pgpass/pgpass$' "$WORK/shim.log" && ok "PGPASSFILE posé" || ko "PGPASSFILE absent"
+vols="$(awk '/^VOL /{print $2" "$3}' "$WORK/shim.log" | sort -u)"
+[[ -n "$vols" ]] && ! grep -vqE ' tmpfs$' <<<"$vols" && ok "volume du pgpass en tmpfs" || ko "volume du pgpass : $vols"
+perms="$(awk '/^PERM /{print $2" "$3" "$4}' "$WORK/shim.log" | sort -u)"
+[[ "$perms" == "600 $(id -u) ro" ]] && ok "pgpass 0600, monté en lecture seule" || ko "pgpass : $perms"
+left=0
+while read -r v _; do [[ -n "$v" ]] && "$REAL_DOCKER" volume inspect "$v" >/dev/null 2>&1 && left=1; done <<<"$vols"
+[[ "$left" == 0 ]] && ok "volume du pgpass supprimé à la sortie" || ko "volume du pgpass restant après la sortie"
+
 echo "== Source : inchangée et lue sans écriture"
 [[ "$(src_fingerprint)" == "$fp_before" ]] && ok "contenu de la source identique" || ko "source modifiée"
 docker logs "$SRC" 2>&1 | grep '^raijin-bench-migrate|' >"$WORK/src.log" || true
@@ -294,7 +332,7 @@ docker logs "$SRC" 2>&1 | grep '^raijin-bench-migrate|' >"$WORK/src.log" || true
 if grep -iE 'statement: *(INSERT|UPDATE|DELETE|TRUNCATE|CREATE|ALTER|DROP|GRANT|REVOKE|VACUUM|CALL|DO|SELECT +[a-z_.]*(setval|nextval|pg_terminate))' "$WORK/src.log" \
   || grep -iE 'statement: *COPY .* FROM' "$WORK/src.log"; then ko "instruction d'écriture envoyée à la source"; else ok "aucune instruction d'écriture vers la source"; fi
 [[ "$leaks" == 0 ]] && ok "URL et mot de passe jamais affichés (sortie de chaque exécution contrôlée)" || ko "URL ou mot de passe affichés ($leaks fois)"
-docker ps -a --format '{{.Names}}' | grep -q '^raijin-bench-migrate-src-' && ko "conteneur de lecture restant" || ok "conteneurs de lecture supprimés"
+grep -q '^raijin-bench-migrate-src-' < <(docker ps -a --format '{{.Names}}') && ko "conteneur de lecture restant" || ok "conteneurs de lecture supprimés"
 
 if (( failures > 0 )); then echo "$failures échec(s)."; exit 1; fi
 echo "Tous les tests de bench-migrate sont verts."

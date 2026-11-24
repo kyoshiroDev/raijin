@@ -12,6 +12,7 @@ import {
   type VerdictRecord,
 } from '@raijin/bench-verdicts';
 import type { RiskFacts } from '@raijin/shared-contracts';
+import { shadowComparisonSchema } from '@raijin/bench-contracts';
 import { readingFromPair, BenchMarketReader, MarketReader } from './market-reader';
 import { BenchQualityJobs, FactsSource, verdictsPerRun } from './quality-jobs';
 import { PURGE_STEPS, PURGE_SQL, QualityStore, type PurgeStep } from './quality-store';
@@ -264,8 +265,18 @@ describe('retention-purge et storage-check', () => {
 
 describe('comparaison ombre', () => {
   it('écart en %, mints d’un seul côté (échantillon trié, 20 au plus), null sans référence', () => {
-    const row = shadowDayRow('tokens', '2026-11-25', 110, 100, { onlyVps: ['b', 'a'], onlyRef: [] });
-    expect(row).toMatchObject({ diff_pct: 10, only_vps_count: 2, only_vps_sample: ['a', 'b'] });
-    expect(shadowDayRow('scan_runs', '2026-11-25', 3, 0, null)).toMatchObject({ diff_pct: null, only_vps_count: null });
+    const A = 'D9EcoQZeAytCrF1kQFSpRNpoPhibJUvJcmRHXhubpump';
+    const B = 'So11111111111111111111111111111111111111112';
+    const row = shadowDayRow('tokens', '2026-11-25', 110, 100, { onlyVps: [B, A], onlyRef: [] });
+    expect(row).toMatchObject({ diff_pct: 10, only_vps_count: 2, only_vps_sample: [A, B], invalid_mint_count: 0 });
+    expect(shadowDayRow('scan_runs', '2026-11-25', 3, 0, null)).toMatchObject({ diff_pct: null, only_vps_count: null, invalid_mint_count: null });
+  });
+
+  it('mint invalide en base : compté, hors échantillon, la sortie reste conforme au contrat (pas de 500)', () => {
+    const A = 'D9EcoQZeAytCrF1kQFSpRNpoPhibJUvJcmRHXhubpump';
+    const row = shadowDayRow('tokens', '2026-11-25', 3, 1, { onlyVps: [A, 'pas-un-mint', ''], onlyRef: ['0OIl'] });
+    expect(row).toMatchObject({ only_vps_count: 3, only_ref_count: 1, only_vps_sample: [A], only_ref_sample: [], invalid_mint_count: 3 });
+    const out = shadowComparisonSchema.safeParse({ snapshot_at: null, snapshot_window: null, from: '2026-11-25', to: '2026-11-25', rows: [row] });
+    expect(out.success).toBe(true);
   });
 });

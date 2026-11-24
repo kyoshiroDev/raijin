@@ -60,6 +60,7 @@ import {
 } from '../ported/label-queue';
 import { labelRunRow } from '../ported/label-journal';
 import { SIGNAL_PRESETS } from '../ported/presets';
+import { engineLog } from './log';
 
 const BACKFILL_LIMIT = 200;
 const INSERT_CHUNK = 100;
@@ -149,7 +150,7 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
         stats.backfilled += ins?.length ?? 0;
       }
     } catch (e) {
-      console.warn('label backfill', msg(e));
+      engineLog.warn('label backfill', msg(e));
     }
 
     // 2. Due label rows of each table (checkpoint reached) and due candle captures, then one merged work queue. A
@@ -172,12 +173,12 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
           .order('detected_at', { ascending: true })
           .limit(READ_PER_TABLE);
         if (error) {
-          console.warn('label queue', table, error.message.slice(0, 200));
+          engineLog.warn('label queue', table, error.message.slice(0, 200));
           return [];
         }
         return ((data ?? []) as unknown[]).map((r) => parseLabelRow(table, r)).filter((q): q is LabelItem => q !== null);
       } catch (e) {
-        console.warn('label queue', table, msg(e));
+        engineLog.warn('label queue', table, msg(e));
         return [];
       }
     }));
@@ -204,12 +205,12 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
           .order(col, { ascending: true })
           .limit(READ_PER_TABLE);
         if (error) {
-          console.warn('candle queue', table, tf, error.message.slice(0, 200));
+          engineLog.warn('candle queue', table, tf, error.message.slice(0, 200));
           return [];
         }
         return ((data ?? []) as unknown[]).flatMap((r) => parseCandleRow(table, r, now));
       } catch (e) {
-        console.warn('candle queue', table, tf, msg(e));
+        engineLog.warn('candle queue', table, tf, msg(e));
         return [];
       }
     }));
@@ -256,7 +257,7 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
       const { error } = await db.from(q.table).update(payload).eq(q.keyColumn, q.keyValue).eq('status', 'pending');
       if (error) {
         counts.failed++;
-        console.warn('label update', q.table, error.message.slice(0, 200));
+        engineLog.warn('label update', q.table, error.message.slice(0, 200));
         return 'next';
       }
       if (history.status !== 'ok') {
@@ -271,7 +272,7 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
     /** Queue column update of a candle item; false (logged) on a database error. */
     const updateCandleQueue = async (q: CandleItem, payload: Record<string, unknown>): Promise<boolean> => {
       const { error } = await db.from(q.table).update(payload).eq(q.keyColumn, q.keyValue);
-      if (error) console.warn('candle queue update', q.table, error.message.slice(0, 200));
+      if (error) engineLog.warn('candle queue update', q.table, error.message.slice(0, 200));
       return !error;
     };
 
@@ -325,7 +326,7 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
         if (error) {
           // Not stored: keep the item due (retried later, counted as a failed attempt).
           counts.failed++;
-          console.warn('candle insert', q.table, error.message.slice(0, 200));
+          engineLog.warn('candle insert', q.table, error.message.slice(0, 200));
           await updateCandleQueue(q, candlesFailureUpdate(q.tf, q.attempts, at, 'error'));
           return 'next';
         }
@@ -355,11 +356,11 @@ export async function runLabelOutcomes(deps: LabelOutcomesDeps) {
     stats.ms = Date.now() - started;
     const queuedLabels = Object.fromEntries(LABEL_TABLES.map((t, i) => [t, reads[i]!.length]));
     const queuedCandles = Object.fromEntries(candleGroups.map((g, i) => [`${g.table}:${g.tf}`, candleReads[i]!.length]));
-    console.log('label', JSON.stringify({ ...stats, queue: queue.length, queued: queuedLabels, queuedCandles }));
+    engineLog.info('label', JSON.stringify({ ...stats, queue: queue.length, queued: queuedLabels, queuedCandles }));
     await journal(db, stats, candles, queued);
     return stats;
   } catch (e) {
-    console.error('label failed', msg(e));
+    engineLog.error('label failed', msg(e));
     stats.ms = Date.now() - started;
     await journal(db, stats, candles, queued);
     throw new Error('Label failed', { cause: e });
@@ -385,8 +386,8 @@ async function journal(
       ms: stats.ms,
     });
     const { error } = await db.from('label_runs').insert(row);
-    if (error) console.warn('label journal', error.message.slice(0, 200));
+    if (error) engineLog.warn('label journal', error.message.slice(0, 200));
   } catch (e) {
-    console.warn('label journal', msg(e));
+    engineLog.warn('label journal', msg(e));
   }
 }

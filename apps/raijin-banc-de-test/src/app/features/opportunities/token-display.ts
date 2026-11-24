@@ -124,12 +124,12 @@ export function buyImpactLabel(t: Pick<TokenRow, 'buy_impact_pct'>): string {
   return finiteOrNull(t.buy_impact_pct) ? formatPercentFr(Math.max(0, t.buy_impact_pct)) : 'inconnu';
 }
 
-/** Links are built only from validated addresses or allowlisted https URLs. */
+/** Links are built only from validated addresses or allowlisted https URLs. Jupiter: token page (read-only), never a swap link. */
 export function tokenLinks(t: TokenRow): TokenLink[] {
   const out: TokenLink[] = [];
   if (isSolanaAddress(t.pair_address)) out.push({ label: 'DexScreener', href: `https://dexscreener.com/solana/${t.pair_address}` });
   if (isSolanaAddress(t.mint)) {
-    out.push({ label: 'Jupiter', href: `https://jup.ag/swap/SOL-${t.mint}` });
+    out.push({ label: 'Jupiter', href: `https://jup.ag/tokens/${t.mint}` });
     out.push({ label: 'RugCheck', href: `https://rugcheck.xyz/tokens/${t.mint}` });
   }
   const web = safeExternalUrl(t.website_url, 'website');

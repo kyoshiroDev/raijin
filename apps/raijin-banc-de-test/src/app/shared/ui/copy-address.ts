@@ -20,7 +20,7 @@ type CopyState = 'idle' | 'copied' | 'error';
       class="btn-ghost w-full justify-between"
       [disabled]="!valid()"
       [title]="address()"
-      [attr.aria-label]="'Copier l’adresse du token ' + label()"
+      [attr.aria-label]="ariaLabel()"
       (click)="copy()"
     >
       <span class="font-mono text-xs whitespace-nowrap text-muted">{{ short() }}</span>
@@ -29,11 +29,7 @@ type CopyState = 'idle' | 'copied' | 'error';
         <span class="hidden @[16rem]:contents" data-copy-icon>
           <app-icon [name]="state() === 'copied' ? 'check' : state() === 'error' ? 'alert' : 'copy'" class="size-4" />
         </span>
-        @switch (state()) {
-          @case ('copied') { Copié }
-          @case ('error') { Échec }
-          @default { Copier l'adresse }
-        }
+        {{ actionText() }}
       </span>
     </button>
     @if (!valid()) {
@@ -56,6 +52,13 @@ export class CopyAddress {
   readonly head = computed(() => addressHead(this.address()));
   readonly tail = computed(() => addressTail(this.address()));
   readonly state = signal<CopyState>('idle');
+  readonly actionText = computed(() => ({ copied: 'Copié', error: 'Échec', idle: 'Copier l’adresse' })[this.state()]);
+  /** WCAG 2.5.3 : le nom accessible commence par le texte visible (adresse courte puis action), le contexte vient après. */
+  readonly ariaLabel = computed(() => {
+    const visible = `${this.short()} ${this.actionText()}`;
+    const ctx = this.label().trim();
+    return ctx ? `${visible} du token ${ctx}` : visible;
+  });
 
   private timer: ReturnType<typeof setTimeout> | undefined;
 

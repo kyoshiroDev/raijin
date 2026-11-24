@@ -155,6 +155,9 @@ const STATUS_CLASS: Readonly<Record<ShadowTableStatus, string>> = {
                           <summary class="min-h-11 cursor-pointer py-2 text-muted">
                             Mints d’un seul côté : VPS {{ rows(r.only_vps_count) }} · réf. {{ rows(r.only_ref_count) }}
                           </summary>
+                          @if (r.invalid_mint_count) {
+                            <p class="mt-1 text-warn" data-invalid-mints>Dont {{ rows(r.invalid_mint_count) }} adresse(s) invalide(s), comptée(s) mais hors exemples.</p>
+                          }
                           @if (r.only_vps_sample.length > 0) {
                             <p class="mt-1 text-muted">Exemples présents seulement sur le VPS :</p>
                             <ul class="font-mono break-all" data-only-vps>

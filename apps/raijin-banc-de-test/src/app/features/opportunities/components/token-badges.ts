@@ -30,11 +30,12 @@ let nextId = 0;
       }
       <li
         class="pill gap-1"
-        [class]="s.ok ? 'bg-bull/15 text-bull' : 'bg-bear/15 text-bear'"
+        [class]="s.ok ? 'bg-bull/15 text-bull' : 'bg-bear/15 text-fg ring-1 ring-inset ring-bear/50'"
         [attr.data-badge]="s.ok ? 'safety-ok' : 'safety-ko'"
         [attr.aria-describedby]="detailed() && !s.ok ? uid : null"
       >
-        <app-icon [name]="s.ok ? 'check' : 'alert'" class="size-3" />
+        <!-- KO : texte fg (texte bear sur teinte bear/15 < 4,5:1 sur les surfaces), sémantique portée par l'icône et le liseré bear. -->
+        <app-icon [name]="s.ok ? 'check' : 'alert'" class="size-3" [class.text-bear]="!s.ok" />
         {{ s.ok ? 'Sécurité OK' : 'Sécurité KO' }}
         @if (!detailed()) {
           <span class="sr-only">. {{ description() }}</span>

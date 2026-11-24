@@ -44,6 +44,7 @@ import {
   TICK_FRESH_MS,
   tickForPosition,
 } from '../ported/paper-engine';
+import { engineLog } from './log';
 
 const APPLY_CONCURRENCY = 4;
 
@@ -102,7 +103,7 @@ export async function runPaperEngine(deps: PaperEngineDeps) {
         .gte('captured_at', since)
         .order('captured_at', { ascending: false })
         .limit(SNAPSHOT_ROWS_MAX);
-      if (snapErr) console.warn('paper snapshots', snapErr.message.slice(0, 200)); // no tick: expiries only
+      if (snapErr) engineLog.warn('paper snapshots', snapErr.message.slice(0, 200)); // no tick: expiries only
       else snapRows.push(...(snaps ?? []));
     }
     const ticks: Map<string, BaseTick> = buildTicks(snapRows, now);
@@ -138,7 +139,7 @@ export async function runPaperEngine(deps: PaperEngineDeps) {
       async (args) => {
         const { data: balance, error: applyErr } = await db.rpc('paper_apply_v2', args);
         if (applyErr) {
-          console.warn('paper apply', applyErr.code ?? '', applyErr.message.slice(0, 120));
+          engineLog.warn('paper apply', applyErr.code ?? '', applyErr.message.slice(0, 120));
           return 'failed' as const;
         }
         return balance === null ? ('stale' as const) : ('applied' as const);
@@ -151,12 +152,12 @@ export async function runPaperEngine(deps: PaperEngineDeps) {
       else stats[stepLabel(work[i]!)]++;
     });
   } catch (e) {
-    console.error('paper-engine failed', errText(e));
+    engineLog.error('paper-engine failed', errText(e));
     stats.failed++;
   } finally {
     clearTimeout(abortTimer);
   }
   stats.ms = Date.now() - started;
-  console.log('paper', JSON.stringify(stats));
+  engineLog.info('paper', JSON.stringify(stats));
   return stats;
 }
