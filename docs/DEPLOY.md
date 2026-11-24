@@ -409,7 +409,7 @@ arrière : `docs/BENCH.md`.
 4. **Variables de l'API du banc** :
    ```bash
    cd /opt/raijin
-   nano infra/.env.bench-api      # copie le bloc « Banc » de docs/ENV.md (socle + Helius), puis remplace les valeurs
+   nano infra/.env.bench-api      # copie le bloc « Banc » de docs/ENV.md (socle, Helius, collecte T7), puis remplace les valeurs
    chmod 600 infra/.env.bench-api
    ```
    | Variable (`infra/.env.bench-api`) | Où la trouver / commande |
@@ -420,6 +420,14 @@ arrière : `docs/BENCH.md`.
    | `BENCH_TOTP_ENCRYPTION_KEY` | `openssl rand -base64 32` |
    | `BENCH_VAPID_PUBLIC_KEY`, `BENCH_VAPID_PRIVATE_KEY` | `pnpm exec web-push generate-vapid-keys --json` (paire **propre au banc**, A6) |
    | `BENCH_HELIUS_API_KEY` | <https://dashboard.helius.dev/api-keys> (clé « raijin-banc-de-test », distincte de celle de Raijin) |
+   | `BENCH_JUP_API_KEY` (+ `BENCH_JUP_API_BASE`) | <https://portal.jup.ag> (clé propre au banc) ; vide = `lite-api.jup.ag` sans clé |
+   | `BENCH_MIN_MARKET_CAP`, `BENCH_MIN_LIQUIDITY` | filtres du scan en USD (défauts de l'ancien banc : 50000 et 10000) |
+   | `BENCH_SCAN_KEYWORDS` | mots-clés DexScreener séparés par des virgules (<https://docs.dexscreener.com/api/reference>) ; vide = aucun |
+   | `BENCH_VERDICTS_PER_RUN` | verdicts mesurés par passage (défaut 6, max 20 ; ≈ 14 crédits Helius chacun) |
+   | `BENCH_MAIL_TRANSPORT` | `none` (défaut), `resend` ou `smtp` ; aucun e-mail en mode `shadow` |
+   | `BENCH_RESEND_API_KEY` (si `resend`) | <https://resend.com/api-keys> (clé propre au banc, « Sending access » seul) |
+   | `BENCH_SMTP_URL` (si `smtp`) | `smtps://utilisateur:motdepasse@hôte:465` de ton fournisseur SMTP |
+   | `BENCH_MAIL_FROM`, `BENCH_ALERT_EMAIL` | expéditeur sur un domaine vérifié (<https://resend.com/domains>) ; destinataire (vide = `BENCH_OWNER_EMAIL`) |
 
    Imposées par le compose (inutile de les écrire) : `BENCH_DATABASE_URL`, `BENCH_REDIS_URL`, `BENCH_ALLOWED_ORIGINS`,
    `BULLMQ_PREFIX`, `TRUST_PROXY`, `COOKIE_SECURE`, `NODE_ENV`, `API_PORT`.
@@ -439,7 +447,11 @@ arrière : `docs/BENCH.md`.
    curl -s -u kyoshiro https://banc.raijinshield.com/api/health     # {"status":"ok"} (mot de passe Traefik demandé)
    curl -s -u kyoshiro https://banc.raijinshield.com/robots.txt     # Disallow: /
    ```
-   Puis le compte du banc (CLI `set-password` et `enroll-totp` dans le conteneur, `docs/BENCH.md`).
+   Puis le compte du banc, par la CLI de l'image (`create-owner` la première fois ; ensuite `set-password` pour changer
+   le mot de passe, `reset-2fa` pour un nouveau TOTP ; détails dans `docs/BENCH.md`) :
+   ```bash
+   docker exec -it raijin-bench-api node dist/apps/raijin-banc-de-test-api/cli.js create-owner
+   ```
 
 Sauvegardes : `infra/backup.sh` sauvegarde `raijin_bench` avec `raijin` (A9) ; restauration :
 `infra/restore.sh --into raijin_bench FICHIER.dump` (A10). Migration de l'historique Supabase : `infra/bench-migrate.sh`

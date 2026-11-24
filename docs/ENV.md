@@ -536,7 +536,7 @@ BENCH_DB_ALLOCATED_BYTES=
 # ---------------------------------------------------------------------
 # Compte unique (pas d'inscription ni de réinitialisation par e-mail) : ton adresse, celle d'exemple est refusée.
 #   Mot de passe, TOTP et 10 codes de secours posés par la CLI du conteneur, jamais ici :
-#   docker compose -f infra/docker-compose.yml --profile bench exec raijin-bench-api node cli.js create-owner
+#   docker compose -f infra/docker-compose.yml --profile bench exec raijin-bench-api node dist/apps/raijin-banc-de-test-api/cli.js create-owner
 #   (puis set-password pour changer le mot de passe, reset-2fa pour un nouveau TOTP ; alias enroll-totp, reset-totp).
 #   Changer cette adresse ferme les sessions ; relancer ensuite set-password pour la reporter sur le compte.
 # ---------------------------------------------------------------------

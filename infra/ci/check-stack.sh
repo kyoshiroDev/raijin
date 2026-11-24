@@ -89,6 +89,9 @@ rcli() {
   shift 2
   REDISCLI_AUTH="${!var:-}" docker exec -e REDISCLI_AUTH raijin-redis redis-cli --no-auth-warning --user "$user" "$@" 2>&1
 }
+# Refus attendus : NOPERM (ACL), « No permissions » (ACL dans un script), « command not allowed » (DEBUG désactivé
+# par la configuration de Redis, refus avant l'ACL). Toute autre réponse, succès compris, est un échec.
+DENIED='NOPERM|No permissions|command not allowed'
 # expect <libellé> <motif attendu (ERE)> <commande…>
 expect() {
   local label="$1" want="$2" out
@@ -100,13 +103,16 @@ expect "raijin-api écrit raijin:*" '^OK$' rcli raijin-api REDIS_PASSWORD set ra
 expect "raijin-api lit raijin:*" '^api$' rcli raijin-api REDIS_PASSWORD get raijin:ci:acl
 expect "raijin-api ne lit pas raijin-bench:*" 'NOPERM' rcli raijin-api REDIS_PASSWORD get raijin-bench:ci:acl
 expect "raijin-api n'écrit pas raijin-bench:*" 'NOPERM' rcli raijin-api REDIS_PASSWORD set raijin-bench:ci:acl x
-expect "raijin-api : EVAL ne contourne pas l'ACL" 'NOPERM' \
+expect "raijin-api : EVAL ne contourne pas l'ACL" "$DENIED" \
   rcli raijin-api REDIS_PASSWORD eval "return redis.call('get','raijin-bench:ci:acl')" 0
 expect "raijin-api : file BullMQ raijin:<file> autorisée" '^[0-9]+$' rcli raijin-api REDIS_PASSWORD hset raijin:ci-queue:meta v 1
-for cmd in 'keys *' 'scan 0' 'flushall' 'config get dir' 'client list' 'debug object raijin:ci:acl' 'randomkey'; do
+# Globbing coupé : « raijin-bench:* » doit arriver tel quel à KEYS (sinon le shell le développe).
+set -f
+for cmd in 'keys raijin-bench:*' 'keys raijin:*' 'scan 0' 'flushall' 'config get dir' 'client list' 'debug object raijin:ci:acl' 'randomkey'; do
   # shellcheck disable=SC2086
-  expect "raijin-api : ${cmd%% *} refusé" 'NOPERM' rcli raijin-api REDIS_PASSWORD $cmd
+  expect "raijin-api : ${cmd% *} refusé" "$DENIED" rcli raijin-api REDIS_PASSWORD $cmd
 done
+set +f
 expect "raijin-api : INFO autorisé (BullMQ, ioredis)" 'redis_version:' rcli raijin-api REDIS_PASSWORD info server
 expect "raijin-api : CLIENT SETNAME autorisé (BullMQ)" '^OK$' rcli raijin-api REDIS_PASSWORD client setname raijin-ci
 expect "utilisateur default désactivé (sans mot de passe)" 'NOAUTH' docker exec raijin-redis env -u REDISCLI_AUTH redis-cli ping
@@ -118,7 +124,7 @@ if [[ -n "${REDIS_BENCH_PASSWORD:-}" ]]; then
   expect "raijin-bench n'écrit pas raijin:*" 'NOPERM' rcli raijin-bench REDIS_BENCH_PASSWORD set raijin:ci:acl x
   expect "raijin-bench : file BullMQ raijin-bench:<file> autorisée" '^[0-9]+$' \
     rcli raijin-bench REDIS_BENCH_PASSWORD hset raijin-bench:ci-queue:meta v 1
-  expect "raijin-bench : FLUSHALL refusé" 'NOPERM' rcli raijin-bench REDIS_BENCH_PASSWORD flushall
+  expect "raijin-bench : FLUSHALL refusé" "$DENIED" rcli raijin-bench REDIS_BENCH_PASSWORD flushall
   rcli raijin-bench REDIS_BENCH_PASSWORD del raijin-bench:ci:acl raijin-bench:ci-queue:meta >/dev/null
 fi
 rcli raijin-api REDIS_PASSWORD del raijin:ci:acl raijin:ci-queue:meta >/dev/null

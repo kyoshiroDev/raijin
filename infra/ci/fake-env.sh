@@ -79,6 +79,17 @@ BENCH_SESSION_SECRET=$bsession
 BENCH_TOTP_ENCRYPTION_KEY=$btotp
 BENCH_JOBS_ENABLED=0
 BENCH_HELIUS_API_KEY=
+BENCH_JUP_API_BASE=
+BENCH_JUP_API_KEY=
+BENCH_MIN_MARKET_CAP=50000
+BENCH_MIN_LIQUIDITY=10000
+BENCH_SCAN_KEYWORDS=
+BENCH_VERDICTS_PER_RUN=6
+BENCH_MAIL_TRANSPORT=none
+BENCH_MAIL_FROM=Raijin banc <banc@example.invalid>
+BENCH_ALERT_EMAIL=
+BENCH_RESEND_API_KEY=
+BENCH_SMTP_URL=
 BENCH
 chmod 600 infra/.env infra/.env.api infra/.env.bench-api
 echo "infra/.env, infra/.env.api et infra/.env.bench-api factices générés."
