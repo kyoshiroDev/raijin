@@ -6,7 +6,8 @@
 #   infra/deploy.sh                 build + migrations + démarrage + contrôles
 #   infra/deploy.sh --skip-build    redémarre sur les images déjà construites (migrations comprises)
 #   infra/deploy.sh --rollback      revient aux images du déploiement précédent (sans build ni migration)
-#   infra/deploy.sh --bench         inclut le banc (profil « bench », phase 8 bis seulement)
+#   infra/deploy.sh --bench         inclut le banc (profil « bench ») : images, migrations raijin_bench, démarrage
+#                                   (infra/.env.bench-api et REDIS_BENCH_PASSWORD requis, docs/DEPLOY.md A14)
 #   Options : --yes (pas de question), --no-external-check (pas de contrôle HTTPS depuis l'extérieur)
 #
 # Garanties : aucun `docker compose down`, aucune suppression de volume, d'image ou de réseau, aucune
@@ -39,6 +40,8 @@ confirm() {
   read -r -p "$1 [o/N] " answer
   [[ "$answer" == o || "$answer" == O || "$answer" == oui ]]
 }
+
+RAIJIN_BENCH_API_ENV_FILE="${RAIJIN_BENCH_API_ENV_FILE:-$RAIJIN_INFRA/.env.bench-api}"
 
 cd "$RAIJIN_ROOT"
 require_cmd docker git curl awk grep
@@ -77,8 +80,20 @@ docker network inspect "$TRAEFIK_NETWORK" >/dev/null 2>&1 \
   || die "réseau Traefik « $TRAEFIK_NETWORK » introuvable : vérifie le nom avec « docker network ls » (docs/DEPLOY.md A2)."
 
 if [[ "$bench" == 1 ]]; then
-  [[ -d apps/raijin-banc-de-test-api ]] || die "--bench : apps/raijin-banc-de-test-api n'existe pas encore (phase 8 bis)."
-  [[ -n "$(env_get "$RAIJIN_ENV_FILE" BENCH_BASIC_AUTH_USERS)" ]] || die "--bench : BENCH_BASIC_AUTH_USERS est vide (docs/DEPLOY.md A5)."
+  [[ -d apps/raijin-banc-de-test-api ]] || die "--bench : apps/raijin-banc-de-test-api introuvable dans ce dépôt."
+  [[ -n "$(env_get "$RAIJIN_ENV_FILE" BENCH_BASIC_AUTH_USERS)" ]] || die "--bench : BENCH_BASIC_AUTH_USERS est vide (docs/DEPLOY.md A14)."
+  [[ -r "$RAIJIN_BENCH_API_ENV_FILE" ]] || die "--bench : fichier $RAIJIN_BENCH_API_ENV_FILE absent (modèle : docs/ENV.md, bloc « Banc »)."
+  perms="$(stat -c '%a' "$RAIJIN_BENCH_API_ENV_FILE")"
+  [[ "$perms" == 600 || "$perms" == 400 ]] || warn "$RAIJIN_BENCH_API_ENV_FILE est lisible par d'autres comptes (droits $perms) : chmod 600 $RAIJIN_BENCH_API_ENV_FILE"
+  # Utilisateur Redis raijin-bench (ACL limitée à raijin-bench:*) : mot de passe propre, différent de celui de l'API.
+  [[ "$(env_get "$RAIJIN_ENV_FILE" REDIS_BENCH_PASSWORD)" =~ ^[A-Za-z0-9_-]{24,}$ ]] \
+    || die "--bench : REDIS_BENCH_PASSWORD doit faire au moins 24 caractères parmi A-Z a-z 0-9 _ - (openssl rand -hex 32)."
+  [[ "$(env_get "$RAIJIN_ENV_FILE" REDIS_BENCH_PASSWORD)" != "$(env_get "$RAIJIN_ENV_FILE" REDIS_PASSWORD)" ]] \
+    || die "--bench : REDIS_BENCH_PASSWORD doit être différent de REDIS_PASSWORD."
+  [[ -n "$(env_get "$RAIJIN_BENCH_API_ENV_FILE" BENCH_OWNER_EMAIL)" ]] || die "--bench : BENCH_OWNER_EMAIL est vide dans $RAIJIN_BENCH_API_ENV_FILE."
+  bench_mode="$(env_get "$RAIJIN_BENCH_API_ENV_FILE" BENCH_MODE)"
+  [[ "$bench_mode" == shadow || "$bench_mode" == primary ]] || die "--bench : BENCH_MODE doit valoir shadow ou primary dans $RAIJIN_BENCH_API_ENV_FILE."
+  log "banc : mode $bench_mode."
   export COMPOSE_PROFILES=bench
 fi
 
@@ -98,7 +113,7 @@ compose config -q || die "infra/docker-compose.yml invalide avec ces variables."
 services=(raijin-api raijin-web raijin-landing)
 [[ "$bench" == 1 ]] && services+=(raijin-bench-api raijin-bench-web)
 images=(api web landing migrate)
-[[ "$bench" == 1 ]] && images+=(bench-api bench-web)
+[[ "$bench" == 1 ]] && images+=(bench-api bench-web bench-migrate)
 
 # --- Retour arrière ---------------------------------------------------------------------------------
 # Étiquettes : « deployed » = dernier déploiement RÉUSSI, « previous » = celui d'avant. Elles ne bougent qu'après
@@ -147,6 +162,8 @@ if [[ "$skip_build" == 0 ]]; then
   compose --profile tools build raijin-migrate
   if [[ "$bench" == 1 ]]; then
     for svc in raijin-bench-api raijin-bench-web; do log "build de $svc…"; compose build "$svc"; done
+    log "build de raijin-bench-migrate…"
+    compose --profile tools build raijin-bench-migrate
   fi
   for img in "${images[@]}"; do
     docker image inspect "raijin/$img:latest" >/dev/null 2>&1 && docker image tag "raijin/$img:latest" "raijin/$img:$commit"
@@ -159,7 +176,9 @@ compose up -d --wait --wait-timeout 120 --no-build raijin-postgres raijin-redis
 log "bases et utilisateurs (idempotent)…"
 docker exec -i raijin-postgres sh /docker-entrypoint-initdb.d/10-raijin-databases.sh
 
-if [[ "$(pg_sql -d raijin -c "SELECT to_regclass('public._prisma_migrations') IS NOT NULL;" 2>/dev/null || echo f)" == "t" ]]; then
+has_migrations() { [[ "$(pg_sql -d "$1" -c "SELECT to_regclass('public._prisma_migrations') IS NOT NULL;" 2>/dev/null || echo f)" == "t" ]]; }
+if has_migrations raijin || { [[ "$bench" == 1 ]] && has_migrations raijin_bench; }; then
+  # backup.sh sauvegarde raijin ET raijin_bench (si elle existe).
   log "sauvegarde avant migration…"
   "$RAIJIN_INFRA/backup.sh" --no-offsite || die "sauvegarde avant migration en échec : migration annulée."
 fi
@@ -168,6 +187,12 @@ log "migrations Prisma (migrate deploy)…"
 docker image inspect "raijin/migrate:${RAIJIN_TAG:-latest}" >/dev/null 2>&1 \
   || die "image raijin/migrate absente : relance sans --skip-build."
 compose --profile tools run --rm raijin-migrate
+if [[ "$bench" == 1 ]]; then
+  log "migrations Prisma du banc (raijin_bench, utilisateur raijin_bench)…"
+  docker image inspect "raijin/bench-migrate:${RAIJIN_TAG:-latest}" >/dev/null 2>&1 \
+    || die "image raijin/bench-migrate absente : relance sans --skip-build."
+  compose --profile tools run --rm raijin-bench-migrate
+fi
 
 # --- 4. Démarrage -----------------------------------------------------------------------------------
 log "démarrage de ${services[*]}…"
@@ -194,6 +219,15 @@ if [[ "$external" == 1 ]]; then
     log "OK   https://www.$LANDING_DOMAIN/ → 301"
   else
     warn "https://www.$LANDING_DOMAIN/ répond $code (301 attendu)"; failed=1
+  fi
+  if [[ "$bench" == 1 ]]; then
+    # Double verrou : sans basicAuth, Traefik doit répondre 401 partout (front, API, robots.txt).
+    BENCH_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" BENCH_DOMAIN)"
+    BENCH_DOMAIN="${BENCH_DOMAIN:-banc.raijinshield.com}"
+    for url in "https://$BENCH_DOMAIN/" "https://$BENCH_DOMAIN/api/health"; do
+      code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$url" 2>/dev/null || echo 000)"
+      if [[ "$code" == 401 ]]; then log "OK   $url → 401 sans mot de passe"; else warn "$url répond $code (401 attendu sans basicAuth)"; failed=1; fi
+    done
   fi
   [[ "$failed" == 0 ]] || warn "certains contrôles extérieurs échouent : DNS pas encore propagé, certificat en cours d'émission, ou routeur Traefik (docs/DEPLOY.md A11)."
 fi

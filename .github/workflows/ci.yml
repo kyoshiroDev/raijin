@@ -452,7 +452,9 @@ jobs:
     # Construit les images de infra/docker/Dockerfile (docker compose build) SANS les pousser, teste sauvegarde et
     # restauration (infra/ci/test-restore.sh), démarre la pile par infra/deploy.sh --skip-build derrière un Traefik factice (réseau traefik-ci,
     # certificat par défaut, certresolver inexistant), puis vérifie healthchecks, routage, règles nginx et en-têtes
-    # (infra/ci/check-stack.sh). Trivy en rapport seul (non bloquant). Coût : ARCHITECTURE.md §6.
+    # (infra/ci/check-stack.sh, ACL Redis comprise). Avec le banc (apps/raijin-banc-de-test-api présent) : images
+    # bench-api, bench-web et bench-migrate, démarrage par deploy.sh --bench et contrôles du banc. Trivy en rapport
+    # seul (non bloquant). Coût : ARCHITECTURE.md §6.
     if: >-
       !cancelled() && (
         (github.event_name == 'workflow_dispatch' && inputs.suite == 'images') ||
@@ -460,7 +462,7 @@ jobs:
       )
     needs: verifier
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       TRAEFIK_CI_PORT: '8443'
     steps:
@@ -473,9 +475,14 @@ jobs:
         id: targets
         run: |
           list="raijin-api raijin-web raijin-landing raijin-migrate"
-          # Banc : seulement quand son API existe (phase 8 bis) ; sinon ignoré.
-          if [ -d apps/raijin-banc-de-test-api ]; then list="$list raijin-bench-api raijin-bench-web"; fi
+          bench=0
+          # Banc (profil bench, phase 8 bis) : API, front et migrations de raijin_bench, dès que son API existe.
+          if [ -d apps/raijin-banc-de-test-api ]; then
+            list="$list raijin-bench-api raijin-bench-web raijin-bench-migrate"
+            bench=1
+          fi
           echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "bench=$bench" >> "$GITHUB_OUTPUT"
           echo "Services : $list"
 
       # Commande standard depuis la racine du dépôt (BuildKit), images chargées dans le Docker du runner et
@@ -494,6 +501,9 @@ jobs:
       - name: Test sauvegarde / restauration (Postgres jetable)
         run: infra/ci/test-restore.sh
 
+      - name: Test bench-migrate (2 Postgres jetables, faux Supabase, jamais Supabase réel)
+        run: infra/ci/test-bench-migrate.sh
+
       - name: Traefik factice
         run: |
           docker network create traefik-ci
@@ -503,10 +513,17 @@ jobs:
             --providers.docker=true --providers.docker.exposedbydefault=false --providers.docker.network=traefik-ci \
             --entrypoints.websecure.address=:443 --log.level=WARN
 
+      # Avec le banc : migrations raijin_bench (raijin-bench-migrate, utilisateur raijin_bench) et démarrage du profil bench.
       - name: Démarrage par infra/deploy.sh (sans build ni contrôle extérieur)
-        run: infra/deploy.sh --skip-build --yes --no-external-check
+        env:
+          BENCH: ${{ steps.targets.outputs.bench }}
+        run: |
+          if [ "$BENCH" = 1 ]; then infra/deploy.sh --skip-build --yes --no-external-check --bench
+          else infra/deploy.sh --skip-build --yes --no-external-check; fi
 
-      - name: Contrôles (healthchecks, routage, nginx, en-têtes)
+      # Inclut l'ACL Redis par application et, avec le banc : basicAuth (401), 401 applicatif, noindex, robots.txt,
+      # routage /api/ → raijin-bench-api, routeur SSE sans compression.
+      - name: Contrôles (healthchecks, routage, nginx, en-têtes, ACL Redis, banc)
         run: |
           sleep 5
           infra/ci/check-stack.sh
@@ -517,7 +534,8 @@ jobs:
         run: |
           {
             echo "### Trivy (rapport, non bloquant)"
-            for img in raijin/api:latest raijin/web:latest raijin/landing:latest; do
+            for img in raijin/api:latest raijin/web:latest raijin/landing:latest raijin/bench-api:latest raijin/bench-web:latest; do
+              docker image inspect "$img" >/dev/null 2>&1 || continue
               echo ""
               echo "#### $img"
               echo '```'
@@ -532,7 +550,7 @@ jobs:
       - name: Journaux de la pile (en cas d'échec)
         if: failure()
         run: |
-          docker compose --project-name raijin --env-file infra/.env -f infra/docker-compose.yml ps -a || true
-          for c in raijin-api raijin-web raijin-landing raijin-postgres raijin-redis traefik-ci; do
+          docker compose --project-name raijin --env-file infra/.env -f infra/docker-compose.yml --profile bench ps -a || true
+          for c in raijin-api raijin-web raijin-landing raijin-bench-api raijin-bench-web raijin-postgres raijin-redis traefik-ci; do
             echo "::group::$c"; docker logs --tail 150 "$c" 2>&1 || true; echo "::endgroup::"
           done

@@ -411,20 +411,21 @@ SENTRY_ENVIRONMENT=development
 
 ## Production (VPS) — phase 8
 
-Sur le VPS, **deux** fichiers, dans `infra/` du dépôt cloné (ignorés par Git, droits `chmod 600`) ; procédure
+Sur le VPS, **deux** fichiers (trois avec le banc), dans `infra/` du dépôt cloné (ignorés par Git, droits `chmod 600`) ; procédure
 complète dans `docs/DEPLOY.md`, partie A :
 
 | Fichier | Lu par | Contenu |
 |---|---|---|
 | `infra/.env` | `docker compose` (interpolation de `infra/docker-compose.yml`) et les scripts `infra/*.sh` | domaines, Traefik, mots de passe Postgres/Redis, basicAuth du banc, variables publiques du build de la landing, sauvegardes, veille |
 | `infra/.env.api` | conteneur `raijin-api` (`env_file`) | variables applicatives : blocs ci-dessus (secrets JWT, cookies, Resend, Stripe, Helius, VAPID, Google…) |
-| `infra/.env.bench-api` | conteneur `raijin-bench-api` (phase 8 bis) | variables du banc (à définir en 8 bis) |
+| `infra/.env.bench-api` | conteneur `raijin-bench-api` (`infra/deploy.sh --bench`) | variables du banc : bloc « Banc » ci-dessous |
 
 **Imposées par `infra/docker-compose.yml`** (inutile de les mettre dans `infra/.env.api`, elles seraient ignorées) :
 `NODE_ENV=production`, `API_PORT=3000`, `APP_URL`, `LANDING_URL`, `API_URL`, `CORS_ORIGINS` (calculées depuis les
 domaines), `DATABASE_URL`, `REDIS_URL`, `BULLMQ_PREFIX=raijin`, `TRUST_PROXY=1` (un seul proxy : Traefik),
 `COOKIE_SECURE=true`, `COOKIE_DOMAIN` vide, `WEB_INDEX_HTML_PATH=/app/web/index.html` (copié du build web du même
-commit), `ANALYSIS_FIXTURES=0`, `JOBS_TEST_TRIGGER=0`.
+commit), `ANALYSIS_FIXTURES=0`, `JOBS_TEST_TRIGGER=0`. `REDIS_URL` utilise l'utilisateur ACL Redis `raijin-api`
+(`redis://raijin-api:<REDIS_PASSWORD>@raijin-redis:6379`), limité aux clés et canaux `raijin:*`.
 
 Modèle de `infra/.env` (valeurs **factices**) :
 
@@ -448,7 +449,7 @@ API_DOMAIN=api.raijinshield.com
 BENCH_DOMAIN=banc.raijinshield.com
 
 # ---------------------------------------------------------------------
-# Postgres et Redis (réseau interne, jamais exposés). À générer : openssl rand -hex 32
+# Postgres et Redis (réseau interne, jamais exposés). À générer : openssl rand -hex 32 (une valeur par variable)
 # Hexadécimal uniquement (insérés tels quels dans DATABASE_URL / REDIS_URL).
 # Changer RAIJIN_DB_PASSWORD / BENCH_DB_PASSWORD : appliqué au déploiement suivant (ALTER ROLE).
 # POSTGRES_SUPERUSER_PASSWORD : fixé à la création du volume ; le changer ensuite n'a plus d'effet.
@@ -456,7 +457,13 @@ BENCH_DOMAIN=banc.raijinshield.com
 POSTGRES_SUPERUSER_PASSWORD=changeme-factice-hex
 RAIJIN_DB_PASSWORD=changeme-factice-hex
 BENCH_DB_PASSWORD=changeme-factice-hex
+# Redis : ACL par application (docs/ARCHITECTURE.md §17.5), utilisateur « default » désactivé.
+#   REDIS_PASSWORD       → utilisateur raijin-api   (clés raijin:*, API Raijin et ses files BullMQ « raijin »)
+#   REDIS_BENCH_PASSWORD → utilisateur raijin-bench (clés raijin-bench:*, banc) ; vide = utilisateur désactivé.
+#     Obligatoire pour infra/deploy.sh --bench, différent de REDIS_PASSWORD. Changer l'un des deux : appliqué au
+#     déploiement suivant (raijin-redis redémarre, les données restent dans le volume).
 REDIS_PASSWORD=changeme-factice-hex
+REDIS_BENCH_PASSWORD=
 
 # ---------------------------------------------------------------------
 # Landing : valeurs PUBLIQUES lues au build (exportées par infra/deploy.sh ; APP_URL = https://APP_DOMAIN)
@@ -499,7 +506,81 @@ Valeurs de `infra/.env.api` propres à la production (le reste : blocs ci-dessus
 `JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `SENTRY_ENVIRONMENT=production`. Les blocs « Seed de développement » et les
 variables `SMTP_*` sont inutiles en production.
 
-## Banc (`infra/.env.bench-api`) — Helius et sources Solana (phase 8 bis, T4)
+## Banc (`infra/.env.bench-api`) — phase 8 bis
+
+Fichier lu par le seul conteneur `raijin-bench-api` (`chmod 600`, jamais commité). `infra/deploy.sh --bench` refuse
+de continuer s'il est absent, si `BENCH_OWNER_EMAIL` est vide ou si `BENCH_MODE` n'est pas `shadow` / `primary` ;
+l'API du banc refuse de démarrer si un secret manque ou est factice (message citant le nom, jamais la valeur).
+Le conteneur du banc ne reçoit aucune variable de Raijin (fichier distinct) ; ses secrets sont propres au banc.
+
+**Imposées par `infra/docker-compose.yml`** (inutile de les écrire ici, elles seraient ignorées) : `NODE_ENV=production`,
+`API_PORT=3000`, `BENCH_ALLOWED_ORIGINS=https://<BENCH_DOMAIN>`, `BENCH_DATABASE_URL` (utilisateur `raijin_bench`, base
+`raijin_bench`), `BENCH_REDIS_URL` (utilisateur ACL `raijin-bench`, mot de passe `REDIS_BENCH_PASSWORD` de `infra/.env`),
+`BULLMQ_PREFIX=raijin-bench` (clés `raijin-bench:<file>:*`), `TRUST_PROXY=1`, `COOKIE_SECURE=true`.
+Les migrations (`raijin-bench-migrate`, profil `tools`) reçoivent la même `BENCH_DATABASE_URL`.
+
+### Socle : compte, sessions, mode, notifications (T6)
+
+```dotenv
+# ---------------------------------------------------------------------
+# Mode (docs/ARCHITECTURE.md §17.6) : shadow = collecte et jobs actifs, aucune notification ni position paper
+#   automatique (à garder jusqu'à la bascule, docs/BENCH.md) ; primary = après bascule.
+# ---------------------------------------------------------------------
+BENCH_MODE=shadow
+# Jobs programmés du banc (BullMQ). 0 seulement pour un diagnostic.
+BENCH_JOBS_ENABLED=1
+# Espace alloué à la base raijin_bench, en octets (alertes de taille à 80 % / 95 %, GET /api/status). Vide = 2 Gio
+#   (2147483648) ; de 64 Mio à 1 Tio. Place libre du disque du VPS : df -B1 /var/lib/docker
+BENCH_DB_ALLOCATED_BYTES=
+
+# ---------------------------------------------------------------------
+# Compte unique (pas d'inscription ni de réinitialisation par e-mail) : ton adresse, celle d'exemple est refusée.
+#   Mot de passe, TOTP et 10 codes de secours posés par la CLI du conteneur, jamais ici :
+#   docker compose -f infra/docker-compose.yml --profile bench exec raijin-bench-api node cli.js create-owner
+#   (puis set-password pour changer le mot de passe, reset-2fa pour un nouveau TOTP ; alias enroll-totp, reset-totp).
+#   Changer cette adresse ferme les sessions ; relancer ensuite set-password pour la reporter sur le compte.
+# ---------------------------------------------------------------------
+BENCH_OWNER_EMAIL=toi@exemple.invalid
+
+# ---------------------------------------------------------------------
+# Secrets du banc, DISTINCTS de ceux de Raijin (un cookie Raijin vaut 401 côté banc). Une commande par valeur :
+# ---------------------------------------------------------------------
+# Signature des jetons de session __Host-rjb_session (HMAC en base), du CSRF __Host-rjb_csrf et des empreintes d'IP
+#   (32 caractères au moins) : openssl rand -base64 48   — le changer ferme toutes les sessions.
+BENCH_SESSION_SECRET=factice-a-remplacer
+# Chiffrement AES-256-GCM du secret TOTP (32 octets en base64) : openssl rand -base64 32
+#   Accepte aussi 64 caractères hexadécimaux (openssl rand -hex 32). La perdre = réenrôler le TOTP (CLI reset-2fa) ;
+#   les codes de secours en sont dérivés (HKDF, contexte propre au banc) et changent avec elle.
+BENCH_TOTP_ENCRYPTION_KEY=factice-a-remplacer
+
+# ---------------------------------------------------------------------
+# Notifications push du banc : paire VAPID PROPRE au banc (pas celle de Raijin) :
+#   pnpm exec web-push generate-vapid-keys --json   (sur ton PC, dans le dépôt ; docs/DEPLOY.md A6)
+#   publicKey → BENCH_VAPID_PUBLIC_KEY, privateKey → BENCH_VAPID_PRIVATE_KEY (la clé privée ne va nulle part ailleurs)
+# ---------------------------------------------------------------------
+BENCH_VAPID_PUBLIC_KEY=
+BENCH_VAPID_PRIVATE_KEY=
+BENCH_VAPID_SUBJECT=mailto:support@raijinshield.com
+```
+
+Clés VAPID vides : push indisponible (`GET /api/status` → `push: not_configured`), le sujet seul est ignoré. En mode
+`shadow`, aucun push ni e-mail ne part, même avec des clés (`BenchNotifier`).
+
+Fixés dans le code (pas de variable) : session 2 h d'inactivité et 12 h au plus ; verrouillage de la connexion après
+5 échecs pendant 15 min (`raijin-bench:auth:fail:owner`) ; 10 connexions/min et 240 requêtes/min par IP (Redis
+`raijin-bench:`) ; 8 flux SSE simultanés.
+
+**En dev** (`pnpm nx serve raijin-banc-de-test-api`, port 3300), sans aucune variable : base `raijin_bench_dev` du
+Postgres de `docker-compose.dev.yml` (5433, valeur factice de `libs/bench/prisma/prisma.config.ts`), Redis 6380 (clés
+sous `raijin-bench:`, `REDIS_URL=none` pour s'en passer : jobs coupés), `BENCH_OWNER_EMAIL=proprietaire@banc.invalid`,
+secrets de dev factices, cookies `rjb_*` sans `Secure`, origine `http://localhost:4300`. Compte de dev :
+`pnpm bench:create-owner` (même CLI). `BENCH_DATABASE_URL` / `DATABASE_URL` doivent viser une base `raijin_bench*`
+(`raijin_bench` seule en production) : la base de Raijin est refusée au démarrage.
+
+Noms lus par `bench-core` (`libs/bench/core/src/lib/config/bench-config.ts`) : toute variable ajoutée ou renommée
+(e-mails d'alerte de T7 compris) est reportée ici, dans `infra/ci/fake-env.sh` et dans `docs/DEPLOY.md` A14.
+
+### Helius et sources Solana (T4)
 
 Lues par `@raijin/bench-solana` (`loadBenchSolanaSettings`, `libs/bench/solana`). Seules les variables `BENCH_*`
 ci-dessous sont lues : la clé de Raijin (`HELIUS_API_KEY`) n'est jamais vue par le banc. Les valeurs ne peuvent que

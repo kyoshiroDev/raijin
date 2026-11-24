@@ -151,7 +151,8 @@ chmod 600 infra/.env infra/.env.api
 
 | Variable | Fichier | Commande |
 |---|---|---|
-| `POSTGRES_SUPERUSER_PASSWORD`, `RAIJIN_DB_PASSWORD`, `BENCH_DB_PASSWORD`, `REDIS_PASSWORD` | `infra/.env` | `openssl rand -hex 32` (une valeur différente chacune) |
+| `POSTGRES_SUPERUSER_PASSWORD`, `RAIJIN_DB_PASSWORD`, `BENCH_DB_PASSWORD`, `REDIS_PASSWORD` (utilisateur Redis `raijin-api`) | `infra/.env` | `openssl rand -hex 32` (une valeur différente chacune) |
+| `REDIS_BENCH_PASSWORD` (utilisateur Redis `raijin-bench`, banc seulement, A14) | `infra/.env` | `openssl rand -hex 32` (différent de `REDIS_PASSWORD`) |
 | `JWT_ACCESS_SECRET`, `IP_HASH_SECRET` | `infra/.env.api` | `openssl rand -base64 48` |
 | `COOKIE_SECRET`, `TOTP_ENCRYPTION_KEY` | `infra/.env.api` | `openssl rand -base64 32` |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | `infra/.env.api` | section A6 |
@@ -388,12 +389,61 @@ priver MTC de mémoire. Vérifie en conditions réelles avec `docker stats --no-
 
 Disque : ≈ 3 Go pour les images et le cache de build, plus les sauvegardes (7 jours) et la base.
 
-## A14. Banc de test (phase 8 bis, pas encore)
+## A14. Banc de test (`banc.raijinshield.com`, phase 8 bis)
 
-Les services `raijin-bench-api` et `raijin-bench-web` sont prêts dans le compose (profil `bench`) mais ne démarrent
-pas tant que l'API du banc n'existe pas. Au moment venu : hash du mot de passe Traefik (`htpasswd -nBC 12 kyoshiro`, bcrypt de coût 12 ;
-résultat **entre apostrophes** dans `BENCH_BASIC_AUTH_USERS`), fichier `infra/.env.bench-api`, puis
-`infra/deploy.sh --bench` ; procédure de bascule dans `docs/BENCH.md`.
+Profil Compose `bench` : `raijin-bench-api` (API du banc), `raijin-bench-web` (front), et `raijin-bench-migrate`
+(profil `tools`, migrations de `raijin_bench` avec l'utilisateur `raijin_bench`, sans droit sur `raijin`). Double
+verrou : mot de passe Traefik (basicAuth) devant tout le domaine, puis compte unique du banc (mot de passe + TOTP).
+Jamais indexé (`X-Robots-Tag: noindex, nofollow`, `robots.txt` `Disallow: /`). Procédure de bascule et de retour
+arrière : `docs/BENCH.md`.
+
+1. **DNS** : enregistrement `A` `banc` → IPv4 du VPS (A3).
+2. **Mot de passe Traefik** (sur le VPS, paquet `apache2-utils`, A1) :
+   ```bash
+   htpasswd -nBC 12 kyoshiro      # tape le mot de passe deux fois ; bcrypt de coût 12
+   ```
+   Copie la ligne `kyoshiro:$2y$12$…` **entre apostrophes** dans `infra/.env` : `BENCH_BASIC_AUTH_USERS='kyoshiro:$2y$12$…'`.
+3. **Utilisateur Redis du banc** : `openssl rand -hex 32` → `REDIS_BENCH_PASSWORD` dans `infra/.env` (différent de
+   `REDIS_PASSWORD`). Redis applique une ACL par application : l'API Raijin (`raijin-api`) ne voit que `raijin:*`, le
+   banc (`raijin-bench`) que `raijin-bench:*`, l'utilisateur `default` est désactivé.
+4. **Variables de l'API du banc** :
+   ```bash
+   cd /opt/raijin
+   nano infra/.env.bench-api      # copie le bloc « Banc » de docs/ENV.md (socle + Helius), puis remplace les valeurs
+   chmod 600 infra/.env.bench-api
+   ```
+   | Variable (`infra/.env.bench-api`) | Où la trouver / commande |
+   |---|---|
+   | `BENCH_MODE` | `shadow` jusqu'à la bascule (`docs/BENCH.md`), puis `primary` |
+   | `BENCH_OWNER_EMAIL` | ton adresse (compte unique du banc) |
+   | `BENCH_SESSION_SECRET` | `openssl rand -base64 48` |
+   | `BENCH_TOTP_ENCRYPTION_KEY` | `openssl rand -base64 32` |
+   | `BENCH_VAPID_PUBLIC_KEY`, `BENCH_VAPID_PRIVATE_KEY` | `pnpm exec web-push generate-vapid-keys --json` (paire **propre au banc**, A6) |
+   | `BENCH_HELIUS_API_KEY` | <https://dashboard.helius.dev/api-keys> (clé « raijin-banc-de-test », distincte de celle de Raijin) |
+
+   Imposées par le compose (inutile de les écrire) : `BENCH_DATABASE_URL`, `BENCH_REDIS_URL`, `BENCH_ALLOWED_ORIGINS`,
+   `BULLMQ_PREFIX`, `TRUST_PROXY`, `COOKIE_SECURE`, `NODE_ENV`, `API_PORT`.
+5. **Déploiement** :
+   ```bash
+   infra/deploy.sh --bench
+   ```
+   En plus du déploiement habituel : vérifie `infra/.env.bench-api`, `BENCH_BASIC_AUTH_USERS` et `REDIS_BENCH_PASSWORD`,
+   construit `raijin-bench-api`, `raijin-bench-web` et `raijin-bench-migrate`, sauvegarde les deux bases si elles
+   contiennent déjà des migrations, applique les migrations de `raijin_bench`, démarre le banc puis contrôle que
+   `https://banc.raijinshield.com/` et `/api/health` répondent **401 sans mot de passe**. Les déploiements suivants
+   (mises à jour, `--rollback`) se font aussi avec `--bench`, sinon le banc garde ses anciennes images.
+6. **Vérifications** :
+   ```bash
+   rj ps                                                            # raijin-bench-api et raijin-bench-web « healthy »
+   curl -sI https://banc.raijinshield.com/ | head -1                # 401 (basicAuth)
+   curl -s -u kyoshiro https://banc.raijinshield.com/api/health     # {"status":"ok"} (mot de passe Traefik demandé)
+   curl -s -u kyoshiro https://banc.raijinshield.com/robots.txt     # Disallow: /
+   ```
+   Puis le compte du banc (CLI `set-password` et `enroll-totp` dans le conteneur, `docs/BENCH.md`).
+
+Sauvegardes : `infra/backup.sh` sauvegarde `raijin_bench` avec `raijin` (A9) ; restauration :
+`infra/restore.sh --into raijin_bench FICHIER.dump` (A10). Migration de l'historique Supabase : `infra/bench-migrate.sh`
+(`docs/BENCH.md`).
 
 ## A15. Limites connues (audit de la phase 8, à traiter plus tard)
 
@@ -405,9 +455,9 @@ résultat **entre apostrophes** dans `BENCH_BASIC_AUTH_USERS`), fichier `infra/.
   par Traefik et forger `X-Forwarded-For` (contournement des limites par IP, pas d'accès aux comptes). Piste : limiter
   la confiance de l'API au sous-réseau de Traefik (`trust proxy` sur une liste d'adresses au lieu d'un nombre), ou un
   réseau dédié Traefik ↔ Raijin si la configuration de Traefik le permet. Décision à prendre avant l'ouverture publique.
-- **Redis partagé par l'API et le banc** (même mot de passe, préfixes de clés différents) : des **ACL Redis** par
-  application (un utilisateur `raijin`, un utilisateur `raijin-bench`, chacun limité à son préfixe) sont prévues avec
-  le banc en phase 8 bis.
+- **Redis partagé par l'API et le banc** : traité en phase 8 bis par des **ACL Redis** par application (`raijin-api`
+  limité à `raijin:*`, `raijin-bench` à `raijin-bench:*`, `default` désactivé, commandes d'administration refusées ;
+  A14). Contrôlé à chaque run du job CI `images` (`infra/ci/check-stack.sh`).
 - **Trivy** n'est qu'un rapport dans la CI : il deviendra **bloquant sur les vulnérabilités CRITICAL corrigeables**
   après la v1.
 

@@ -13,10 +13,12 @@
 #   infra/.env      → interpolation de ce fichier : domaines, Traefik, mots de passe Postgres/Redis, basicAuth,
 #                     variables publiques du build de la landing (docs/ENV.md, bloc « Production (VPS) »).
 #   infra/.env.api  → variables applicatives de raijin-api (docs/ENV.md, blocs applicatifs).
+#   infra/.env.bench-api → variables applicatives de raijin-bench-api (docs/ENV.md, bloc « Banc »).
 # Les valeurs qui doivent être justes en production sont IMPOSÉES ci-dessous (environment l'emporte sur
 # env_file) : NODE_ENV, API_PORT, DATABASE_URL, REDIS_URL, TRUST_PROXY, COOKIE_SECURE, URLs, CORS.
 #
-# Profils : (aucun) = Raijin ; « bench » = banc de test (phase 8 bis) ; « tools » = migrations Prisma.
+# Profils : (aucun) = Raijin ; « bench » = banc de test (phase 8 bis) ; « tools » = migrations Prisma (raijin-migrate,
+# raijin-bench-migrate).
 # Mots de passe Postgres/Redis : hexadécimaux (openssl rand -hex 32), insérés tels quels dans des URL.
 # =====================================================================================================
 name: raijin
@@ -93,7 +95,14 @@ services:
   # ---------------------------------------------------------------------------------------------------
   # Redis : rate limiting, caches (TTL) et files BullMQ. noeviction obligatoire (une clé de job évincée
   # corromprait les files, docs/ARCHITECTURE.md §11.3). AOF pour ne pas perdre les jobs au redémarrage.
-  # Mot de passe écrit dans un fichier de configuration en mémoire (jamais sur la ligne de commande).
+  # ACL par application (docs/ARCHITECTURE.md §17.5, M6) : fichier ACL écrit en mémoire au démarrage depuis les
+  # variables (jamais sur la ligne de commande) :
+  #   raijin-api    (REDIS_PASSWORD)        clés et canaux raijin:*        (API Raijin : keyPrefix + BullMQ « raijin »)
+  #   raijin-bench  (REDIS_BENCH_PASSWORD)  clés et canaux raijin-bench:*  (banc ; désactivé si la variable est vide)
+  #   default       désactivé (aucune connexion anonyme)
+  # Commandes : tout sauf @dangerous / @admin (FLUSHALL, KEYS, CONFIG, DEBUG, MONITOR, CLIENT LIST|KILL…), INFO rendu
+  # (BullMQ et ioredis le lisent), et sans SCAN / RANDOMKEY (ils listeraient les clés de l'autre application),
+  # SCRIPT FLUSH|KILL ni FUNCTION (partagés par toutes les connexions).
   # ---------------------------------------------------------------------------------------------------
   raijin-redis:
     image: redis:8.10.3-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
@@ -102,15 +111,38 @@ services:
     user: redis
     entrypoint: ['/bin/sh', '-c']
     command:
-      - >-
-        umask 077 &&
-        printf 'requirepass %s\n' "$$REDIS_PASSWORD" > /tmp/redis.conf &&
-        exec redis-server /tmp/redis.conf
-        --appendonly yes --appendfsync everysec --save ''
-        --maxmemory 200mb --maxmemory-policy noeviction
-        --protected-mode yes
+      - |
+        set -eu
+        umask 077
+        bench="$${REDIS_BENCH_PASSWORD:-}"
+        for v in "$$REDIS_PASSWORD" "$${bench:-x}"; do
+          case "$$v" in
+            ''|*[!A-Za-z0-9_-]*) echo 'raijin-redis : mot de passe Redis invalide (openssl rand -hex 32)' >&2; exit 1 ;;
+          esac
+        done
+        if [ "$$bench" = "$$REDIS_PASSWORD" ]; then
+          echo 'raijin-redis : REDIS_BENCH_PASSWORD doit différer de REDIS_PASSWORD' >&2; exit 1
+        fi
+        rules='+@all -@dangerous -@admin +info -scan -randomkey -script|flush -script|kill -function'
+        {
+          echo 'user default off resetpass resetkeys resetchannels -@all'
+          printf 'user raijin-api on resetpass >%s resetkeys ~raijin:* resetchannels &raijin:* %s\n' "$$REDIS_PASSWORD" "$$rules"
+          if [ -n "$$bench" ]; then
+            printf 'user raijin-bench on resetpass >%s resetkeys ~raijin-bench:* resetchannels &raijin-bench:* %s\n' "$$bench" "$$rules"
+          else
+            echo 'user raijin-bench off resetpass resetkeys resetchannels -@all'
+          fi
+        } > /tmp/users.acl
+        unset REDIS_PASSWORD REDIS_BENCH_PASSWORD bench
+        exec redis-server --aclfile /tmp/users.acl \
+          --appendonly yes --appendfsync everysec --save '' \
+          --maxmemory 200mb --maxmemory-policy noeviction \
+          --protected-mode yes
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD manquant (infra/.env)}
+      # Vide tant que le banc n'est pas déployé (utilisateur raijin-bench désactivé) ; exigé par deploy.sh --bench.
+      REDIS_BENCH_PASSWORD: ${REDIS_BENCH_PASSWORD:-}
+      # Healthcheck (redis-cli --user raijin-api) : mot de passe lu dans l'environnement, jamais en argument.
       REDISCLI_AUTH: ${REDIS_PASSWORD}
     volumes:
       - raijin-redisdata:/data
@@ -120,7 +152,7 @@ services:
     networks:
       - raijin-internal
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning --user raijin-api ping | grep -q PONG']
       interval: 10s
       timeout: 5s
       retries: 6
@@ -146,6 +178,35 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://raijin:${RAIJIN_DB_PASSWORD}@raijin-postgres:5432/raijin?schema=public
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    networks:
+      - raijin-internal
+    depends_on:
+      raijin-postgres:
+        condition: service_healthy
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    pids_limit: 100
+    <<: *hardening
+    logging: *logging
+
+  # ---------------------------------------------------------------------------------------------------
+  # Migrations Prisma du banc (profil « tools ») : base raijin_bench, utilisateur raijin_bench (aucun droit sur
+  # raijin). Lancé par deploy.sh --bench AVANT de démarrer la nouvelle API du banc :
+  #   docker compose … --profile tools run --rm raijin-bench-migrate
+  # ---------------------------------------------------------------------------------------------------
+  raijin-bench-migrate:
+    profiles: ['tools']
+    image: raijin/bench-migrate:${RAIJIN_TAG:-latest}
+    build:
+      <<: *build
+      target: bench-migrate
+    environment:
+      NODE_ENV: production
+      BENCH_DATABASE_URL: postgresql://raijin_bench:${BENCH_DB_PASSWORD}@raijin-postgres:5432/raijin_bench?schema=public
     read_only: true
     tmpfs:
       - /tmp:size=64m
@@ -188,7 +249,8 @@ services:
       API_URL: https://${API_DOMAIN:?API_DOMAIN manquant}
       CORS_ORIGINS: https://${APP_DOMAIN}
       DATABASE_URL: postgresql://raijin:${RAIJIN_DB_PASSWORD}@raijin-postgres:5432/raijin?schema=public
-      REDIS_URL: redis://:${REDIS_PASSWORD}@raijin-redis:6379
+      # Utilisateur ACL raijin-api (clés raijin:* seulement) ; BullMQ « raijin » → clés raijin:<file>:*.
+      REDIS_URL: redis://raijin-api:${REDIS_PASSWORD}@raijin-redis:6379
       BULLMQ_PREFIX: raijin
       TRUST_PROXY: '1'
       COOKIE_SECURE: 'true'
@@ -379,8 +441,13 @@ services:
 
   # ===================================================================================================
   # Banc de test (profil « bench », phase 8 bis) : banc.raijinshield.com, double verrou (PROMPT.md §4.8) :
-  # basicAuth Traefik en amont (hash bcrypt dans BENCH_BASIC_AUTH_USERS) + auth propre de l'API du banc.
-  # NE PAS activer avant la phase 8 bis : apps/raijin-banc-de-test-api n'existe pas encore.
+  # basicAuth Traefik en amont (hash dans BENCH_BASIC_AUTH_USERS) + auth propre de l'API du banc (compte unique,
+  # mot de passe + TOTP, docs/ARCHITECTURE.md §17.7). Démarré seulement par infra/deploy.sh --bench.
+  #
+  # API du banc : variables applicatives dans infra/.env.bench-api (modèle : docs/ENV.md, « Banc ») ; celles qui
+  # doivent être justes sont IMPOSÉES ci-dessous (environment l'emporte sur env_file ; noms lus par bench-core,
+  # libs/bench/core/src/lib/config/bench-config.ts). Postgres : utilisateur raijin_bench (base raijin_bench seule,
+  # vérifié par bench-core) ; Redis : utilisateur ACL raijin-bench (clés raijin-bench:* seules).
   # ===================================================================================================
   raijin-bench-api:
     profiles: ['bench']
@@ -391,15 +458,21 @@ services:
     container_name: raijin-bench-api
     restart: unless-stopped
     env_file:
+      # Facultatif pour Compose (docker compose config / build en CI) ; infra/deploy.sh --bench refuse de continuer
+      # s'il est absent, et l'API du banc refuse de démarrer sans ses secrets.
       - path: .env.bench-api
         required: false
     environment:
       NODE_ENV: production
       API_PORT: '3000'
       NODE_OPTIONS: --max-old-space-size=320
-      DATABASE_URL: postgresql://raijin_bench:${BENCH_DB_PASSWORD}@raijin-postgres:5432/raijin_bench?schema=public
-      REDIS_URL: redis://:${REDIS_PASSWORD}@raijin-redis:6379
+      # Origine du front du banc (contrôle Origin / CSRF de bench-core) : même origine que l'API (/api/).
+      BENCH_ALLOWED_ORIGINS: https://${BENCH_DOMAIN:-banc.raijinshield.com}
+      BENCH_DATABASE_URL: postgresql://raijin_bench:${BENCH_DB_PASSWORD}@raijin-postgres:5432/raijin_bench?schema=public
+      BENCH_REDIS_URL: redis://raijin-bench:${REDIS_BENCH_PASSWORD:-}@raijin-redis:6379
+      # BullMQ du banc → clés raijin-bench:<file>:* (autorisées par l'ACL raijin-bench ; bench-core refuse une autre valeur).
       BULLMQ_PREFIX: raijin-bench
+      # Un seul proxy (Traefik) devant l'API du banc.
       TRUST_PROXY: '1'
       COOKIE_SECURE: 'true'
     read_only: true
@@ -424,6 +497,9 @@ services:
       - traefik.enable=true
       - traefik.docker.network=${TRAEFIK_NETWORK}
       - traefik.http.services.raijin-bench-api.loadbalancer.server.port=3000
+      - traefik.http.services.raijin-bench-api.loadbalancer.healthcheck.path=/api/health
+      - traefik.http.services.raijin-bench-api.loadbalancer.healthcheck.interval=30s
+      # banc.raijinshield.com/api/* (priorité au-dessus du routeur du front)
       - traefik.http.routers.raijin-bench-api.rule=Host(`${BENCH_DOMAIN:-banc.raijinshield.com}`) && PathPrefix(`/api/`)
       - traefik.http.routers.raijin-bench-api.priority=100
       - traefik.http.routers.raijin-bench-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
@@ -431,6 +507,16 @@ services:
       - traefik.http.routers.raijin-bench-api.tls.certresolver=${TRAEFIK_CERTRESOLVER}
       - traefik.http.routers.raijin-bench-api.service=raijin-bench-api
       - traefik.http.routers.raijin-bench-api.middlewares=raijin-bench-auth,raijin-bench-api-ratelimit,raijin-bench-api-headers,raijin-bench-api-compress
+      # SSE (GET /api/events, §17.4) : routeur dédié SANS compression (un flux compressé est mis en tampon) ; Traefik
+      # ne met pas les réponses en tampon (aucun middleware buffering) et vide text/event-stream à chaque écriture.
+      - traefik.http.routers.raijin-bench-events.rule=Host(`${BENCH_DOMAIN:-banc.raijinshield.com}`) && Path(`/api/events`)
+      - traefik.http.routers.raijin-bench-events.priority=110
+      - traefik.http.routers.raijin-bench-events.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.raijin-bench-events.tls=true
+      - traefik.http.routers.raijin-bench-events.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.raijin-bench-events.service=raijin-bench-api
+      - traefik.http.routers.raijin-bench-events.middlewares=raijin-bench-auth,raijin-bench-api-ratelimit,raijin-bench-api-headers
+      # basicAuth (en-tête Authorization retiré avant l'API : elle ne voit que son propre cookie de session)
       - traefik.http.middlewares.raijin-bench-auth.basicauth.users=${BENCH_BASIC_AUTH_USERS:-}
       - traefik.http.middlewares.raijin-bench-auth.basicauth.removeheader=true
       - traefik.http.middlewares.raijin-bench-auth.basicauth.realm=Raijin-banc-de-test

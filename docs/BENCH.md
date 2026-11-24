@@ -248,6 +248,69 @@ Colonnes archivées le 21/11 (`legacy/docs/ARCHIVE.md`) : selon §9 P3.
 | RPC du front | `grep -rhoE "rpc\('[a-z_]+" apps/raijin-banc-de-test/src --include=*.ts --exclude=*.spec.ts \| sort -u` | 8 (§5) |
 | Fichiers du front | `grep -rlE "inject\(SUPABASE\)\|SupabaseClient" apps/raijin-banc-de-test/src --include=*.ts --exclude=*.spec.ts` | 14 dont le client (§7) |
 
+## 11. Import des données Supabase : `infra/bench-migrate.sh` (pas à pas, lancé par l'utilisateur)
+
+Ce que fait le script (T9) : **lecture seule** côté Supabase (`pg_dump --data-only` des tables listées, connexion
+`default_transaction_read_only=on` vérifiée avant tout, aucune autre instruction envoyée), puis **une seule transaction**
+dans `raijin_bench` (rôle `raijin_bench`) : données chargées dans des tables temporaires, recopiées vers les colonnes et
+types de la cible (colonnes retirées ignorées et signalées), comptes `auth.users` → `bench_owner` (P2), identifiants
+d'origine gardés (`OVERRIDING SYSTEM VALUE` puis `setval`), déclencheurs suspendus pendant la copie puis remis dans leur
+état, `alert_log_single_has_plan` retirée puis remise `NOT VALID`. Contrôles avant validation, table par table : lignes
+source / cible, dates min / max, empreinte de toutes les colonnes copiées ; **au moindre écart, tout est annulé** (code
+de sortie ≠ 0). Test : `infra/ci/test-bench-migrate.sh` (deux Postgres jetables, faux Supabase rejoué depuis
+`legacy/supabase/migrations`, job CI `images`).
+
+| Commande | Effet | Écrit dans |
+|---|---|---|
+| `infra/bench-migrate.sh --dry-run [--archive]` | import complet + contrôles, puis annulation | rien |
+| `infra/bench-migrate.sh [--archive]` | migration de l'historique (21 tables, §4), confirmation tapée `MIGRER raijin_bench` | `public` (+ `archive`) |
+| `infra/bench-migrate.sh --check` | chaque ligne de la source doit exister à l'identique dans la cible | rien |
+| `infra/bench-migrate.sh --shadow-snapshot --since D [--until D]` | fenêtre `[D ; D'[` (≤ 31 j) des 7 tables comparées, rechargées, + ligne `snapshot_meta` | `shadow_ref` |
+
+Refus sans rien écrire : une des 21 tables de `public` contient déjà une ligne (pas de fusion, donc **aucun doublon**
+possible), session ouverte sur `raijin_bench` (API du banc qui tourne), pas de compte `bench_owner`, schéma `archive` non
+vide (`--archive`), plusieurs comptes dans la source sans `--source-user UUID` (les lignes des autres comptes sont
+alors exclues, `backtest_runs.requested_by` mis à null), dump tronqué, serveur source plus récent que `pg_dump` 17.
+`--archive` (facultatif, P3/P4) copie les tables mortes (§8) et les colonnes retirées de `public` (avec la clé primaire,
+tables `archive.<table>_colonnes_archivees`), valeurs au format texte de COPY.
+
+### Pas à pas (sur le VPS, dans le dossier du dépôt)
+
+**Ordre imposé** : l'historique est importé dans une base **vide**, AVANT le premier démarrage de l'API du banc ;
+la collecte du VPS (mode `shadow`) démarre ensuite par-dessus, et la comparaison ombre porte sur une fenêtre qui commence
+**après** l'import (sinon `public` mélangerait historique Supabase et collecte VPS sur les mêmes jours).
+
+1. **URL de la source** (Supabase, tableau de bord du projet → *Connect*) : chaîne *Session pooler* (port 5432, IPv4) ou
+   *Direct connection* (IPv6 ; le conteneur de lecture utilise le réseau de l'hôte). Pas le *Transaction pooler*
+   (port 6543), incompatible avec `pg_dump`. Le mot de passe est celui de la base (rôle `postgres`). Elle n'est
+   **jamais** à écrire dans un fichier : soit le script la demande (saisie masquée), soit
+   `read -rs BENCH_SOURCE_DATABASE_URL && export BENCH_SOURCE_DATABASE_URL` dans le terminal (rien dans l'historique),
+   puis `unset BENCH_SOURCE_DATABASE_URL` à la fin. Si le pooler refuse le paramètre de lecture seule (`PGOPTIONS`),
+   le script s'arrête : passer par la *Direct connection*. Aucune lecture seule « dégradée » n'est proposée.
+2. **Base prête, API arrêtée** : migrations Prisma de `raijin_bench` appliquées (`pnpm nx run bench-prisma:migrate`,
+   service du profil `tools`, `libs/bench/prisma/README.md`), compte propriétaire créé par la CLI `set-password`
+   (Décision 7), et `raijin-bench-api` **arrêtée** (`docker compose --project-name raijin -f infra/docker-compose.yml
+   --profile bench stop raijin-bench-api`).
+3. **Simulation** : `infra/bench-migrate.sh --dry-run --archive`. Lire le résumé (lignes, dates, colonnes ignorées).
+   Rien n'est écrit. Les volumes réels remplacent les estimations du §4.
+4. **Migration** : `infra/bench-migrate.sh --archive` (ou sans `--archive` si l'historique des tables mortes ne
+   compte pas), taper `MIGRER raijin_bench`. En cas d'échec : rien n'a été écrit, corriger la cause indiquée et relancer.
+5. **Contrôle a posteriori** : `infra/bench-migrate.sh --check` (doit afficher `CONTRÔLE RÉUSSI`), **avant** de
+   redémarrer l'API (ensuite, la source et le VPS divergent normalement).
+6. **Démarrage en mode ombre** (`BENCH_MODE=shadow`), puis après 24 à 48 h :
+   `infra/bench-migrate.sh --shadow-snapshot --since <date de démarrage, UTC>` ; la colonne « remarques » donne le
+   volume VPS de la même fenêtre, l'écran `/comparaison` le détail par jour. Relançable autant de fois que voulu
+   (`shadow_ref` est rechargé, `snapshot_meta` garde l'historique des instantanés).
+
+### Retour arrière
+
+- Après `--dry-run`, `--check` ou un échec : rien à faire (aucune écriture).
+- Après une migration réussie mais jugée mauvaise : rien n'est supprimé par le script. Restaurer la sauvegarde de
+  `raijin_bench` prise juste avant (`infra/backup.sh`, puis `infra/restore.sh --into raijin_bench FICHIER.dump`,
+  qui renomme la base actuelle au lieu de la supprimer), puis reprendre à l'étape 3.
+- `--shadow-snapshot` ne touche que `shadow_ref` (aucune donnée de production) : relancer suffit.
+- Supabase n'est jamais modifié : l'ancien banc continue de tourner tel quel jusqu'à la bascule (T11).
+
 ## Annexe A — Colonnes par table
 
 Colonnes de création, puis colonnes ajoutées (date de migration). Générée depuis les migrations ; types et contraintes

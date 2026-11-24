@@ -3,8 +3,9 @@
 # Sauvegarde quotidienne des bases Raijin (PROMPT.md §7) — lancée par le timer systemd raijin-backup.timer
 # (ou cron), sur le VPS, par l'utilisateur. Jamais par un agent.
 #
-#   1. pg_dump (format custom, compressé) de « raijin » et, si elle existe, de « raijin_bench » ;
-#   2. vérification de chaque fichier (pg_restore --list) ;
+#   1. pg_dump (format custom, compressé) de « raijin » et, si elle existe, de « raijin_bench » (banc) ;
+#   2. vérification de chaque fichier (pg_restore --list ; table _prisma_migrations pour raijin, et pour
+#      raijin_bench dès qu'elle est migrée) ;
 #   3. rotation locale : fichiers de plus de BACKUP_RETENTION_DAYS jours (7 par défaut) supprimés,
 #      uniquement dans BACKUP_DIR et uniquement les fichiers raijin*_AAAAMMJJ-HHMMSS.dump ;
 #   4. copie hors site par rclone vers BACKUP_RCLONE_REMOTE (bucket B2 dédié, chiffré par un remote
@@ -39,7 +40,7 @@ offsite=1
 for arg in "$@"; do
   case "$arg" in
     --no-offsite) offsite=0 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) die "option inconnue : $arg" ;;
   esac
 done
@@ -78,6 +79,12 @@ for db in raijin raijin_bench; do
   [[ -n "$toc" ]] || die "fichier de sauvegarde illisible pour $db."
   if [[ "$db" == raijin ]] && ! grep -q '_prisma_migrations' <<<"$toc"; then
     die "la sauvegarde de raijin ne contient pas _prisma_migrations."
+  fi
+  # Banc : une fois migré (raijin-bench-migrate), la sauvegarde doit contenir sa table des migrations.
+  if [[ "$db" == raijin_bench ]] \
+     && [[ "$(pg_sql -d raijin_bench -c "SELECT to_regclass('public._prisma_migrations') IS NOT NULL;")" == t ]] \
+     && ! grep -q '_prisma_migrations' <<<"$toc"; then
+    die "la sauvegarde de raijin_bench ne contient pas _prisma_migrations."
   fi
   mv "$tmp" "$file"
   sha256sum "$file" >"$file.sha256"

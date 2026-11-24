@@ -16,6 +16,7 @@ out-tsc
 .angular
 **/.astro
 libs/api/prisma/src/generated
+libs/bench/prisma/src/generated
 
 # Inutile au build
 .git

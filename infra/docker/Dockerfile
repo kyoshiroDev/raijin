@@ -8,8 +8,9 @@
 #   build-*       build Nx de chaque projet (seule l'étape demandée par la cible est construite)
 #   api           Node 24 + dist/apps/api + dépendances de production seules (contrôlées par check-externals.cjs), utilisateur « node »
 #   migrate       image minimale : CLI Prisma seule + schéma et migrations (migrate deploy), lancée par deploy.sh
+#   bench-migrate idem pour la base du banc raijin_bench (libs/bench/prisma), lancée par deploy.sh --bench
 #   web, landing, bench-web   fichiers statiques servis par nginx:alpine, utilisateur « nginx » (101), port 8080
-#   bench-api     API du banc (phase 8 bis : apps/raijin-banc-de-test-api n'existe pas encore)
+#   bench-api     API du banc (apps/raijin-banc-de-test-api), même contrôle check-externals.cjs que l'API
 #
 # Build : uniquement par infra/deploy.sh sur le VPS (docker compose build). Mémoire : ~2 Go pendant le build
 # d'Angular ; les builds sont lancés un par un (docs/DEPLOY.md).
@@ -69,7 +70,8 @@ FROM source AS build-bench-web
 RUN pnpm nx run raijin-banc-de-test:build:production --parallel=1 --outputStyle=static
 
 FROM source AS build-bench-api
-# Phase 8 bis : le projet sera généré comme api (webpack, generatePackageJson ; pas de cible prune).
+# Comme api : webpack + generatePackageJson (package.json et pnpm-lock.yaml élagués dans dist) ; NE PAS utiliser
+# la cible prune (même raison que pour api).
 RUN pnpm nx run raijin-banc-de-test-api:build --parallel=1 --outputStyle=static
 
 # ---------------------------------------------------------------------------------------------------
@@ -127,17 +129,29 @@ RUN node -e "const p=require('/tmp/root-package.json');const v=(p.devDependencie
  && ls node_modules/@prisma/engines | grep -q '^schema-engine-' \
  && npm cache clean --force
 
-FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS migrate
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS migrate-runtime
 ENV NODE_ENV=production \
     CHECKPOINT_DISABLE=1 \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
     HOME=/tmp
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=migrate-cli --chown=root:root /app/node_modules /app/node_modules
+
+FROM migrate-runtime AS migrate
 COPY --chown=root:root libs/api/prisma/prisma.config.ts /app/libs/api/prisma/prisma.config.ts
 COPY --chown=root:root libs/api/prisma/prisma/schema.prisma /app/libs/api/prisma/prisma/schema.prisma
 COPY --chown=root:root libs/api/prisma/prisma/migrations /app/libs/api/prisma/prisma/migrations
 WORKDIR /app/libs/api/prisma
+USER node
+CMD ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
+
+# Base du banc (raijin_bench) : même CLI, schéma et migrations de libs/bench/prisma ; prisma.config.ts lit
+# BENCH_DATABASE_URL (utilisateur raijin_bench, imposé par infra/docker-compose.yml).
+FROM migrate-runtime AS bench-migrate
+COPY --chown=root:root libs/bench/prisma/prisma.config.ts /app/libs/bench/prisma/prisma.config.ts
+COPY --chown=root:root libs/bench/prisma/prisma/schema.prisma /app/libs/bench/prisma/prisma/schema.prisma
+COPY --chown=root:root libs/bench/prisma/prisma/migrations /app/libs/bench/prisma/prisma/migrations
+WORKDIR /app/libs/bench/prisma
 USER node
 CMD ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
 
@@ -166,9 +180,11 @@ COPY infra/nginx/bench-web.conf /etc/nginx/conf.d/raijin.conf
 COPY --from=build-bench-web /app/dist/apps/raijin-banc-de-test/browser /usr/share/nginx/html
 
 # ---------------------------------------------------------------------------------------------------
+# Dépendances de production de l'API du banc : même procédé et même contrôle que api-prod-deps. Les bundles
+# (main.js, et cli.js dès que l'app en a un : set-password, enroll-totp…) sont tous contrôlés.
 FROM base AS bench-api-prod-deps
 COPY --from=build-bench-api /app/dist/apps/raijin-banc-de-test-api/package.json /app/dist/apps/raijin-banc-de-test-api/pnpm-lock.yaml /app/dist/apps/raijin-banc-de-test-api/pnpm-workspace.yaml /app/dist/apps/raijin-banc-de-test-api/
-COPY --from=build-bench-api /app/dist/apps/raijin-banc-de-test-api/main.js /app/dist/apps/raijin-banc-de-test-api/
+COPY --from=build-bench-api /app/dist/apps/raijin-banc-de-test-api/*.js /app/dist/apps/raijin-banc-de-test-api/
 COPY package.json /tmp/root-package.json
 COPY infra/docker/check-externals.cjs /usr/local/bin/check-externals.cjs
 WORKDIR /app/dist/apps/raijin-banc-de-test-api
@@ -176,18 +192,26 @@ RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
     pm="$(node -p "require('/tmp/root-package.json').packageManager")" \
  && corepack prepare "$pm" --activate \
  && node -e "const p=require('./package.json');p.packageManager=process.argv[1];require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))" "$pm" \
+ && pnpm --version \
  && pnpm install --prod --frozen-lockfile --store-dir /pnpm/store --config.node-linker=hoisted --config.enable-global-virtual-store=false \
- && node /usr/local/bin/check-externals.cjs /app/dist/apps/raijin-banc-de-test-api main.js \
- && rm -f main.js
+ && test -f main.js \
+ && node /usr/local/bin/check-externals.cjs /app/dist/apps/raijin-banc-de-test-api $(ls ./*.js | sed 's|^\./||') \
+ && rm -f ./*.js
 
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS bench-api
 ENV NODE_ENV=production \
     API_PORT=3000
 WORKDIR /app
-COPY --from=bench-api-prod-deps /app/dist/apps/raijin-banc-de-test-api/node_modules ./dist/apps/raijin-banc-de-test-api/node_modules
-COPY --from=build-bench-api /app/dist/apps/raijin-banc-de-test-api ./dist/apps/raijin-banc-de-test-api
+COPY --from=bench-api-prod-deps --chown=root:root /app/dist/apps/raijin-banc-de-test-api/node_modules ./dist/apps/raijin-banc-de-test-api/node_modules
+COPY --from=build-bench-api --chown=root:root /app/dist/apps/raijin-banc-de-test-api ./dist/apps/raijin-banc-de-test-api
+# Contrôle final dans l'image telle qu'elle sera exécutée (bundles + node_modules réunis).
+COPY --from=bench-api-prod-deps /usr/local/bin/check-externals.cjs /tmp/check-externals.cjs
+RUN cd /app/dist/apps/raijin-banc-de-test-api \
+ && node /tmp/check-externals.cjs . $(ls ./*.js | sed 's|^\./||') \
+ && rm /tmp/check-externals.cjs
 USER node
 EXPOSE 3000
+# Santé publique de l'API du banc : GET /api/health (préfixe /api, BENCH_ROUTES.health), sans données.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/api/v1/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
 CMD ["node", "dist/apps/raijin-banc-de-test-api/main.js"]
