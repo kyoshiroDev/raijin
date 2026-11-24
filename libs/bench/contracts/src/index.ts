@@ -8,6 +8,7 @@ export * from './lib/paper';
 export * from './lib/performance';
 export * from './lib/lab';
 export * from './lib/shadow';
+export * from './lib/shadow-acceptance';
 export * from './lib/health';
 export * from './lib/sse';
 export * from './lib/routes';

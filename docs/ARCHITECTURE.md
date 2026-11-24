@@ -1611,16 +1611,32 @@ Vercel par un agent ; migration et bascule lancées par l'utilisateur.
   (`@nx/enforce-module-boundaries`), vérifiée par sondes temporaires et par `nx graph`.
 
 ### 17.2 Projets
-- `apps/raijin-banc-de-test-api` (`scope:bench`, `type:app`, `@nx/nest`) : app **fine** (bootstrap, `main.ts`,
-  `cli.ts` en T6) ; le métier vit dans les libs. Port `API_PORT` (3000 dans le conteneur `raijin-bench-api`).
-- `libs/bench/contracts` (`@raijin/bench-contracts`, `type:contracts`) : contrats Zod du banc (§17.3).
-- `libs/bench/solana` (`@raijin/bench-solana`, `type:data-access`, T4) : `createBenchSolana` instancie
-  `SolanaDataService` de `api-solana` avec les paramètres du banc (§17.5), budget Redis préfixé
-  (`PrefixedRedisCreditBudget` de `api-solana`), recul sur 429 des sources à IP partagée et source
-  `getTransactionsForAddress` de wallet-study (désactivation propre, `wallet_study` de `GET /api/status`).
-- À créer par leurs agents (T5–T8) : `bench-prisma` (data-access, schéma et client séparés de `api-prisma`),
-  `bench-core` (config, auth, jobs, SSE), `bench-collect`, `bench-trading`, `bench-quality`,
-  `bench-data-access` (client Angular). `bench-verdicts` (§16) reste du code pur.
+Créés (tous `scope:bench`, alias `@raijin/bench-*`, aucun import de `scope:api` ; `bench-solana` passe par
+`@raijin/api-solana`, tag `scope:solana`) :
+
+| Projet | Type | Rôle |
+|---|---|---|
+| `apps/raijin-banc-de-test-api` | app (`@nx/nest`) | app **fine** : `main.ts` (bootstrap, port `API_PORT`, 3000 dans `raijin-bench-api`) et `cli.ts` (`create-owner`, `set-password`, `reset-2fa`, alias `enroll-totp` / `reset-totp`, via `benchCliMain` de `bench-core`) ; le métier vit dans les libs |
+| `apps/raijin-banc-de-test` | app Angular | front du banc ; client HTTP et SSE dans l'app (`src/app/core/api/` : `BenchApi`, `BenchEvents`), pas de lib `bench-data-access` séparée |
+| `libs/bench/contracts` | `type:contracts` | contrats Zod (§17.3) et seuils officiels de bascule `SHADOW_ACCEPTANCE` / `evaluateShadowAcceptance` (§17.6) |
+| `libs/bench/core` | `type:feature` | config validée au démarrage, auth du compte unique, CSRF, limites par IP, jobs BullMQ (`BenchJobRegistry`, `BenchJobRunner`, `BenchJobScheduler`, `job_runs`), SSE, mode `shadow`/`primary` (`BenchModeService`, `BenchNotifier`), `/api/health`, `/api/status`, CLI |
+| `libs/bench/prisma` | `type:data-access` | schéma, migrations SQL (fonctions et déclencheurs d'origine à l'identique, schémas `shadow_ref` et `archive`), `BenchPrismaService`, `BenchSqlService` (pool `pg` + `SqlBenchDbExecutor`), listes de tables partagées avec `infra/bench-migrate.sh` (`bench-tables.ts`) |
+| `libs/bench/engine` | `type:util` | port Node des 7 Edge Functions et de `_shared` (sans Nest), client `BenchDb` (ci-dessous) |
+| `libs/bench/collect` | `type:feature` | jobs `scan-tokens`, `enrich-tokens`, `label-outcomes`, `wallet-study-collect`, lectures tokens / alertes / réglages / push |
+| `libs/bench/trading` | `type:feature` | SIMULATION : `paper-engine`, `backtest-run`, `backtest-nightly`, ex-RPC `paper_*`, `performance_*`, labo |
+| `libs/bench/quality` | `type:feature` | mesure du risque (§16) : `verdict-follow-up`, `verdict-aggregate`, `retention-purge`, `storage-check`, `GET /api/verdicts/quality`, `GET /api/shadow/comparison` |
+| `libs/bench/solana` | `type:data-access` | `createBenchSolana` : `SolanaDataService` de `api-solana` avec les paramètres du banc (§17.5), budget Redis préfixé, recul sur 429, source `getTransactionsForAddress` de wallet-study |
+| `libs/bench/verdicts` | `type:util` | code pur de la mesure (§16), seuils de stockage |
+
+**Client `BenchDb`** (`libs/bench/engine/src/db/bench-db.ts`) : remplace `createClient(SUPABASE_URL, SERVICE_ROLE_KEY)`
+dans le code porté, pour que les requêtes des Edge Functions restent **à l'identique** (même interface fluide
+`from().select().eq()…`, `rpc()`, mêmes résultats `{ data, error, count }` ; alias de type `SupabaseClient`). Chaque
+requête devient un `QuerySpec` exécuté par un `BenchDbExecutor` : en production `SqlBenchDbExecutor`
+(`@raijin/bench-prisma`) exécute le SQL paramétré produit par `compileQuery` / `compileRpc` (`engine/src/db/sql-compiler.ts`,
+façon PostgREST : `json_agg`, plafond `max-rows` de 1 000 lignes, fonctions SQL appelées à arguments nommés, types lus
+dans `pg_proc`) sur `raijin_bench` avec l'utilisateur `raijin_bench` seul ; dans les tests `MemoryDbExecutor` (tables en
+mémoire, avec les réponses d'API enregistrées). Sous-ensemble couvert = celui des 7 fonctions (vérifié par grep) : une
+méthode hors de ce sous-ensemble n'existe pas sur l'interface (erreur de compilation).
 
 ### 17.3 Contrats (`@raijin/bench-contracts`)
 - Propres au banc, donc hors `shared-contracts` ; ils réutilisent les schémas partagés (`mintAddressSchema`,
@@ -1678,11 +1694,16 @@ Vercel par un agent ; migration et bascule lancées par l'utilisateur.
   automatique de positions paper (`BENCH_SHADOW_MODE`). `primary` après bascule.
 - Comparaison sans accès Supabase depuis l'API : `infra/bench-migrate.sh --shadow-snapshot --since <date>`
   (utilisateur, `pg_dump` en lecture) copie la fenêtre dans le schéma `shadow_ref` ; `GET /api/shadow/comparison`
-  confronte `public` et `shadow_ref` par table et par jour (écart en %, mints d'un seul côté), 31 jours au plus.
+  confronte `public` et `shadow_ref` par table et par jour (écart en %, mints d'un seul côté), 31 jours au plus, et
+  renvoie la fenêtre de l'instantané (`snapshot_window`, `shadow_ref.snapshot_meta`).
+- Seuils officiels de bascule : `SHADOW_ACCEPTANCE` (`@raijin/bench-contracts`), appliqués par
+  `evaluateShadowAcceptance` sur les seuls jours UTC complets de l'instantané ; l'écran `/comparaison` les lit sans
+  copie. Procédure, budget Helius, jobs et retour arrière : `docs/BENCH.md` §12.
 
 ### 17.7 Authentification du banc
 - Un seul compte (`BENCH_OWNER_EMAIL`) ; ni inscription ni réinitialisation par e-mail. Mot de passe argon2id
-  et TOTP posés par CLI dans le conteneur (`set-password`, `enroll-totp`, `reset-totp`, lancés par l'utilisateur).
+  et TOTP posés par la CLI du conteneur (`create-owner`, puis `set-password`, `reset-2fa` ; alias `enroll-totp`,
+  `reset-totp`), lancée par l'utilisateur (`docs/BENCH.md` §12 étape 2).
 - Connexion en une étape (`email`, `password`, `totp`) : une seule erreur `AUTH_INVALID_CREDENTIALS`, throttler
   renforcé. Session httpOnly courte (2 h d'inactivité, 12 h au plus), CSRF double-submit (`X-CSRF-Token`).
 - Cookies `__Host-rjb_session` / `__Host-rjb_csrf` (sans préfixe en HTTP local), distincts de ceux de Raijin

@@ -1,15 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject, type OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { SHADOW_TABLES, type ShadowTable } from '@raijin/bench-contracts';
+import { SHADOW_ACCEPTANCE, SHADOW_TABLES, type ShadowTable, type ShadowTableStatus } from '@raijin/bench-contracts';
 import { PageHeader } from '../../shared/ui/page-header';
 import {
-  SHADOW_NOTICE_PCT,
+  ACCEPTANCE_LABEL,
   SHADOW_TABLE_LABEL,
   SHADOW_WINDOWS,
-  diffLevel,
+  TABLE_STATUS_LABEL,
+  dayLevel,
   formatDay,
   formatDiff,
   formatRows,
+  toleranceLabel,
   type DiffLevel,
   type ShadowWindow,
 } from './shadow-comparison';
@@ -17,7 +19,15 @@ import { SHADOW_MSG, ShadowComparisonStore } from './shadow-comparison-store';
 
 const SNAPSHOT_AT = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Paris' });
 
-const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', ok: 'text-fg', notice: 'text-warn font-semibold' };
+const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', ok: 'text-fg', notice: 'text-warn font-semibold', info: 'text-muted' };
+
+const STATUS_CLASS: Readonly<Record<ShadowTableStatus, string>> = {
+  pass: 'text-bull',
+  fail: 'text-bear font-semibold',
+  insufficient: 'text-warn',
+  inconclusive: 'text-muted',
+  info: 'text-muted',
+};
 
 /**
  * /comparaison — mode ombre : la collecte du VPS comparée, table par table et jour par jour, à l'instantané Supabase
@@ -37,13 +47,13 @@ const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', o
 
       <p class="text-sm text-muted">
         Collecte du VPS comparée à l’instantané Supabase importé par l’utilisateur (<code>bench-migrate.sh --shadow-snapshot</code>).
-        Lignes par jour (UTC) ; les écarts de plus de {{ noticePct }} % sont signalés. Ce n’est pas le seuil de bascule : voir
-        docs/BENCH.md.
+        Lignes par jour (UTC). Seuils officiels de bascule (docs/BENCH.md §12) : {{ acceptance.minFullDays }} jours UTC complets
+        au minimum, {{ acceptance.minRefRows }} lignes de référence par table, écarts tolérés indiqués par table.
       </p>
 
       <div class="space-y-2">
         <p id="window-label" class="text-xs font-semibold text-muted">Période</p>
-        <div role="group" aria-labelledby="window-label" class="grid grid-cols-3 gap-1 rounded-xl border border-line bg-surface p-1">
+        <div role="group" aria-labelledby="window-label" class="grid grid-cols-4 gap-1 rounded-xl border border-line bg-surface p-1">
           @for (w of windows; track w) {
             <button
               type="button"
@@ -53,7 +63,7 @@ const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', o
               [attr.data-window]="w"
               (click)="selectWindow(w)"
             >
-              {{ w }} jours
+              {{ windowLabel(w) }}
             </button>
           }
         </div>
@@ -86,6 +96,30 @@ const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', o
               }
             </p>
 
+            @if (store.acceptance(); as a) {
+              <section aria-labelledby="shadow-verdict-title" class="card space-y-2 text-sm" data-acceptance [attr.data-status]="a.status">
+                <h2 id="shadow-verdict-title" class="text-xs font-semibold tracking-wide text-muted uppercase">Verdict de bascule (données)</h2>
+                <p [class]="a.status === 'pass' ? 'text-bull font-semibold' : a.status === 'fail' ? 'text-bear font-semibold' : 'text-warn'" data-verdict>
+                  {{ acceptanceLabel[a.status] }}
+                </p>
+                @if (a.status !== 'no_snapshot') {
+                  <p class="text-xs text-muted tabular-nums">{{ a.snapshotFullDays }} jour(s) UTC complet(s) dans l’instantané.</p>
+                  <ul class="space-y-1">
+                    @for (t of a.tables; track t.table) {
+                      <li [attr.data-acceptance-table]="t.table">
+                        <span class="font-semibold">{{ tableLabel[t.table] }}</span> :
+                        <span [class]="statusClass[t.status]">{{ statusLabel[t.status] }}</span>
+                        <span class="text-xs text-muted tabular-nums"> · n réf. {{ rows(t.refRows) }} · écart {{ diff(t.diffPct) }} · {{ tolerance(t.table) }}</span>
+                        @for (r of t.reasons; track r) {
+                          <span class="block text-xs text-bear">{{ r }}</span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              </section>
+            }
+
             @if (store.summaries().length === 0) {
               <p class="card text-sm text-muted" data-empty>Aucune ligne sur cette période.</p>
             } @else {
@@ -115,7 +149,7 @@ const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', o
                         <span class="text-xs text-muted tabular-nums">{{ day(r.day) }}</span>
                       </p>
                       <p class="tabular-nums">VPS {{ rows(r.vps_rows) }} · réf. {{ rows(r.ref_rows) }}</p>
-                      <p class="tabular-nums" [class]="levelClass[level(r.diff_pct, r.vps_rows)]">Écart {{ diff(r.diff_pct) }}</p>
+                      <p class="tabular-nums" [class]="levelClass[level(r)]">Écart {{ diff(r.diff_pct) }}</p>
                       @if (r.only_vps_count !== null || r.only_ref_count !== null) {
                         <details class="text-xs">
                           <summary class="min-h-11 cursor-pointer py-2 text-muted">
@@ -163,7 +197,7 @@ const LEVEL_CLASS: Readonly<Record<DiffLevel, string>> = { none: 'text-muted', o
                           <td class="py-2 pr-3 tabular-nums">{{ day(r.day) }}</td>
                           <td class="py-2 pr-3 text-right tabular-nums">{{ rows(r.vps_rows) }}</td>
                           <td class="py-2 pr-3 text-right tabular-nums">{{ rows(r.ref_rows) }}</td>
-                          <td class="py-2 pr-3 text-right tabular-nums" [class]="levelClass[level(r.diff_pct, r.vps_rows)]">{{ diff(r.diff_pct) }}</td>
+                          <td class="py-2 pr-3 text-right tabular-nums" [class]="levelClass[level(r)]">{{ diff(r.diff_pct) }}</td>
                           <td class="py-2 pr-3 text-right tabular-nums" [attr.title]="sampleTitle(r.only_vps_sample)">{{ rows(r.only_vps_count) }}</td>
                           <td class="py-2 text-right tabular-nums" [attr.title]="sampleTitle(r.only_ref_sample)">{{ rows(r.only_ref_count) }}</td>
                         </tr>
@@ -189,12 +223,16 @@ export class ShadowComparisonPage implements OnInit {
   protected readonly tables = SHADOW_TABLES;
   protected readonly tableLabel = SHADOW_TABLE_LABEL;
   protected readonly levelClass = LEVEL_CLASS;
-  protected readonly noticePct = SHADOW_NOTICE_PCT;
+  protected readonly acceptance = SHADOW_ACCEPTANCE;
+  protected readonly acceptanceLabel = ACCEPTANCE_LABEL;
+  protected readonly statusLabel = TABLE_STATUS_LABEL;
+  protected readonly statusClass = STATUS_CLASS;
+  protected readonly tolerance = toleranceLabel;
   protected readonly msg = SHADOW_MSG;
   protected readonly diff = formatDiff;
   protected readonly rows = formatRows;
   protected readonly day = formatDay;
-  protected readonly level = diffLevel;
+  protected readonly level = dayLevel;
 
   protected readonly snapshotAt = computed(() => {
     const at = this.store.data()?.snapshot_at;
@@ -203,6 +241,10 @@ export class ShadowComparisonPage implements OnInit {
 
   ngOnInit(): void {
     void this.store.load();
+  }
+
+  protected windowLabel(w: ShadowWindow): string {
+    return w === 'snapshot' ? 'Instantané' : `${w} jours`;
   }
 
   protected selectWindow(w: ShadowWindow): void {

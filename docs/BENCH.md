@@ -293,20 +293,18 @@ la collecte du VPS (mode `shadow`) démarre ensuite par-dessus, et la comparaiso
    `read -rs BENCH_SOURCE_DATABASE_URL && export BENCH_SOURCE_DATABASE_URL` dans le terminal (rien dans l'historique),
    puis `unset BENCH_SOURCE_DATABASE_URL` à la fin. Si le pooler refuse le paramètre de lecture seule (`PGOPTIONS`),
    le script s'arrête : passer par la *Direct connection*. Aucune lecture seule « dégradée » n'est proposée.
-2. **Base prête, API arrêtée** : migrations Prisma de `raijin_bench` appliquées (`pnpm nx run bench-prisma:migrate`,
-   service du profil `tools`, `libs/bench/prisma/README.md`), compte propriétaire créé par la CLI `set-password`
-   (Décision 7), et `raijin-bench-api` **arrêtée** (`docker compose --project-name raijin -f infra/docker-compose.yml
-   --profile bench stop raijin-bench-api`).
+2. **Base prête, API arrêtée** : migrations de `raijin_bench` appliquées par `infra/deploy.sh --bench` (premier
+   déploiement avec `BENCH_JOBS_ENABLED=0`, §12 étape 1 : aucune collecte ne démarre), API **arrêtée**
+   (`rj --profile bench stop raijin-bench-api`), puis compte propriétaire créé par la CLI **`create-owner`** dans un
+   conteneur jetable (§12 étape 2). Les migrations peuvent aussi être relancées seules :
+   `rj --profile tools run --rm raijin-bench-migrate`.
 3. **Simulation** : `infra/bench-migrate.sh --dry-run --archive`. Lire le résumé (lignes, dates, colonnes ignorées).
    Rien n'est écrit. Les volumes réels remplacent les estimations du §4.
 4. **Migration** : `infra/bench-migrate.sh --archive` (ou sans `--archive` si l'historique des tables mortes ne
    compte pas), taper `MIGRER raijin_bench`. En cas d'échec : rien n'a été écrit, corriger la cause indiquée et relancer.
 5. **Contrôle a posteriori** : `infra/bench-migrate.sh --check` (doit afficher `CONTRÔLE RÉUSSI`), **avant** de
    redémarrer l'API (ensuite, la source et le VPS divergent normalement).
-6. **Démarrage en mode ombre** (`BENCH_MODE=shadow`), puis après 24 à 48 h :
-   `infra/bench-migrate.sh --shadow-snapshot --since <date de démarrage, UTC>` ; la colonne « remarques » donne le
-   volume VPS de la même fenêtre, l'écran `/comparaison` le détail par jour. Relançable autant de fois que voulu
-   (`shadow_ref` est rechargé, `snapshot_meta` garde l'historique des instantanés).
+6. **Démarrage en mode ombre**, durée, instantanés, lecture de `/comparaison`, seuils et bascule : §12.
 
 ### Retour arrière
 
@@ -315,7 +313,256 @@ la collecte du VPS (mode `shadow`) démarre ensuite par-dessus, et la comparaiso
   `raijin_bench` prise juste avant (`infra/backup.sh`, puis `infra/restore.sh --into raijin_bench FICHIER.dump`,
   qui renomme la base actuelle au lieu de la supprimer), puis reprendre à l'étape 3.
 - `--shadow-snapshot` ne touche que `shadow_ref` (aucune donnée de production) : relancer suffit.
-- Supabase n'est jamais modifié : l'ancien banc continue de tourner tel quel jusqu'à la bascule (T11).
+- Supabase n'est jamais modifié par le script : l'ancien banc continue de tourner tel quel jusqu'à la bascule (§12).
+
+## 12. Mise en service, mode ombre, bascule et retour arrière (pas à pas, lancé par l'utilisateur)
+
+Tout ce qui suit se fait **par toi**, sur le VPS (dans `/opt/raijin`, le dossier du dépôt), dans le tableau de bord
+Supabase ou dans celui de Vercel. Aucun agent ne lance de commande sur le VPS, Supabase ou Vercel. Jusqu'à l'étape 10,
+l'ancien banc (Supabase + Vercel) **continue de tourner tel quel** : c'est lui que tu utilises au quotidien.
+
+Raccourci utilisé partout (`docs/DEPLOY.md` A0) :
+`alias rj='docker compose --project-name raijin --env-file infra/.env -f infra/docker-compose.yml'`.
+Les heures sont en **UTC** (`date -u`) : en hiver, 00:00 UTC = 01:00 à Paris.
+
+Ce que mesure le mode ombre : la **fidélité du portage** (le VPS collecte-t-il la même chose que Supabase, à la même
+cadence, sans casser le budget Helius ni les jobs ?). Ce n'est **pas** une mesure de justesse des verdicts (celle-ci
+démarre avec `verdict_records` à la mise en service, §9 P10, écran `/justesse`), ni une mesure de gain.
+
+### 12.0 Avant de commencer : « À brancher »
+
+| Élément | Où | Obligatoire pour | Comment |
+|---|---|---|---|
+| Enregistrement DNS `A` `banc` → IPv4 du VPS | OVH | étape 1 | `docs/DEPLOY.md` A3, A14.1 |
+| `BENCH_BASIC_AUTH_USERS` (mot de passe basicAuth Traefik) | `infra/.env` | étape 1 (`deploy.sh --bench` refuse sans) | `htpasswd -nBC 12 kyoshiro`, ligne entre apostrophes (A14.2) |
+| `REDIS_BENCH_PASSWORD` | `infra/.env` | étape 1 | `openssl rand -hex 32`, différent de `REDIS_PASSWORD` (A14.3) |
+| `BENCH_OWNER_EMAIL`, `BENCH_SESSION_SECRET`, `BENCH_TOTP_ENCRYPTION_KEY` | `infra/.env.bench-api` | étape 1 (l'API refuse de démarrer sans) | A14.4 |
+| `BENCH_VAPID_PUBLIC_KEY` / `_PRIVATE_KEY` (paire **propre au banc**) | `infra/.env.bench-api` | étape 10 (push) | `pnpm exec web-push generate-vapid-keys --json` (A6) |
+| **`BENCH_HELIUS_API_KEY`** (clé « raijin-banc-de-test », restreinte à l'IP du VPS) | `infra/.env.bench-api` | étape 4 : sans clé, l'ombre ne mesure ni le budget Helius ni les verdicts, elle ne compte pas | <https://dashboard.helius.dev/api-keys> |
+| `BENCH_SCAN_KEYWORDS`, `BENCH_MIN_MARKET_CAP`, `BENCH_MIN_LIQUIDITY` | `infra/.env.bench-api` | étape 4 : **mêmes valeurs** que les secrets `SCAN_KEYWORDS`, `MIN_MARKET_CAP`, `MIN_LIQUIDITY` de Supabase, sinon les tokens diffèrent | Supabase n'affiche que l'empreinte SHA-256 d'un secret (*Edge Functions → Secrets*) : compare-la avec `printf %s 'valeur' \| sha256sum`. Secret absent côté Supabase : laisse la variable vide (même défaut) |
+| `BENCH_JUP_API_KEY` (facultatif, clé distincte de Raijin) | `infra/.env.bench-api` | — (vide : débit public) | <https://portal.jup.ag> |
+| E-mails du banc (Resend) : `BENCH_MAIL_TRANSPORT=resend`, `BENCH_RESEND_API_KEY` (clé propre au banc, « Sending access »), `BENCH_MAIL_FROM`, `BENCH_ALERT_EMAIL` | `infra/.env.bench-api` | facultatif, étape 10 (sinon `none` : aucun e-mail, alertes de stockage en push seulement) | <https://resend.com/api-keys>, domaine vérifié sur <https://resend.com/domains> |
+| URL Postgres de Supabase (*Session pooler* ou *Direct connection*) | saisie masquée, jamais dans un fichier | étapes 3 et 5 | §11 étape 1 |
+| Application d'authentification (TOTP) sur ton téléphone | — | étape 2 | celle que tu utilises déjà pour l'admin Raijin |
+
+### Étape 1 — Premier déploiement, sans collecte
+
+1. Dans `infra/.env.bench-api` : `BENCH_MODE=shadow`, **`BENCH_JOBS_ENABLED=0`** (aucun job tant que l'historique n'est
+   pas importé), `BENCH_MAIL_TRANSPORT=none`.
+2. `infra/deploy.sh --bench` : images, sauvegarde, migrations de `raijin_bench`, démarrage, contrôle « 401 sans
+   mot de passe » (A14.5). Les tables de `public` restent vides : sans job, l'API n'y écrit rien.
+3. **Double verrou** (chaque commande doit afficher le code indiqué) :
+   ```bash
+   B=https://banc.raijinshield.com
+   curl -s -o /dev/null -w '%{http_code}\n' $B/                                   # 401 : basicAuth exigé
+   curl -s -o /dev/null -w '%{http_code}\n' -u kyoshiro:mauvais $B/api/health     # 401 : mauvais mot de passe Traefik
+   curl -s -o /dev/null -w '%{http_code}\n' -u kyoshiro $B/api/status             # 401 : basicAuth OK, pas de session du banc
+   curl -s -o /dev/null -w '%{http_code}\n' -u kyoshiro -H 'Cookie: __Host-rjb_session=jeton-invente' $B/api/status   # 401
+   curl -s -o /dev/null -w '%{http_code}\n' -u kyoshiro -H 'Cookie: __Host-rj_at=jeton-de-raijin' $B/api/status          # 401 : un jeton Raijin ne vaut rien ici
+   curl -sI -u kyoshiro $B/ | grep -i x-robots-tag                                 # noindex, nofollow
+   curl -s -u kyoshiro $B/robots.txt                                               # Disallow: /
+   ```
+   (`-u kyoshiro` demande le mot de passe Traefik ; il ne va pas dans l'historique.) Aucun lien public ne pointe vers
+   `banc.raijinshield.com` : ne le mets ni sur la landing, ni dans l'app, ni dans un e-mail.
+
+**Retour arrière** : `rj --profile bench stop raijin-bench-api raijin-bench-web`. Raijin et l'ancien banc ne sont pas
+touchés ; la base `raijin_bench` reste (vide), rien n'est supprimé.
+
+### Étape 2 — Compte propriétaire (API arrêtée)
+
+```bash
+rj --profile bench stop raijin-bench-api
+rj --profile bench run --rm --no-deps raijin-bench-api node dist/apps/raijin-banc-de-test-api/cli.js create-owner
+```
+
+La CLI (`apps/raijin-banc-de-test-api/src/cli.ts`, commandes de `@raijin/bench-core`) demande le mot de passe en
+saisie masquée (deux fois), affiche le QR code TOTP (et la clé), attend un premier code à 6 chiffres, puis affiche
+**10 codes de secours** une seule fois : note-les hors ligne. Plus tard, même commande avec :
+`set-password` (changer le mot de passe, ferme toutes les sessions) ou `reset-2fa` (nouveau TOTP et nouveaux codes de
+secours ; alias `enroll-totp`, `reset-totp`). Rien ne passe en argument. `create-owner` refuse s'il existe déjà un
+propriétaire. Une fois l'API démarrée, la même CLI se lance aussi par
+`rj --profile bench exec raijin-bench-api node dist/apps/raijin-banc-de-test-api/cli.js <commande>`.
+
+**Retour arrière** : aucun (relancer `set-password` / `reset-2fa`).
+
+### Étape 3 — Import de l'historique dans la base vide
+
+API **toujours arrêtée** : `infra/backup.sh --no-offsite`, puis §11 étapes 3 à 5 :
+`infra/bench-migrate.sh --dry-run --archive`, `infra/bench-migrate.sh --archive` (taper `MIGRER raijin_bench`),
+`infra/bench-migrate.sh --check` (`CONTRÔLE RÉUSSI`). Note l'heure de fin (`date -u`).
+
+**Retour arrière** : §11 « Retour arrière » (`infra/restore.sh --into raijin_bench FICHIER.dump`, qui renomme la
+base au lieu de la supprimer). Supabase n'est pas modifié.
+
+### Étape 4 — Démarrage en mode ombre
+
+1. `BENCH_HELIUS_API_KEY` et les variables du scan (§12.0) renseignées ; dans `infra/.env.bench-api` :
+   `BENCH_MODE=shadow`, **`BENCH_JOBS_ENABLED=1`**.
+2. `rj --profile bench up -d --no-build --force-recreate raijin-bench-api`
+3. Note l'heure de démarrage **T0** : `date -u`. Contrôle : `rj logs --tail 50 raijin-bench-api` affiche
+   « Jobs planifiés : scan-tokens, … ».
+4. Ouvre <https://banc.raijinshield.com> : mot de passe Traefik, puis e-mail + mot de passe + code TOTP. Le bandeau
+   « mode ombre » est visible. <https://banc.raijinshield.com/api/status> (même onglet, connecté) affiche
+   `"mode":"shadow"` et `helius_credits` non nul.
+
+En ombre : collecte et jobs actifs, **aucune** notification (push, e-mail), aucune ouverture automatique de
+position paper, `POST /api/push/test` répond 409. L'ancien banc reste celui qui t'alerte.
+
+**Retour arrière** : `BENCH_JOBS_ENABLED=0` puis la commande du point 2 (la collecte s'arrête, rien n'est effacé).
+
+### Étape 5 — Durée de l'ombre et instantané de référence
+
+- Premier jour compté **J1** = le lendemain de T0 (T0 = 01/12 14:05 UTC → J1 = 02/12). Le jour de T0 et le jour de
+  l'instantané sont partiels : `/comparaison` les **exclut** d'office.
+- Durée : **3 jours UTC complets au minimum** (`SHADOW_ACCEPTANCE.minFullDays`, trois passages des jobs quotidiens
+  de 03:40, 03:05 et 03:15 UTC), **7 conseillés**, 31 au plus (fenêtre maximale de l'instantané).
+- Instantané, relançable autant que voulu (seul `shadow_ref` est rechargé, l'API peut tourner) :
+  ```bash
+  infra/bench-migrate.sh --shadow-snapshot --since 2026-12-02     # --since = J1 (00:00 UTC), --until = maintenant
+  ```
+  Garde le **même `--since`** à chaque relance. Lis `/comparaison` le jour même de l'instantané : `shadow_ref` est
+  figé, alors que les purges quotidiennes (03:15 UTC) continuent côté VPS.
+
+### Étape 6 — Lire l'écran `/comparaison`
+
+<https://banc.raijinshield.com/comparaison>, période **« Instantané »** (par défaut), **« Toutes les tables »**.
+
+- Bloc **« Verdict de bascule (données) »**, calculé par `evaluateShadowAcceptance` avec les seuils de
+  `SHADOW_ACCEPTANCE` (`libs/bench/contracts/src/lib/shadow-acceptance.ts`, source unique lue par l'écran) :
+  `Données conformes` (vert), `Hors tolérance` (rouge, raisons listées), `Échantillon insuffisant` (prolonger
+  l'ombre), `Instantané trop court`, `Aucun instantané`, ou « la période ne couvre pas tout l'instantané » (repasser
+  sur « Instantané »). Le verdict disparaît quand une seule table est filtrée.
+- Pour chaque table : statut, **n** (lignes de référence sur les jours complets), écart de la fenêtre, tolérance.
+- Par jour : un écart est en orange s'il dépasse la tolérance **journalière** de sa table (jours d'au moins 30 lignes
+  de référence seulement) ; mints d'un seul côté dépliables (20 exemples au plus).
+- Le bloc ne regarde que les données. Le budget Helius (étape 7) et les jobs (étape 8) se vérifient à part.
+
+**Seuils officiels de bascule** (écart = (VPS − réf.) / réf., sur la somme des jours complets ; « jour » = pire jour
+complet d'au moins 30 lignes de référence ; mints d'un seul côté = le pire des deux côtés, en % des lignes de référence) :
+
+| Table | Bloquante | Écart fenêtre | Écart d'un jour | Mints d'un seul côté | Pourquoi cette tolérance |
+|---|---|---|---|---|---|
+| `scan_runs` | oui | ±2 % | ±5 % | — | même cron (toutes les 2 min, 720 / jour) : seuls des passages `skipped` ou un redémarrage creusent l'écart |
+| `tokens` (par `first_seen_at`) | oui | ±5 % | ±10 % | ≤ 10 % | même recherche DexScreener, mais à quelques secondes d'écart et depuis une autre IP |
+| `token_snapshots` | oui | ±5 % | ±10 % | — | suit `tokens` et l'enrichissement |
+| `signal_outcomes` | oui | ±10 % | ±20 % | ≤ 15 % | dépend des 429 de GeckoTerminal (IP partagée, §9 P6–P7) |
+| `preset_signals` | oui | ±10 % | ±20 % | ≤ 15 % | idem |
+| `alert_log` | **non** | — | — | — | push coupés en ombre : le VPS en a 0. Vérifié à l'étape 10 |
+| `paper_positions` | **non** | — | — | — | ouvertures automatiques coupées en ombre. Vérifié à l'étape 10 |
+
+Règles statistiques : sous **30 lignes de référence** sur la fenêtre, une table est « Échantillon insuffisant » et
+**bloque** (on prolonge l'ombre) ; après **14 jours complets**, elle devient « Non concluant » : elle ne bloque plus,
+mais tu notes son n. Ces écarts sont des comptages (fidélité de collecte), pas des proportions de justesse : il n'y a
+pas d'intervalle de confiance à calculer ici, le n est toujours affiché. Un écart **hors tolérance** n'est jamais
+« compensé » par les autres tables.
+
+**Si c'est rouge** : ne bascule pas. Regarde les raisons, `rj logs raijin-bench-api`, `label_runs.rate_limited` (429)
+et l'étape 8, corrige (ou demande la correction), puis recommence le décompte à partir d'un nouveau J1.
+
+### Étape 7 — Budget Helius observé
+
+Seuil : **chaque jour complet ≤ 8 000 crédits** (`heliusMaxDailyRatio` = 0,80 du budget de 10 000 / jour UTC), et
+jamais 10 000 (budget épuisé = verdicts refusés). La voie `wallet` (étude des premiers acheteurs) a son propre plafond
+(`BENCH_WALLET_STUDY_DAILY_CREDITS`, 2 000) : `wallet_study.state = budget_exhausted` est normal et ne compte pas.
+
+Relevé : chaque jour entre **23:00 et 23:59 UTC**, ouvre <https://banc.raijinshield.com/api/status> (connecté) et
+note `helius_credits.used` et `ratio` (le compteur repart à 0 à 00:00 UTC). Contrôle croisé : l'usage de la clé
+« raijin-banc-de-test » sur <https://dashboard.helius.dev> doit être du même ordre (le compteur du banc est une
+estimation par appel). Tableau à tenir : `jour · used · ratio · dashboard`.
+
+### Étape 8 — Jobs sans échec
+
+Lecture seule dans la base (`J1` et `fin` = jour de l'instantané, à 00:00 UTC) :
+
+```bash
+docker exec -i -e PGOPTIONS='-c default_transaction_read_only=on' raijin-postgres \
+  psql -U postgres -d raijin_bench -v since=2026-12-02 -v until=2026-12-05 <<'SQL'
+select job,
+       count(*)                                                                  as runs,
+       count(*) filter (where status = 'failed')                                 as failed,
+       round(100.0 * count(*) filter (where status = 'failed')  / count(*), 2)   as pct_failed,
+       round(100.0 * count(*) filter (where status = 'skipped') / count(*), 2)   as pct_skipped
+  from job_runs
+ where started_at >= :'since'::timestamptz and started_at < :'until'::timestamptz
+ group by job order by job;
+select job, count(*) filter (where status = 'failed' and started_at >= now() - interval '24 hours') as failed_24h,
+       count(*) filter (where status = 'running' and started_at < now() - interval '60 minutes')  as bloques
+  from job_runs group by job order by job;
+select job, started_at, left(error, 120) as erreur from job_runs
+ where status = 'failed' and started_at >= :'since'::timestamptz order by started_at desc limit 20;
+SQL
+```
+
+Seuils (`SHADOW_ACCEPTANCE.jobs`) :
+- job fréquent (≥ 100 exécutions sur la fenêtre : `scan-tokens`, `enrich-tokens`, `label-outcomes`, `paper-engine`,
+  `backtest-run`, `wallet-study-collect`, `verdict-follow-up`) : `pct_failed` ≤ **1 %**, `pct_skipped` ≤ **5 %** ;
+- job rare (< 100 exécutions : `backtest-nightly`, `verdict-aggregate`, `retention-purge`, `storage-check` sur une
+  ombre courte) : **0** `failed` ;
+- tous : `failed_24h` = **0**, `bloques` = **0**, et `consecutive_failures` = **0** pour chaque job dans
+  `/api/status` au moment de basculer.
+
+Les erreurs de `job_runs` sont tronquées et nettoyées (aucun secret ni URL) : tu peux les transmettre telles quelles.
+
+### Étape 9 — Décision de bascule (toutes les cases)
+
+- [ ] Instantané pris il y a moins de 24 h, avec au moins 3 jours complets (7 conseillés) depuis J1 ;
+- [ ] `/comparaison` : « Données conformes aux seuils » (aucune table bloquante hors tolérance ni insuffisante) ;
+- [ ] Helius : chaque jour complet ≤ 8 000 crédits, jamais 10 000 ;
+- [ ] Jobs : seuils de l'étape 8 tenus ;
+- [ ] Double verrou : les 7 contrôles de l'étape 1 donnent toujours le résultat attendu ;
+- [ ] Sauvegarde du jour présente (`infra/backup.sh`, copie hors site B2, `docs/DEPLOY.md` A9).
+
+Note la date, la fenêtre (J1 → fin), le n et l'écart de chaque table, et ton relevé Helius.
+
+### Étape 10 — Bascule (dans cet ordre : jamais deux bancs qui notifient en même temps)
+
+1. **Dernier instantané** : `infra/bench-migrate.sh --shadow-snapshot --since <J1>` (si l'ombre a duré plus de 31
+   jours, `--since` = il y a 31 jours). `shadow_ref` garde ainsi les alertes et positions paper automatiques de la
+   période d'ombre, qui n'existent que dans Supabase.
+2. **Supabase : arrêter les crons** (tableau de bord → *SQL Editor*). D'abord **relever** l'état et le garder
+   (copie dans une note locale) :
+   ```sql
+   select jobid, jobname, schedule, active from cron.job order by jobname;
+   ```
+   puis désactiver (réversible, rien n'est supprimé) :
+   ```sql
+   select jobname, cron.alter_job(jobid, active := false) from cron.job where jobname like 'raijin-%';
+   select jobname, active from cron.job order by jobname;   -- tous à false
+   ```
+   L'ancien banc n'envoie plus rien à partir de là.
+3. **VPS en `primary`** : dans `infra/.env.bench-api`, `BENCH_MODE=primary`, puis
+   `rj --profile bench up -d --no-build --force-recreate raijin-bench-api`. `/api/status` affiche `"mode":"primary"`,
+   le bandeau d'ombre disparaît. Les déploiements suivants se font toujours avec `infra/deploy.sh --bench`
+   (`deploy.sh` vérifie `BENCH_MODE`).
+4. **Notifications** : sur chaque appareil, ouvre <https://banc.raijinshield.com> → Réglages → active les
+   notifications (la paire VAPID du banc est nouvelle : les abonnements importés de Supabase, liés à l'ancienne clé,
+   ne recevront rien), puis « Notification de test ». E-mails : seulement si `BENCH_MAIL_TRANSPORT=resend` (§12.0).
+5. **Contrôle à J+1** (après 24 h en `primary`) : `/comparaison` n'a plus de référence nouvelle, mais
+   `alert_log` et `paper_positions` doivent maintenant croître côté VPS (alertes reçues, positions automatiques
+   ouvertes) ; étapes 7 et 8 toujours tenues.
+6. **Vercel** (ancien front) : laissé **intact** pendant 7 jours (il ne reçoit plus de données nouvelles). Ensuite,
+   désactivation réversible : projet → *Settings → Deployment Protection* → protection par authentification Vercel
+   sur toutes les URL si ton offre le permet ; sinon, ne touche à rien (le site devient inerte quand Supabase est en
+   pause). Ne supprime pas le projet.
+7. **Supabase en pause** après 7 jours en `primary` sans retour arrière : *Project Settings → General → Pause
+   project*. **Pas de suppression** : 30 jours de pause au minimum (le projet se restaure en un clic, *Restore
+   project*).
+8. **À J+30** sans retour arrière : tu décides de supprimer (ou non) le projet Supabase et le projet Vercel. Ensuite
+   seulement, un agent retire `legacy/supabase` et `legacy/vercel.json` du dépôt (tâche à demander, sur `dev`).
+
+### Retour arrière, étape par étape
+
+| Situation | Action (dans cet ordre) |
+|---|---|
+| Étapes 1 à 3 | voir chaque étape ; l'ancien banc n'a jamais été touché |
+| Ombre en cours (étapes 4 à 9) | `BENCH_JOBS_ENABLED=0` + `up -d --force-recreate` pour arrêter la collecte, ou ne rien faire : l'ombre n'a aucun effet visible |
+| Après 10.2 (crons coupés), VPS encore en `shadow` | réactiver **uniquement** les crons relevés `active = true` : `select jobname, cron.alter_job(jobid, active := true) from cron.job where jobname = any (array['raijin-scan', '…']);` puis contrôle `select jobname, active from cron.job;` |
+| Après 10.3 (`primary`) | 1) **VPS en ombre d'abord** : `BENCH_MODE=shadow` + `rj --profile bench up -d --no-build --force-recreate raijin-bench-api` (push, e-mails et ouvertures automatiques coupés aussitôt) ; 2) crons Supabase réactivés comme ci-dessus ; 3) l'ancien front sert de nouveau. Les alertes et positions créées par le VPS en `primary` restent dans `raijin_bench` ; Supabase n'a rien pour cette période (accepté) ; une nouvelle ombre repart d'un nouveau J1 |
+| Après 10.6 / 10.7 | idem, après avoir retiré la protection Vercel et cliqué *Restore project* dans Supabase (attendre « Healthy »), puis contrôler les crons |
+| Mauvaise version de l'API du banc | `infra/deploy.sh --bench --rollback` (images précédentes, sans migration) |
+| Base `raijin_bench` abîmée | `infra/restore.sh --into raijin_bench FICHIER.dump` (A10) |
+
+Règle : on ne supprime jamais rien pour revenir en arrière (ni volume, ni base, ni projet Supabase / Vercel).
 
 ## Annexe A — Colonnes par table
 

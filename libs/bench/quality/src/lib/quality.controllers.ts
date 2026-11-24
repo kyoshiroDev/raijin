@@ -66,7 +66,9 @@ export class BenchQualityController {
   async shadow(@Query(new BenchZodPipe(shadowComparisonQuerySchema)) query: ShadowComparisonQuery): Promise<ShadowComparison> {
     const from = `${query.from}T00:00:00Z`;
     const to = new Date(Date.parse(`${query.to}T00:00:00Z`) + DAY_MS).toISOString();
-    const meta = await this.sql.query<{ taken_at: Date }>('select taken_at from shadow_ref.snapshot_meta order by taken_at desc limit 1');
+    const meta = await this.sql.query<{ taken_at: Date; window_from: Date; window_to: Date }>(
+      'select taken_at, window_from, window_to from shadow_ref.snapshot_meta order by taken_at desc limit 1',
+    );
     const rows: ShadowDayRow[] = [];
     for (const table of query.table ? [query.table] : SHADOW_TABLES) {
       const col = SHADOW_REF_DAY_COLUMNS[table];
@@ -97,9 +99,10 @@ export class BenchQualityController {
         rows.push(shadowDayRow(table, c.day, Number(c.vps), Number(c.ref), WITHOUT_MINT.has(table) ? null : (sides.get(c.day) ?? { onlyVps: [], onlyRef: [] })));
       }
     }
-    const takenAt = meta.rows[0]?.taken_at;
+    const last = meta.rows[0];
     const parsed = shadowComparisonSchema.safeParse({
-      snapshot_at: takenAt ? new Date(takenAt).toISOString() : null,
+      snapshot_at: last ? new Date(last.taken_at).toISOString() : null,
+      snapshot_window: last ? { from: new Date(last.window_from).toISOString(), to: new Date(last.window_to).toISOString() } : null,
       from: query.from,
       to: query.to,
       rows,

@@ -67,6 +67,14 @@ export type ShadowDayRow = z.infer<typeof shadowDayRowSchema>;
 export const shadowComparisonSchema = z.object({
   /** Date de l'instantané `shadow_ref` (`null` : aucun instantané importé). */
   snapshot_at: isoDateTimeSchema.nullable(),
+  /**
+   * Fenêtre `[from ; to[` copiée par ce dernier instantané (`--since` / `--until` de `bench-migrate.sh`,
+   * `shadow_ref.snapshot_meta`) ; `null` sans instantané. Seuls les jours UTC entièrement couverts
+   * comptent pour les seuils de bascule (`evaluateShadowAcceptance`).
+   */
+  snapshot_window: z
+    .object({ from: isoDateTimeSchema, to: isoDateTimeSchema })
+    .nullable(),
   from: isoDaySchema,
   to: isoDaySchema,
   rows: z

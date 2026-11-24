@@ -6,7 +6,7 @@
 #   infra/bench-migrate.sh [--archive] [--source-user UUID] [--yes]
 #       Migration de l'historique : les 21 tables portées (docs/BENCH.md §4) dans le schéma public de
 #       raijin_bench. Refusée si une de ces tables contient déjà une ligne, si l'API du banc a une session
-#       ouverte, ou si le compte bench_owner n'existe pas (CLI set-password d'abord). Confirmation tapée.
+#       ouverte, ou si le compte bench_owner n'existe pas (CLI create-owner d'abord). Confirmation tapée.
 #   infra/bench-migrate.sh --dry-run [--archive] [--source-user UUID]
 #       Même import, mêmes contrôles, puis ANNULATION de la transaction : rien n'est écrit.
 #   infra/bench-migrate.sh --check [--source-user UUID]
@@ -104,7 +104,7 @@ if [[ "$mode" == migrate || "$mode" == dry-run ]]; then
   nonempty="$(tq "SELECT coalesce(string_agg(t, ' '), '') FROM unnest(string_to_array('${PORTED_TABLES[*]}', ' ')) t WHERE (xpath('/row/b/text()', query_to_xml(format('SELECT EXISTS (SELECT 1 FROM public.%I) AS b', t), false, true, '')))[1]::text = 'true';")"
   [[ -z "$nonempty" ]] || die "$TARGET_DB n'est pas vide (tables : $nonempty) : import refusé, rien n'a été modifié (docs/BENCH.md §11)."
   [[ "$(tq "SELECT count(*) FROM public.bench_owner;")" == 1 ]] \
-    || die "aucun compte bench_owner : crée-le d'abord (CLI set-password, docs/BENCH.md §11)."
+    || die "aucun compte bench_owner : crée-le d'abord (CLI create-owner, docs/BENCH.md §12)."
   if [[ "$archive" == 1 ]]; then
     [[ "$(tq "SELECT count(*) FROM pg_tables WHERE schemaname = 'archive';")" == 0 ]] || die "le schéma archive n'est pas vide : --archive refusé."
   fi
@@ -351,7 +351,7 @@ BEGIN
   v_user := coalesce(v_user, v_users[1]);
   IF v_user IS NOT NULL THEN
     SELECT public.bench_owner_id() INTO v_owner;
-    IF v_owner IS NULL THEN RAISE EXCEPTION 'aucun compte bench_owner (CLI set-password d''abord)'; END IF;
+    IF v_owner IS NULL THEN RAISE EXCEPTION 'aucun compte bench_owner (CLI create-owner d''abord)'; END IF;
   END IF;
   FOREACH t IN ARRAY p_tables LOOP
     v_src := ('pg_temp.' || quote_ident('src_' || t))::regclass;

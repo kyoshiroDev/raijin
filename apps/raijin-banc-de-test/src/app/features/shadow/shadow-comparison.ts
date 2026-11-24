@@ -1,14 +1,16 @@
 // Comparaison du mode ombre (docs/ARCHITECTURE.md §17.6) : collecte du VPS (`public`) contre l'instantané Supabase
 // (`shadow_ref`, copié par `infra/bench-migrate.sh --shadow-snapshot`, lancé par l'utilisateur). Pur, sans E/S.
-// Les seuils officiels d'acceptation de la bascule sont fixés par la procédure (docs/BENCH.md) ; l'écran ne fait que
-// signaler visuellement les écarts au-delà d'un repère.
+// Seuils OFFICIELS de bascule : `SHADOW_ACCEPTANCE` de `@raijin/bench-contracts` (docs/BENCH.md §12), lus ici sans copie.
 import {
+  SHADOW_ACCEPTANCE,
   SHADOW_TABLES,
   SHADOW_WINDOW_MAX_DAYS,
   shadowComparisonSchema,
+  type ShadowAcceptanceStatus,
   type ShadowComparison,
   type ShadowDayRow,
   type ShadowTable,
+  type ShadowTableStatus,
 } from '@raijin/bench-contracts';
 
 export const SHADOW_TABLE_LABEL: Readonly<Record<ShadowTable, string>> = {
@@ -21,14 +23,12 @@ export const SHADOW_TABLE_LABEL: Readonly<Record<ShadowTable, string>> = {
   preset_signals: 'Signaux des presets',
 };
 
-/** Fenêtres proposées (jours, fin incluse) ; 31 jours au plus (contrat). */
-export const SHADOW_WINDOWS = [7, 14, SHADOW_WINDOW_MAX_DAYS] as const;
+/** Fenêtres proposées (jours, fin incluse) ; 31 jours au plus (contrat). `snapshot` : fenêtre du dernier instantané. */
+export const SHADOW_WINDOWS = ['snapshot', 7, 14, SHADOW_WINDOW_MAX_DAYS] as const;
 export type ShadowWindow = (typeof SHADOW_WINDOWS)[number];
 
-/** Repère visuel : écart absolu au-delà duquel une ligne est signalée (pas un seuil d'acceptation). */
-export const SHADOW_NOTICE_PCT = 5;
-
-export type DiffLevel = 'none' | 'ok' | 'notice';
+/** `none` rien des deux côtés · `ok` dans la tolérance · `notice` hors tolérance · `info` table informative (non bloquante). */
+export type DiffLevel = 'none' | 'ok' | 'notice' | 'info';
 
 export interface ShadowTableSummary {
   readonly table: ShadowTable;
@@ -55,18 +55,59 @@ export function isoDay(ms: number): string {
 }
 
 /** Fenêtre de `days` jours finissant aujourd'hui (UTC), bornes incluses. */
-export function windowRange(days: ShadowWindow, now = Date.now()): { from: string; to: string } {
+export function windowRange(days: Exclude<ShadowWindow, 'snapshot'>, now = Date.now()): { from: string; to: string } {
   return { from: isoDay(now - (days - 1) * 86_400_000), to: isoDay(now) };
+}
+
+/** Jours (UTC, bornes incluses) couvrant la fenêtre `[from ; to[` de l'instantané (≤ 31 jours, contrat). */
+export function snapshotRange(window: { from: string; to: string }): { from: string; to: string } {
+  const to = Date.parse(window.to);
+  // `to` exclu : une fin à minuit pile appartient au jour précédent.
+  return { from: isoDay(Date.parse(window.from)), to: isoDay(to % 86_400_000 === 0 ? to - 1 : to) };
 }
 
 export function diffPct(vps: number, ref: number): number | null {
   return ref === 0 ? null : ((vps - ref) / ref) * 100;
 }
 
-export function diffLevel(pct: number | null, vps = 0): DiffLevel {
+/** Niveau d'un écart selon la tolérance de la table (`maxPct` : journalière ou de fenêtre). */
+export function diffLevel(table: ShadowTable, pct: number | null, vps: number, ref: number, scope: 'day' | 'window'): DiffLevel {
+  const tol = SHADOW_ACCEPTANCE.tables[table];
+  if (!tol.blocking) return 'info';
   if (pct === null) return vps === 0 ? 'none' : 'notice';
-  return Math.abs(pct) > SHADOW_NOTICE_PCT ? 'notice' : 'ok';
+  if (scope === 'day' && ref < SHADOW_ACCEPTANCE.minRefRowsPerDay) return 'ok';
+  return Math.abs(pct) > (scope === 'day' ? tol.maxDayDiffPct : tol.maxWindowDiffPct) ? 'notice' : 'ok';
 }
+
+/** Niveau d'une ligne journalière. */
+export function dayLevel(row: ShadowDayRow): DiffLevel {
+  return diffLevel(row.table, row.diff_pct, row.vps_rows, row.ref_rows, 'day');
+}
+
+/** Tolérance affichée : « ±5 % (jour ±10 %) », « informative ». */
+export function toleranceLabel(table: ShadowTable): string {
+  const tol = SHADOW_ACCEPTANCE.tables[table];
+  if (!tol.blocking) return 'informative en ombre';
+  const mints = tol.maxOneSideMintPct === null ? '' : ` · mints d’un seul côté ≤ ${tol.maxOneSideMintPct} %`;
+  return `±${tol.maxWindowDiffPct} % (jour ±${tol.maxDayDiffPct} %)${mints}`;
+}
+
+export const ACCEPTANCE_LABEL: Readonly<Record<ShadowAcceptanceStatus, string>> = {
+  no_snapshot: 'Aucun instantané importé : pas de verdict de bascule.',
+  too_short: `Instantané trop court : ${SHADOW_ACCEPTANCE.minFullDays} jours UTC complets au minimum (${SHADOW_ACCEPTANCE.recommendedFullDays} conseillés).`,
+  partial: 'La période affichée ne couvre pas tout l’instantané : choisis « Instantané ».',
+  fail: 'Hors tolérance : bascule refusée (docs/BENCH.md §12).',
+  insufficient: `Échantillon insuffisant (moins de ${SHADOW_ACCEPTANCE.minRefRows} lignes de référence) : prolonge le mode ombre.`,
+  pass: 'Données conformes aux seuils. Vérifie aussi le budget Helius et les jobs (docs/BENCH.md §12) avant de basculer.',
+};
+
+export const TABLE_STATUS_LABEL: Readonly<Record<ShadowTableStatus, string>> = {
+  pass: 'Conforme',
+  fail: 'Hors tolérance',
+  insufficient: 'Échantillon insuffisant',
+  inconclusive: 'Non concluant',
+  info: 'Informative',
+};
 
 const sumNullable = (values: readonly (number | null)[]): number | null =>
   values.every((v) => v === null) ? null : values.reduce<number>((a, v) => a + (v ?? 0), 0);
@@ -89,7 +130,7 @@ export function summarizeByTable(rows: readonly ShadowDayRow[]): ShadowTableSumm
         diffPct: pct,
         onlyVps: sumNullable(own.map((r) => r.only_vps_count)),
         onlyRef: sumNullable(own.map((r) => r.only_ref_count)),
-        level: diffLevel(pct, vpsRows),
+        level: diffLevel(table, pct, vpsRows, refRows, 'window'),
       },
     ];
   });
