@@ -257,6 +257,111 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
+  # e2e du banc (phase 8 bis) : job à part, mêmes déclencheurs que `e2e`, sans toucher aux 5 lots de Raijin.
+  # API du banc compilée sur une base jetable raijin_bench_e2e (migrations du banc), front de production servi
+  # localement, propriétaire créé par la CLI réelle puis supprimé, aucun appel réseau sortant (block-network.cjs),
+  # Redis inutile (jobs coupés, compteurs en mémoire). Identifiants factices, non secrets.
+  e2e-banc:
+    name: e2e banc (PR vers main ou lancement manuel)
+    if: >-
+      !cancelled() && (
+        (github.event_name == 'workflow_dispatch' && inputs.suite == 'e2e') ||
+        (github.event_name == 'pull_request' && github.base_ref == 'main' && needs.verifier.result == 'success')
+      )
+    needs: verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.12-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+        env:
+          POSTGRES_USER: raijin
+          POSTGRES_PASSWORD: changeme-factice
+          POSTGRES_DB: raijin_bench_e2e
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U raijin -d raijin_bench_e2e"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      BENCH_DATABASE_URL: postgresql://raijin:changeme-factice@localhost:5433/raijin_bench_e2e?schema=public
+      BENCH_E2E_DATABASE_URL: postgresql://raijin:changeme-factice@localhost:5433/raijin_bench_e2e?schema=public
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          filter: tree:0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4.4.0
+
+      - name: Suite e2e du banc affectée
+        id: affected
+        run: |
+          projects="$(pnpm -s nx show projects --affected -t e2e --json)"
+          run=false
+          if grep -q '"raijin-banc-de-test-e2e"' <<<"$projects"; then run=true; fi
+          echo "e2e du banc à lancer : $run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Nx
+        if: steps.affected.outputs.run == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .nx/cache
+          key: nx-e2e-banc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            nx-e2e-banc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      - name: Version de Playwright
+        if: steps.affected.outputs.run == 'true'
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache des navigateurs Playwright
+        if: steps.affected.outputs.run == 'true'
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Chromium (téléchargement + dépendances système)
+        if: steps.affected.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Chromium (dépendances système seules, navigateur en cache)
+        if: steps.affected.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Migrations du banc (raijin_bench_e2e)
+        if: steps.affected.outputs.run == 'true'
+        run: pnpm nx run bench-prisma:migrate-deploy
+
+      # Les builds raijin-banc-de-test-api et raijin-banc-de-test sont des dépendances Nx de la cible e2e.
+      - name: e2e du banc
+        if: steps.affected.outputs.run == 'true'
+        run: pnpm nx run raijin-banc-de-test-e2e:e2e --parallel=2
+
+      - name: Rapport Playwright du banc (uniquement en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-banc-rapport
+          path: dist/.playwright/apps/raijin-banc-de-test-e2e/playwright-report/**
+          retention-days: 7
+          if-no-files-found: ignore
+
   e2e-rapport:
     name: Rapport e2e fusionné (uniquement en cas d'échec)
     needs: e2e
