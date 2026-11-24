@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, linkedSignal, output } from '@angular/core';
-import { PAPER_SLIPPAGE } from '../../../shared/models/paper';
-import { parseDecimalInput } from '../../../shared/utils/decimal';
-import { formatPrice, formatSolAmount } from '../../../shared/utils/format';
-import { formatInputNumber, tradeSummary, validateDraft, type DraftField, type PaperDraft } from '../paper-strategy';
+import { PAPER_SLIPPAGE, parseDecimalInput, formatPrice, formatSolAmount } from '@raijin/bench-web-logic';
+import { formatInputNumber, tradeSummary, validateDraft, type DraftField, type PaperDraft } from '@raijin/bench-web-logic/paper-trade';
 import { TradeSummaryView } from './trade-summary';
 
 type DraftText = Record<DraftField, string>;

@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { BOOK_LABEL } from '../../../shared/models/paper';
-import { formatCount, formatSignedPercentFr } from '../../../shared/utils/format';
-import type { StopSlippage } from '../stop-slippage';
+import { BOOK_LABEL, formatCount, formatSignedPercentFr } from '@raijin/bench-web-logic';
+import type { StopSlippage } from '@raijin/bench-web-logic/portfolio';
 
 /**
  * « Glissement à la sortie sur stop »: per book, how many stopped legs, mean and worst gap between the planned stop

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
-import { NARRATIVES, type LabNarrative, type NarrativeCounts } from '../backtest';
+import { NARRATIVES, type LabNarrative, type NarrativeCounts } from '@raijin/bench-web-logic/strategy-lab';
 
 /** Toggle buttons Tous / GTA / Hors GTA with the number of retained variants of each (44 px targets). */
 @Component({

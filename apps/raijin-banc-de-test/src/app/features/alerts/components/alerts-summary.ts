@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { simulationDetail, simulationHeadline, type AlertSimulation } from '../alert-simulation';
+import { simulationDetail, simulationHeadline, type AlertSimulation } from '@raijin/bench-web-logic/alerts';
 
 /** 7-day summary and simulated result (presentational). The sign of the result is written (+/−). */
 @Component({

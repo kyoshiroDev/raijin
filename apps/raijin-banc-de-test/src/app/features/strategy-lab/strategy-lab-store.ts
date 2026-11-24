@@ -1,23 +1,7 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, itemsOf, truncatedOf } from '../../core/api/bench-api';
-import { parseBackfillProgress, type BackfillProgress } from './backfill';
-import {
-  LAB_MSG,
-  NARRATIVES,
-  RESULT_FETCH_LIMIT,
-  isActiveRun,
-  isMissingRelationError,
-  narrativeCounts,
-  parseResultRows,
-  parseRun,
-  rankVariants,
-  requestErrorMessage,
-  type BacktestRun,
-  type LabNarrative,
-  type ResultRow,
-} from './backtest';
-import { parseSummary, summaryView } from './lab-summary';
+import { parseBackfillProgress, type BackfillProgress, LAB_MSG, NARRATIVES, RESULT_FETCH_LIMIT, isActiveRun, isMissingRelationError, narrativeCounts, parseResultRows, parseRun, rankVariants, requestErrorMessage, type BacktestRun, type LabNarrative, type ResultRow, parseSummary, summaryView } from '@raijin/bench-web-logic/strategy-lab';
 
 /** While a run is queued or running, the screen re-reads the run (and its results once done) this often. */
 export const LAB_POLL_MS = 20_000;

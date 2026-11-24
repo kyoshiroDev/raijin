@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { BOOK_LABEL } from '../../../shared/models/paper';
-import { formatSignedPercentFr, formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import type { BookView } from '../paper-book';
-import { pnlClass } from '../paper-display';
+import { BOOK_LABEL, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import { type BookView, pnlClass } from '@raijin/bench-web-logic/portfolio';
 
 /** One virtual book: balance, open positions value, total P&L and the reset entry point, hidden when archived (presentational). */
 @Component({

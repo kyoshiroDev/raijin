@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { MIN_SAMPLE_FOR_RATE } from '../performance-stats';
+import { MIN_SAMPLE_FOR_RATE, type ComparisonView, type PresetSegment } from '@raijin/bench-web-logic/performance';
 import type { PresetState } from '../performance-store';
-import type { ComparisonView, PresetSegment } from '../preset-performance';
 import { CalmFrenzyCard } from './calm-frenzy-card';
 
 /** « Par profil d’alertes »: the « Calme vs Frénésie » card, with its own loading / not-deployed / error states. */

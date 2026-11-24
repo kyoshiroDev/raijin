@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, type OnInit, computed, inject, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { SimulationBanner } from '../../shared/ui/simulation-banner';
-import { formatSolAmount } from '../../shared/utils/format';
+import { formatSolAmount } from '@raijin/bench-web-logic';
 import { PaperTradeForm } from './components/paper-trade-form';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { prefillDraft, type PaperDraft } from './paper-strategy';
+import { prefillDraft, type PaperDraft } from '@raijin/bench-web-logic/paper-trade';
 import { PaperTradeStore } from './paper-trade-store';
 
 /** Paper trade content of the sheet (smart). Created only while the sheet is open; provides its store. */

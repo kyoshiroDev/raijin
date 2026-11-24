@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeBenchApi, apiError, list, provideFakeBench } from '../../core/api/bench-api.testing';
-import { PAPER_ERRORS } from '../../shared/models/paper';
-import type { PaperDraft } from './paper-strategy';
+import { PAPER_ERRORS } from '@raijin/bench-web-logic';
+import type { PaperDraft } from '@raijin/bench-web-logic/paper-trade';
 import { PaperTradeStore } from './paper-trade-store';
 
 /** `data` : ligne (portefeuille) ou lignes (positions en attente) ; `error` : échec de l'API. */

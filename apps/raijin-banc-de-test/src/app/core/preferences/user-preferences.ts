@@ -1,6 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { DEFAULT_PAPER_SL_PCT, isValidSlPct, parseSlPct } from '../../shared/models/paper';
-import { DEFAULT_STAKE_SOL, isValidStake, parseStakeValue } from '../../shared/utils/stake';
+import { DEFAULT_PAPER_SL_PCT, isValidSlPct, parseSlPct, DEFAULT_STAKE_SOL, isValidStake, parseStakeValue } from '@raijin/bench-web-logic';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi } from '../api/bench-api';
 

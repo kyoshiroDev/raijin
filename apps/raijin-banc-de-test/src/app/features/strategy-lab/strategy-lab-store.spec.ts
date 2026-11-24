@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LAB_MSG } from './backtest';
+import { LAB_MSG } from '@raijin/bench-web-logic/strategy-lab';
 import {
   backfillRows,
   candidateSummary,

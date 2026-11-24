@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, model } from '@angular/core';
-import { DEFAULT_FILTERS, activeFilterCount, type OpportunityFilters } from '../opportunity-filters';
+import { DEFAULT_FILTERS, activeFilterCount, type OpportunityFilters } from '@raijin/bench-web-logic/opportunities';
 
 const MC_OPTIONS: { label: string; value: number | null }[] = [
   { label: '≤ 1 M$', value: 1_000_000 },

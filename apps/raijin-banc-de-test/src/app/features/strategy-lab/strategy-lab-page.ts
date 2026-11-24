@@ -3,7 +3,7 @@ import { EmptyState } from '../../shared/ui/empty-state';
 import { PageHeader } from '../../shared/ui/page-header';
 import { PerformanceSwitch } from '../../shared/ui/performance-switch';
 import { SimulationBanner } from '../../shared/ui/simulation-banner';
-import { LAB_MSG, RESULT_FETCH_LIMIT } from './backtest';
+import { LAB_MSG, RESULT_FETCH_LIMIT } from '@raijin/bench-web-logic/strategy-lab';
 import { BackfillGauge } from './components/backfill-gauge';
 import { LabRunCard } from './components/lab-run-card';
 import { LabSummaryBanner } from './components/lab-summary-banner';

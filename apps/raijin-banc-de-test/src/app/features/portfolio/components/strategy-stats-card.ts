@@ -1,9 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { STRATEGY_LABEL } from '../../../shared/models/paper';
-import { formatPercentFr, formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import { formatHits, formatRate } from '../../performance/performance-stats';
-import type { StrategyStats } from '../paper-stats';
-import { pnlClass } from '../paper-display';
+import { STRATEGY_LABEL, formatPercentFr, formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import { formatHits, formatRate } from '@raijin/bench-web-logic/performance';
+import { type StrategyStats, pnlClass } from '@raijin/bench-web-logic/portfolio';
 
 /**
  * KPIs of one strategy. Under 30 closed trades the TP/SL rates are replaced by « hits / n » in grey

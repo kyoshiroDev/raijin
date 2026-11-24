@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal, type OnInit } from '@angular/core';
 import { MarketContext } from '../../core/market/market-context';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import type { TokenRow } from '../../shared/models/token';
+import type { TokenRow } from '@raijin/bench-web-logic';
 import { PageHeader } from '../../shared/ui/page-header';
 import { Sheet } from '../../shared/ui/sheet';
 import { UpdatedAgo } from '../../shared/ui/updated-ago';

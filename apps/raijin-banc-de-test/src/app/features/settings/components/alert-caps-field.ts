@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { ALERT_LIMITS } from '../alert-settings';
+import { ALERT_LIMITS } from '@raijin/bench-web-logic/settings';
 
 export interface CapChange {
   field: 'max_per_hour' | 'max_per_day';

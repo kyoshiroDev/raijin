@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { formatCount } from '../../../shared/utils/format';
-import { formatHits, formatRate } from '../performance-stats';
-import { formatMultiple, sampleNote, type BucketView } from '../performance-breakdown';
+import { formatCount } from '@raijin/bench-web-logic';
+import { formatHits, formatRate, formatMultiple, sampleNote, type BucketView } from '@raijin/bench-web-logic/performance';
 import { BucketRates } from './bucket-rates';
 
 /** Overview of one source (its 'all' row): sample sizes first, then the rates (large only from n = 30). */

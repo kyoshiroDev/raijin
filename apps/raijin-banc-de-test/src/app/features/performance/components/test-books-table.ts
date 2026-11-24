@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { BookComparisonView } from '../book-comparison';
+import type { BookComparisonView } from '@raijin/bench-web-logic/performance';
 
 /** Table of the three test books (one column each). Rates under 30 trades: « hits / n » in grey, never prominent. */
 @Component({

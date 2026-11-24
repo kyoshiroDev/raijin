@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { BOOK_SHORT_LABEL } from '../../../shared/models/paper';
-import { formatPercentFr, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import { formatHits, formatRate, hasEnoughSample } from '../../performance/performance-stats';
-import type { BookView } from '../paper-book';
+import { BOOK_SHORT_LABEL, formatPercentFr, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import { formatHits, formatRate, hasEnoughSample } from '@raijin/bench-web-logic/performance';
+import type { BookView } from '@raijin/bench-web-logic/portfolio';
 
 interface Cell {
   text: string;

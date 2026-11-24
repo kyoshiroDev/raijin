@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { MIN_SAMPLE_FOR_RATE } from '../performance-stats';
-import { comparisonRows, type ComparisonView, type PresetSegment } from '../preset-performance';
+import { MIN_SAMPLE_FOR_RATE, comparisonRows, type ComparisonView, type PresetSegment } from '@raijin/bench-web-logic/performance';
 import { PresetSegmentSelector } from './preset-segment-selector';
 
 /**

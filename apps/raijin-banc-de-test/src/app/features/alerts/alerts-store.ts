@@ -3,15 +3,7 @@ import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, itemsOf } from '../../core/api/bench-api';
 import { fetchTokenBriefs } from '../../core/api/token-briefs';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import {
-  ALERT_FETCH_LIMIT,
-  mergeAlerts,
-  parseAlertLogRows,
-  uniqueMints,
-  type AlertItem,
-  type AlertLogRow,
-} from './alert-log';
-import { SIMULATION_WINDOW_MS, simulateAlerts } from './alert-simulation';
+import { ALERT_FETCH_LIMIT, mergeAlerts, parseAlertLogRows, uniqueMints, type AlertItem, type AlertLogRow, SIMULATION_WINDOW_MS, simulateAlerts } from '@raijin/bench-web-logic/alerts';
 
 /** The user's latest alerts and their 7-day simulation (`GET /api/alerts`, single and grouped alerts only). Provided by AlertsPage. */
 @Injectable()

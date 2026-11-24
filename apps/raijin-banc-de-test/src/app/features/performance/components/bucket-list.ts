@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { sampleNote, type DimensionView } from '../performance-breakdown';
+import { sampleNote, type DimensionView } from '@raijin/bench-web-logic/performance';
 import { BucketRates } from './bucket-rates';
 
 let nextId = 0;

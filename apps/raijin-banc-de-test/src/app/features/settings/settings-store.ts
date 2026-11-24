@@ -5,16 +5,7 @@ import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, isBenchApiError } from '../../core/api/bench-api';
 import { BROWSER_SNAPSHOT, pushCapability, type PushCapability } from '../../core/pwa/push-environment';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import {
-  DEFAULT_ALERT_SETTINGS,
-  parseAlertSettings,
-  preferencesOf,
-  subscriptionRow,
-  validateAlertPreferences,
-  type AlertErrors,
-  type AlertPreferences,
-  type AlertSettings,
-} from './alert-settings';
+import { DEFAULT_ALERT_SETTINGS, parseAlertSettings, preferencesOf, subscriptionRow, validateAlertPreferences, type AlertErrors, type AlertPreferences, type AlertSettings } from '@raijin/bench-web-logic/settings';
 
 /** What the notification switch shows. */
 export type PushStatus = Exclude<PushCapability, 'available'> | 'off' | 'on';

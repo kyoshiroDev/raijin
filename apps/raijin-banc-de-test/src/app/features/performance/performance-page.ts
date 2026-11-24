@@ -6,8 +6,7 @@ import { BreakdownOverview } from './components/breakdown-overview';
 import { BucketList } from './components/bucket-list';
 import { PresetSection } from './components/preset-section';
 import { TestBooksSection } from './components/test-books-section';
-import { SOURCES } from './performance-breakdown';
-import { MIN_SAMPLE_FOR_RATE } from './performance-stats';
+import { SOURCES, MIN_SAMPLE_FOR_RATE } from '@raijin/bench-web-logic/performance';
 import { BOOKS_LOAD_ERROR, PRESET_LOAD_ERROR, PerformanceStore } from './performance-store';
 
 /**

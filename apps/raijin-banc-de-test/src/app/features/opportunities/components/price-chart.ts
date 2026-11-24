@@ -1,14 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
+import type { TokenRow } from '@raijin/bench-web-logic';
 import { PriceChartPlot } from './price-chart-plot';
-import {
-  CHART_RANGES,
-  MIN_POINTS,
-  RANGE_LABEL,
-  chartSummary,
-  chartTableRows,
-  type MarkerKind,
-} from './price-chart-data';
+import { CHART_RANGES, MIN_POINTS, RANGE_LABEL, chartSummary, chartTableRows, type MarkerKind } from '@raijin/bench-web-logic/opportunities';
 import { PriceChartStore } from './price-chart-store';
 
 let nextId = 0;

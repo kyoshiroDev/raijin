@@ -10,16 +10,7 @@ import {
   linkedSignal,
   signal,
 } from '@angular/core';
-import {
-  CHART_HEIGHT,
-  buildChartGeometry,
-  formatParisTime,
-  formatPriceFr,
-  nearestIndex,
-  type ChartMarker,
-  type LabelTone,
-  type PricePoint,
-} from './price-chart-data';
+import { CHART_HEIGHT, buildChartGeometry, formatParisTime, formatPriceFr, nearestIndex, type ChartMarker, type LabelTone, type PricePoint } from '@raijin/bench-web-logic/opportunities';
 
 const DEFAULT_WIDTH = 340;
 const MIN_WIDTH = 240;

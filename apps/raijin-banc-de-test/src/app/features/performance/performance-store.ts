@@ -1,9 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, isNotFound, itemsOf } from '../../core/api/bench-api';
-import { bookComparisonView, parseBookComparisonRows, type BookComparisonRow } from './book-comparison';
-import { parseBreakdownRows, sourceView, type BreakdownRow } from './performance-breakdown';
-import { comparisonView, isComparisonSegment, parsePresetRows, type PresetRow, type PresetSegment } from './preset-performance';
+import { bookComparisonView, parseBookComparisonRows, type BookComparisonRow, parseBreakdownRows, sourceView, type BreakdownRow, comparisonView, isComparisonSegment, parsePresetRows, type PresetRow, type PresetSegment } from '@raijin/bench-web-logic/performance';
 
 export const LOAD_ERROR = 'Impossible de charger les performances. Réessaie dans un instant.';
 export const PRESET_LOAD_ERROR = 'Impossible de charger les résultats par profil. Réessaie dans un instant.';

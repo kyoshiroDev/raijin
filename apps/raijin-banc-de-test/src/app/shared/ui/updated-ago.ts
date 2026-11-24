@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, signal } from '@angular/core';
-import { formatUpdatedAgo } from '../utils/format';
+import { formatUpdatedAgo } from '@raijin/bench-web-logic';
 
 export const UPDATED_AGO_TICK_MS = 30_000;
 

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
-import { BOOK_SHORT_LABEL, type PaperBook } from '../../../shared/models/paper';
+import { BOOK_SHORT_LABEL, type PaperBook } from '@raijin/bench-web-logic';
 
 /** Segmented control between the virtual books (shown only when parallel books exist). 44 px targets, 2 columns beyond 3. */
 @Component({

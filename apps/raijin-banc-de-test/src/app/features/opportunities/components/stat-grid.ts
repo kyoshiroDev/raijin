@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { Stat } from '../token-display';
+import type { Stat } from '@raijin/bench-web-logic/opportunities';
 
 @Component({
   selector: 'app-stat-grid',

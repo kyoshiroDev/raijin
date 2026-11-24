@@ -58,7 +58,18 @@
       "@raijin/bench-engine": ["./libs/bench/engine/src/index.ts"],
       "@raijin/bench-collect": ["./libs/bench/collect/src/index.ts"],
       "@raijin/bench-trading": ["./libs/bench/trading/src/index.ts"],
-      "@raijin/bench-quality": ["./libs/bench/quality/src/index.ts"]
+      "@raijin/bench-quality": ["./libs/bench/quality/src/index.ts"],
+      "@raijin/bench-web-logic": ["./libs/bench/web-logic/src/index.ts"],
+      "@raijin/bench-web-logic/alerts": ["./libs/bench/web-logic/src/lib/alerts/index.ts"],
+      "@raijin/bench-web-logic/opportunities": ["./libs/bench/web-logic/src/lib/opportunities/index.ts"],
+      "@raijin/bench-web-logic/paper-trade": ["./libs/bench/web-logic/src/lib/paper-trade/index.ts"],
+      "@raijin/bench-web-logic/performance": ["./libs/bench/web-logic/src/lib/performance/index.ts"],
+      "@raijin/bench-web-logic/portfolio": ["./libs/bench/web-logic/src/lib/portfolio/index.ts"],
+      "@raijin/bench-web-logic/settings": ["./libs/bench/web-logic/src/lib/settings/index.ts"],
+      "@raijin/bench-web-logic/shadow": ["./libs/bench/web-logic/src/lib/shadow/index.ts"],
+      "@raijin/bench-web-logic/strategy-lab": ["./libs/bench/web-logic/src/lib/strategy-lab/index.ts"],
+      "@raijin/bench-web-logic/testing": ["./libs/bench/web-logic/src/testing/index.ts"],
+      "@raijin/bench-web-logic/verdict-quality": ["./libs/bench/web-logic/src/lib/verdict-quality/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

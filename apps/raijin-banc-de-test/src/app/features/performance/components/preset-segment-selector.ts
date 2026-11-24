@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
-import type { PresetSegment } from '../preset-performance';
+import type { PresetSegment } from '@raijin/bench-web-logic/performance';
 
 /** Segmented control of one preset card (Tous / GTA / Hors GTA [/ < 3 h / 3–24 h]). Toggle buttons, 44 px targets. */
 @Component({

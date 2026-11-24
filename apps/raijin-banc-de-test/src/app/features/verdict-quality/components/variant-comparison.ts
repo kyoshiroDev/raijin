@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { VERDICT_LABELS, type Verdict } from '@raijin/shared-contracts';
 import type { AccuracyReport, MetricDelta, Period, ReplayReport, VariantReplay } from '@raijin/bench-verdicts';
-import { formatDeltaPoints, formatPeriod } from '../verdict-quality-format';
+import { formatDeltaPoints, formatPeriod } from '@raijin/bench-web-logic/verdict-quality';
 import { ProportionValue } from './proportion-value';
 
 type ComparedMetric = keyof MetricDelta;

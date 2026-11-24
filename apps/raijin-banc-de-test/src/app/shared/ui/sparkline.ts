@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { signedPctInt, sparklineGeometry } from '../utils/visuals';
+import { signedPctInt, sparklineGeometry } from '@raijin/bench-web-logic';
 
 const W = 100;
 const H = 32;

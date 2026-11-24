@@ -2,8 +2,8 @@ import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core'
 import { BENCH_ROUTES, type BenchEvent } from '@raijin/bench-contracts';
 import { BenchApi, itemsOf } from '../../core/api/bench-api';
 import { BenchEvents, type BenchEventSubscription } from '../../core/api/bench-events';
-import { parseTokenRow, type TokenRow } from '../../shared/models/token';
-import { DEFAULT_FILTERS, activeFilterCount, applyFilters, type OpportunityFilters } from './opportunity-filters';
+import { parseTokenRow, type TokenRow } from '@raijin/bench-web-logic';
+import { DEFAULT_FILTERS, activeFilterCount, applyFilters, type OpportunityFilters } from '@raijin/bench-web-logic/opportunities';
 
 const FRESH_WINDOW_MS = 30 * 60 * 1000; // only tokens refreshed in the last 30 min
 const MAX_ROWS = 300;

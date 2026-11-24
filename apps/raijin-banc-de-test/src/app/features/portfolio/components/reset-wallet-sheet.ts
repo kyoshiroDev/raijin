@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { BOOK_LABEL, type PaperBook } from '../../../shared/models/paper';
+import { BOOK_LABEL, type PaperBook } from '@raijin/bench-web-logic';
 import { Sheet } from '../../../shared/ui/sheet';
 
 /** Confirmation step of « Réinitialiser à 1 SOL » for one book (never window.confirm). */

@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import { curveGeometry, curveSummary, type CurvePoint } from '../balance-curve';
-import { formatDateTimeFr } from '../paper-display';
+import { formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import { curveGeometry, curveSummary, type CurvePoint, formatDateTimeFr } from '@raijin/bench-web-logic/portfolio';
 
 const WIDTH = 320;
 const HEIGHT = 120;

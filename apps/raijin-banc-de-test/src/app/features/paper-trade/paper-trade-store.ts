@@ -1,16 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, itemsOf } from '../../core/api/bench-api';
-import {
-  PAPER_ERRORS,
-  committedSol,
-  defaultWallet,
-  isInsufficientBalanceError,
-  parsePaperWallet,
-  roundSol,
-  toNumber,
-} from '../../shared/models/paper';
-import { openPositionParams, validateDraft, type PaperDraft } from './paper-strategy';
+import { PAPER_ERRORS, committedSol, defaultWallet, isInsufficientBalanceError, parsePaperWallet, roundSol, toNumber } from '@raijin/bench-web-logic';
+import { openPositionParams, validateDraft, type PaperDraft } from '@raijin/bench-web-logic/paper-trade';
 
 export type SubmitState = 'idle' | 'pending' | 'done' | 'error';
 

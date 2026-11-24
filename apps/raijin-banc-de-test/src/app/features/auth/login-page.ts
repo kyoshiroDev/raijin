@@ -4,7 +4,7 @@ import type { BenchLoginRequest } from '@raijin/bench-contracts';
 import { recoveryCodeSchema, totpCodeSchema } from '@raijin/shared-contracts';
 import { BenchBadge } from '../../shared/ui/bench-badge';
 import { AuthStore, type SignInResult } from '../../core/auth/auth-store';
-import { isPlausibleEmail, normalizeEmail } from '../../shared/utils/email';
+import { isPlausibleEmail, normalizeEmail } from '@raijin/bench-web-logic';
 import { createAttemptLock } from './attempt-lock';
 import { PasswordField } from './components/password-field';
 import { Brand } from '../../shared/ui/brand';

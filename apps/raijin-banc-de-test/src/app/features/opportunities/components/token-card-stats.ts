@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
+import { type TokenRow, formatPct, formatPrice, formatUsd, formatPriceCompact } from '@raijin/bench-web-logic';
 import { Sparkline } from '../../../shared/ui/sparkline';
-import { formatPct, formatPrice, formatUsd } from '../../../shared/utils/format';
-import { formatPriceCompact } from '../../../shared/utils/visuals';
 import { LiquidityInfo } from './liquidity-info';
 
 /**

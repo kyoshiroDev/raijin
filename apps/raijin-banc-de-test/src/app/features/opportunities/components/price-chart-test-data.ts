@@ -1,7 +1,7 @@
 // Test fixtures for the price chart / token detail specs (not imported by app code).
 import { BENCH_ROUTES, type BenchRoute } from '@raijin/bench-contracts';
 import { FakeBenchApi, apiError, list, provideFakeBench } from '../../../core/api/bench-api.testing';
-import type { TokenRow } from '../../../shared/models/token';
+import type { TokenRow } from '@raijin/bench-web-logic';
 
 export const CHART_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 

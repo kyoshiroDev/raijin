@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, signal } from '@angular/core';
-import { addressHead, addressTail, isSolanaAddress, shortAddress } from '../utils/solana-address';
+import { addressHead, addressTail, isSolanaAddress, shortAddress } from '@raijin/bench-web-logic';
 import { Icon } from './icon';
 
 type CopyState = 'idle' | 'copied' | 'error';

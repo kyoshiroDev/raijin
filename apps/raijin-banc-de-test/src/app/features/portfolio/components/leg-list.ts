@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { formatPrice } from '../../../shared/utils/format';
-import type { LegView } from '../paper-book';
-import { LEG_CLASS, LEG_LABEL } from '../paper-display';
+import { formatPrice } from '@raijin/bench-web-logic';
+import { type LegView, LEG_CLASS, LEG_LABEL } from '@raijin/bench-web-logic/portfolio';
 
 /** Legs of a position: state badge, target and current stop (with the breakeven move made explicit). */
 @Component({

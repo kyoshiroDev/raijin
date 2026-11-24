@@ -693,7 +693,8 @@ mode fixtures. Médiane de 3 : Perf 62 / 54 / 62 (`/analyse`, `/analyse/<mint>`,
    incompatible avec `script-src 'self'`. Coût en plus : `@angular/ssr`, build serveur, gardes navigateur
    partout. Option rouverte seulement si les tâches 10.3 ne suffisent pas, avec un hash CSP documenté.
    Une coquille HTML statique dans `index.html` est écartée pour la même raison (TBT inchangé, balisage
-   dupliqué hors composants).
+   dupliqué hors composants). **Exception pour `/t/<mint>` seulement : voir §10.7** (verdict statique
+   injecté par l'API et démarrage d'Angular à la première interaction, ce qui retire, lui, la tâche longue).
 2. **Routes `analyse` et `t` dans le bundle initial** (`apps/web/src/app/app.routes.ts`, `children`
    statiques) ; `suivis`, `alertes`, `wallet`, `compte` restent à la demande. Bundle initial ≈ 377 kB brut
    (budget : avertissement 400 kB, erreur 500 kB). Mesuré : LCP de `/analyse` 3,8 s → 0,8–1,7 s.
@@ -839,6 +840,107 @@ chemin du LCP).
 
 Fichiers de diagnostic `docs/lighthouse/perf-{dbg,zod}` : dossiers vides, non suivis ; `perf-eager`, `perf-p2` :
 ignorés par `.git/info/exclude`, non suivis. Rien à retirer de l'index.
+
+### 10.7 `/t/<mint>` : verdict statique injecté et démarrage d'Angular à l'interaction (relecture finale, 2026-11-24)
+
+**Constat** : runner 85–93 sur `/t/<mint>`, page déjà peinte (FCP = LCP 0,77 s), seule perte le TBT ≈ 400 ms
+(`bootstrapApplication` + rendu de la coquille + rendu du verdict, une seule tâche). G1–G6 ont réduit le
+bundle sans faire passer `/t` de façon stable : tant qu'Angular démarre pendant la fenêtre mesurée, la
+tâche longue reste. Sur `/t`, la page est **en lecture seule** (pas de bouton « Suivre », deux liens et la
+mention légale) : rien n'exige Angular pour la lire.
+
+**Décision** : quand l'API sert `/t/<mint>` (Traefik envoie `/t/*` à `raijin-api`, `infra/nginx/web.conf`) et
+qu'une analyse publiée existe, elle injecte **dans `<rj-root>`** un rendu HTML statique du verdict. L'app
+**n'appelle pas** `bootstrapApplication` tant que ce rendu est présent, jusqu'à la **première interaction**.
+L'évaluation du bundle `main-*.js` reste (script `type="module"` inchangé, compilé hors du fil principal par
+Chrome) ; c'est le démarrage et le rendu, la partie lourde, qui sortent de la fenêtre mesurée. Pas de SSR,
+pas d'hydratation, pas de script inline, **CSP inchangée**, aucune dépendance ajoutée.
+
+Écarté : démarrer en idle (`requestIdleCallback`, minuterie) : la tâche longue resterait avant le TTI et
+compterait dans le TBT ; rendre le bundle paresseux (`import()` depuis `main.ts`) : un aller-retour de plus
+sur `/analyse` et `/analyse/<mint>` (servis par Nginx, 97–99 aujourd'hui) ; retirer ou réécrire la balise
+`<script src="main-….js" type="module">` dans le HTML de `/t` : casse l'e2e « servie par l'API » et le
+démarrage normal ; détecter Lighthouse ou `navigator.webdriver` : interdit (le comportement mesuré doit être
+celui des visiteurs).
+
+#### Contrat côté API (`libs/api/analysis/src/lib/share`)
+1. **Quand** : `SharePageService.render(mint)` avec `mint` valide **et** `findLatest(mint)` non nul, gabarit
+   du build web lu (pas le `minimalHtml`). Sinon rien n'est injecté (mint inconnu, page générique, gabarit
+   absent) et l'app démarre normalement.
+2. **Où** : le contenu de `<rj-root></rj-root>` du gabarit est remplacé (une seule occurrence, recherche
+   insensible à la casse ; si la balise est introuvable : aucune injection, journal `warn` sans donnée).
+   Les balises `<head>` (`injectMeta`), le `<script src="main-….js" type="module">`, les `modulepreload` et
+   `analyse-prefetch.js` restent **intacts**.
+3. **Format exact** (fonction pure `renderStaticVerdict(analysis, mint): string` exportée à côté de
+   `injectMeta`, testée par instantané) :
+   ```html
+   <main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
+     <p class="rj-static__eyebrow">Analyse partagée</p>
+     <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
+     <p class="rj-static__verdict" data-verdict="safe|warn|danger">{VERDICT_LABELS[verdict]}</p>
+     <!-- seulement si symbol ?? name : -->
+     <p class="rj-static__token">Symbole déclaré « {symbole} » (non vérifié)</p>
+     <p class="rj-static__explanation">{explanation}</p>
+     <p class="rj-static__date">Analyse du <time datetime="{analyzedAt ISO}">{date fr-FR, Europe/Paris}</time></p>
+     <!-- seulement si degraded : -->
+     <p class="rj-static__note">Résultat partiel : une source était indisponible.</p>
+     <nav class="rj-static__actions" aria-label="Actions">
+       <a class="rj-static__link rj-static__link--primary" href="/analyse/{mint}">Réanalyser ce token</a>
+       <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+     </nav>
+     <p class="rj-static__disclaimer" data-disclaimer>{ANALYSIS_DISCLAIMER}</p>
+   </main>
+   ```
+   Textes repris des constantes de `@raijin/shared-contracts` (`VERDICT_LABELS`, `ANALYSIS_DISCLAIMER`) et des
+   libellés de `public-token.page.ts` (aucun texte réécrit à la main) ; liens **relatifs**, mêmes `href` que
+   la page Angular. Ni score, ni contrôles, ni image : la version complète arrive avec Angular.
+4. **Échappement** : chaque valeur dynamique passe par `escapeHtml` (déjà exportée, `& < > " '`), y compris
+   `mint` (déjà validé base58 en amont) et le libellé du verdict ; symbole et nom du token (non fiables)
+   tronqués à 32 caractères (`Array.from`, pas de coupure d'emoji) puis échappés, toujours entre « » et
+   marqués « non vérifié ». Aucun attribut `style`, aucun `on*`, aucun `<script>`, aucune URL issue des
+   données du token. Tests : nom contenant `</rj-root><script>`, `"`, `'`, `&` et un emoji → rendu inerte.
+5. **Cache** : `Cache-Control` actuel de `/t` inchangé ; le HTML suit la dernière analyse publiée (même
+   source que les balises OG).
+
+#### Contrat côté app (`apps/web`, `libs/web/*`)
+1. **Porte de démarrage** : fonction `startWhenInteractive(start: () => void): void` dans
+   `@raijin/web-data-access` (fichier `startup-gate.ts`, sans Angular, testée avec Vitest + jsdom). `main.ts` se
+   limite à `startWhenInteractive(() => bootstrapApplication(App, appConfig).catch(…))` (aucune logique dans
+   l'app). Règle : si `location.pathname` correspond à `/t/<mint>` **et** que
+   `document.querySelector('rj-root > [data-rj-static="t"]')` existe **et** que `location.search` est vide,
+   attendre ; sinon `start()` tout de suite (comportement actuel sur toutes les autres routes, en dev sur
+   `:4200` où rien n'est injecté, et quand l'URL porte des paramètres d'attribution `utm_*` : l'attribution
+   doit être relevée par `provideAppInitializer` avant qu'un lien statique ne recharge la page).
+2. **Interaction** : premier `pointerdown`, `touchstart`, `keydown` ou `focusin` sur `document`
+   (écouteurs `{ capture: true, passive: true, once: true }`, tous retirés au premier déclenchement),
+   `start()` appelé une seule fois. Pas de démarrage sur `scroll`, pas de minuterie de repli. Un lien statique
+   touché déclenche une navigation pleine page normale (servie par Nginx), sans dépendre d'Angular.
+3. **Prise de relais** : Angular vide `<rj-root>` au démarrage (pas d'hydratation) et rend la coquille et
+   `PublicTokenPage` comme aujourd'hui ; la donnée vient de `window.__rjStartup` (préchargement
+   `analyse-prefetch.js` **inchangé**, `GET …/latest` parti à la lecture du HTML) si elle a moins de 30 s
+   (`MAX_AGE_MS`), sinon d'une nouvelle lecture. Le décalage visuel éventuel suit une saisie (exclu du CLS).
+4. **Styles** : classes `rj-static*` définies dans `libs/web/ui/src/styles/` (fichier `static-verdict.css`
+   importé par `theme.css`), **uniquement avec les tokens** (`var(--…)` / `@apply` des utilitaires du thème),
+   alignées visuellement sur `PublicTokenPage` dans la coquille mobile (mêmes marges que le `<main>` de
+   `RjAppShell`, badge de verdict aux couleurs `safe/warn/danger` via `[data-verdict]`, liens d'au moins 44 px
+   de haut, focus visible). Ces classes sont un **contrat stable** : l'API ne dépend d'aucun utilitaire
+   Tailwind généré (le scan de Tailwind ne voit pas `libs/api`).
+5. **Ce qui attend l'interaction** sur `/t` : session, quota, attribution sans paramètre, service worker,
+   bandeau de consentement GA4. Accepté : la page est lisible et ses liens marchent sans eux.
+
+#### Critères d'acceptation
+- Unitaires : `renderStaticVerdict` (instantanés safe / warn / danger, `degraded`, sans symbole, échappement) ;
+  injection dans `<rj-root>` et absence d'injection (mint inconnu, gabarit sans `<rj-root>`) ;
+  `startWhenInteractive` (démarrage immédiat hors `/t`, sans balise statique, avec `?utm_source=…` ; attente
+  puis un seul démarrage à la première interaction ; écouteurs retirés).
+- e2e existants verts sans modification (`analysis.flow` « page publique /t/<mint> » : le serveur de dev
+  n'injecte rien ; le test « servie par l'API » voit toujours `og:*` et `<script src="main-….js" type="module">`).
+- e2e ajouté (test-e2e), sur l'origine de production : `/t/<BONK>` affiche `[data-rj-static="t"]` avec
+  « Prudence », les deux liens et `[data-disclaimer]` **sans** interaction ; après un `tap`, `main h1` vaut
+  « Verdict Raijin » rendu par Angular et le titre devient celui de l'app ; 0 erreur console, 0 violation
+  CSP ; axe sans violation sur la version statique ; captures 360 et 1440.
+- Lighthouse runner : `/t/<mint>` ≥ 95 sur 3 passages (TBT ≤ 100 ms attendu), `/analyse` et `/analyse/<mint>`
+  sans recul.
 
 ## 11. Suivis, alertes et push (phase 4)
 
@@ -1705,7 +1807,8 @@ Créés (tous `scope:bench`, alias `@raijin/bench-*`, aucun import de `scope:api
 | Projet | Type | Rôle |
 |---|---|---|
 | `apps/raijin-banc-de-test-api` | app (`@nx/nest`) | app **fine** : `main.ts` (bootstrap, port `API_PORT`, 3000 dans `raijin-bench-api`) et `cli.ts` (`create-owner`, `set-password`, `reset-2fa`, alias `enroll-totp` / `reset-totp`, via `benchCliMain` de `bench-core`) ; le métier vit dans les libs |
-| `apps/raijin-banc-de-test` | app Angular | front du banc ; client HTTP et SSE dans l'app (`src/app/core/api/` : `BenchApi`, `BenchEvents`), pas de lib `bench-data-access` séparée |
+| `apps/raijin-banc-de-test` | app Angular | front du banc, **affichage seulement** (composants, stores à signaux, routes, PWA) ; client HTTP et SSE dans l'app (`src/app/core/api/` : `BenchApi`, `BenchEvents`), pas de lib `bench-data-access` séparée ; exceptions §17.8 |
+| `libs/bench/web-logic` | `type:util` | logique pure du front (`@raijin/bench-web-logic`) : modèles et lecture des lignes de l'API, backtest, performance, presets, portefeuille simulé, graphe de prix, alertes, coût aller-retour, formatage ; points d'entrée par domaine (`/opportunities`, `/alerts`, `/strategy-lab`, `/portfolio`, `/performance`, `/paper-trade`, `/settings`, `/shadow`, `/verdict-quality`, `/testing` pour les specs) ; ni Angular ni API Node |
 | `libs/bench/contracts` | `type:contracts` | contrats Zod (§17.3) et seuils officiels de bascule `SHADOW_ACCEPTANCE` / `evaluateShadowAcceptance` (§17.6) |
 | `libs/bench/core` | `type:feature` | config validée au démarrage, auth du compte unique, CSRF, limites par IP, jobs BullMQ (`BenchJobRegistry`, `BenchJobRunner`, `BenchJobScheduler`, `job_runs`), SSE, mode `shadow`/`primary` (`BenchModeService`, `BenchNotifier`), `/api/health`, `/api/status`, CLI |
 | `libs/bench/prisma` | `type:data-access` | schéma, migrations SQL (fonctions et déclencheurs d'origine à l'identique, schémas `shadow_ref` et `archive`), `BenchPrismaService`, `BenchSqlService` (pool `pg` + `SqlBenchDbExecutor`), listes de tables partagées avec `infra/bench-migrate.sh` (`bench-tables.ts`) |
@@ -1798,3 +1901,16 @@ méthode hors de ce sous-ensemble n'existe pas sur l'interface (erreur de compil
   (`rj_*`), secrets de signature distincts : un cookie ou jeton Raijin, même admin, vaut 401 côté banc.
 - Double verrou : basicAuth Traefik en amont, puis cette auth applicative sur toute route sauf `health` et
   `auth/login`.
+
+### 17.8 Exceptions : fichiers sans Angular restés dans `apps/raijin-banc-de-test`
+Règle : tout calcul pur du front vit dans `libs/bench/web-logic` (tests déplacés avec le code). Restent dans l'app,
+parce qu'ils sont liés à son infrastructure et non au métier :
+- `core/api/token-briefs.ts`, `features/opportunities/token-query.ts` : assemblent des appels au client `BenchApi`
+  (classe de l'app, injectée par Angular) ; les déplacer tirerait le client HTTP dans une lib `type:util`.
+- `core/pwa/notification-url.ts` : liste blanche des routes de l'app qu'une notification push peut ouvrir ; elle
+  reflète la table des routes de l'app (`app.routes.ts`) et sert la navigation PWA, pas le métier du banc.
+- `features/strategy-lab/lab-test-data.ts`, `features/performance/performance-test-data.ts`,
+  `features/opportunities/components/price-chart-test-data.ts` : doublures de test du client de l'app
+  (`FakeBenchApi`, `provideFakeBench`), utilisées par les specs de composants et de stores ; les fabriques de lignes
+  pures (`runRow`, `breakdownRow`…) vivent dans `@raijin/bench-web-logic/testing`, que les deux premières réexportent.
+- `src/types/text-imports.d.ts` : déclaration de type du builder Angular.

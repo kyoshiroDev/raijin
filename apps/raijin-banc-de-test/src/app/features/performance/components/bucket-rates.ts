@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { formatHits, formatRate } from '../performance-stats';
-import type { BucketView } from '../performance-breakdown';
+import { formatHits, formatRate, type BucketView } from '@raijin/bench-web-logic/performance';
 
 /** What the rates need: a breakdown bucket, or a preset card (n = labelled signals). */
 export type RatesView = Pick<BucketView, 'n' | 'enough' | 'rates'>;

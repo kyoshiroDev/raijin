@@ -1,7 +1,7 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { MAX_POINTS, RANGE_MS } from './price-chart-data';
+import { MAX_POINTS, RANGE_MS } from '@raijin/bench-web-logic/opportunities';
 import { MARKER_LIMIT, PriceChartStore } from './price-chart-store';
 import { CHART_MINT, mockBench, ok, snapshotRows, type QueryResult } from './price-chart-test-data';
 

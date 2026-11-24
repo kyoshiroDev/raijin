@@ -4,7 +4,7 @@ import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeBenchApi, FakeBenchEvents, apiError, list, provideFakeBench } from '../../core/api/bench-api.testing';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import type { TokenRow } from '../../shared/models/token';
+import type { TokenRow } from '@raijin/bench-web-logic';
 import { OpportunitiesPage } from './opportunities-page';
 
 const row = (mint: string, symbol: string, over: Partial<TokenRow> = {}): Partial<TokenRow> => ({

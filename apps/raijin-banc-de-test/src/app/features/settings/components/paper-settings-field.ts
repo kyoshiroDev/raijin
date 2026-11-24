@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, linkedSignal, output } from '@angular/core';
-import { SL_PCT_LIMITS } from '../../../shared/models/paper';
-import { formatSolAmount } from '../../../shared/utils/format';
+import { SL_PCT_LIMITS, formatSolAmount } from '@raijin/bench-web-logic';
 
 /**
  * « Paper trading » section of the settings form (SIMULATION ONLY): fixed strategy « tout à ×2 », default stop and

@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { RUN_STATUS_CLASS, RUN_STATUS_LABEL, TRIGGER_LABEL, type BacktestRun } from '../backtest';
-import { formatInt, formatLabDate, formatShare, resolutionText } from '../lab-format';
+import { RUN_STATUS_CLASS, RUN_STATUS_LABEL, TRIGGER_LABEL, type BacktestRun, formatInt, formatLabDate, formatShare, resolutionText } from '@raijin/bench-web-logic/strategy-lab';
 import type { LabFeedback } from '../strategy-lab-store';
 
 interface Fact {

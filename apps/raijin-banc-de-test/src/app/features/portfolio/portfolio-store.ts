@@ -3,21 +3,8 @@ import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, itemsOf } from '../../core/api/bench-api';
 import { BenchEvents, type BenchEventSubscription } from '../../core/api/bench-events';
 import { fetchTokenBriefs } from '../../core/api/token-briefs';
-import {
-  BOOK_LABEL,
-  PAPER_BOOKS,
-  TEST_BOOKS,
-  isArchivedBook,
-  isPaperBook,
-  parsePaperPositions,
-  parsePaperWallets,
-  toNumber,
-  type PaperBook,
-  type PaperPosition,
-  type PaperWallet,
-} from '../../shared/models/paper';
-import { availableBooks, buildBookView, type BookView } from './paper-book';
-import { stopSlippageByBook, type StopSlippage } from './stop-slippage';
+import { BOOK_LABEL, PAPER_BOOKS, TEST_BOOKS, isArchivedBook, isPaperBook, parsePaperPositions, parsePaperWallets, toNumber, type PaperBook, type PaperPosition, type PaperWallet } from '@raijin/bench-web-logic';
+import { availableBooks, buildBookView, type BookView, stopSlippageByBook, type StopSlippage } from '@raijin/bench-web-logic/portfolio';
 
 /** Most recent positions read (history included). */
 export const PAPER_FETCH_LIMIT = 500;

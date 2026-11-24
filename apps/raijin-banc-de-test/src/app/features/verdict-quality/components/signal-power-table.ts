@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { ANALYSIS_CHECK_LABELS, type AnalysisCheckId } from '@raijin/shared-contracts';
 import type { SignalPowerRow } from '@raijin/bench-verdicts';
-import { formatLift } from '../verdict-quality-format';
+import { formatLift } from '@raijin/bench-web-logic/verdict-quality';
 import { ProportionValue } from './proportion-value';
 
 /** Pouvoir prédictif des signaux (raisons ou contrôles) : cartes < 768 px, tableau au-delà. */

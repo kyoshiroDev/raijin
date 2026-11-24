@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { SummaryView } from '../lab-summary';
+import type { SummaryView } from '@raijin/bench-web-logic/strategy-lab';
 
 /**
  * Nightly verdict of the last finished backtest (backtest_runs.summary): « Aucune stratégie robuste » or

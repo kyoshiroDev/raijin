@@ -1,7 +1,6 @@
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { isNotFound, type BenchApi } from '../../core/api/bench-api';
-import { parseTokenRow, type TokenRow } from '../../shared/models/token';
-import { isSolanaAddress } from '../../shared/utils/solana-address';
+import { parseTokenRow, type TokenRow, isSolanaAddress } from '@raijin/bench-web-logic';
 
 /** Loads one token by mint (`GET /api/tokens/:mint`, 404 → null). Never queries with an invalid mint. */
 export async function fetchTokenByMint(api: Pick<BenchApi, 'get'>, mint: string, signal?: AbortSignal): Promise<TokenRow | null> {

@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
+import { type TokenRow, DEFAULT_STAKE_SOL } from '@raijin/bench-web-logic';
 import { CopyAddress } from '../../../shared/ui/copy-address';
 import { Icon } from '../../../shared/ui/icon';
-import { DEFAULT_STAKE_SOL } from '../../../shared/utils/stake';
 import { ConfidenceBadge } from './confidence-badge';
 import { FlagList } from './flag-list';
 import { RoundtripLine } from './roundtrip-line';

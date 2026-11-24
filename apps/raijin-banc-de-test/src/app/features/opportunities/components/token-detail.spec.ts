@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { TokenRow } from '../../../shared/models/token';
+import type { TokenRow } from '@raijin/bench-web-logic';
 import { mockBench, ok, snapshotRows } from './price-chart-test-data';
 import { TokenDetail } from './token-detail';
 

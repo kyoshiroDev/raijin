@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { BENCH_ROUTES, evaluateShadowAcceptance, type ShadowComparison, type ShadowTable } from '@raijin/bench-contracts';
 import { BenchApi, isNotFound } from '../../core/api/bench-api';
-import { parseShadowComparison, snapshotRange, sortRows, summarizeByTable, windowRange, type ShadowWindow } from './shadow-comparison';
+import { parseShadowComparison, snapshotRange, sortRows, summarizeByTable, windowRange, type ShadowWindow } from '@raijin/bench-web-logic/shadow';
 
 export const SHADOW_MSG = {
   loadFailed: 'Impossible de charger la comparaison. Réessaie dans un instant.',

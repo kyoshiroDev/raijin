@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { STRATEGY_LABEL, type PaperPosition } from '../../../shared/models/paper';
-import { formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import { LEG_CLASS, LEG_LABEL, STATUS_CLASS, STATUS_LABEL, formatDateTimeFr, pnlClass } from '../paper-display';
+import { STRATEGY_LABEL, type PaperPosition, formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import { LEG_CLASS, LEG_LABEL, STATUS_CLASS, STATUS_LABEL, formatDateTimeFr, pnlClass } from '@raijin/bench-web-logic/portfolio';
 
 /** Closed, cancelled and expired positions, most recent first (presentational). */
 @Component({

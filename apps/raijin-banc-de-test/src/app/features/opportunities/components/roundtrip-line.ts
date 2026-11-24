@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
-import { DEFAULT_STAKE_SOL } from '../../../shared/utils/stake';
-import { roundtripCostView, type RoundtripTone } from '../roundtrip';
+import { type TokenRow, DEFAULT_STAKE_SOL } from '@raijin/bench-web-logic';
+import { roundtripCostView, type RoundtripTone } from '@raijin/bench-web-logic/opportunities';
 
 export const ROUNDTRIP_TONE_TEXT: Record<RoundtripTone, string> = { bull: 'coût faible', warn: 'coût modéré', bear: 'coût élevé' };
 

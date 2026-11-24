@@ -10,9 +10,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
-import { formatUsd } from '../../../shared/utils/format';
-import { liquidityMethodText, liquiditySummary } from '../liquidity-sources';
+import { type TokenRow, formatUsd } from '@raijin/bench-web-logic';
+import { liquidityMethodText, liquiditySummary } from '@raijin/bench-web-logic/opportunities';
 import { Icon } from '../../../shared/ui/icon';
 
 let nextId = 0;

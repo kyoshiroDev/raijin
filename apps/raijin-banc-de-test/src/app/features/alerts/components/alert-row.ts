@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { shortAddress } from '../../../shared/utils/solana-address';
-import { formatAlertTime, type AlertItem } from '../alert-log';
-import { alertCells, alertOutcomeLine, alertStatus } from '../alert-view';
+import { shortAddress } from '@raijin/bench-web-logic';
+import { formatAlertTime, type AlertItem, alertCells, alertOutcomeLine, alertStatus } from '@raijin/bench-web-logic/alerts';
 import { AlertStatusBadge } from './alert-status-badge';
 import { Icon } from '../../../shared/ui/icon';
 

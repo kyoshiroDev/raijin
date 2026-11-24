@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeBenchApi, apiError, provideFakeBench, type FakeMethod } from '../../core/api/bench-api.testing';
 import { BROWSER_SNAPSHOT, type BrowserSnapshot } from '../../core/pwa/push-environment';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { DEFAULT_ALERT_SETTINGS, preferencesOf } from './alert-settings';
+import { DEFAULT_ALERT_SETTINGS, preferencesOf } from '@raijin/bench-web-logic/settings';
 import { MSG, SettingsStore } from './settings-store';
 
 const ENDPOINT = 'https://web.push.apple.com/QGx0c3Q';

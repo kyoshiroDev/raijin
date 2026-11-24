@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { DataConfidence } from '../../../shared/models/token';
-import { confidenceBadge } from '../token-display';
+import type { DataConfidence } from '@raijin/bench-web-logic';
+import { confidenceBadge } from '@raijin/bench-web-logic/opportunities';
 import { Icon } from '../../../shared/ui/icon';
 
 /** Cross-source data confidence, as text (never colour only). Nothing when unknown. */

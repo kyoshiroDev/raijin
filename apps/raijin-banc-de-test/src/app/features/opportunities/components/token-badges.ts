@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, booleanAttribute, computed, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
+import { type TokenRow, formatAge } from '@raijin/bench-web-logic';
 import { Icon } from '../../../shared/ui/icon';
-import { formatAge } from '../../../shared/utils/format';
-import { MOMENTUM_HINT, MOMENTUM_LABEL, momentumOf, safetyCheck, safetyDescription } from '../token-signals';
+import { MOMENTUM_HINT, MOMENTUM_LABEL, momentumOf, safetyCheck, safetyDescription } from '@raijin/bench-web-logic/opportunities';
 
 let nextId = 0;
 

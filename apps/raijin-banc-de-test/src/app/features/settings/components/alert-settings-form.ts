@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, linkedSignal, output } from '@angular/core';
-import { preferencesOf, quietHoursLabel, validateAlertPreferences, type AlertPreferences, type AlertSettings } from '../alert-settings';
+import { preferencesOf, quietHoursLabel, validateAlertPreferences, type AlertPreferences, type AlertSettings } from '@raijin/bench-web-logic/settings';
 import type { Feedback } from '../settings-store';
 import { AlertCapsField, type CapChange } from './alert-caps-field';
 import { PaperSettingsField } from './paper-settings-field';

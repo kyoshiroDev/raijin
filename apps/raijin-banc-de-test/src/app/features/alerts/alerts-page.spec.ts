@@ -4,7 +4,7 @@ import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { describe, expect, it } from 'vitest';
 import { FakeBenchApi, apiError, list, provideFakeBench } from '../../core/api/bench-api.testing';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { ALERT_FETCH_LIMIT } from './alert-log';
+import { ALERT_FETCH_LIMIT } from '@raijin/bench-web-logic/alerts';
 import { AlertsPage } from './alerts-page';
 
 const A = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';

@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { STRATEGY_LABEL } from '../../../shared/models/paper';
-import { formatPrice, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import type { PositionView } from '../paper-book';
-import { STATUS_CLASS, STATUS_LABEL, formatDateTimeFr, pnlClass } from '../paper-display';
+import { STRATEGY_LABEL, formatPrice, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import { type PositionView, STATUS_CLASS, STATUS_LABEL, formatDateTimeFr, pnlClass } from '@raijin/bench-web-logic/portfolio';
 import { LegList } from './leg-list';
 import { EmptyState } from '../../../shared/ui/empty-state';
 

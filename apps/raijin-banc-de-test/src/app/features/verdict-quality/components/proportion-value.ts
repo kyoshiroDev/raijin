@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import type { Proportion } from '@raijin/bench-verdicts';
-import { formatCount, formatInterval, formatPct } from '../verdict-quality-format';
+import { formatCount, formatInterval, formatPct } from '@raijin/bench-web-logic/verdict-quality';
 
 /**
  * Une proportion du banc : valeur, intervalle de Wilson à 95 % et effectif. Sous l'effectif minimal,

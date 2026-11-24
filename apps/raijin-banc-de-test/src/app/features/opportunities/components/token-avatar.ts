@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, linkedSignal } from '@angular/core';
-import { safeExternalUrl } from '../../../shared/utils/safe-url';
-import { avatarBackground, avatarLetter } from '../../../shared/utils/visuals';
+import { safeExternalUrl, avatarBackground, avatarLetter } from '@raijin/bench-web-logic';
 
 /**
  * Token logo from an allowlisted host (safeExternalUrl), lazy, no referrer, fixed size. Fallback (no URL,

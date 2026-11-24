@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { RankedVariant } from '../backtest';
-import { formatCi, formatInt, metricLines } from '../lab-format';
+import { type RankedVariant, formatCi, formatInt, metricLines } from '@raijin/bench-web-logic/strategy-lab';
 
 /**
  * One retained variant: rank, French name, « robuste » badge, test bootstrap interval, then the training and test

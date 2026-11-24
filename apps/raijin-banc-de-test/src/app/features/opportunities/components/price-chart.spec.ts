@@ -1,8 +1,8 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import type { TokenRow } from '../../../shared/models/token';
+import type { TokenRow } from '@raijin/bench-web-logic';
 import { PriceChart } from './price-chart';
-import { formatParisTime } from './price-chart-data';
+import { formatParisTime } from '@raijin/bench-web-logic/opportunities';
 import {
   CHART_MINT,
   chartToken,

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { formatPrice } from '../../../shared/utils/format';
-import { DRAFT_ERRORS, type PaperDraft } from '../paper-strategy';
+import { formatPrice } from '@raijin/bench-web-logic';
+import { DRAFT_ERRORS, type PaperDraft } from '@raijin/bench-web-logic/paper-trade';
 import { PaperTradeForm } from './paper-trade-form';
 
 const INITIAL: PaperDraft = { stake: 0.05, entry: 0.00013, slPct: 30 };

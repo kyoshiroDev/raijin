@@ -1,10 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
-import { formatPercentFr, formatSolAmount, formatSolEur, formatUpdatedAgo } from '../../../shared/utils/format';
-import { NETWORK_FEE_PER_TX_SOL, ROUNDTRIP_TX_COUNT } from '../../../shared/utils/roundtrip-cost';
-import { DEFAULT_STAKE_SOL, formatSol } from '../../../shared/utils/stake';
-import { roundtripCostView } from '../roundtrip';
-import { buyImpactLabel } from '../token-display';
+import { type TokenRow, formatPercentFr, formatSolAmount, formatSolEur, formatUpdatedAgo, NETWORK_FEE_PER_TX_SOL, ROUNDTRIP_TX_COUNT, DEFAULT_STAKE_SOL, formatSol } from '@raijin/bench-web-logic';
+import { roundtripCostView, buyImpactLabel } from '@raijin/bench-web-logic/opportunities';
 import { ROUNDTRIP_TONE_TEXT } from './roundtrip-line';
 
 const UNKNOWN = 'inconnu';

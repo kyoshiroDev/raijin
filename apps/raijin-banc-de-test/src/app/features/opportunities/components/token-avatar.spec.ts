@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { mintHue } from '../../../shared/utils/visuals';
+import { mintHue } from '@raijin/bench-web-logic';
 import { TokenAvatar } from './token-avatar';
 
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';

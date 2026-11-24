@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ALERT_SETTINGS, type AlertPreferences, type AlertSettings } from '../alert-settings';
+import { DEFAULT_ALERT_SETTINGS, type AlertPreferences, type AlertSettings } from '@raijin/bench-web-logic/settings';
 import { AlertSettingsForm } from './alert-settings-form';
 
 describe('AlertSettingsForm', () => {

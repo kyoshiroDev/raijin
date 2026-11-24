@@ -4,7 +4,7 @@ import { BENCH_ROUTES, type ShadowComparison, type ShadowDayRow } from '@raijin/
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeBenchApi, apiError, provideFakeBench } from '../../core/api/bench-api.testing';
 import { SHADOW_ACCEPTANCE } from '@raijin/bench-contracts';
-import { dayLevel, diffLevel, diffPct, formatDiff, parseShadowComparison, snapshotRange, sortRows, summarizeByTable, toleranceLabel, windowRange } from './shadow-comparison';
+import { dayLevel, diffLevel, diffPct, formatDiff, parseShadowComparison, snapshotRange, sortRows, summarizeByTable, toleranceLabel, windowRange } from '@raijin/bench-web-logic/shadow';
 import { SHADOW_MSG } from './shadow-comparison-store';
 import { ShadowComparisonPage } from './shadow-comparison-page';
 

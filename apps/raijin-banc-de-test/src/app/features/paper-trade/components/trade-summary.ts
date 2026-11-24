@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { formatPrice, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '../../../shared/utils/format';
-import type { TradeSummary } from '../paper-strategy';
+import { formatPrice, formatSignedPercentFr, formatSignedSol, formatSolAmount } from '@raijin/bench-web-logic';
+import type { TradeSummary } from '@raijin/bench-web-logic/paper-trade';
 
 /** Summary shown before validation: target, stop, fees, rent and the result of both scenarios (presentational). */
 @Component({

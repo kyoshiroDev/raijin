@@ -4,7 +4,7 @@ import { BenchApi } from '../../core/api/bench-api';
 import { MarketContext } from '../../core/market/market-context';
 import { UserPreferences } from '../../core/preferences/user-preferences';
 import { PageHeader } from '../../shared/ui/page-header';
-import { isSolanaAddress } from '../../shared/utils/solana-address';
+import { isSolanaAddress } from '@raijin/bench-web-logic';
 import { TokenDetail } from './components/token-detail';
 import { fetchTokenByMint } from './token-query';
 import { Icon } from '../../shared/ui/icon';

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { ALERT_STATUS, type AlertStatus } from '../alert-view';
+import { ALERT_STATUS, type AlertStatus } from '@raijin/bench-web-logic/alerts';
 import { Icon } from '../../../shared/ui/icon';
 
 /** Follow-up badge: icon + text (never colour-only). */

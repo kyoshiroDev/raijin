@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, linkedSignal, output } from '@angular/core';
-import { STAKE_LIMITS, formatSol, parseStakeInput } from '../../../shared/utils/stake';
+import { STAKE_LIMITS, formatSol, parseStakeInput } from '@raijin/bench-web-logic';
 
 /**
  * « Ma mise habituelle (SOL) ». Text input with the decimal keypad so the French comma works

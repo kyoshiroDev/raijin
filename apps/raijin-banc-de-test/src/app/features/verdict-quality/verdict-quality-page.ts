@@ -13,7 +13,7 @@ import { PageHeader } from '../../shared/ui/page-header';
 import { ProportionValue } from './components/proportion-value';
 import { SignalPowerTable } from './components/signal-power-table';
 import { VariantComparison } from './components/variant-comparison';
-import { formatPeriod } from './verdict-quality-format';
+import { formatPeriod } from '@raijin/bench-web-logic/verdict-quality';
 import { HttpVerdictQualitySource, VerdictQualitySource } from './verdict-quality-source';
 
 export const HORIZON_LABELS: Readonly<Record<FollowUpHorizon, string>> = { '24h': '24 h', '72h': '72 h', '7d': '7 jours' };

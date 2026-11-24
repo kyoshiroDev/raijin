@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
-import { rugcheckHistoryStats, rugcheckStats } from '../token-display';
+import type { TokenRow } from '@raijin/bench-web-logic';
+import { rugcheckHistoryStats, rugcheckStats } from '@raijin/bench-web-logic/opportunities';
 import { StatGrid } from './stat-grid';
 
 /** RugCheck data of the detail. Danger labels are third-party (hostile) text: interpolation only. */

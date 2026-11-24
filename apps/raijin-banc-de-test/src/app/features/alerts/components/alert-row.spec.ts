@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, expect, it } from 'vitest';
-import type { AlertItem } from '../alert-log';
+import type { AlertItem } from '@raijin/bench-web-logic/alerts';
 import { AlertRow } from './alert-row';
 
 const NOW = Date.parse('2026-11-17T12:00:00Z');

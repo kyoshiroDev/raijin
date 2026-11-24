@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { TokenLink } from '../token-display';
+import type { TokenLink } from '@raijin/bench-web-logic/opportunities';
 import { Icon } from '../../../shared/ui/icon';
 
 /** External links: hrefs come only from tokenLinks() (validated addresses / safeExternalUrl). */

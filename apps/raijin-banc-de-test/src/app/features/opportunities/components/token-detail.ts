@@ -1,12 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { TokenRow } from '../../../shared/models/token';
+import { type TokenRow, formatUpdatedAgo, DEFAULT_STAKE_SOL } from '@raijin/bench-web-logic';
 import { CopyAddress } from '../../../shared/ui/copy-address';
 import { UpdatedAgo } from '../../../shared/ui/updated-ago';
-import { formatUpdatedAgo } from '../../../shared/utils/format';
-import { DEFAULT_STAKE_SOL } from '../../../shared/utils/stake';
 import { PaperTradeLauncher } from '../../paper-trade/paper-trade-launcher';
-import { liquidityLabel, liquiditySummary } from '../liquidity-sources';
-import { marketStats, narrativeLabel, securityStats, tokenLinks } from '../token-display';
+import { liquidityLabel, liquiditySummary, marketStats, narrativeLabel, securityStats, tokenLinks } from '@raijin/bench-web-logic/opportunities';
 import { ConfidenceBadge } from './confidence-badge';
 import { FlagList } from './flag-list';
 import { LiquidityInfo } from './liquidity-info';

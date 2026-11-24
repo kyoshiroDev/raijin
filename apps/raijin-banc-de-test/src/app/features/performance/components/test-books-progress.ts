@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import type { BookProgress } from '../book-comparison';
+import type { BookProgress } from '@raijin/bench-web-logic/performance';
 
 /** Progress of each test book towards its trade target (accessible progress bars). */
 @Component({

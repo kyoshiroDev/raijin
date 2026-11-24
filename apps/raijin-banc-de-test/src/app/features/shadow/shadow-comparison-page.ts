@@ -2,19 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, type OnInit } fro
 import { RouterLink } from '@angular/router';
 import { SHADOW_ACCEPTANCE, SHADOW_TABLES, type ShadowTable, type ShadowTableStatus } from '@raijin/bench-contracts';
 import { PageHeader } from '../../shared/ui/page-header';
-import {
-  ACCEPTANCE_LABEL,
-  SHADOW_TABLE_LABEL,
-  SHADOW_WINDOWS,
-  TABLE_STATUS_LABEL,
-  dayLevel,
-  formatDay,
-  formatDiff,
-  formatRows,
-  toleranceLabel,
-  type DiffLevel,
-  type ShadowWindow,
-} from './shadow-comparison';
+import { ACCEPTANCE_LABEL, SHADOW_TABLE_LABEL, SHADOW_WINDOWS, TABLE_STATUS_LABEL, dayLevel, formatDay, formatDiff, formatRows, toleranceLabel, type DiffLevel, type ShadowWindow } from '@raijin/bench-web-logic/shadow';
 import { SHADOW_MSG, ShadowComparisonStore } from './shadow-comparison-store';
 
 const SNAPSHOT_AT = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Paris' });

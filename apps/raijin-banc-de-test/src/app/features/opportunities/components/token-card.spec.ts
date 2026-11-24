@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { parseTokenRow, type TokenRow } from '../../../shared/models/token';
+import { parseTokenRow, type TokenRow } from '@raijin/bench-web-logic';
 import { TokenCard } from './token-card';
 
 function token(over: Record<string, unknown> = {}): TokenRow {

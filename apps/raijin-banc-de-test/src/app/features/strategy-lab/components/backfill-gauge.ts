@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { backfillSummaryText, categoryText, donePercent, type BackfillProgress } from '../backfill';
+import { backfillSummaryText, categoryText, donePercent, type BackfillProgress } from '@raijin/bench-web-logic/strategy-lab';
 import type { BackfillState } from '../strategy-lab-store';
 
 /**

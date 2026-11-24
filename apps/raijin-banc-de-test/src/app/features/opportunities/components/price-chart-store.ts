@@ -1,22 +1,8 @@
 import { Injectable, computed, inject, resource, signal } from '@angular/core';
 import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { BenchApi, itemsOf } from '../../../core/api/bench-api';
-import { parsePaperPositions } from '../../../shared/models/paper';
-import { isSolanaAddress } from '../../../shared/utils/solana-address';
-import {
-  CHART_RANGES,
-  DEFAULT_CHART_RANGE,
-  RANGE_MS,
-  chartSeries,
-  paperMarkers,
-  parseAlertMarkers,
-  parseSnapshots,
-  visibleMarkers,
-  withLivePoint,
-  type ChartMarker,
-  type ChartRange,
-  type PricePoint,
-} from './price-chart-data';
+import { parsePaperPositions, isSolanaAddress } from '@raijin/bench-web-logic';
+import { CHART_RANGES, DEFAULT_CHART_RANGE, RANGE_MS, chartSeries, paperMarkers, parseAlertMarkers, parseSnapshots, visibleMarkers, withLivePoint, type ChartMarker, type ChartRange, type PricePoint } from '@raijin/bench-web-logic/opportunities';
 
 /** Markers read at most per source (own alerts / own paper positions on one mint). */
 export const MARKER_LIMIT = 50;

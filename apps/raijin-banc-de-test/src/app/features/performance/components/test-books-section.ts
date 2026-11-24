@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { MIN_SAMPLE_FOR_RATE } from '../performance-stats';
-import type { BookComparisonView } from '../book-comparison';
+import { MIN_SAMPLE_FOR_RATE, type BookComparisonView } from '@raijin/bench-web-logic/performance';
 import type { BookCompareState } from '../performance-store';
 import { TestBooksProgress } from './test-books-progress';
 import { TestBooksTable } from './test-books-table';
