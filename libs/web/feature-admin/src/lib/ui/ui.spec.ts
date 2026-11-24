@@ -34,7 +34,7 @@ describe('format', () => {
     expect(formatMetric(412_350, 'cents')).toMatch(/^4\s123,50\s€$/);
     expect(formatMetric(0.184, 'ratio')).toMatch(/^18,4\s%$/);
     expect(formatMetric(1520, 'ms')).toBe('1,5 s');
-    expect(formatMetric(75, 'seconds')).toBe('1 min 15 s');
+    expect(formatMetric(75, 'seconds')).toBe('1\u00a0min 15\u00a0s');
     expect(formatMetric(null, 'count')).toBe('—');
   });
 
@@ -191,6 +191,27 @@ describe('rj-kpi-card', () => {
     expect(change?.querySelector('rj-icon svg')).not.toBeNull();
     expect(change?.textContent).toMatch(/\+29,2\s%/);
     expect(change?.textContent).toContain('en hausse de 29,2');
+  });
+
+  it('valeur longue (durée, montant) rendue en entier, sans troncature ni survol', async () => {
+    TestBed.resetTestingModule();
+    const fixture = TestBed.createComponent(RjKpiCard);
+    fixture.componentRef.setInput('label', 'Engagement moyen');
+    fixture.componentRef.setInput('unit', 'seconds');
+    fixture.componentRef.setInput('value', 82);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const value = (fixture.nativeElement as HTMLElement).querySelector('[data-kpi-value]');
+    expect(value?.textContent?.trim()).toBe('1\u00a0min 22\u00a0s');
+    expect(value?.classList.contains('truncate')).toBe(false);
+    expect(value?.className).not.toMatch(/\b(truncate|line-clamp|text-ellipsis|whitespace-nowrap)\b/);
+    expect(value?.classList.contains('wrap-break-word')).toBe(true);
+    expect(value?.hasAttribute('title')).toBe(false);
+
+    fixture.componentRef.setInput('unit', 'cents');
+    fixture.componentRef.setInput('value', 123_456_789);
+    fixture.detectChanges();
+    expect(value?.textContent?.trim()).toMatch(/^1,2\s?M\s?€$/);
   });
 
   it('hausse d’un indicateur positif en vert', async () => {

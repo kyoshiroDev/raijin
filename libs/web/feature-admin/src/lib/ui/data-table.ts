@@ -154,7 +154,7 @@ interface Row {
                 @if (cell.mobile && cell.key !== row.primary.key) {
                   <div class="flex min-w-0 flex-col">
                     <dt class="text-label text-ink-muted">{{ cell.label }}</dt>
-                    <dd class="truncate text-body-sm text-ink" [class.tabular]="cell.mono" [attr.title]="cell.title">{{ cell.text }}</dd>
+                    <dd class="text-body-sm text-ink" [class.truncate]="!cell.mono" [class.tabular]="cell.mono" [class.wrap-break-word]="cell.mono" [attr.title]="cell.title">{{ cell.text }}</dd>
                   </div>
                 }
               }

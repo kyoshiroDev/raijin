@@ -72,15 +72,20 @@ export function formatMetric(value: number | null | undefined, unit: MetricUnit,
   }
 }
 
+/**
+ * Durée lisible : « 45 s », « 1 min 22 s », « 2 h 5 min ». Espace insécable entre nombre et unité : à l'étroit,
+ * la valeur passe à la ligne entre les groupes (« 1 min » / « 22 s »), jamais entre « 22 » et « s ».
+ */
 function formatDuration(seconds: number): string {
+  const nb = '\u00a0';
   const total = Math.round(seconds);
-  if (total < 60) return `${total} s`;
+  if (total < 60) return `${total}${nb}s`;
   const minutes = Math.floor(total / 60);
   const rest = total % 60;
-  if (minutes < 60) return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+  if (minutes < 60) return rest ? `${minutes}${nb}min ${rest}${nb}s` : `${minutes}${nb}min`;
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
-  return restMinutes ? `${hours} h ${restMinutes} min` : `${hours} h`;
+  return restMinutes ? `${hours}${nb}h ${restMinutes}${nb}min` : `${hours}${nb}h`;
 }
 
 function formatBytes(bytes: number): string {

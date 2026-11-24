@@ -25,6 +25,8 @@ const TONE_CLASSES = {
  * Usage : `<rj-kpi-card [kpi]="kpi" />` (contrat `AdminKpi`) ou champ par champ :
  * `<rj-kpi-card label="MRR" unit="cents" [value]="1234500" [change]="0.12" />`.
  * Hauteur égale dans une grille (`rj-kpi-grid`) : libellé sur 2 lignes réservées.
+ * Le chiffre n'est jamais tronqué : une valeur longue (« 1 min 22 s », « 12,3 k€ ») passe sur deux lignes, coupée
+ * entre ses groupes (espaces insécables entre nombre et unité, voir `formatDuration`).
  */
 @Component({
   selector: 'rj-kpi-card',
@@ -32,7 +34,7 @@ const TONE_CLASSES = {
   template: `
     <p class="line-clamp-2 min-h-10 text-body-sm text-ink-muted" [attr.title]="resolvedLabel()">{{ resolvedLabel() }}</p>
     @if (resolvedStatus() === 'ok') {
-      <p class="tabular truncate text-h3 font-semibold text-ink xs:text-h2 md:text-metric" [attr.title]="formatted()">{{ formatted() }}</p>
+      <p class="tabular text-h3 font-semibold text-balance wrap-break-word text-ink xs:text-h2 md:text-metric" data-kpi-value>{{ formatted() }}</p>
       <p class="mt-auto flex min-h-5 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-label">
         @if (variation(); as v) {
           <span [class]="'inline-flex items-center gap-1 font-semibold ' + v.toneClass">
