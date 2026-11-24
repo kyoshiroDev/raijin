@@ -55,11 +55,3 @@ export function runAfterRenderWhenIdle(task: () => void): void {
   const view = inject(DOCUMENT).defaultView;
   afterNextRender(() => runWhenIdle(task, view));
 }
-
-/**
- * Rend la main au navigateur (nouvelle tâche) : sépare le premier rendu de l'app et celui du verdict, pour
- * qu'aucun des deux ne forme une tâche longue (TBT, docs/ARCHITECTURE.md §10.6).
- */
-export function nextTask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}

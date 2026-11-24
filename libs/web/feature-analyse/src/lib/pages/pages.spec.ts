@@ -121,8 +121,6 @@ describe('AnalysePage', () => {
     const { harness, ctrl } = await open(`/analyse/${FAKE_MINTS.danger}`);
     ctrl.expectOne(`${API}/analyses`).flush(fakeAnalysisResponse('danger'));
     await settle();
-    // Verdict rendu dans une tâche à part du démarrage (`nextTask`, AnalysisStore).
-    await settle();
     await harness.fixture.whenStable();
     expect(query(harness, '[data-verdict-block]')?.textContent).toContain('Danger');
     expect(query<HTMLInputElement>(harness, 'input[name="token"]')?.value).toBe(FAKE_MINTS.danger);
@@ -169,8 +167,6 @@ describe('PublicTokenPage', () => {
     await harness.navigateByUrl(`/t/${FAKE_MINTS.warn}`);
     expect(query(harness, 'rj-analysis-loading')).not.toBeNull();
     ctrl.expectOne(`${API}/analyses/${FAKE_MINTS.warn}/latest`).flush(fakeAnalysis('warn'));
-    await settle();
-    // Verdict rendu dans une tâche à part du démarrage (`nextTask`, AnalysisStore).
     await settle();
     await harness.fixture.whenStable();
     expect(query(harness, '[data-verdict-block]')?.textContent).toContain('Prudence');
