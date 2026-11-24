@@ -122,6 +122,16 @@ export type AdminUserActionRequest = z.infer<typeof adminUserActionRequestSchema
 /** Lien vers le client dans le dashboard Stripe (construit par l'API, hôte exact, mode test ou réel). */
 export const STRIPE_DASHBOARD_CUSTOMER_URL = /^https:\/\/dashboard\.stripe\.com\/(test\/)?customers\/cus_[A-Za-z0-9]{1,64}$/;
 
+/**
+ * Lien du dashboard Stripe d'un client selon le **mode de facturation** (clé `sk_live_` → réel, sinon `/test/`), et
+ * non selon `NODE_ENV` ; `null` sans client Stripe.
+ */
+export function stripeDashboardCustomerUrl(customerId: string | null, livemode: boolean): string | null {
+  if (customerId === null) return null;
+  const url = `https://dashboard.stripe.com/${livemode ? '' : 'test/'}customers/${customerId}`;
+  return STRIPE_DASHBOARD_CUSTOMER_URL.test(url) ? url : null;
+}
+
 export const ADMIN_USER_AUDIT_MAX = 20;
 
 export const adminUserDetailSchema = adminUserSummarySchema.extend({

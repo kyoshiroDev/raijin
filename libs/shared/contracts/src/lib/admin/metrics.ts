@@ -43,7 +43,10 @@ export const DAILY_METRICS = {
   analyses_total: { unit: 'count', aggregation: 'sum' },
   /** Analyses sans compte : étape « analyse démo » de l'entonnoir tant que GA4 n'est pas connecté. */
   analyses_anonymous: { unit: 'count', aggregation: 'sum' },
+  /** Analyses en échec complet (aucun résultat rendu : erreur, échéance, source principale indisponible). */
   analyses_failed: { unit: 'count', aggregation: 'sum' },
+  /** Analyses rendues avec un résultat partiel (au moins un contrôle « indisponible »), distinctes des échecs. */
+  analyses_partial: { unit: 'count', aggregation: 'sum' },
   verdict_safe: { unit: 'count', aggregation: 'sum' },
   verdict_warn: { unit: 'count', aggregation: 'sum' },
   verdict_danger: { unit: 'count', aggregation: 'sum' },

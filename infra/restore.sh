@@ -154,6 +154,8 @@ rollback() {
   # Le retour arrière lui-même ne doit pas être interrompu (Ctrl+C répété, arrêt du terminal).
   trap - ERR
   trap '' INT TERM HUP
+  # Tests seulement (cas m2) : 2e interruption pendant le retour arrière, ignorée par le piège ci-dessus.
+  if [[ "${RAIJIN_TEST_FAULT:-}" == "after_rename:twice" ]]; then kill -INT "$$"; fi
   warn "échec ou interruption : remise en place de la base d'origine."
   if [[ "$renamed" == 1 ]]; then
     # Ne supprimer la base neuve que si l'originale est bien là, sous son nom de secours.
@@ -192,6 +194,8 @@ if pg_db_exists "$target"; then
   fi
   renaming=1
   pg_sql -d postgres -c "ALTER DATABASE $target RENAME TO $previous;"
+  # Tests seulement (cas m1) : interruption simulée entre le RENAME et « renamed=1 ».
+  if [[ "${RAIJIN_TEST_FAULT:-}" == after_rename* ]]; then kill -INT "$$"; fi
   renamed=1
   log "base actuelle renommée en $previous."
 else

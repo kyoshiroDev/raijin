@@ -5,6 +5,7 @@ import {
   FUNNEL_STEPS,
   adminOverviewSchema,
   computeChange,
+  funnelStepRate,
   type AdminKpi,
   type AdminKpiKey,
   type AdminOverview,
@@ -61,8 +62,7 @@ export function churnRate(range: DateRange, reader: MetricsReader, grid: MetricG
 
 /** Taux d'une étape de l'entonnoir : part de l'étape précédente (borné à 1), `null` si une valeur manque. */
 export function stepRate(value: number | null, previous: number | null): number | null {
-  if (value === null || previous === null || previous === 0) return null;
-  return Math.min(1, value / previous);
+  return funnelStepRate(value, previous).rateFromPrevious;
 }
 
 function googleStatus(state: GoogleServiceState): MetricStatus {
@@ -150,9 +150,9 @@ export class OverviewService {
       const step = values[key];
       const value = step.value === null ? null : Math.round(step.value);
       const status: MetricStatus = value === null && step.status === 'ok' ? 'unavailable' : step.status;
-      const rate = index === 0 ? null : stepRate(value, previous);
+      const rate = index === 0 ? { rateFromPrevious: null, exceedsPrevious: false } : funnelStepRate(value, previous);
       previous = value;
-      return { key, value, rateFromPrevious: rate, source: step.source, status };
+      return { key, value, ...rate, source: step.source, status };
     });
   }
 }

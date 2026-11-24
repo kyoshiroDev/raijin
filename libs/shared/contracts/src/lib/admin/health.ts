@@ -23,7 +23,10 @@ export const adminJobHealthSchema = z.object({
   consecutiveFailures: countSchema,
   /** Code d'erreur seulement (jamais de message ni de stack). */
   lastErrorCode: z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/).nullable(),
-  /** Prochaine exécution planifiée (BullMQ) ; `null` si inconnue ou jobs désactivés. */
+  /**
+   * Prochaine exécution planifiée (BullMQ, planificateur du job) ; `null` si inconnue, jobs désactivés (`JOBS_ENABLED`)
+   * ou job déclenché à la demande : l'écran affiche « — » avec l'explication.
+   */
   nextRunAt: z.iso.datetime().nullable(),
 });
 export type AdminJobHealth = z.infer<typeof adminJobHealthSchema>;
@@ -114,6 +117,11 @@ export const adminHealthSchema = z.object({
     requests: countSchema,
     serverErrors: countSchema,
     errorRate: ratioSchema.nullable(),
+    /**
+     * `true` si `requests` / `serverErrors` sont reconstitués (part au prorata du jour UTC précédent) et non comptés sur
+     * une fenêtre glissante exacte : l'écran affiche alors « estimé » à côté du taux.
+     */
+    estimated: z.boolean().default(true),
   }),
   emails: z.object({ provider: z.enum(['smtp', 'resend']), sent24h: countSchema, failed24h: countSchema }),
   push: z.object({ provider: z.enum(['webpush', 'fake', 'unavailable']), activeSubscriptions: countSchema }),

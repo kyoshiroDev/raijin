@@ -328,6 +328,11 @@
 
 - [x] T5 landing (seo-astro) : relecture conforme (aucune promesse de gain, tutoiement, mention « pas un conseil en investissement », Rai et reduced-motion) ; démonstration avant clic avec squelettes à l'emplacement des valeurs masquées ; `text-wrap: balance/pretty` (plus de mots orphelins). CSS seul, 127 tests verts. Lighthouse à remesurer sur GitHub (T11).
 
+- [x] T0 contrats (architect) : charge push admin (`adminPushNotificationPayloadSchema`, clic limité à /admin), champs admin pour T8 (`api.estimated`, `exceedsPrevious`, `funnelStepRate`, `analyses_partial`, `stripeDashboardCustomerUrl`).
+- [x] T1 audit du bundle (architect, ARCHITECTURE §10.6) : 471,3 kB brut / 123,7 kB transférés, dont 289 kB de framework (61 %) ; 420 kB inatteignable sans toucher au framework ; gains G1–G8 (≈ −30 à −39 kB pour G1–G6). **Décision de l'orchestrateur** : budget 440 kB (avertissement) / 480 kB (erreur) ; le critère de T3 qui fait foi est Lighthouse ≥ 95 mesuré sur le runner (PROMPT.md), pas le poids brut.
+- [x] T2 outillage (architect) : cibles `prune*` retirées (api, banc) ; test des interruptions m1/m2 de restore.sh ajouté ; docs/SECURITY.md (3 alertes modérées d'outillage justifiées, `pnpm audit --prod` : 0). Reste : la liste des menaces de PROMPT.md §8 dans SECURITY.md.
+- [x] T7 facturation (stripe-billing, `e13bd33`) : n1 clé d'idempotence du client liée à l'état du compte ; n2 sessions Checkout ouvertes expirées avant la fermeture du compte ; e-mails de facturation déjà en file depuis `e0029cc` (ARCHITECTURE §13.5).
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.

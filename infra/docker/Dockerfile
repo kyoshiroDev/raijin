@@ -51,8 +51,8 @@ ENV NODE_OPTIONS=--max-old-space-size=2048
 
 FROM source AS build-api
 # api:build (webpack, generatePackageJson) écrit dist/apps/api/package.json avec TOUTES les dépendances externes
-# des bundles (libs internes comprises) + pnpm-lock.yaml élagué. NE PAS utiliser api:prune : sa cible
-# prune-lockfile remplace ce package.json par apps/api/package.json (7 dépendances : « Cannot find module 'zod' »).
+# des bundles (libs internes comprises) + pnpm-lock.yaml élagué. Les cibles Nx prune / prune-lockfile ont été retirées
+# (phase 9) : elles remplaçaient ce package.json par apps/api/package.json (7 dépendances : « Cannot find module 'zod' »).
 RUN pnpm nx run api:build --parallel=1 --outputStyle=static
 
 FROM source AS build-web
@@ -70,8 +70,7 @@ FROM source AS build-bench-web
 RUN pnpm nx run raijin-banc-de-test:build:production --parallel=1 --outputStyle=static
 
 FROM source AS build-bench-api
-# Comme api : webpack + generatePackageJson (package.json et pnpm-lock.yaml élagués dans dist) ; NE PAS utiliser
-# la cible prune (même raison que pour api).
+# Comme api : webpack + generatePackageJson (package.json et pnpm-lock.yaml élagués dans dist) ; pas de cible prune.
 RUN pnpm nx run raijin-banc-de-test-api:build --parallel=1 --outputStyle=static
 
 # ---------------------------------------------------------------------------------------------------

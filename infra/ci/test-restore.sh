@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2012
 # (ok/ko ne peuvent pas échouer : « A && ok || ko » est sûr ici ; noms de dumps maîtrisés, horodatés.)
-# Test de infra/backup.sh et infra/restore.sh sur un conteneur Postgres JETABLE « raijin-restore-test », créé
-# puis supprimé par ce script (--rm). Ne touche à aucun autre conteneur. Lancé par le job CI « images » ; en local :
+# Test de infra/backup.sh et infra/restore.sh sur un conteneur Postgres JETABLE « raijin-restore-test-<unique> »,
+# créé puis supprimé par ce script (--rm). Ne touche à aucun autre conteneur. Lancé par le job CI « images » ; en local :
 #   infra/ci/test-restore.sh            (Docker requis ; dossier de travail sous tmp/ du dépôt, ignoré par Git)
 # Scénarios : init (rôles non superutilisateurs, CONNECT croisé refusé, idempotence), sauvegarde, --check,
 # --into réussi, --into refusé si une session est ouverte (--no-service), renommage refusé → base d'origine intacte,
-# restauration en échec → retour automatique.
+# restauration en échec → retour automatique, interruption entre le RENAME et « renamed=1 » (m1) avec ou sans
+# 2e interruption pendant le retour arrière (m2).
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 ROOT="$PWD"
-C=raijin-restore-test
+# Nom unique par lancement (deux exécutions simultanées ne se gênent pas ; jamais le nom d'un conteneur existant).
+C="raijin-restore-test-$$-$(openssl rand -hex 4)"
 IMAGE='postgres:17.12-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73'
-WORK="$ROOT/tmp/restore-test"
+WORK="$ROOT/tmp/${C}"
 failures=0
 
 ok() { printf '  ok   %s\n' "$*"; }
@@ -21,7 +23,7 @@ psql_su() { docker exec -i "$C" psql -X -q -t -A -U postgres "$@"; }
 users_in_raijin() { psql_su -d raijin -c 'SELECT count(*) FROM rt_users;' 2>/dev/null || echo "?"; }
 cleanup() {
   docker exec -u postgres "$C" pg_ctl stop -m fast -D /var/lib/postgresql/data >/dev/null 2>&1 || true
-  # Filet : le conteneur de CE test seulement (nom fixe, vérifié absent au démarrage).
+  # Filet : le conteneur de CE test seulement (nom unique, vérifié absent au démarrage).
   docker rm -f "$C" >/dev/null 2>&1 || true
   [[ -d "$WORK" ]] && find "$WORK" -mindepth 1 -delete && rmdir "$WORK"
 }
@@ -83,6 +85,14 @@ echo "== --into : erreur passagère de pg_db_exists"
 if RAIJIN_TEST_FAULT=db_exists:raijin RAIJIN_RESTORE_STAMP=fauteb infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null 2>&1; then ko "restauration acceptée malgré l'erreur"; else ok "arrêt avant toute modification"; fi
 [[ "$(users_in_raijin)" == 10 ]] && ok "base d'origine intacte (pas lue comme absente)" || ko "base d'origine perdue : $(users_in_raijin)"
 [[ "$(psql_su -d postgres -c "SELECT count(*) FROM pg_database WHERE datname = 'raijin_avant_restauration_fauteb';")" == 0 ]] && ok "aucun renommage" || ko "renommage effectué"
+
+for fault in after_rename after_rename:twice; do
+  echo "== --into : interruption entre le RENAME et renamed=1 ($fault)"
+  stamp="m1${fault#after_rename}"; stamp="${stamp//:/_}"
+  if RAIJIN_TEST_FAULT="$fault" RAIJIN_RESTORE_STAMP="$stamp" infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null 2>&1; then ko "restauration poursuivie malgré l'interruption"; else ok "interruption → retour arrière"; fi
+  [[ "$(users_in_raijin)" == 10 ]] && ok "base d'origine remise sous son nom (10 lignes)" || ko "base d'origine perdue : $(users_in_raijin)"
+  [[ "$(psql_su -d postgres -c "SELECT count(*) FROM pg_database WHERE datname = 'raijin_avant_restauration_$stamp';")" == 0 ]] && ok "aucune base de secours orpheline" || ko "base de secours restante"
+done
 
 echo "== --into réussi"
 RAIJIN_RESTORE_STAMP=ok infra/restore.sh --into raijin --yes --no-service "$dump" >/dev/null && ok "restore --into" || ko "restore --into"

@@ -92,3 +92,45 @@ export const pushNotificationPayloadSchema = z.object({
   }),
 });
 export type PushNotificationPayload = z.infer<typeof pushNotificationPayloadSchema>;
+
+/**
+ * Variante admin de la charge utile (phase 6 bis, docs/ARCHITECTURE.md §14.7) : même enveloppe pour le service worker
+ * Angular, mais sans mint ni identifiant d'alerte de token. `tag` fixe par nature d'avis (les avis d'une même nature se
+ * remplacent) et clic limité à l'espace admin (`/admin` ou `/admin/...`). Envoyée uniquement aux comptes ADMIN.
+ */
+export const ADMIN_PUSH_TAGS = ['admin-alert', 'admin-notice'] as const;
+export const adminPushTagSchema = z.enum(ADMIN_PUSH_TAGS);
+export type AdminPushTag = z.infer<typeof adminPushTagSchema>;
+
+/** Chemin relatif de l'espace admin (aucune autre page ouverte au clic d'un avis admin). */
+export const adminPushUrlSchema = relativePathSchema.refine((value) => value === '/admin' || value.startsWith('/admin/'), {
+  message: 'Chemin admin attendu.',
+});
+
+export const adminPushNotificationPayloadSchema = z.object({
+  notification: z.object({
+    title: z.string().min(1).max(80),
+    body: z.string().min(1).max(240),
+    icon: relativePathSchema,
+    badge: relativePathSchema,
+    tag: adminPushTagSchema,
+    renotify: z.boolean(),
+    lang: z.literal('fr'),
+    timestamp: z.number().int().nonnegative(),
+    data: z
+      .object({
+        onActionClick: z.object({
+          default: z.object({ operation: z.literal('navigateLastFocusedOrOpen'), url: adminPushUrlSchema }),
+        }),
+      })
+      .strict(),
+  }),
+});
+export type AdminPushNotificationPayload = z.infer<typeof adminPushNotificationPayloadSchema>;
+
+/**
+ * Toute charge utile envoyée par l'API (alerte de token ou avis admin) : type attendu par l'expéditeur push
+ * (`PushSender.send`), ce qui supprime les conversions `as unknown as PushNotificationPayload`.
+ */
+export const outgoingPushPayloadSchema = z.union([pushNotificationPayloadSchema, adminPushNotificationPayloadSchema]);
+export type OutgoingPushPayload = z.infer<typeof outgoingPushPayloadSchema>;

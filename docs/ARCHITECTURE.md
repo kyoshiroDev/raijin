@@ -98,9 +98,12 @@ Note : les modules Nest de `libs/api/*` sont taggés `type:feature` (ils jouent 
 ### Exceptions assumées du banc (`raijin-banc-de-test`)
 
 Code d'origine importé tel quel pour ne pas modifier le comportement des calculs avant la mesure :
-- `noUncheckedIndexedAccess: false` dans le **seul** `apps/raijin-banc-de-test/tsconfig.json`
-  (289 erreurs d'indexation dans le code d'origine, qui ne l'activait pas) ; les autres options
-  strictes restent actives, `strictTemplates` compris. Correction prévue au portage (8 bis).
+- ~~`noUncheckedIndexedAccess: false`~~ : **levée en phase 9** (T9 e). Les 193 erreurs restantes
+  (71 dans le code, 122 dans les tests) sont corrigées par 193 assertions non nulles `!` seulement
+  (effacées à la compilation : aucun changement de calcul, diff vérifié caractère par caractère, 766
+  tests d'origine verts sans modifier une assertion) ; le banc hérite désormais de
+  `tsconfig.base.json` comme le reste du dépôt. Ces `!` marquent les accès que le code d'origine
+  supposait toujours définis : un vrai garde (changement de comportement) ne s'ajoute qu'avec un test.
 - **Thème d'origine conservé** (`apps/raijin-banc-de-test/src/styles.css`, Tailwind 4 limité à
   ses propres sources par `source(".")`, police Inter auto-hébergée, CSP `font-src 'self'`) : il
   n'importe pas `libs/brand/tokens.css`. Seule contrainte vérifiée : sa couleur `warn` (badge
@@ -758,6 +761,85 @@ Si le runner lui-même affiche un `benchmarkIndex` < 1000, le noter dans `PROGRE
 est < 95, appliquer l'option 1 puis l'option 2 (coquille desktop et inventaire du chunk en premier), avec une mesure runner
 après chacune ; `zod/mini` seulement en dernier recours ; l'hydratation reste écartée.
 
+### 10.6 Audit du bundle initial (phase 9, T1, 2026-11-24)
+Mesure : `pnpm nx run web:build:production --stats-json` (metafile esbuild `dist/apps/web/browser-stats.json`),
+arbre de travail du 2026-11-24. Le budget Angular `initial` compte **JS + CSS initiaux**. Tailles « brut » =
+fichiers émis (minifiés, non compressés) ; la part de chaque module est le `bytesInOutput` du metafile ramené à
+la taille finale de son chunk (coefficient 0,78 à 0,86, second passage d'optimisation).
+
+**Total : 471,3 kB brut / 123,7 kB transférés** (avertissement 400 kB, erreur 500 kB) : JS 405,1 kB, CSS 66,2 kB.
+
+| Chunk initial | Brut | Contenu |
+|---|---:|---|
+| `chunk-B0ZDm8dy` | 169,1 kB | `@angular/core` (≈ 140 kB), `rxjs` ≈ 20 kB, `tslib`, `common/platform_location` |
+| `main` | 103,2 kB | `web-ui` 39 kB, `feature-analyse` 36 kB, `web-data-access` 22 kB, `shared-util` 3,8 kB, `apps/web` 3,3 kB |
+| `chunk-BwgTypt5` | 94,8 kB | `@angular/router` ≈ 80 kB, `platform-browser` (renderer DOM) ≈ 14 kB |
+| `styles` | 66,2 kB | utilitaires Tailwind 51,3 kB (dont variantes `md`/`lg`/`sm` 8,7 kB), base + preflight 10,2 kB, `@property` 4,1 kB, `@font-face` 2,2 kB |
+| `chunk-DY8KIUve` | 19,9 kB | `@angular/common/http` (`HttpClient`, `withFetch`, intercepteurs) |
+| `chunk-l5n4wdVk` | 11,8 kB | registre d'icônes `RjIcons` : **41 icônes Lucide**, toutes dans le bundle initial |
+| `chunk-CXeNBmOZ` + 2 petits | 6,3 kB | `common/location`, `api-config`, `contracts` (chargeur paresseux) |
+
+Modules ≥ 5 kB (ou groupes) du bundle initial, propriétaire et décision :
+
+| Module | Brut | Propriétaire | Décision |
+|---|---:|---|---|
+| `@angular/core` | ≈ 140 kB | framework | Garder (zoneless déjà en place, pas d'animations, pas de `zone.js`). |
+| `@angular/router` | ≈ 80 kB | framework | Garder. `withComponentInputBinding` : gain ≈ 1–2 kB seulement, **non prioritaire**. |
+| CSS Tailwind global | 66,2 kB | ui-mobile-first | Retirer de `@source` la page `/_design` (dev seulement) et la feature admin (feuille propre, chargée avec la coque admin) : **G5**. |
+| `@angular/common/http` | 19,9 kB | framework | Garder : le `POST analyses` anticipé de `/analyse/<mint>` en a besoin au démarrage. Un client `fetch` maison est écarté (CSRF, refresh, maintenance à réécrire, risque fort). |
+| `rxjs` | ≈ 20 kB | framework | Garder (requis par router et `HttpClient`). |
+| `feature-analyse/analysis` | 21,9 kB | ui-mobile-first | `analysis-result` (10 kB), `shield-scan`, `analysis-loading` : chemin du LCP de `/analyse/<mint>`, **gardés**. `check-help` (4,4 kB) + `RjBottomSheet` (5,2 kB, aussi utilisé par `follow-button`) : `@defer (on interaction)` à l'ouverture : **G4**. |
+| `feature-analyse/pages` | 13,6 kB | ui-mobile-first | Garder (`/analyse`, `/t` restent initiales, §10.2 point 2 : sortir `/t` recréerait la cascade du LCP). |
+| icônes (`lucide` + `icons.ts`) | 11,8 kB | ui-mobile-first | Registre scindé : icônes de la coquille, de `/analyse` et de `/t` dans `web-ui` ; les autres enregistrées par chaque feature à la demande : **G2**. |
+| `web-ui/navigation` | 11,6 kB | ui-mobile-first | `RjSidebar` (4,5 kB) déjà non rendue < 1024 px mais présente dans le JS : `@defer (when desktop())` avec la largeur réservée (CLS 0) : **G3**. |
+| `web-ui/input-field` | 7,0 kB | ui-mobile-first | Garder (formulaire LCP de `/analyse`). |
+| `data-access/auth` | 6,4 kB | ui-mobile-first | Garder (CSRF et session des intercepteurs). Report éventuel en chunk paresseux = **G8** (dernier recours). |
+| `data-access/admin` | 5,4 kB | ui-mobile-first (+ admin-analytics) | **Hors du bundle initial** : `adminSessionInterceptor` ne fait rien hors `admin/*` et charge `AdminSessionStore` par import dynamique sur une requête `admin/*` ; garde `adminAreaGuard` inchangée (aucun chunk admin pour un non-admin) : **G1**. |
+| `data-access/analysis` | 5,1 kB | ui-mobile-first | Garder (store et POST anticipé). |
+| `toast`, `unread-alerts`, `attribution` | 6,2 kB | ui-mobile-first | `RjToastHost` créé au premier toast, compteur d'alertes non lues et validation de l'attribution chargés après le premier rendu (`runAfterFirstRoute`) : **G6**. |
+
+Ce qui s'exécute avant le premier rendu (`apps/web/src/app/app.config.ts`) : `provideRouter` (+ input binding),
+`provideHttpClient(withFetch(), 5 intercepteurs)`, `provideAppInitializer` de l'auth (relevé synchrone de l'URL
+d'attribution seulement), `provideStartupPrefetch` (CSRF + `POST analyses` sur `/analyse/<mint>` seulement),
+rendu de `RjAppShell` (barre d'onglets < 1024 px). Déjà différés : session, validation de l'attribution, quota,
+contrats Zod (aucun chunk Zod dans `initial`, vérifié), service worker (après stabilisation, 30 s au plus),
+`SwPush` (écran Compte), Chart.js et toute la feature admin, billing / bandeau d'essai (features à la demande),
+formateurs `Intl` (au premier usage). Vérifié dans le metafile : ni `@angular/forms`, ni Zod, ni
+`@angular/service-worker`, ni Chart.js dans `initial` (seul le petit enregistreur `service-worker.ts` y est).
+
+**Écart 430 → 471 kB** (pas de rebuild des anciens commits : attribution par croissance des sources des modules
+initiaux entre les commits de fin de phase, et inventaire) : code des libs web +11,6 kB (phase 4 +3,5 :
+alertes non lues, `follow-button` ; phase 6 +0,6 ; phase 6 bis +7,0 : session admin, intercepteur, garde ;
+après 6 bis +0,5) ; icônes 34 → 41 (+≈ 2 kB, phases 4–6 bis) ; CSS : utilitaires des nouvelles features
+(compte, wallet, suivis, admin) ≈ +5 à 8 kB ; le reste (≈ 20 kB, non mesuré module par module) est attribué au framework :
+montées mineures d'Angular 22.x et API nouvellement utilisées (`resource`, `effect` présents dans le chunk core).
+
+**Gains classés (estimation brute, coût, risque)** — à appliquer dans cet ordre par ui-mobile-first (T3), un
+build de prod après chacun :
+
+| # | Gain | Estimation | Coût | Risque / garde-fou |
+|---|---|---:|---|---|
+| G1 | Admin hors initial (intercepteur à import dynamique) | −4,5 à −5 kB | faible | Test : requête non `admin/*` sans chunk admin ; 403 de session admin toujours géré. |
+| G2 | Registre d'icônes scindé | −5 à −6 kB | moyen | Type `RjIconName` conservé ; icône inconnue = rien rendu (test). |
+| G3 | `RjSidebar` en `@defer (when desktop())` | −4,5 à −6 kB | faible | CLS 0 à 1024/1440 (largeur réservée) ; e2e responsive. **Allège aussi le premier rendu mobile** (TBT). |
+| G4 | Aide des contrôles + `RjBottomSheet` en `@defer (on interaction)` | −8 à −9 kB | faible à moyen | Focus et `aria` de l'ouverture conservés ; placeholder de même taille. |
+| G5 | CSS : `@source not` de `/_design` et de `feature-admin` (+ feuille admin propre) | −4 à −8 kB | moyen | Captures admin identiques ; aucune classe manquante (test e2e admin). |
+| G6 | Toast, alertes non lues, attribution après le premier rendu | −3 à −5 kB | faible | Gardes `whenReady` inchangées ; badge affiché après idle. |
+| G7 | `withComponentInputBinding` retiré | −1 à −2 kB | moyen | Lecture explicite des paramètres sur toutes les routes. |
+| G8 | Auth (store, API, refresh) en chunk paresseux | −4 à −5 kB | élevé | Seulement si > 420 kB après G1–G7 : CSRF du POST anticipé à préserver. |
+
+G1 → G6 : **≈ −30 à −39 kB → 432 à 441 kB**. G7 + G8 : −5 à −7 kB de plus → **≈ 425 à 436 kB**. Conclusion :
+**420 kB n'est pas atteignable sans toucher au framework** (core + router + http + rxjs = 289 kB, 61 % du
+total) ; zod/mini est sans effet sur `initial` (Zod déjà hors initial) et reste écarté. Décision : T3 applique
+G1 → G6 (puis G7/G8 seulement si Lighthouse < 95), budget `initial` relevé à **avertissement 440 kB / erreur
+480 kB** une fois G1 → G6 mesurés (le budget suit la mesure, il ne la précède pas), et le critère de T3 qui
+fait foi est **Lighthouse runner ≥ 95** (TBT, LCP), pas le poids brut. `modulepreload` : Angular l'émet déjà
+pour tous les chunks initiaux ; aucun préchargement à ajouter pour les chunks différés (ils ne sont pas sur le
+chemin du LCP).
+
+Fichiers de diagnostic `docs/lighthouse/perf-{dbg,zod}` : dossiers vides, non suivis ; `perf-eager`, `perf-p2` :
+ignorés par `.git/info/exclude`, non suivis. Rien à retirer de l'index.
+
 ## 11. Suivis, alertes et push (phase 4)
 
 ### 11.1 Découpage
@@ -1123,6 +1205,8 @@ Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (répon
   Implémentation : job `billing-email` déclaré dans le `JobRegistry` d'`api-alerts` (réessais BullMQ ; le traitement
   relit l'adresse en base et le montant chez le prestataire) ; jobs désactivés (tests, dev sans Redis) : envoi direct,
   un échec est alors journalisé et l'e-mail perdu (Stripe peut aussi envoyer ses propres reçus).
+  Décision (phase 9, T7) : la file `notify` est la voie de production (déjà en place depuis l'audit de la phase 6) ;
+  l'envoi direct reste réservé aux environnements sans Redis, aucun changement supplémentaire.
 - **Suppression du compte** (audit phase 6, I1) : `BillingAccountCloser.closeForUser(userId)` (exporté par
   `api-billing`, branché par `apps/api` dans `api-users`) résilie immédiatement, sans prorata, tout abonnement
   `active` / `trialing` / `past_due` connu de Stripe ou de la base, puis supprime le client Stripe ; échec du
@@ -1130,8 +1214,12 @@ Mêmes fixtures pour Jest, api-e2e (`ANALYSIS_FIXTURES=1`) et Playwright (répon
   Idempotent (client détaché du compte une fois clôturé).
 - Rattachement : une `metadata.userId` est ignorée si le client Stripe de l'événement appartient à un autre compte.
 - Checkout : refusé (`ALREADY_SUBSCRIBED`) si Stripe connaît déjà un abonnement Pro pour ce client (webhook pas
-  encore reçu) ; client Stripe créé hors transaction (clé d'idempotence `customer:<userId>`), rattaché par
-  `UPDATE … WHERE stripeCustomerId IS NULL`. Portail affiché seulement s'il existe ou a existé un abonnement.
+  encore reçu) ; client Stripe créé hors transaction (clé d'idempotence `customer:<userId>:<génération>`, génération
+  = `User.updatedAt` lu avant l'appel : même client sur un double clic, nouveau client après une clôture, phase 9 n1),
+  rattaché par `UPDATE … WHERE stripeCustomerId IS NULL` ; client perdant d'une course : supprimé (au mieux).
+  Portail affiché seulement s'il existe ou a existé un abonnement.
+- Clôture : les sessions Checkout ouvertes du client sont expirées avant toute résiliation et avant `deleteCustomer`
+  (`BillingProvider.expireOpenCheckoutSessions`, phase 9 n2).
 - `BILLING_PROVIDER=fake` refusé en production **et** si `APP_URL` n'est pas locale (localhost, 127.0.0.1,
   `*.localhost`). Routes `internal/billing/*` enregistrées seulement avec `JOBS_TEST_TRIGGER=1` hors production.
 - Événements traités : `STRIPE_WEBHOOK_EVENT_TYPES` (les 4 de PROMPT.md + `invoice.paid` pour les reçus) ; les autres
@@ -1624,7 +1712,7 @@ Créés (tous `scope:bench`, alias `@raijin/bench-*`, aucun import de `scope:api
 | `libs/bench/engine` | `type:util` | port Node des 7 Edge Functions et de `_shared` (sans Nest), client `BenchDb` (ci-dessous) |
 | `libs/bench/collect` | `type:feature` | jobs `scan-tokens`, `enrich-tokens`, `label-outcomes`, `wallet-study-collect`, lectures tokens / alertes / réglages / push |
 | `libs/bench/trading` | `type:feature` | SIMULATION : `paper-engine`, `backtest-run`, `backtest-nightly`, ex-RPC `paper_*`, `performance_*`, labo |
-| `libs/bench/quality` | `type:feature` | mesure du risque (§16) : `verdict-follow-up`, `verdict-aggregate`, `retention-purge`, `storage-check`, `GET /api/verdicts/quality`, `GET /api/shadow/comparison` |
+| `libs/bench/quality` | `type:feature` | mesure du risque (§16) : `verdict-follow-up`, `verdict-aggregate` (agrégats, rejeu, précalcul du rapport de justesse), `retention-purge`, `storage-check`, `GET /api/verdicts/quality` (lit le précalcul), `GET /api/shadow/comparison` |
 | `libs/bench/solana` | `type:data-access` | `createBenchSolana` : `SolanaDataService` de `api-solana` avec les paramètres du banc (§17.5), budget Redis préfixé, recul sur 429, source `getTransactionsForAddress` de wallet-study |
 | `libs/bench/verdicts` | `type:util` | code pur de la mesure (§16), seuils de stockage |
 

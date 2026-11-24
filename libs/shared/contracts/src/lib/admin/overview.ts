@@ -81,13 +81,27 @@ export const FUNNEL_STEP_LABELS: Readonly<Record<FunnelStepKey, string>> = {
 export const funnelStepSchema = z.object({
   key: funnelStepKeySchema,
   value: z.number().int().min(0).nullable(),
-  /** Part de l'étape précédente qui atteint celle-ci ; `null` pour la première ou si une valeur manque. */
+  /**
+   * Part de l'étape précédente qui atteint celle-ci, plafonnée à 1 (`funnelStepRate`) ; `null` pour la première, si une
+   * valeur manque ou si l'étape précédente vaut 0.
+   */
   rateFromPrevious: ratioSchema.nullable(),
+  /**
+   * `true` si la valeur dépasse celle de l'étape précédente (sources différentes, ex. visites GA4 non connectées ou
+   * inscriptions sans analyse démo) : le taux affiché est plafonné à 100 % et l'écran l'explique.
+   */
+  exceedsPrevious: z.boolean().default(false),
   /** `demo_analyses` : événement GA4 `analyse_demo_lancee` si GA4 est connecté, sinon analyses anonymes internes. */
   source: metricSourceSchema,
   status: metricStatusSchema,
 });
 export type FunnelStep = z.infer<typeof funnelStepSchema>;
+
+/** Taux d'une étape de l'entonnoir : jamais au-delà de 100 %, dépassement signalé (`exceedsPrevious`). */
+export function funnelStepRate(value: number | null, previous: number | null): Pick<FunnelStep, 'rateFromPrevious' | 'exceedsPrevious'> {
+  if (value === null || previous === null || previous === 0) return { rateFromPrevious: null, exceedsPrevious: false };
+  return { rateFromPrevious: Math.min(1, value / previous), exceedsPrevious: value > previous };
+}
 
 export const adminOverviewSchema = z.object({
   generatedAt: z.iso.datetime(),
