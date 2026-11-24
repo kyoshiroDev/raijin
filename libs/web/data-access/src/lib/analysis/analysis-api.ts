@@ -1,13 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { type AnalysisRequest, type AnalysisResponse, type AnalysisResult, type QuotaInfo } from '@raijin/shared-contracts';
-import { Observable, from, map, switchMap, type OperatorFunction } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { API_BASE_URL } from '../config/api-config';
-import { loadContracts, type Contracts } from '../contracts';
-
-function parseWith<T>(pick: (contracts: Contracts) => { parse(value: unknown): T }): OperatorFunction<unknown, T> {
-  return switchMap((body) => from(loadContracts()).pipe(map((contracts) => pick(contracts).parse(body))));
-}
+import { AnalysisValidator } from './analysis-validation';
+import { readQuotaInfo } from './quota-shape';
 
 /**
  * `GET analyses/:mint/latest` renvoie le résultat seul (docs/ARCHITECTURE.md §9.2). Si l'API
@@ -29,6 +26,7 @@ function unwrapAnalysis(body: unknown): unknown {
 export class AnalysisApi {
   private readonly http = inject(HttpClient);
   private readonly base = inject(API_BASE_URL);
+  private readonly validator = inject(AnalysisValidator);
 
   /**
    * POST /analyses : lance (ou relit en cache) l'analyse d'un mint ou d'un lien. Corps renvoyé
@@ -44,17 +42,21 @@ export class AnalysisApi {
     return this.http.get(`${this.base}/analyses/${encodeURIComponent(mint)}/latest`).pipe(map(unwrapAnalysis));
   }
 
-  /** Validation complète (contrats chargés à la demande) : nettoie nom et symbole, rejette l'inattendu. */
-  async validateResponse(body: unknown): Promise<AnalysisResponse> {
-    return (await loadContracts()).analysisResponseSchema.parse(body);
+  /**
+   * Validation complète (contrats, dans un Web Worker si possible : `AnalysisValidator`) : nettoie nom et
+   * symbole, rejette l'inattendu.
+   */
+  validateResponse(body: unknown): Promise<AnalysisResponse> {
+    return this.validator.validateResponse(body);
   }
 
-  async validateResult(body: unknown): Promise<AnalysisResult> {
-    return (await loadContracts()).analysisResultSchema.parse(body);
+  /** Validation complète d'un résultat seul (page publique), hors du fil principal si possible. */
+  validateResult(body: unknown): Promise<AnalysisResult> {
+    return this.validator.validateResult(body);
   }
 
-  /** GET /analyses/quota : quota d'analyses restant aujourd'hui. */
+  /** GET /analyses/quota : quota d'analyses restant aujourd'hui (validé sans Zod, voir `readQuotaInfo`). */
   quota(): Observable<QuotaInfo> {
-    return this.http.get(`${this.base}/analyses/quota`).pipe(parseWith((c) => c.quotaInfoSchema));
+    return this.http.get(`${this.base}/analyses/quota`).pipe(map(readQuotaInfo));
   }
 }

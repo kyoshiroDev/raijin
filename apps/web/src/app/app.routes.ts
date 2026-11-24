@@ -2,6 +2,7 @@ import { Route } from '@angular/router';
 import { webFeatureAnalyseRoutes, webFeaturePublicTokenRoutes } from '@raijin/web-feature-analyse';
 import { DesignPage } from '@raijin/web-ui';
 import { adminAreaGuard } from './admin-area.guard';
+import { loadFullStylesheet } from './full-stylesheet';
 
 /**
  * Page de référence visuelle, disponible uniquement en développement.
@@ -13,15 +14,16 @@ const devOnlyRoutes: Route[] =
       {
         path: '_design',
         title: 'Design — Raijin',
-        // web-ui est déjà dans le bundle initial (coquille) : référence statique, retirée en prod
-        // avec cette branche morte (ngDevMode === false), DesignPage est alors éliminé par tree-shaking.
-        component: DesignPage,
+        // Branche morte en prod (ngDevMode === false) : DesignPage est alors éliminé par tree-shaking.
+        // Feuille complète : /_design est exclu de la feuille initiale (§10.6, G5).
+        loadComponent: () => loadFullStylesheet().then(() => DesignPage),
       },
       {
         // Composants de l'espace admin (KPI, graphiques, tableaux, états des services), données fictives.
         path: '_design/admin',
         title: 'Design admin — Raijin',
-        loadComponent: () => import('@raijin/web-feature-admin').then((m) => m.AdminDemoPage),
+        loadComponent: () =>
+          Promise.all([import('@raijin/web-feature-admin'), loadFullStylesheet()]).then(([m]) => m.AdminDemoPage),
       },
     ]
   : [];
@@ -74,7 +76,9 @@ export const appRoutes: Route[] = [
     path: 'admin',
     canMatch: [adminAreaGuard],
     data: { appChrome: false },
-    loadChildren: () => import('@raijin/web-feature-admin').then((m) => m.webFeatureAdminRoutes),
+    // Feuille complète (utilitaires admin, exclus de la feuille initiale, §10.6 G5) chargée avec le chunk.
+    loadChildren: () =>
+      Promise.all([import('@raijin/web-feature-admin'), loadFullStylesheet()]).then(([m]) => m.webFeatureAdminRoutes),
   },
   {
     // API en maintenance (503 `MAINTENANCE`, intercepteur de web-data-access).

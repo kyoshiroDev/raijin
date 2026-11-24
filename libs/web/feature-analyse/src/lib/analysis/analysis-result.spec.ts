@@ -151,10 +151,11 @@ describe('RjAnalysisResult', () => {
     expect(host.textContent).not.toContain('non fiable');
   });
 
-  it('privé : « Suivre » en placeholder désactivé puis actif ; public : pas de « Suivre »', async () => {
+  it('privé : « Suivre » provisoire utilisable puis réel ; public : pas de « Suivre »', async () => {
     const placeholder = await renderResult(fakeAnalysis('warn'), 'private', false);
-    const waiting = Array.from(placeholder.host.querySelectorAll('button')).find((b) => b.textContent?.includes('Suivre'));
-    expect(waiting?.disabled).toBe(true);
+    const waiting = placeholder.host.querySelector<HTMLButtonElement>('button[data-follow-placeholder]');
+    expect(waiting?.disabled).toBe(false);
+    expect(waiting?.textContent).toContain('Suivre');
     TestBed.resetTestingModule();
     const privateView = await renderResult(fakeAnalysis('warn'));
     const follow = privateView.host.querySelector<HTMLButtonElement>('rj-follow-button button[data-follow]');

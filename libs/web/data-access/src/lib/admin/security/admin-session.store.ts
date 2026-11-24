@@ -6,6 +6,7 @@ import type { AdminRecoveryCodes, AdminSecurityStatus } from '@raijin/shared-con
 import { AuthStore } from '../../auth/auth.store';
 import { rawErrorCode } from '../../http/error-code';
 import { AdminSecurityApi } from './admin-security-api';
+import { AdminSessionLink } from './admin-session-link';
 import {
   ADMIN_EXPIRED_REASON,
   ADMIN_NOT_FOUND_URL,
@@ -72,6 +73,8 @@ export class AdminSessionStore {
   });
 
   constructor() {
+    // Inscrit pour l'intercepteur HTTP, qui ne référence pas ce store statiquement (§10.6, G1).
+    inject(AdminSessionLink).current = this;
     // Déconnexion ou changement de compte : plus rien de l'espace admin ne reste en mémoire.
     effect(() => {
       const id = this.auth.user()?.id ?? null;

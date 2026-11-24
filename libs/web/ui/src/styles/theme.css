@@ -1,15 +1,12 @@
 /* Raijin — point d'entrée UNIQUE du thème Tailwind 4 pour Angular (apps/web et libs/web/*).
    Source des valeurs : libs/brand/tokens.css (ne pas dupliquer de valeur ici).
    Importé par apps/web/src/styles.css. Voir docs/ARCHITECTURE.md §4. */
-@layer theme, base, components, utilities;
+@import './theme-layers.css';
 
-@import 'tailwindcss/theme.css' layer(theme);
-@import './theme-reset.css';
-@import '../../../../brand/tokens.css';
-@import 'tailwindcss/preflight.css' layer(base);
-@import 'tailwindcss/utilities.css' layer(utilities);
-@import './extras.css';
-
-/* Fichiers analysés par Tailwind pour générer les utilitaires. */
+/* Fichiers analysés par Tailwind pour générer les utilitaires de la feuille initiale.
+   L'espace admin et la page /_design (dev) sont exclus : ils chargent la feuille complète
+   (theme-full.css, bundle `styles-full`) à la demande (docs/ARCHITECTURE.md §10.6, G5). */
 @source '../../../../../apps/web/src';
 @source '../../..';
+@source not '../../../feature-admin';
+@source not '../lib/design';

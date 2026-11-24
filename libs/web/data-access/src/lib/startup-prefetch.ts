@@ -1,9 +1,40 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, makeEnvironmentProviders, provideAppInitializer, type EnvironmentProviders } from '@angular/core';
 import { isSolanaAddress } from '@raijin/shared-util';
-import { AnalysisPrefetch } from './analysis/analysis-prefetch';
-import { CsrfToken } from './auth/csrf-token';
+import { AnalysisPrefetch, type EarlyAnalysis } from './analysis/analysis-prefetch';
+import { CSRF_TOKEN_PATTERN, CsrfToken } from './auth/csrf-token';
+import { API_BASE_URL } from './config/api-config';
 import { prefetchContracts } from './contracts';
+
+/** Base des requêtes du script `analyse-prefetch.js` (doit être celle de l'app pour qu'elles soient reprises). */
+export const EARLY_STARTUP_API_BASE = '/api/v1';
+
+/** Préchargement lancé par `apps/web/public/analyse-prefetch.js` avant Angular (`window.__rjStartup`). */
+export interface EarlyStartup {
+  readonly mint: string;
+  readonly startedAt: number;
+  readonly csrf: Promise<string>;
+  readonly analysis: Promise<EarlyAnalysis>;
+}
+
+/** Lit puis efface `window.__rjStartup` (une seule reprise, aucune trace laissée sur `window`). */
+export function takeEarlyStartup(view: Window | null): EarlyStartup | null {
+  if (!view) return null;
+  const holder = view as unknown as { __rjStartup?: unknown };
+  const value = holder.__rjStartup;
+  delete holder.__rjStartup;
+  if (typeof value !== 'object' || value === null) return null;
+  const early = value as Partial<EarlyStartup>;
+  if (
+    typeof early.mint !== 'string' ||
+    typeof early.startedAt !== 'number' ||
+    !(early.csrf instanceof Promise) ||
+    !(early.analysis instanceof Promise)
+  ) {
+    return null;
+  }
+  return early as EarlyStartup;
+}
 
 export interface StartupPrefetchOptions {
   /**
@@ -32,12 +63,29 @@ export interface StartupPrefetchOptions {
 export function provideStartupPrefetch(options: StartupPrefetchOptions): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideAppInitializer(() => {
-      const path = inject(DOCUMENT).location?.pathname ?? '';
+      const document = inject(DOCUMENT);
+      const path = document.location?.pathname ?? '';
       const matches = (patterns: readonly RegExp[] | undefined) => patterns?.some((pattern) => pattern.test(path)) ?? false;
-      if (matches(options.csrf)) inject(CsrfToken).ensure().subscribe({ error: () => undefined });
-      if (matches(options.contracts)) prefetchContracts();
       const mint = options.analyze ? decodeMint(options.analyze.exec(path)?.[1]) : null;
-      if (mint && isSolanaAddress(mint)) inject(AnalysisPrefetch).start(mint);
+      const validMint = mint && isSolanaAddress(mint) ? mint : null;
+      // Requêtes déjà parties avec le HTML (analyse-prefetch.js) : reprises au lieu d'être renvoyées.
+      const early = takeEarlyStartup(document.defaultView);
+      const adopt = early !== null && validMint !== null && early.mint === validMint && inject(API_BASE_URL) === EARLY_STARTUP_API_BASE;
+      const csrf = inject(CsrfToken);
+      if (adopt) {
+        early.csrf.then(
+          (token) => {
+            if (CSRF_TOKEN_PATTERN.test(token) && !csrf.token()) csrf.set(token);
+          },
+          () => undefined,
+        );
+      } else if (matches(options.csrf)) {
+        csrf.ensure().subscribe({ error: () => undefined });
+      }
+      if (matches(options.contracts)) prefetchContracts();
+      if (!validMint) return;
+      if (adopt) inject(AnalysisPrefetch).adopt(validMint, early.startedAt, early.analysis);
+      else inject(AnalysisPrefetch).start(validMint);
     }),
   ]);
 }

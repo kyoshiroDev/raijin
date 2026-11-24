@@ -1,6 +1,20 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, shareReplay } from 'rxjs';
+import { Observable, from, of, shareReplay, switchMap, throwError } from 'rxjs';
 import { AnalysisApi } from './analysis-api';
+
+/** Réponse brute de `POST analyses` envoyé par `analyse-prefetch.js` (statut HTTP et corps JSON). */
+export interface EarlyAnalysis {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+/**
+ * Erreurs métier reprises telles quelles (même réponse qu'une nouvelle requête). Les autres échecs (401 à
+ * rafraîchir, 403 CSRF, 503 maintenance, 5xx, réseau) repassent par une requête normale et ses intercepteurs.
+ */
+const ADOPTED_ERROR_STATUSES: readonly number[] = [400, 404, 422, 429];
+const ADOPTED_URL = '/api/v1/analyses';
 
 /** Au-delà, une requête de démarrage non réclamée est abandonnée (l'écran en relancera une). */
 const MAX_AGE_MS = 30_000;
@@ -21,6 +35,27 @@ export class AnalysisPrefetch {
     // Abonnement immédiat : la requête part maintenant ; l'erreur sera relue par l'écran.
     response.subscribe({ error: () => undefined });
     this.pending = { input, startedAt: Date.now(), response };
+  }
+
+  /**
+   * Reprend le `POST analyses` lancé avant Angular par `analyse-prefetch.js` : réponse 2xx (ou erreur métier)
+   * remise à l’écran ; autre échec, une requête normale part aussitôt à la place (intercepteurs compris).
+   */
+  adopt(input: string, startedAt: number, early: Promise<EarlyAnalysis>): void {
+    const response = from(early.then((result): EarlyAnalysis | null => result, () => null)).pipe(
+      switchMap((result) => {
+        // CSRF ou réseau en échec avant la réponse : requête normale.
+        if (result === null) return this.api.analyze({ input });
+        if (result.status >= 200 && result.status < 300) return of(result.body);
+        if (ADOPTED_ERROR_STATUSES.includes(result.status)) {
+          return throwError(() => new HttpErrorResponse({ status: result.status, error: result.body, url: ADOPTED_URL }));
+        }
+        return this.api.analyze({ input });
+      }),
+      shareReplay({ bufferSize: 1, refCount: false }),
+    );
+    response.subscribe({ error: () => undefined });
+    this.pending = { input, startedAt, response };
   }
 
   /** Requête de démarrage pour cette saisie, remise une seule fois ; sinon `null`. */

@@ -1,6 +1,8 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { RJ_TOAST_REGION_CLASSES } from '../toast/toast';
+import { RjToastService } from '../toast/toast.service';
 import { RjAppShell } from './app-shell';
 import { type RjNavItem } from './nav-item';
 import { RjSidebar } from './sidebar';
@@ -134,6 +136,26 @@ describe('Navigation', () => {
       expect(host.querySelector('rj-sidebar')).toBeNull();
       expect(host.querySelector('rj-tab-bar')).not.toBeNull();
     });
+  });
+});
+
+describe('RjAppShell, toasts différés', () => {
+  beforeEach(() => TestBed.configureTestingModule({ providers: [provideRouter([])] }));
+
+  it('région annoncée présente dès le départ, aux classes de la zone des toasts ; liste chargée au premier toast', async () => {
+    const fixture = TestBed.createComponent(RjAppShell);
+    fixture.componentRef.setInput('items', ITEMS.slice(0, 4));
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    const region = host.querySelector('[aria-live="polite"]') as HTMLElement;
+    expect([...region.classList].sort()).toEqual(RJ_TOAST_REGION_CLASSES.split(' ').sort());
+    expect(region.querySelector('rj-toast')).toBeNull();
+    TestBed.inject(RjToastService).show('Lien copié.', { duration: 0 });
+    await vi.waitFor(async () => {
+      await fixture.whenStable();
+      if (!region.querySelector('rj-toast')) throw new Error('toast absent');
+    });
+    expect(region.textContent).toContain('Lien copié.');
   });
 });
 

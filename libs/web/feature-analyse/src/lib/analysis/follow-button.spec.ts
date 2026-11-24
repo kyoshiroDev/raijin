@@ -22,7 +22,7 @@ const API = '/api/v1';
 const MINT = FIXTURE_MINTS.bonk;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function setup(auth: 'anonymous' | 'verified' | 'unverified') {
+async function setup(auth: 'anonymous' | 'verified' | 'unverified', autoStart = false) {
   await loadContracts();
   TestBed.configureTestingModule({
     providers: [
@@ -38,6 +38,7 @@ async function setup(auth: 'anonymous' | 'verified' | 'unverified') {
   TestBed.inject(CsrfToken).set('csrf-session-token-0123456789abcdef');
   const fixture = TestBed.createComponent(RjFollowButton);
   fixture.componentRef.setInput('mint', MINT);
+  if (autoStart) fixture.componentRef.setInput('autoStart', true);
   await fixture.whenStable();
   const ctrl = TestBed.inject(HttpTestingController);
   const host = fixture.nativeElement as HTMLElement;
@@ -60,6 +61,15 @@ describe('RjFollowButton', () => {
     button().click();
     await fixture.whenStable();
     await settle();
+    expect(router.url).toBe(`/compte/connexion?redirect=%2Fanalyse%2F${MINT}`);
+    ctrl.expectNone(`${API}/watches`);
+  });
+
+  it('appui rejoué (bouton chargé au premier appui) : connexion et focus sur le vrai bouton', async () => {
+    const { button, ctrl, router, fixture } = await setup('anonymous', true);
+    await fixture.whenStable();
+    await settle();
+    expect(document.activeElement).toBe(button());
     expect(router.url).toBe(`/compte/connexion?redirect=%2Fanalyse%2F${MINT}`);
     ctrl.expectNone(`${API}/watches`);
   });

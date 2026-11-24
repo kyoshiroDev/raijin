@@ -51,7 +51,12 @@
           }
         ],
         "styles": [
-          "apps/web/src/styles.css"
+          "apps/web/src/styles.css",
+          {
+            "input": "apps/web/src/styles-full.css",
+            "bundleName": "styles-full",
+            "inject": false
+          }
         ]
       },
       "configurations": {
@@ -67,8 +72,8 @@
           "budgets": [
             {
               "type": "initial",
-              "maximumWarning": "400kb",
-              "maximumError": "500kb"
+              "maximumWarning": "440kb",
+              "maximumError": "480kb"
             },
             {
               "type": "anyComponentStyle",

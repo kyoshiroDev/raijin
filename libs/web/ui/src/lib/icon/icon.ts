@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, untracked } from '@angular/core';
-import { RjIcons, type IconNode, type RjIconName } from './icons';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { RjIcons, isCoreIcon, type IconNode, type RjIconName } from './icons';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -26,6 +26,21 @@ const SHAPE_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
   polygon: ['points'],
   ellipse: ['cx', 'cy', 'rx', 'ry'],
 };
+
+/** Icônes des écrans à la demande (`icons-extra.ts`), chargées une fois à la première demande (§10.6, G2). */
+type ExtraIcons = Readonly<Record<string, IconNode>>;
+const extraIcons = signal<ExtraIcons | null>(null);
+let extraLoading: Promise<void> | null = null;
+
+function loadExtraIcons(): void {
+  extraLoading ??= import('./icons-extra').then(
+    (m) => extraIcons.set(m.RjExtraIcons),
+    () => {
+      // Chunk indisponible (hors ligne) : l'icône reste absente, un nouvel essai aura lieu au prochain rendu.
+      extraLoading = null;
+    },
+  );
+}
 
 /** Modèle SVG par icône, construit une fois puis cloné (`cloneNode`) à chaque usage. */
 const templates = new WeakMap<IconNode, SVGSVGElement>();
@@ -73,27 +88,55 @@ export class RjIcon {
   readonly size = input<16 | 20 | 24 | 32>(20);
   readonly spin = input(false);
 
-  protected readonly nodes = computed<IconNode>(() => {
+  /** `null` : icône pas encore chargée (registre à la demande) ou nom inconnu ; rien n'est rendu. */
+  protected readonly nodes = computed<IconNode | null>(() => {
     const name = this.name();
-    return typeof name === 'string' ? RjIcons[name] : name;
+    if (typeof name !== 'string') return name;
+    if (isCoreIcon(name)) return RjIcons[name];
+    const extra = extraIcons();
+    if (!extra) {
+      untracked(loadExtraIcons);
+      return null;
+    }
+    return extra[name] ?? null;
   });
 
   constructor() {
     // Effet de composant : exécuté pendant la détection de changements, avant l'affichage.
     effect(() => {
-      const svg = iconTemplate(this.document, this.nodes()).cloneNode(true) as SVGSVGElement;
+      const nodes = this.nodes();
       this.svg?.remove();
+      const svg = nodes ? (iconTemplate(this.document, nodes).cloneNode(true) as SVGSVGElement) : null;
       this.svg = svg;
-      untracked(() => this.applySize());
-      this.host.appendChild(svg);
+      untracked(() => {
+        this.applyHostSize();
+        this.applySize();
+      });
+      if (svg) this.host.appendChild(svg);
     });
     effect(() => this.applySize());
+  }
+
+  /** Icône pas encore chargée : l'hôte garde la taille de l'icône (aucun décalage à son arrivée). */
+  private applyHostSize(): void {
+    const style = this.host.style;
+    if (this.svg) {
+      style.removeProperty('width');
+      style.removeProperty('height');
+      return;
+    }
+    const size = `${this.size()}px`;
+    style.width = size;
+    style.height = size;
   }
 
   private applySize(): void {
     const size = String(this.size());
     const spin = this.spin();
-    if (!this.svg) return;
+    if (!this.svg) {
+      this.applyHostSize();
+      return;
+    }
     this.svg.setAttribute('width', size);
     this.svg.setAttribute('height', size);
     this.svg.classList.toggle('animate-spin', spin);

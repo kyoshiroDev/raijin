@@ -1,4 +1,16 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AUTH_ROUTES, AuthStore, WatchesStore, watchLimitExplanation, type ClientError } from '@raijin/web-data-access';
 import { RjBottomSheet, RjButton, RjToastService } from '@raijin/web-ui';
@@ -18,6 +30,7 @@ const LOGIN_CODES: readonly string[] = ['UNAUTHORIZED', 'AUTH_SESSION_EXPIRED', 
   imports: [RouterLink, RjBottomSheet, RjButton],
   template: `
     <button
+      #followButton
       type="button"
       rjButton="secondary"
       [icon]="watch() ? 'following' : 'follow'"
@@ -69,6 +82,12 @@ export class RjFollowButton {
   private readonly toasts = inject(RjToastService);
 
   readonly mint = input.required<string>();
+  /**
+   * `true` : le visiteur a déjà appuyé sur le bouton provisoire (chargé à la demande) ; l'appui est rejoué au
+   * premier rendu et le focus passe sur ce bouton.
+   */
+  readonly autoStart = input(false);
+  private readonly followButton = viewChild('followButton', { read: ElementRef<HTMLButtonElement> });
 
   protected readonly verifyPath = AUTH_ROUTES.verifyEmail;
   protected readonly limitOpen = signal(false);
@@ -89,6 +108,11 @@ export class RjFollowButton {
     'inline-flex min-h-11 items-center rounded-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors duration-150 ease-raijin hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring';
 
   constructor() {
+    afterNextRender(() => {
+      if (!this.autoStart()) return;
+      this.followButton()?.nativeElement.focus();
+      void this.onClick();
+    });
     // État « Suivi » : la liste est lue une fois la session connue (jamais pour un visiteur).
     effect(() => {
       if (this.auth.isAuthenticated() && this.auth.emailVerified()) untracked(() => void this.watches.load());

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide';
 import { RjIcon } from '../icon/icon';
 import { RjLogo } from '../logo/logo';
 import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-item';
@@ -69,7 +70,7 @@ import { badgeText, currentPath, isNavItemActive, type RjNavItem } from './nav-i
           [attr.aria-label]="collapsed() ? 'Déplier le menu' : 'Replier le menu'"
           (click)="collapsed.set(!collapsed())"
         >
-          <rj-icon [name]="collapsed() ? 'expand' : 'collapse'" [size]="20" />
+          <rj-icon [name]="collapsed() ? expandIcon : collapseIcon" [size]="20" />
           @if (!collapsed()) {
             <span>Replier</span>
           }
@@ -87,6 +88,9 @@ export class RjSidebar {
   readonly label = input('Navigation principale');
   readonly mode = input<'fixed' | 'inline'>('fixed');
 
+  // Nœuds Lucide importés ici : ils suivent la barre latérale dans son chunk différé (§10.6, G2/G3).
+  protected readonly expandIcon = PanelLeftOpen;
+  protected readonly collapseIcon = PanelLeftClose;
   protected readonly path = currentPath();
   protected readonly isActive = isNavItemActive;
   protected readonly groups = computed(() => [this.items(), this.secondaryItems()]);

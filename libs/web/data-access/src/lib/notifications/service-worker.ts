@@ -9,9 +9,16 @@ export const NGSW_SCRIPT = 'ngsw-worker.js';
 export const SW_REGISTER_TIMEOUT_MS = 30_000;
 
 /**
+ * Pause après la stabilisation avant d'enregistrer le worker (docs/ARCHITECTURE.md §10.6) : son installation
+ * télécharge et hache (SHA-1 en JavaScript) tout le cache de l'app, ce qui concurrençait le premier rendu et les
+ * premières interactions sur un téléphone modeste (TBT). Le push n'en dépend pas : `SwPush` attend l'enregistrement.
+ */
+export const SW_REGISTER_DELAY_MS = 10_000;
+
+/**
  * Enregistre `ngsw-worker.js` (cache de la coquille, réception et clic des notifications push)
  * **sans** charger le code client de `@angular/service-worker` au démarrage : même stratégie que
- * `registerWhenStable:30000` (app stable, ou 30 s au plus), puis inactivité du navigateur. Le
+ * `registerWhenStable:30000` (app stable, ou 30 s au plus), puis `SW_REGISTER_DELAY_MS` et inactivité du navigateur. Le
  * message `INITIALIZE` au changement de contrôleur reprend celui d'Angular. `SwPush` n'est fourni
  * que sur les écrans qui en ont besoin (`providePushNotifications`, docs/ARCHITECTURE.md §11.7).
  * Fichier chargé au démarrage : aucun import de Zod ni de `@angular/service-worker` ici.
@@ -26,9 +33,13 @@ export function provideServiceWorkerRegistration(enabled: boolean, script = NGSW
       container.addEventListener('controllerchange', () => container.controller?.postMessage({ action: 'INITIALIZE' }));
       const timeout = new Promise<void>((resolve) => view.setTimeout(resolve, SW_REGISTER_TIMEOUT_MS));
       void Promise.race([appRef.whenStable(), timeout]).then(() =>
-        runWhenIdle(() => {
-          container.register(script, { scope: './' }).catch(() => undefined);
-        }, view),
+        view.setTimeout(
+          () =>
+            runWhenIdle(() => {
+              container.register(script, { scope: './' }).catch(() => undefined);
+            }, view),
+          SW_REGISTER_DELAY_MS,
+        ),
       );
     }),
   ]);

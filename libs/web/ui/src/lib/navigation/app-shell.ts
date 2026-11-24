@@ -3,7 +3,8 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, ou
 import { RouterLink } from '@angular/router';
 import { RjIcon } from '../icon/icon';
 import { RjLogo } from '../logo/logo';
-import { RjToastHost } from '../toast/toast';
+import { RjToastList } from '../toast/toast';
+import { RjToastService } from '../toast/toast.service';
 import { desktopViewport } from './desktop-viewport';
 import { badgeText, type RjNavItem } from './nav-item';
 import { RjSidebar } from './sidebar';
@@ -17,7 +18,7 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
  */
 @Component({
   selector: 'rj-app-shell',
-  imports: [RjIcon, RjLogo, RjSidebar, RjTabBar, RjToastHost, RouterLink],
+  imports: [RjIcon, RjLogo, RjSidebar, RjTabBar, RjToastList, RouterLink],
   template: `
     <a
       href="#rj-main"
@@ -26,7 +27,12 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
       >Aller au contenu</a
     >
     @if (chrome() && desktop() !== false) {
-      <rj-sidebar [items]="items()" [secondaryItems]="secondaryItems()" [(collapsed)]="collapsed" />
+      <!-- Barre latérale chargée à la demande (≥ 1024 px seulement, §10.6 G3) ; la colonne réserve déjà sa largeur (CLS 0). -->
+      @defer (on immediate) {
+        <rj-sidebar [items]="items()" [secondaryItems]="secondaryItems()" [(collapsed)]="collapsed" />
+      } @placeholder {
+        <div aria-hidden="true" [class]="sidebarPlaceholderClasses()"></div>
+      }
     }
     <div [class]="columnClasses()">
       @if (chrome()) {
@@ -66,7 +72,12 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
     @if (chrome() && desktop() !== true) {
       <rj-tab-bar [items]="items()" />
     }
-    <rj-toast-host />
+    <!-- Région annoncée présente dès le départ ; la liste des toasts arrive avec le premier toast (§10.6, G6). -->
+    <div role="status" aria-live="polite" [class]="toastRegionClasses">
+      @defer (when hasToasts()) {
+        <rj-toast-list />
+      }
+    </div>
   `,
   host: { class: 'block min-h-dvh bg-base pl-safe pr-safe' },
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -91,12 +102,20 @@ export class RjAppShell {
    * les classes `lg:` restent, pour un rendu identique si `matchMedia` manque (CLS 0).
    */
   protected readonly desktop = desktopViewport();
+  private readonly toasts = inject(RjToastService);
+  protected readonly hasToasts = computed(() => this.toasts.toasts().length > 0);
+  /** Recopie de `RJ_TOAST_REGION_CLASSES` (toast.ts reste hors du bundle initial ; égalité vérifiée par test). */
+  protected readonly toastRegionClasses =
+    'pointer-events-none fixed inset-x-0 bottom-tabbar z-50 mx-auto flex max-w-md flex-col gap-2 px-4 lg:bottom-6 lg:left-auto lg:right-6 lg:mx-0 lg:w-96 lg:px-0';
   protected readonly collapsed = signal(this.readCollapsed());
   protected readonly notificationBadge = computed(() => badgeText(this.notificationCount()));
   protected readonly notificationsLabel = computed(() => {
     const count = this.notificationCount();
     return count > 0 ? `Notifications, ${count} non lues` : 'Notifications';
   });
+  protected readonly sidebarPlaceholderClasses = computed(
+    () => `fixed inset-y-0 left-0 z-30 hidden border-r border-line bg-surface lg:block ${this.collapsed() ? 'w-18' : 'w-60'}`,
+  );
   protected readonly columnClasses = computed(() =>
     this.chrome()
       ? `flex min-h-dvh min-w-0 flex-col transition-[padding] duration-200 ease-raijin ${this.collapsed() ? 'lg:pl-18' : 'lg:pl-60'}`

@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import type { AnalysisCheckId, AnalysisResult } from '@raijin/shared-contracts';
-import { RjAddressChip, RjBottomSheet, RjButton, RjCard, RjIcon, RjSkeleton, RjToastService } from '@raijin/web-ui';
-import { CHECK_HELP } from './check-help';
+import { AuthStore } from '@raijin/web-data-access';
+import { RjAddressChip, RjButton, RjCard, RjIcon, RjSkeleton, RjToastService } from '@raijin/web-ui';
+import { RjCheckHelpSheet } from './check-help-sheet';
 import { CHECK_STATUS_DISPLAY, statusCounts } from './check-display';
 import { RjCheckItem } from './check-item';
 import { RjFollowButton } from './follow-button';
-import { ANALYSIS_CHECK_LABELS, ANALYSIS_DISCLAIMER, SAFE_VERDICT_REMINDER, VERDICT_LABELS } from './labels';
+import { ANALYSIS_DISCLAIMER, SAFE_VERDICT_REMINDER, VERDICT_LABELS } from './labels';
 import { AnalysisShare, publicTokenUrl } from './share';
 
 const VERDICT_TONES = {
@@ -36,7 +37,7 @@ function formatDate(iso: string): string {
  */
 @Component({
   selector: 'rj-analysis-result',
-  imports: [RjAddressChip, RjBottomSheet, RjButton, RjCard, RjCheckItem, RjFollowButton, RjIcon, RjSkeleton],
+  imports: [RjAddressChip, RjButton, RjCard, RjCheckHelpSheet, RjCheckItem, RjFollowButton, RjIcon, RjSkeleton],
   template: `
     <div class="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       <section class="flex min-w-0 flex-col lg:sticky lg:top-20" aria-label="Verdict">
@@ -101,12 +102,24 @@ function formatDate(iso: string): string {
           <div rjCardFooter class="flex flex-col gap-4">
             <div [class]="actionsGrid()">
               @if (mode() === 'private') {
-                <!-- Bouton « Suivre » (store des suivis, bottom sheets) chargé à l'inactivité : hors du
-                     bundle initial et du chemin du LCP. Le placeholder garde la même taille. -->
-                @defer (on idle) {
-                  <rj-follow-button [mint]="result().mint" />
+                <!-- Bouton « Suivre » (store des suivis, bottom sheets, contrats) hors du bundle initial et du
+                     chemin du LCP : chargé pour un compte connecté (état « Suivi »), ou au premier appui d'un
+                     visiteur, qui est alors rejoué (§10.6). Le placeholder a la même taille et reste utilisable. -->
+                @defer (when followRequested() || signedIn()) {
+                  <rj-follow-button [mint]="result().mint" [autoStart]="followRequested()" />
                 } @placeholder {
-                  <button type="button" rjButton="secondary" icon="follow" [disabled]="true">Suivre</button>
+                  <button
+                    type="button"
+                    rjButton="secondary"
+                    icon="follow"
+                    [loading]="followRequested()"
+                    aria-pressed="false"
+                    data-follow
+                    data-follow-placeholder
+                    (click)="followRequested.set(true)"
+                  >
+                    Suivre
+                  </button>
                 }
               }
               <button
@@ -168,25 +181,10 @@ function formatDate(iso: string): string {
       </section>
     </div>
 
-    <rj-bottom-sheet [(open)]="helpOpen" [title]="helpTitle()" description="Comprendre ce contrôle en 30 secondes">
-      @if (help(); as help) {
-        <div class="flex flex-col gap-4 pb-2">
-          <section class="flex flex-col gap-1">
-            <h3 class="text-body font-semibold text-ink">Ce que c’est</h3>
-            <p class="text-body text-ink-muted">{{ help.what }}</p>
-          </section>
-          <section class="flex flex-col gap-1">
-            <h3 class="text-body font-semibold text-ink">Pourquoi c’est important</h3>
-            <p class="text-body text-ink-muted">{{ help.why }}</p>
-          </section>
-          <section class="flex flex-col gap-1">
-            <h3 class="text-body font-semibold text-ink">Comment Raijin le vérifie</h3>
-            <p class="text-body text-ink-muted">{{ help.how }}</p>
-          </section>
-        </div>
-      }
-      <button rjSheetFooter type="button" rjButton="secondary" (click)="helpOpen.set(false)">J’ai compris</button>
-    </rj-bottom-sheet>
+    <!-- Aide des contrôles : chunk chargé à la première demande (préchargé à l'inactivité), §10.6 G4. -->
+    @defer (when helpId() !== null; prefetch on idle) {
+      <rj-check-help-sheet [(open)]="helpOpen" [checkId]="helpId()" />
+    }
   `,
   host: { class: 'block' },
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -194,6 +192,7 @@ function formatDate(iso: string): string {
 export class RjAnalysisResult {
   private readonly shareService = inject(AnalysisShare);
   private readonly toasts = inject(RjToastService);
+  private readonly auth = inject(AuthStore);
 
   readonly result = input.required<AnalysisResult>();
   /** `private` : écran d'analyse (avec « Suivre ») ; `public` : page `/t/<mint>`. */
@@ -204,6 +203,9 @@ export class RjAnalysisResult {
   protected readonly statusDisplay = CHECK_STATUS_DISPLAY;
   protected readonly sharing = signal(false);
   protected readonly helpOpen = signal(false);
+  /** Appui sur « Suivre » avant le chargement du bouton (visiteur) : rejoué par le vrai bouton. */
+  protected readonly followRequested = signal(false);
+  protected readonly signedIn = this.auth.isAuthenticated;
   protected readonly helpId = signal<AnalysisCheckId | null>(null);
 
   /** Nom affiché (nom, sinon symbole) ; `null` si le créateur n'a rien publié. */
@@ -226,14 +228,6 @@ export class RjAnalysisResult {
   protected readonly unavailableText = computed(() => {
     const count = this.result().checks.filter((check) => check.status === 'unavailable').length;
     return count > 1 ? `${count} contrôles n’ont pas pu être vérifiés` : count === 1 ? '1 contrôle n’a pas pu être vérifié' : 'certaines données manquent';
-  });
-  protected readonly help = computed(() => {
-    const id = this.helpId();
-    return id ? CHECK_HELP[id] : null;
-  });
-  protected readonly helpTitle = computed(() => {
-    const id = this.helpId();
-    return id ? ANALYSIS_CHECK_LABELS[id] : 'En savoir plus';
   });
 
   protected openHelp(id: AnalysisCheckId): void {

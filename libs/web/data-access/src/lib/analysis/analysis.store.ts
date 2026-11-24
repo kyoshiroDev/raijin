@@ -7,6 +7,21 @@ import { AnalysisPrefetch } from './analysis-prefetch';
 import { readAnalysisResponse, readAnalysisResult } from './analysis-shape';
 import { runWhenIdle } from '../util/idle';
 
+/** Égalité de données JSON (ordre des clés indifférent ; une clé `undefined` vaut une clé absente). */
+export function sameData(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => sameData(item, b[i]));
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (!sameData(left[key], right[key])) return false;
+  }
+  return true;
+}
+
 /**
  * - `idle` : rien de demandé (état vide de l'écran) ;
  * - `loading` : analyse ou lecture en cours ;
@@ -57,7 +72,7 @@ export class AnalysisStore {
       this.succeed(response.analysis);
       this.validateWhenIdle(id, () => this.api.validateResponse(body), (valid) => {
         this.currentQuota.set(valid.quota);
-        this.currentResult.set(valid.analysis);
+        this.replaceIfChanged(valid.analysis);
       });
       return true;
     } catch (error) {
@@ -74,7 +89,7 @@ export class AnalysisStore {
       const body = await firstValueFrom(this.api.latest(mint));
       if (id !== this.sequence) return false;
       this.succeed(readAnalysisResult(body));
-      this.validateWhenIdle(id, () => this.api.validateResult(body), (valid) => this.currentResult.set(valid));
+      this.validateWhenIdle(id, () => this.api.validateResult(body), (valid) => this.replaceIfChanged(valid));
       return true;
     } catch (error) {
       if (id !== this.sequence) return false;
@@ -130,6 +145,16 @@ export class AnalysisStore {
         },
       );
     });
+  }
+
+  /**
+   * Résultat validé : remplace l'affiché seulement s'il diffère (champs nettoyés ou retirés). Identique (cas
+   * normal), l'écran n'est pas rendu une seconde fois : pas de long travail après le verdict (TBT, §10.6).
+   */
+  private replaceIfChanged(valid: AnalysisResult): void {
+    const shown = this.currentResult();
+    if (shown && sameData(shown, valid)) return;
+    this.currentResult.set(valid);
   }
 
   private begin(): number {

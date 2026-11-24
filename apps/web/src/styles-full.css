@@ -1,0 +1,4 @@
+/* Feuille complète (bundle `styles-full`, non injecté dans index.html) : chargée à la demande par
+   `loadFullStylesheet()` pour l'espace admin et /_design (docs/ARCHITECTURE.md §10.6, G5).
+   Les polices sont déjà déclarées par styles.css. */
+@import '../../../libs/web/ui/src/styles/theme-full.css';
