@@ -116,7 +116,8 @@ describe('auth du banc (HTTP)', () => {
     await expect(auth.login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }, fresh)).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
     bench.clock.advance(BENCH_LOCKOUT_MS + 1_000);
     await expect(auth.login({ email: OWNER_EMAIL, password: OWNER_PASSWORD, totp: bench.totp() }, fresh)).resolves.toMatchObject({ body: { email: OWNER_EMAIL } });
-  });
+    // Délai propre à ce test : un hachage argon2 (paramètres de production) par essai, soit ~50 sous la charge de la CI.
+  }, 60_000);
 
   it('aucune IP en clair dans les clés de verrouillage', async () => {
     const auth = bench.app.get(BenchAuthService) as unknown as { ipLockKey(ip: string | null): string };
