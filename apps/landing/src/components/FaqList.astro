@@ -1,5 +1,6 @@
 ---
 import type { FaqItem } from '../lib/seo';
+import { splitInversions } from '../lib/typography';
 import Icon from './Icon.astro';
 
 /** FAQ en `<details>` natifs (aucun JS) ; `faq_ouverte { faq_id }` part à l'ouverture (lib/analytics/page-events). */
@@ -17,7 +18,11 @@ const Heading = headingLevel;
     items.map((item) => (
       <details class="faq-item group" data-faq-id={item.id} id={`faq-${item.id}`}>
         <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 md:px-6">
-          <Heading class="text-body font-semibold text-ink">{item.question}</Heading>
+          <Heading class="text-body font-semibold text-ink">
+            {splitInversions(item.question).map((segment) =>
+              segment.nowrap ? <span class="whitespace-nowrap">{segment.text}</span> : segment.text,
+            )}
+          </Heading>
           <Icon name="chevronDown" class="faq-chevron text-ink-muted" />
         </summary>
         <p class="px-4 pb-4 text-body text-ink-muted md:px-6">{item.answer}</p>
