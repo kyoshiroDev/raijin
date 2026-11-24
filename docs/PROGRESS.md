@@ -1,6 +1,7 @@
 # PROGRESS — Raijin Shield
 
 ## ACTION REQUISE (vide si rien)
+- **Limite d'utilisation atteinte** jusqu'au 28/11 à 5 h (Paris) : après cette heure, dis « reprends » (le travail en cours de la phase 9 n'est pas commité, ne le supprime pas).
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
 - **Helius : clés à copier dans ton `.env`** (https://dashboard.helius.dev → API Keys → bouton copier) : ligne « raijin-api » → `HELIUS_API_KEY` ; ligne « raijin-banc-de-test » → `BENCH_HELIUS_API_KEY`. Coche ensuite `docs/SECRETS-CHECKLIST.md`.
 - **Question Helius** : la clé existante « Raijin » (créée le 21/11) a été utilisée le 22/11 vers 1 h 15 : sert-elle à l'ancien scanner en production ? (on n'y touche pas). Veux-tu renommer le projet auto-nommé « Singerrag » en « raijin » ? La clé inutilisée « Llamasage » peut être supprimée par toi si tu veux.
@@ -332,6 +333,9 @@
 - [x] T1 audit du bundle (architect, ARCHITECTURE §10.6) : 471,3 kB brut / 123,7 kB transférés, dont 289 kB de framework (61 %) ; 420 kB inatteignable sans toucher au framework ; gains G1–G8 (≈ −30 à −39 kB pour G1–G6). **Décision de l'orchestrateur** : budget 440 kB (avertissement) / 480 kB (erreur) ; le critère de T3 qui fait foi est Lighthouse ≥ 95 mesuré sur le runner (PROMPT.md), pas le poids brut.
 - [x] T2 outillage (architect) : cibles `prune*` retirées (api, banc) ; test des interruptions m1/m2 de restore.sh ajouté ; docs/SECURITY.md (3 alertes modérées d'outillage justifiées, `pnpm audit --prod` : 0). Reste : la liste des menaces de PROMPT.md §8 dans SECURITY.md.
 - [x] T7 facturation (stripe-billing, `e13bd33`) : n1 clé d'idempotence du client liée à l'état du compte ; n2 sessions Checkout ouvertes expirées avant la fermeture du compte ; e-mails de facturation déjà en file depuis `e0029cc` (ARCHITECTURE §13.5).
+
+- [x] CI `e16cbba` vert ; job images 45319632838 vert.
+- **Interruption (2026-11-24)** : limite hebdomadaire d'utilisation atteinte, réinitialisée le **28/11 à 5 h (Paris)**. Quatre agents arrêtés en cours de tâche, travail **non commité** laissé dans la copie de travail (56 fichiers) : T3 performance (ui-mobile-first : apps/web, libs/web), T6 mineurs API (nestjs-api : libs/server/push, libs/api), T8 métriques admin (admin-analytics : libs/api/admin, libs/api/analytics, libs/web/feature-admin), T9 mineurs du banc (bench-quant : banc, legacy/, docs/BENCH.md ; il attendait la fin de ses tests avant l'e2e du banc). À la reprise : relancer chacun de ces agents pour qu'il termine et revérifie ses fichiers, puis commits par chemins ; ensuite T4 polish (ui-mobile-first), T10 si besoin, T11 tests, T12 audit, liste des menaces dans docs/SECURITY.md, puis phase 10.
 
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
