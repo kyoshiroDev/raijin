@@ -3,7 +3,7 @@ import { workspaceRoot } from '@nx/devkit';
 import { join } from 'node:path';
 import { loginViaApi, registerViaApi, uniqueEmail } from './support/auth';
 import { MINTS, expectVerdict, tokenField, useFreshIp } from './support/analysis';
-import { LANDING_PAGES, SHELLLESS_PAGES } from './support/admin-pages';
+import { ADMIN_2FA_PAGES, ADMIN_PAGES, LANDING_PAGES, SHELLLESS_PAGES } from './support/admin-pages';
 import { ANALYSIS_PAGES, BILLING_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PAGES, openDialogSettled, openEntry, openPage, sharedVerifiedAccount, type PageEntry } from './support/pages';
 
 /**
@@ -13,7 +13,10 @@ import { ANALYSIS_PAGES, BILLING_PAGES, PAGES, VIEWPORTS, WALLET_PAGES, WATCH_PA
  */
 const PHASE = process.env['SCREENSHOT_PHASE'] ?? 'phase-3';
 const OUT = join(workspaceRoot, 'docs', 'screenshots', PHASE);
-const WIDTHS = [320, 390, 768, 1024, 1440];
+/** `SCREENSHOT_WIDTHS=390,1440` : sous-ensemble des largeurs (machine locale à faible mémoire) ; défaut : les 5. */
+const WIDTHS = process.env['SCREENSHOT_WIDTHS']
+  ? process.env['SCREENSHOT_WIDTHS'].split(',').map((value) => Number(value.trim()))
+  : [320, 390, 768, 1024, 1440];
 
 test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
 
@@ -25,6 +28,14 @@ const PHASE3_SHOTS = [{ name: 'analyse-vide', path: '/analyse', heading: 'Analys
 /** Phase 6 : abonnement (offres par état, succès, faux Checkout, faux portail), fin d'essai, choix des suivis, bandeau. */
 /** Phase 6 bis : 9 écrans admin (API réelle, Google simulé), écrans 2FA, landing avec la bannière de consentement. */
 /** Phase 7 : chaque page de la landing (accueil avec la bannière, puis toutes les pages après un refus mémorisé). */
+/** Phase 9 : relecture finale, l'app complète (coque, analyse, suivis, wallet, abonnement, admin) + états hors ligne. */
+const PHASE9_SHOTS: readonly PageEntry[] = [
+  ...new Map(
+    [...PAGES.filter((p) => p.path !== '/_design'), ...PHASE3_SHOTS, ...WATCH_PAGES, ...WALLET_PAGES, ...BILLING_PAGES, ...ADMIN_PAGES, ...ADMIN_2FA_PAGES].map(
+      (entry) => [entry.name, entry] as const,
+    ),
+  ).values(),
+];
 const SHOTS: readonly (PageEntry & { fullPage?: boolean })[] =
   PHASE === 'phase-1'
     ? PAGES.filter((p) => !p.path.startsWith('/compte/'))
@@ -40,7 +51,9 @@ const SHOTS: readonly (PageEntry & { fullPage?: boolean })[] =
               ? SHELLLESS_PAGES
               : PHASE === 'phase-7'
                 ? LANDING_PAGES
-                : PAGES.filter((p) => p.path.startsWith('/compte'));
+                : PHASE === 'phase-9'
+                  ? PHASE9_SHOTS
+                  : PAGES.filter((p) => p.path.startsWith('/compte'));
 /** Résultats d'analyse et listes : page entière. */
 const FULL_PAGE = new Set(['design', 'analyse-danger', 'analyse-prudence', 'analyse-partiel', 'public-prudence', 'suivis-rempli', 'suivis-limite', 'alertes-liste', 'wallet-delegations', 'wallet-danger', 'abonnement-visiteur', 'abonnement-gratuit', 'abonnement-essai', 'abonnement-pro', 'abonnement-retard', 'abonnement-resilie', 'abonnement-indisponible', 'fin-essai', 'choix-suivis']);
 
@@ -170,32 +183,53 @@ const ANALYSIS_STATES: { name: string; open: (page: Page) => Promise<void> }[] =
   },
 ];
 
-if (PHASE === 'phase-3') {
-  for (const { name, open } of ANALYSIS_STATES) {
-    for (const width of WIDTHS) {
-      const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
-      test(`capture ${name} ${width}px`, async ({ page }) => {
-        await page.setViewportSize(viewport);
-        await open(page);
-        await page.evaluate(() => document.fonts.ready.then(() => undefined));
-        const png = await page.screenshot({ path: join(OUT, `${name}-${width}.png`), animations: 'disabled' });
-        expect(png.byteLength).toBeGreaterThan(1000);
-      });
-    }
-  }
-}
+/**
+ * Phase 9 : bandeau « Tu es hors ligne » (coque, chargé `@defer (on idle)`), seul puis avec l'état d'erreur
+ * `NETWORK_ERROR` d'une analyse lancée hors ligne. Le réseau est coupé après le chargement de l'écran
+ * (`setOffline` émet l'événement `offline` suivi par le bandeau).
+ */
+const OFFLINE_STATES: { name: string; open: (page: Page) => Promise<void> }[] = [
+  {
+    name: 'hors-ligne-analyse',
+    open: async (page) => {
+      await openEntry(page, { name: 'analyse', path: '/analyse', heading: 'Analyser un token' });
+      await page.context().setOffline(true);
+      await expect(page.locator('[data-offline]')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'hors-ligne-erreur',
+    open: async (page) => {
+      await openEntry(page, { name: 'analyse', path: '/analyse', heading: 'Analyser un token' });
+      await page.context().setOffline(true);
+      await expect(page.locator('[data-offline]')).toBeVisible({ timeout: 15_000 });
+      await tokenField(page).fill(MINTS.bonk);
+      await tokenField(page).press('Enter');
+      await expect(page.getByRole('heading', { name: 'Raijin ne répond pas' })).toBeVisible({ timeout: 15_000 });
+    },
+  },
+  {
+    name: 'hors-ligne-suivis',
+    open: async (page) => {
+      await openEntry(page, { name: 'suivis', path: '/suivis', heading: 'Suivis', auth: true });
+      await page.context().setOffline(true);
+      await expect(page.locator('[data-offline]')).toBeVisible({ timeout: 15_000 });
+    },
+  },
+];
 
-if (PHASE === 'phase-2') {
-  for (const { name, open } of STATES) {
-    for (const width of WIDTHS) {
-      const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
-      test(`capture ${name} ${width}px`, async ({ page }) => {
-        await page.setViewportSize(viewport);
-        await open(page);
-        await page.evaluate(() => document.fonts.ready.then(() => undefined));
-        const png = await page.screenshot({ path: join(OUT, `${name}-${width}.png`), animations: 'disabled' });
-        expect(png.byteLength).toBeGreaterThan(1000);
-      });
-    }
+const EXTRA_STATES =
+  PHASE === 'phase-9' ? [...OFFLINE_STATES, ...ANALYSIS_STATES, ...STATES] : PHASE === 'phase-3' ? ANALYSIS_STATES : PHASE === 'phase-2' ? STATES : [];
+
+for (const { name, open } of EXTRA_STATES) {
+  for (const width of WIDTHS) {
+    const viewport = VIEWPORTS.find((v) => v.width === width) ?? { width, height: 900 };
+    test(`capture ${name} ${width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await open(page);
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      const png = await page.screenshot({ path: join(OUT, `${name}-${width}.png`), animations: 'disabled' });
+      expect(png.byteLength).toBeGreaterThan(1000);
+    });
   }
 }
