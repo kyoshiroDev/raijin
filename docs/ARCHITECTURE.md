@@ -98,8 +98,8 @@ Note : les modules Nest de `libs/api/*` sont taggés `type:feature` (ils jouent 
 ### Exceptions assumées du banc (`raijin-banc-de-test`)
 
 Code d'origine importé tel quel pour ne pas modifier le comportement des calculs avant la mesure :
-- ~~`noUncheckedIndexedAccess: false`~~ : **levée en phase 9** (T9 e). Les 193 erreurs restantes
-  (71 dans le code, 122 dans les tests) sont corrigées par 193 assertions non nulles `!` seulement
+- ~~`noUncheckedIndexedAccess: false`~~ : **levée en phase 9** (T9 e). Les 196 erreurs restantes
+  (74 dans le code et les gabarits, 122 dans les tests) sont corrigées par 196 assertions non nulles `!` seulement
   (effacées à la compilation : aucun changement de calcul, diff vérifié caractère par caractère, 766
   tests d'origine verts sans modifier une assertion) ; le banc hérite désormais de
   `tsconfig.base.json` comme le reste du dépôt. Ces `!` marquent les accès que le code d'origine
