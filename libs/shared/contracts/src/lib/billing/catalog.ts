@@ -38,8 +38,8 @@ export const PUBLIC_PLAN_CATALOG: PublicPlanCatalog = {
       walletScansPerDay: 20,
       alertHistoryDays: 90,
     },
-    monthly: { interval: 'month', amountCents: 990, currency: 'EUR' },
-    yearly: { interval: 'year', amountCents: 9900, currency: 'EUR' },
+    monthly: { interval: 'month', amountCents: 1490, currency: 'EUR' },
+    yearly: { interval: 'year', amountCents: 14900, currency: 'EUR' },
   },
   trial: {
     days: 7,

@@ -185,17 +185,17 @@ STRIPE_WEBHOOK_SECRET=whsec_factice
 # Stripe — https://dashboard.stripe.com/test/apikeys (clé publiable « pk_test_… ») : NON utilisée (Checkout hébergé
 #   par redirection) ; à laisser vide. Seule clé qui serait tolérée côté front.
 STRIPE_PUBLISHABLE_KEY=
-# Stripe — https://dashboard.stripe.com/test/products (produit « Raijin Pro », ID du prix récurrent mensuel 9,90 € TTC)
+# Stripe — https://dashboard.stripe.com/test/products (produit « Raijin Pro », ID du prix récurrent mensuel 14,90 € TTC)
 STRIPE_PRICE_PRO_MONTHLY=price_factice_mensuel
-# Stripe — https://dashboard.stripe.com/test/products (même produit, ID du prix récurrent annuel 99 € TTC)
+# Stripe — https://dashboard.stripe.com/test/products (même produit, ID du prix récurrent annuel 149 € TTC)
 STRIPE_PRICE_PRO_YEARLY=price_factice_annuel
 # Stripe — https://dashboard.stripe.com/test/settings/billing/portal (optionnel : ID « bpc_… » d'une configuration
 #   du portail client ; vide = configuration par défaut du compte)
 STRIPE_PORTAL_CONFIGURATION_ID=
 # Raijin — prix affichés (centimes TTC, entiers) et devise ISO 4217 : doivent correspondre aux prix Stripe ci-dessus
 #   (vérifiés au démarrage ; écart = paiement indisponible). Jamais en dur dans le front : servis par GET /billing/plans.
-PRO_PRICE_MONTHLY_CENTS=990
-PRO_PRICE_YEARLY_CENTS=9900
+PRO_PRICE_MONTHLY_CENTS=1490
+PRO_PRICE_YEARLY_CENTS=14900
 BILLING_CURRENCY=EUR
 
 # ---------------------------------------------------------------------

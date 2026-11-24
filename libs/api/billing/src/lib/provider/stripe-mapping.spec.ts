@@ -54,8 +54,8 @@ describe('fixtures des webhooks', () => {
   it('abonnement : statut, résiliation, fin de période ; facture : montant', () => {
     const sub = buildFixtureEvent('customer.subscription.updated', { status: 'past_due', cancelAtPeriodEnd: true, currentPeriodEnd: '2027-01-01T00:00:00.000Z', priceId: 'price_custom01' }, { dir: DIR, now: NOW });
     expect(toProviderSubscription((sub['data'] as { object: unknown }).object)).toMatchObject({ status: 'past_due', cancelAtPeriodEnd: true, currentPeriodEnd: new Date('2027-01-01T00:00:00.000Z'), priceId: 'price_custom01' });
-    const invoice = buildFixtureEvent('invoice.paid', { amountCents: 9900 }, { dir: DIR, now: NOW });
-    expect(toProviderInvoice((invoice['data'] as { object: unknown }).object)).toMatchObject({ amountPaidCents: 9900, amountDueCents: 9900 });
+    const invoice = buildFixtureEvent('invoice.paid', { amountCents: 14900 }, { dir: DIR, now: NOW });
+    expect(toProviderInvoice((invoice['data'] as { object: unknown }).object)).toMatchObject({ amountPaidCents: 14900, amountDueCents: 14900 });
     expect(isFixtureName('../etc/passwd')).toBe(false);
   });
 });

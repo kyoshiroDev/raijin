@@ -22,7 +22,7 @@ describe('BillingMailJobs (file notify)', () => {
     const handler = kit.registry.get(BILLING_EMAIL_JOB);
     expect(handler?.queue).toBe('notify');
     await expect(handler?.handler(queue.jobs[0]?.data ?? {})).resolves.toEqual({ sent: true });
-    expect(kit.mailer.sent[0]?.subject).toBe('Ton reçu Raijin Pro (9,90 €)');
+    expect(kit.mailer.sent[0]?.subject).toBe('Ton reçu Raijin Pro (14,90 €)');
   });
 
   it('données altérées refusées ; compte supprimé ou reçu à 0 € : rien envoyé ; échec sans facture', async () => {

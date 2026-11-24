@@ -16,7 +16,7 @@
       "object": "invoice",
       "customer": "cus_fixture_0001",
       "currency": "eur",
-      "amount_due": 990,
+      "amount_due": 1490,
       "amount_paid": 0,
       "status": "open",
       "number": "FIXTURE-0001",

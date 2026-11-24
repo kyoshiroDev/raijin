@@ -34,7 +34,7 @@ function client() {
       },
     },
     billingPortal: { sessions: { create: jest.fn(async () => ({ url: 'https://billing.stripe.com/p/session/x' })) } },
-    prices: { retrieve: jest.fn(async (id: string) => (id.includes('Monthly') ? price('month', 990) : price('year', 9900))) },
+    prices: { retrieve: jest.fn(async (id: string) => (id.includes('Monthly') ? price('month', 1490) : price('year', 14900))) },
     subscriptions: { retrieve: jest.fn(), list: jest.fn(), cancel: jest.fn(async () => ({})) },
     invoices: { retrieve: jest.fn() },
   };
@@ -104,7 +104,7 @@ describe('StripeBillingProvider', () => {
 
   it('prix Stripe différents de la configuration : indisponible', async () => {
     const mock = client();
-    mock.prices.retrieve.mockImplementation(async (id: string) => (id.includes('Monthly') ? price('month', 1090) : price('year', 9900)));
+    mock.prices.retrieve.mockImplementation(async (id: string) => (id.includes('Monthly') ? price('month', 1590) : price('year', 14900)));
     const { stripe } = provider(mock);
     await expect(stripe.verifyPrices()).resolves.toBe('mismatch');
     expect(stripe.mode()).toBe('unavailable');
@@ -148,8 +148,8 @@ describe('StripeBillingProvider', () => {
     await expect(stripe.retrieveSubscription('sub_x')).resolves.toBeNull();
     mock.subscriptions.retrieve.mockRejectedValueOnce(new Error('panne'));
     await expect(stripe.retrieveSubscription('sub_x')).rejects.toThrow('panne');
-    mock.invoices.retrieve.mockResolvedValueOnce({ id: 'in_1', object: 'invoice', currency: 'eur', amount_paid: 990, subscription: 'sub_1', hosted_invoice_url: 'https://evil.example/x' });
-    await expect(stripe.retrieveInvoice('in_1')).resolves.toMatchObject({ amountPaidCents: 990, currency: 'EUR', subscriptionId: 'sub_1', hostedInvoiceUrl: null });
+    mock.invoices.retrieve.mockResolvedValueOnce({ id: 'in_1', object: 'invoice', currency: 'eur', amount_paid: 1490, subscription: 'sub_1', hosted_invoice_url: 'https://evil.example/x' });
+    await expect(stripe.retrieveInvoice('in_1')).resolves.toMatchObject({ amountPaidCents: 1490, currency: 'EUR', subscriptionId: 'sub_1', hostedInvoiceUrl: null });
     mock.invoices.retrieve.mockRejectedValueOnce(notFound());
     await expect(stripe.retrieveInvoice('in_x')).resolves.toBeNull();
   });

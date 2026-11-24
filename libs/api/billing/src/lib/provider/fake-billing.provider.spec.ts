@@ -55,7 +55,7 @@ describe('FakeBillingProvider', () => {
     const sub = fake.createSubscription({ customerId: 'cus_1', userId: '0195a0c4-0000-7000-8000-0000000000aa', interval: 'year', status: 'active' });
     const invoice = fake.createInvoice(sub, true);
     await expect(fake.retrieveSubscription(sub['id'] as string)).resolves.toMatchObject({ interval: 'year', priceId: 'price_fake_yearly', latestInvoiceId: invoice['id'] });
-    await expect(fake.retrieveInvoice(invoice['id'] as string)).resolves.toMatchObject({ amountPaidCents: 9900, currency: 'EUR', subscriptionId: sub['id'] });
+    await expect(fake.retrieveInvoice(invoice['id'] as string)).resolves.toMatchObject({ amountPaidCents: 14900, currency: 'EUR', subscriptionId: sub['id'] });
     const signed = fake.signEvent('invoice.paid', invoice, { id: 'evt_x' });
     expect(fake.constructWebhookEvent(signed.payload, signed.signature)).toMatchObject({ id: 'evt_x', type: 'invoice.paid' });
   });

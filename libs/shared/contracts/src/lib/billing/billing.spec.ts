@@ -62,8 +62,8 @@ describe('plans et prix', () => {
       pro: {
         plan: 'PRO',
         entitlements: PRO,
-        monthly: { interval: 'month', amountCents: 990, currency: 'EUR' },
-        yearly: { interval: 'year', amountCents: 9900, currency: 'EUR' },
+        monthly: { interval: 'month', amountCents: 1490, currency: 'EUR' },
+        yearly: { interval: 'year', amountCents: 14900, currency: 'EUR' },
       },
       trial: {
         days: 7,
@@ -88,8 +88,8 @@ describe('plans et prix', () => {
   });
 
   it('calcule l’économie de l’annuel et la phrase d’offre', () => {
-    expect(yearlySavingsPercent(990, 9900)).toBe(17);
-    expect(yearlySavingsPercent(990, 11880)).toBe(0);
+    expect(yearlySavingsPercent(1490, 14900)).toBe(17);
+    expect(yearlySavingsPercent(1490, 17880)).toBe(0);
     expect(yearlySavingsPercent(0, 100)).toBe(0);
     expect(trialOfferText()).toBe(
       'Essaie Pro gratuitement pendant 7 jours. Sans carte bancaire.',

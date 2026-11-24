@@ -26,7 +26,7 @@ describe('loadBillingConfig', () => {
   it('développement par défaut : simulation, secret éphémère, prix par défaut', () => {
     const warn = jest.fn();
     const config = loadBillingConfig({}, DEV, warn);
-    expect(config).toMatchObject({ provider: 'fake', secretKey: null, livemode: false, perMinute: 10, prices: { monthlyCents: 990, yearlyCents: 9900, currency: 'EUR' } });
+    expect(config).toMatchObject({ provider: 'fake', secretKey: null, livemode: false, perMinute: 10, prices: { monthlyCents: 1490, yearlyCents: 14900, currency: 'EUR' } });
     expect(config.webhookSecret).toMatch(/^whsec_/);
     expect(loadBillingConfig({}, DEV).webhookSecret).not.toBe(config.webhookSecret);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('secret éphémère'));
@@ -72,7 +72,7 @@ describe('loadBillingConfig', () => {
   });
 
   it('refuse des prix incohérents, une devise invalide, deux prix Stripe identiques', () => {
-    expect(problems(() => loadBillingConfig({ PRO_PRICE_MONTHLY_CENTS: '9900', PRO_PRICE_YEARLY_CENTS: '990' }, DEV))).toEqual([expect.stringContaining('PRO_PRICE_YEARLY_CENTS')]);
+    expect(problems(() => loadBillingConfig({ PRO_PRICE_MONTHLY_CENTS: '14900', PRO_PRICE_YEARLY_CENTS: '1490' }, DEV))).toEqual([expect.stringContaining('PRO_PRICE_YEARLY_CENTS')]);
     expect(problems(() => loadBillingConfig({ PRO_PRICE_MONTHLY_CENTS: '9.9' }, DEV))[0]).toContain('PRO_PRICE_MONTHLY_CENTS');
     expect(problems(() => loadBillingConfig({ BILLING_CURRENCY: 'euro' }, DEV))[0]).toContain('BILLING_CURRENCY');
     expect(problems(() => loadBillingConfig({ ...STRIPE, STRIPE_PRICE_PRO_YEARLY: STRIPE.STRIPE_PRICE_PRO_MONTHLY }, DEV))[0]).toContain('deux prix distincts');

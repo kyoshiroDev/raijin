@@ -255,7 +255,7 @@ describe('BillingWebhookService : factures, retard de paiement, résiliation', (
     const event = kit.fixture('invoice.paid', { ...overrides, invoiceId: stored['id'] as string, amountCents: 1 });
     await expect(kit.webhook.handle(event.payload, event.signature)).resolves.toBe('processed');
     expect(kit.mailer.sent).toHaveLength(1);
-    expect(kit.mailer.sent[0]).toMatchObject({ to: 'kyo@exemple.fr', subject: 'Ton reçu Raijin Pro (9,90 €)' });
+    expect(kit.mailer.sent[0]).toMatchObject({ to: 'kyo@exemple.fr', subject: 'Ton reçu Raijin Pro (14,90 €)' });
     expect(kit.mailer.sent[0]?.text).toContain('Prochain renouvellement : 22 décembre 2026');
     expect(kit.prisma.tables['subscription']?.[0]?.['latestInvoiceId']).toBe(stored['id']);
   });

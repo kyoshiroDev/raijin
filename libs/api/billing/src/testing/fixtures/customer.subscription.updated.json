@@ -33,7 +33,7 @@
               "id": "price_fixture_monthly",
               "object": "price",
               "currency": "eur",
-              "unit_amount": 990,
+              "unit_amount": 1490,
               "type": "recurring",
               "recurring": { "interval": "month", "interval_count": 1 }
             }

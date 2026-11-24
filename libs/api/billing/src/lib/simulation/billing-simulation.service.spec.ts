@@ -30,7 +30,7 @@ describe('BillingSimulationService', () => {
     await expect(kit.simulation.completeCheckout(USER, { sessionId: sessionOf(url), outcome: 'paid' })).resolves.toEqual(['processed', 'processed']);
     let account = await kit.billing.account(USER);
     expect(account).toMatchObject({ plan: 'PRO', source: 'subscription', subscription: { status: 'active', interval: 'month', cancelAtPeriodEnd: false }, trial: { status: 'ended' } });
-    expect(kit.mailer.sent.map((mail) => mail.subject)).toEqual(['Ton reçu Raijin Pro (9,90 €)']);
+    expect(kit.mailer.sent.map((mail) => mail.subject)).toEqual(['Ton reçu Raijin Pro (14,90 €)']);
     // Session à usage unique.
     expect(await code(kit.simulation.completeCheckout(USER, { sessionId: sessionOf(url), outcome: 'paid' }))).toBe('NOT_FOUND');
 

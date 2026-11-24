@@ -83,7 +83,7 @@ export function trialOfferText(days: number = DEFAULT_TRIAL_DAYS): string {
 }
 
 /**
- * Économie de l'annuel par rapport à 12 mensualités, en pourcentage entier (99 € contre 118,80 € → 17).
+ * Économie de l'annuel par rapport à 12 mensualités, en pourcentage entier (149 € contre 178,80 € → 17).
  * 0 si l'annuel n'est pas moins cher. Information de prix, pas une promesse de gain.
  */
 export function yearlySavingsPercent(

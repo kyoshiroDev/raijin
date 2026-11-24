@@ -88,7 +88,7 @@ describe('Abonnement (e2e, simulation)', () => {
     const res = await new ApiClient().get('/billing/plans');
     expect(res.status).toBe(200);
     expect(billingPlansResponseSchema.safeParse(res.data).success).toBe(true);
-    expect(res.data).toMatchObject({ mode: 'simulation', pro: { monthly: { amountCents: 990 }, yearly: { amountCents: 9900 } } });
+    expect(res.data).toMatchObject({ mode: 'simulation', pro: { monthly: { amountCents: 1490 }, yearly: { amountCents: 14900 } } });
     expect(JSON.stringify(res.data)).not.toMatch(/price_|sk_|whsec_/);
   });
 
@@ -130,7 +130,7 @@ describe('Abonnement (e2e, simulation)', () => {
     const converted = await sql<{ properties: unknown }>(`SELECT "properties" FROM "ProductEvent" WHERE "userId" = $1::uuid AND "type" = 'trial_converted'`, [userId]);
     expect(converted.map((row) => row.properties)).toEqual([{ phase: 'during', interval: 'month' }]);
     const receipt = await waitForMail(email, 'Ton reçu Raijin Pro');
-    expect(receipt).toContain('9,90');
+    expect(receipt).toContain('14,90');
     expect(receipt).toContain('pas un conseil en investissement');
     // Session à usage unique ; deuxième abonnement refusé.
     expect((await client.post('/billing/simulation/checkout', { sessionId: session, outcome: 'paid' })).status).toBe(404);
