@@ -79,7 +79,7 @@
     },
     "test": {
       "options": {
-        "passWithNoTests": true
+        "passWithNoTests": false
       }
     },
     "typecheck": {
@@ -91,6 +91,36 @@
           "tsc --noEmit -p tsconfig.spec.json"
         ],
         "parallel": false
+      }
+    },
+    "create-owner": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "command": "node dist/apps/raijin-banc-de-test-api/cli.js create-owner"
+      }
+    },
+    "set-password": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "command": "node dist/apps/raijin-banc-de-test-api/cli.js set-password"
+      }
+    },
+    "reset-2fa": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "command": "node dist/apps/raijin-banc-de-test-api/cli.js reset-2fa"
       }
     }
   }

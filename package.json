@@ -2,7 +2,11 @@
   "name": "@raijin/source",
   "version": "0.0.0",
   "license": "UNLICENSED",
-  "scripts": {},
+  "scripts": {
+    "bench:create-owner": "nx run raijin-banc-de-test-api:create-owner",
+    "bench:set-password": "nx run raijin-banc-de-test-api:set-password",
+    "bench:reset-2fa": "nx run raijin-banc-de-test-api:reset-2fa"
+  },
   "private": true,
   "devDependencies": {
     "@angular-devkit/core": "~22.2.0",

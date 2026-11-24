@@ -14,6 +14,8 @@ module.exports = {
       target: 'node',
       compiler: 'tsc',
       main: './src/main.ts',
+      // CLI du propriétaire (create-owner, set-password, reset-2fa) : dist/apps/raijin-banc-de-test-api/cli.js
+      additionalEntryPoints: [{ entryName: 'cli', entryPath: './src/cli.ts' }],
       tsConfig: './tsconfig.app.json',
       assets: ['./src/assets'],
       optimization: false,

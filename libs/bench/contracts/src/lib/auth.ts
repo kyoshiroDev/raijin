@@ -1,4 +1,4 @@
-import { currentPasswordSchema, emailSchema, totpCodeSchema } from '@raijin/shared-contracts';
+import { currentPasswordSchema, emailSchema, recoveryCodeSchema, totpCodeSchema } from '@raijin/shared-contracts';
 import * as z from './zod';
 import { isoDateTimeSchema } from './common';
 import { benchModeSchema } from './mode';
@@ -13,9 +13,21 @@ import { benchModeSchema } from './mode';
  * `GET /api/auth/session` → `BenchSession` (401 sinon) ; `POST /api/auth/logout` (CSRF) → 204.
  */
 
+/**
+ * Second facteur : le code TOTP de l'application, **ou** un code de secours à usage unique
+ * (`recovery_code`, `ABCDE-FGH23`, remis par la CLI). Exactement l'un des deux.
+ */
 export const benchLoginRequestSchema = z
-  .object({ email: emailSchema, password: currentPasswordSchema, totp: totpCodeSchema })
-  .strict();
+  .object({
+    email: emailSchema,
+    password: currentPasswordSchema,
+    totp: totpCodeSchema.optional(),
+    recovery_code: recoveryCodeSchema.optional(),
+  })
+  .strict()
+  .refine((value) => (value.totp === undefined) !== (value.recovery_code === undefined), {
+    message: 'Code de vérification requis.',
+  });
 export type BenchLoginRequest = z.infer<typeof benchLoginRequestSchema>;
 
 export const benchSessionSchema = z.object({
@@ -39,3 +51,6 @@ export function benchCookieNames(secure: boolean): { readonly session: string; r
   return secure ? { session: '__Host-rjb_session', csrf: '__Host-rjb_csrf' } : { session: 'rjb_session', csrf: 'rjb_csrf' };
 }
 export const BENCH_CSRF_HEADER = 'X-CSRF-Token';
+
+/** Nombre de codes de secours remis par la CLI (`create-owner`, `reset-2fa`). */
+export const BENCH_RECOVERY_CODE_COUNT = 10;

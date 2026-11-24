@@ -53,7 +53,8 @@
       "@raijin/server-push": ["./libs/server/push/src/index.ts"],
       "@raijin/server-security": ["./libs/server/security/src/index.ts"],
       "@raijin/bench-solana": ["./libs/bench/solana/src/index.ts"],
-      "@raijin/bench-prisma": ["./libs/bench/prisma/src/index.ts"]
+      "@raijin/bench-prisma": ["./libs/bench/prisma/src/index.ts"],
+      "@raijin/bench-core": ["./libs/bench/core/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

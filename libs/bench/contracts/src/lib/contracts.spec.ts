@@ -20,6 +20,8 @@ describe('contrats du banc', () => {
     expect(ok).toEqual({ email: 'owner@example.com', password: 'x', totp: '123456' });
     expect(benchLoginRequestSchema.safeParse({ email: 'owner@example.com', password: 'x' }).success).toBe(false);
     expect(benchLoginRequestSchema.safeParse({ email: 'owner@example.com', password: 'x', totp: '123456', remember: true }).success).toBe(false);
+    expect(benchLoginRequestSchema.parse({ email: 'owner@example.com', password: 'x', recovery_code: ' abcde-fgh23 ' }).recovery_code).toBe('ABCDE-FGH23');
+    expect(benchLoginRequestSchema.safeParse({ email: 'owner@example.com', password: 'x', totp: '123456', recovery_code: 'ABCDE-FGH23' }).success).toBe(false);
   });
 
   it('cookies distincts de Raijin (rj_*)', () => {
