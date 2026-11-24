@@ -62,15 +62,51 @@ describe('AnalysisPrefetch.adopt (requête partie avant Angular)', () => {
   });
 });
 
+describe('AnalysisPrefetch.adoptLatest (page publique)', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('2xx : résultat déballé, sans seconde requête ; mint différent : rien', async () => {
+    const { prefetch } = setup();
+    const analysis = fakeAnalysisResponse('safe').analysis;
+    prefetch.adoptLatest(FAKE_MINTS.safe, Date.now(), Promise.resolve<EarlyAnalysis>({ status: 200, body: { analysis } }));
+    expect(prefetch.takeLatest(FAKE_MINTS.warn)).toBeNull();
+    prefetch.adoptLatest(FAKE_MINTS.safe, Date.now(), Promise.resolve<EarlyAnalysis>({ status: 200, body: analysis }));
+    const response = prefetch.takeLatest(FAKE_MINTS.safe);
+    if (!response) throw new Error('lecture de démarrage absente');
+    expect(await firstValueFrom(response)).toEqual(analysis);
+  });
+
+  it('404 repris ; 503 : lecture normale', async () => {
+    const { prefetch, ctrl } = setup();
+    const body = { code: 'ANALYSIS_NOT_FOUND', message: 'absente' };
+    prefetch.adoptLatest(FAKE_MINTS.safe, Date.now(), Promise.resolve<EarlyAnalysis>({ status: 404, body }));
+    const notFound = prefetch.takeLatest(FAKE_MINTS.safe);
+    if (!notFound) throw new Error('lecture de démarrage absente');
+    expect(await firstValueFrom(notFound).catch((e: unknown) => e)).toMatchObject({ status: 404, error: body });
+
+    prefetch.adoptLatest(FAKE_MINTS.safe, Date.now(), Promise.resolve<EarlyAnalysis>({ status: 503, body: null }));
+    const retried = prefetch.takeLatest(FAKE_MINTS.safe);
+    if (!retried) throw new Error('lecture de démarrage absente');
+    const result = firstValueFrom(retried);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    ctrl.expectOne(`${API}/analyses/${FAKE_MINTS.safe}/latest`).flush(fakeAnalysisResponse('warn').analysis);
+    expect(await result).toEqual(fakeAnalysisResponse('warn').analysis);
+  });
+});
+
 describe('takeEarlyStartup', () => {
   it('lit puis efface window.__rjStartup, et refuse une forme inattendue', () => {
     const view = {} as Window & { __rjStartup?: unknown };
     const csrf = Promise.resolve('x'.repeat(40));
     const analysis = Promise.resolve({ status: 200, body: {} });
-    view.__rjStartup = { mint: FAKE_MINTS.safe, startedAt: 1, csrf, analysis };
-    expect(takeEarlyStartup(view)).toMatchObject({ mint: FAKE_MINTS.safe, csrf, analysis });
+    view.__rjStartup = { kind: 'analyse', mint: FAKE_MINTS.safe, startedAt: 1, csrf, analysis };
+    expect(takeEarlyStartup(view)).toMatchObject({ kind: 'analyse', mint: FAKE_MINTS.safe, csrf, analysis });
     expect('__rjStartup' in view).toBe(false);
-    view.__rjStartup = { mint: FAKE_MINTS.safe, startedAt: 1, csrf: 'jeton', analysis };
+    view.__rjStartup = { kind: 'latest', mint: FAKE_MINTS.safe, startedAt: 1, latest: analysis };
+    expect(takeEarlyStartup(view)).toMatchObject({ kind: 'latest', latest: analysis });
+    view.__rjStartup = { kind: 'analyse', mint: FAKE_MINTS.safe, startedAt: 1, csrf: 'jeton', analysis };
+    expect(takeEarlyStartup(view)).toBeNull();
+    view.__rjStartup = { kind: 'latest', mint: FAKE_MINTS.safe, startedAt: 1 };
     expect(takeEarlyStartup(view)).toBeNull();
     expect(takeEarlyStartup(null)).toBeNull();
   });

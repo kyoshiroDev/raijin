@@ -19,6 +19,8 @@ export const appConfig: ApplicationConfig = {
     provideStartupPrefetch({
       csrf: [/^\/analyse\/[^/]+\/?$/],
       analyze: /^\/analyse\/([^/?#]+)\/?$/,
+      // `/t/<mint>` : lecture de la dernière analyse lancée avec le HTML (public/analyse-prefetch.js).
+      latest: /^\/t\/([^/?#]+)\/?$/,
     }),
     // Service worker Angular (cache de la coquille, push) : enregistré une fois l'app stable (30 s
     // au plus), jamais avant le premier rendu ; SwPush arrive avec l'écran Compte (§11.7).

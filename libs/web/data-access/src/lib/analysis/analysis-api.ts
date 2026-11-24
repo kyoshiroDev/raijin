@@ -10,7 +10,7 @@ import { readQuotaInfo } from './quota-shape';
  * `GET analyses/:mint/latest` renvoie le résultat seul (docs/ARCHITECTURE.md §9.2). Si l'API
  * l'enveloppe comme `POST analyses` (`{ analysis }`), on accepte aussi cette forme.
  */
-function unwrapAnalysis(body: unknown): unknown {
+export function unwrapAnalysis(body: unknown): unknown {
   if (typeof body === 'object' && body !== null && 'analysis' in body) {
     return (body as { analysis: unknown }).analysis;
   }

@@ -86,7 +86,8 @@ export class AnalysisStore {
   async loadLatest(mint: string): Promise<boolean> {
     const id = this.begin();
     try {
-      const body = await firstValueFrom(this.api.latest(mint));
+      // Lecture lancée avec le HTML (`analyse-prefetch.js`) : reprise, jamais rejouée.
+      const body = await firstValueFrom(this.prefetch.takeLatest(mint) ?? this.api.latest(mint));
       if (id !== this.sequence) return false;
       this.succeed(readAnalysisResult(body));
       this.validateWhenIdle(id, () => this.api.validateResult(body), (valid) => this.replaceIfChanged(valid));

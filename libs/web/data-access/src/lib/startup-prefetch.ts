@@ -9,13 +9,25 @@ import { prefetchContracts } from './contracts';
 /** Base des requêtes du script `analyse-prefetch.js` (doit être celle de l'app pour qu'elles soient reprises). */
 export const EARLY_STARTUP_API_BASE = '/api/v1';
 
-/** Préchargement lancé par `apps/web/public/analyse-prefetch.js` avant Angular (`window.__rjStartup`). */
-export interface EarlyStartup {
-  readonly mint: string;
-  readonly startedAt: number;
-  readonly csrf: Promise<string>;
-  readonly analysis: Promise<EarlyAnalysis>;
-}
+/**
+ * Attente maximale du premier rendu derrière une requête lancée avec le HTML : la réponse arrive le plus souvent
+ * avant la fin du chargement d'Angular ; sinon l'écran s'affiche (état de chargement) sans l'attendre davantage.
+ */
+export const EARLY_STARTUP_MAX_WAIT_MS = 1000;
+
+/**
+ * Préchargement lancé par `apps/web/public/analyse-prefetch.js` avant Angular (`window.__rjStartup`) :
+ * `analyse` = CSRF puis `POST analyses` (`/analyse/<mint>`) ; `latest` = `GET analyses/:mint/latest` (`/t/<mint>`).
+ */
+export type EarlyStartup =
+  | {
+      readonly kind: 'analyse';
+      readonly mint: string;
+      readonly startedAt: number;
+      readonly csrf: Promise<string>;
+      readonly analysis: Promise<EarlyAnalysis>;
+    }
+  | { readonly kind: 'latest'; readonly mint: string; readonly startedAt: number; readonly latest: Promise<EarlyAnalysis> };
 
 /** Lit puis efface `window.__rjStartup` (une seule reprise, aucune trace laissée sur `window`). */
 export function takeEarlyStartup(view: Window | null): EarlyStartup | null {
@@ -24,16 +36,31 @@ export function takeEarlyStartup(view: Window | null): EarlyStartup | null {
   const value = holder.__rjStartup;
   delete holder.__rjStartup;
   if (typeof value !== 'object' || value === null) return null;
-  const early = value as Partial<EarlyStartup>;
-  if (
-    typeof early.mint !== 'string' ||
-    typeof early.startedAt !== 'number' ||
-    !(early.csrf instanceof Promise) ||
-    !(early.analysis instanceof Promise)
-  ) {
-    return null;
+  const early = value as Record<string, unknown>;
+  if (typeof early['mint'] !== 'string' || typeof early['startedAt'] !== 'number') return null;
+  if (early['kind'] === 'analyse' && early['csrf'] instanceof Promise && early['analysis'] instanceof Promise) {
+    return early as unknown as EarlyStartup;
   }
-  return early as EarlyStartup;
+  if (early['kind'] === 'latest' && early['latest'] instanceof Promise) return early as unknown as EarlyStartup;
+  return null;
+}
+
+/**
+ * Laisse le premier rendu attendre la réponse lancée avec le HTML (au plus `EARLY_STARTUP_MAX_WAIT_MS`) : le
+ * verdict est alors dans la première image (pas de squelette remplacé aussitôt, deux rendus de moins après
+ * l'affichage : TBT et LCP stables, docs/ARCHITECTURE.md §10.6).
+ */
+function settledOrTimeout(view: Window | null, request: Promise<unknown>): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = view ? view.setTimeout(resolve, EARLY_STARTUP_MAX_WAIT_MS) : null;
+    request.then(
+      () => undefined,
+      () => undefined,
+    ).finally(() => {
+      if (timer !== null) view?.clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 
 export interface StartupPrefetchOptions {
@@ -54,6 +81,11 @@ export interface StartupPrefetchOptions {
    * (`AnalysisPrefetch`), sans en envoyer une seconde. Ignoré si le mint n'est pas une adresse valide.
    */
   readonly analyze?: RegExp;
+  /**
+   * Page publique d'arrivée (`/t/<mint>`, mint en premier groupe) : la lecture lancée avec le HTML par
+   * `analyse-prefetch.js` est reprise par `AnalysisStore.loadLatest` (aucune seconde requête).
+   */
+  readonly latest?: RegExp;
 }
 
 /**
@@ -64,28 +96,39 @@ export function provideStartupPrefetch(options: StartupPrefetchOptions): Environ
   return makeEnvironmentProviders([
     provideAppInitializer(() => {
       const document = inject(DOCUMENT);
+      const view = document.defaultView;
       const path = document.location?.pathname ?? '';
       const matches = (patterns: readonly RegExp[] | undefined) => patterns?.some((pattern) => pattern.test(path)) ?? false;
-      const mint = options.analyze ? decodeMint(options.analyze.exec(path)?.[1]) : null;
-      const validMint = mint && isSolanaAddress(mint) ? mint : null;
+      const validMint = (pattern: RegExp | undefined) => {
+        const mint = pattern ? decodeMint(pattern.exec(path)?.[1]) : null;
+        return mint && isSolanaAddress(mint) ? mint : null;
+      };
+      const analyzeMint = validMint(options.analyze);
+      const latestMint = validMint(options.latest);
       // Requêtes déjà parties avec le HTML (analyse-prefetch.js) : reprises au lieu d'être renvoyées.
-      const early = takeEarlyStartup(document.defaultView);
-      const adopt = early !== null && validMint !== null && early.mint === validMint && inject(API_BASE_URL) === EARLY_STARTUP_API_BASE;
+      const sameBase = inject(API_BASE_URL) === EARLY_STARTUP_API_BASE;
+      const early = takeEarlyStartup(view);
+      const prefetch = inject(AnalysisPrefetch);
       const csrf = inject(CsrfToken);
-      if (adopt) {
+      if (matches(options.contracts)) prefetchContracts();
+
+      if (early?.kind === 'latest' && sameBase && latestMint !== null && early.mint === latestMint) {
+        prefetch.adoptLatest(latestMint, early.startedAt, early.latest);
+        return settledOrTimeout(view, early.latest);
+      }
+      if (early?.kind === 'analyse' && sameBase && analyzeMint !== null && early.mint === analyzeMint) {
         early.csrf.then(
           (token) => {
             if (CSRF_TOKEN_PATTERN.test(token) && !csrf.token()) csrf.set(token);
           },
           () => undefined,
         );
-      } else if (matches(options.csrf)) {
-        csrf.ensure().subscribe({ error: () => undefined });
+        prefetch.adopt(analyzeMint, early.startedAt, early.analysis);
+        return settledOrTimeout(view, early.analysis);
       }
-      if (matches(options.contracts)) prefetchContracts();
-      if (!validMint) return;
-      if (adopt) inject(AnalysisPrefetch).adopt(validMint, early.startedAt, early.analysis);
-      else inject(AnalysisPrefetch).start(validMint);
+      if (matches(options.csrf)) csrf.ensure().subscribe({ error: () => undefined });
+      if (analyzeMint) prefetch.start(analyzeMint);
+      return undefined;
     }),
   ]);
 }
