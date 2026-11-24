@@ -1,6 +1,7 @@
 export * from './lib/bench-core.module';
 export * from './lib/config/bench-config';
 export * from './lib/config/tokens';
+export * from './lib/config/legacy-env';
 export * from './lib/http/bench-exception';
 export * from './lib/http/bench-exception.filter';
 export * from './lib/http/bench-throttler';
@@ -22,6 +23,7 @@ export * from './lib/jobs/job-scheduler.service';
 export * from './lib/sse/event-bus';
 export * from './lib/mode/bench-mode.service';
 export * from './lib/mode/bench-notifier';
+export * from './lib/mode/mail-senders';
 export * from './lib/status/status.service';
 export * from './lib/cli/bench-cli';
 export * from './lib/cli/node-cli';

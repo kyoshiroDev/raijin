@@ -184,6 +184,12 @@ Client unique `core/supabase/supabase-client.ts` (`createClient`, clé anon publ
 `@supabase/supabase-js@^2.119.2` (`package.json` racine) ; CSP de `legacy/vercel.json` (`connect-src` vers le projet
 Supabase, M4). Cible T8 : `libs/bench/data-access` (HttpClient + cookies httpOnly + CSRF, `EventSource`).
 
+**Fait (T8)** : client `apps/raijin-banc-de-test/src/app/core/api/` (`BenchApi` : `fetch` même origine, cookies
+httpOnly, CSRF double-submit relu sur 403 puis rejoué une fois, 401 → `/login` ; `BenchEvents` : `EventSource` sur
+`/api/events?topics=`, reconnexion avec délai croissant et rechargement des listes), connexion mot de passe + TOTP ou
+code de secours, écran `/comparaison` (mode ombre). `supabase-js`, `write-env` et `environment*.ts` retirés ; M4 reste à
+traiter dans `legacy/vercel.json` (archive, à ne modifier qu'avec la bascule).
+
 | Fichier (`src/app/…`) | Appels | Cible |
 |---|---|---|
 | `core/auth/auth-store.ts` | `auth.onAuthStateChange`, `getSession`, `signInWithPassword`, `resetPasswordForEmail`, `updateUser({password})`, `signOut({scope:'others'})`, `signOut()` | `POST /api/auth/login` (+ `/totp`), `GET /api/auth/session`, `POST /api/auth/password`, `POST /api/auth/logout[-others]` ; reset **Ab.** |

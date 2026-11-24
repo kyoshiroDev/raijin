@@ -9,6 +9,7 @@ import {
   type BenchPrismaOptions,
 } from './bench-prisma.options';
 import { BenchPrismaService } from './bench-prisma.service';
+import { BenchSqlService } from './bench-sql.executor';
 
 /**
  * Accès à `raijin_bench` (global) : importé une fois par `apps/raijin-banc-de-test-api`, qui fournit
@@ -23,8 +24,9 @@ export class BenchPrismaModule {
       providers: [
         { provide: BENCH_PRISMA_OPTIONS, useValue: options },
         BenchPrismaService,
+        BenchSqlService,
       ],
-      exports: [BenchPrismaService],
+      exports: [BenchPrismaService, BenchSqlService],
     };
   }
 
@@ -44,8 +46,9 @@ export class BenchPrismaModule {
           inject: options.inject ?? [],
         },
         BenchPrismaService,
+        BenchSqlService,
       ],
-      exports: [BenchPrismaService],
+      exports: [BenchPrismaService, BenchSqlService],
     };
   }
 }

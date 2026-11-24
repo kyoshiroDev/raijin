@@ -1,6 +1,7 @@
 export * from './lib/bench-prisma.module';
 export * from './lib/bench-prisma.options';
 export * from './lib/bench-prisma.service';
+export * from './lib/bench-sql.executor';
 export * from './lib/bench-tables';
 export { Prisma, job_run_status } from './generated/prisma/client';
 /** Types des lignes (noms snake_case identiques aux tables). */

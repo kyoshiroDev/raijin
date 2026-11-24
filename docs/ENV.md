@@ -609,3 +609,52 @@ BENCH_HELIUS_DAILY_CREDIT_BUDGET=10000
 #   la méthode, l'étude se désactive jusqu'au lendemain et GET /api/status l'indique (wallet_study.state).
 BENCH_WALLET_STUDY_DAILY_CREDITS=2000
 ```
+
+### Collecte portée, verdicts et e-mails d'alerte (T7)
+
+Lues par `bench-core` (`legacyEnv`, `bench-config.ts`) et `bench-quality`. Les anciens secrets Edge `JUP_API_*`,
+`MIN_*`, `SCAN_KEYWORDS` deviennent des `BENCH_*` (le code porté garde ses noms, docs/BENCH.md §6) ; `JUP_API_KEY` de
+Raijin n'est jamais lue par le banc. Tout est facultatif : valeurs par défaut = comportement de l'ancien banc.
+
+```dotenv
+# ---------------------------------------------------------------------
+# Scan porté (ex-secrets de l'Edge Function scan-tokens / enrich-tokens / paper-engine)
+# ---------------------------------------------------------------------
+# Jupiter : vide = lite-api.jup.ag sans clé (débit public). Clé du banc (distincte de Raijin) : https://portal.jup.ag
+#   (hôtes Jupiter seulement, la clé ne part vers aucun autre hôte).
+BENCH_JUP_API_BASE=
+BENCH_JUP_API_KEY=
+# Filtres du scan (défauts de l'ancien banc : 50000 et 10000 USD).
+BENCH_MIN_MARKET_CAP=50000
+BENCH_MIN_LIQUIDITY=10000
+# Mots-clés de recherche DexScreener (séparés par des virgules, 40 caractères max chacun ; vide = aucune recherche par
+#   mot-clé, comme l’ancien banc sans SCAN_KEYWORDS). Doc : https://docs.dexscreener.com/api/reference
+BENCH_SCAN_KEYWORDS=
+
+# ---------------------------------------------------------------------
+# Mesure des verdicts (ARCHITECTURE §16) : verdicts du moteur publié enregistrés par passage de verdict-follow-up
+#   (toutes les 15 min). ≈ 14 crédits Helius par verdict, pris dans BENCH_HELIUS_DAILY_CREDIT_BUDGET. Défaut 6, max 20.
+#   Crédits : https://www.helius.dev/docs/billing/credits
+# ---------------------------------------------------------------------
+BENCH_VERDICTS_PER_RUN=6
+
+# ---------------------------------------------------------------------
+# E-mails d'alerte du banc (taille de base 80 % / 95 %) : désactivés par défaut. Aucun e-mail en mode shadow.
+#   none (défaut) | resend | smtp
+# ---------------------------------------------------------------------
+BENCH_MAIL_TRANSPORT=none
+# Expéditeur (domaine vérifié chez Resend : https://resend.com/domains).
+BENCH_MAIL_FROM=Raijin banc <banc@raijinshield.com>
+# Destinataire : vide = BENCH_OWNER_EMAIL.
+BENCH_ALERT_EMAIL=
+# resend : clé PROPRE au banc (droit « Sending access » seul) : https://resend.com/api-keys
+BENCH_RESEND_API_KEY=
+# smtp : smtp://utilisateur:motdepasse@hôte:587 ou smtps://…:465. En dev : smtp://localhost:1026 (Mailpit,
+#   interface http://localhost:8026, docker-compose.dev.yml).
+BENCH_SMTP_URL=
+```
+
+`BENCH_MAIL_TRANSPORT=resend` exige `BENCH_RESEND_API_KEY` (refus de démarrer sinon, valeur factice refusée en
+production) ; `smtp` exige `BENCH_SMTP_URL`. Le statut (`GET /api/status`) affiche `email: up` dès qu'un transport est
+configuré. Fixés dans le code : relève 24 h / 72 h / 7 j (tolérances 6 h / 12 h / 24 h), rétention (snapshots 30 j,
+verdicts 365 j, `job_runs` 30 j), purge à 03:15 UTC après les agrégats de 03:05.

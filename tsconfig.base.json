@@ -54,7 +54,11 @@
       "@raijin/server-security": ["./libs/server/security/src/index.ts"],
       "@raijin/bench-solana": ["./libs/bench/solana/src/index.ts"],
       "@raijin/bench-prisma": ["./libs/bench/prisma/src/index.ts"],
-      "@raijin/bench-core": ["./libs/bench/core/src/index.ts"]
+      "@raijin/bench-core": ["./libs/bench/core/src/index.ts"],
+      "@raijin/bench-engine": ["./libs/bench/engine/src/index.ts"],
+      "@raijin/bench-collect": ["./libs/bench/collect/src/index.ts"],
+      "@raijin/bench-trading": ["./libs/bench/trading/src/index.ts"],
+      "@raijin/bench-quality": ["./libs/bench/quality/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

@@ -1,0 +1,19 @@
+{
+  "name": "@raijin/bench-collect",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@raijin/bench-contracts": "*",
+    "@raijin/bench-core": "*",
+    "@raijin/bench-engine": "*",
+    "@raijin/bench-prisma": "*",
+    "@raijin/bench-solana": "*",
+    "@raijin/shared-contracts": "*",
+    "zod": "^4.6.7",
+    "tslib": "^2.3.0"
+  }
+}

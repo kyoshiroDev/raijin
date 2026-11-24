@@ -106,8 +106,9 @@ Code d'origine importé tel quel pour ne pas modifier le comportement des calcul
   n'importe pas `libs/brand/tokens.css`. Seule contrainte vérifiée : sa couleur `warn` (badge
   « BANC DE TEST ») est identique au token `warn` de `libs/brand` (`bench-badge.spec.ts`).
 - Sélecteurs `app-` conservés ; aucune règle ESLint désactivée.
-- Cible supplémentaire `write-env` : génère `src/environments/environment.local.ts` (ignoré par
-  Git, clés publiques uniquement) ; configuration `local` pour `build`/`serve` (port 4300).
+- Aucune configuration d'environnement ni clé : le front appelle l'API du banc sur la même origine (`/api`,
+  client `src/app/core/api/`, cookies `rjb_*` + CSRF double-submit, SSE `/api/events`) ; `serve` (port 4300)
+  relaie `/api` vers `localhost:3300` (`proxy.conf.json`). Cible `write-env` et supabase-js retirés (phase 8 bis, T8).
 
 ## 4. Styles et thème
 

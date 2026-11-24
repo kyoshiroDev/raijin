@@ -41,9 +41,18 @@ export interface BenchConfig {
   readonly dbAllocatedBytes: number;
   /** Planification BullMQ active (`BENCH_JOBS_ENABLED`, et Redis présent). */
   readonly jobsEnabled: boolean;
-  /** Variables `BENCH_*` transmises à `createBenchSolana` (jamais `HELIUS_API_KEY`). */
+  /** Variables `BENCH_*` transmises à `createBenchSolana` (jamais `HELIUS_API_KEY`) et au code porté (T7). */
   readonly solanaEnv: Readonly<Record<string, string | undefined>>;
+  /** E-mails d'alerte du banc (taille de base) : désactivés par défaut (`BENCH_MAIL_TRANSPORT=none`). */
+  readonly mail: BenchMailConfig;
 }
+
+export type BenchMailConfig =
+  | { readonly transport: 'none' }
+  | { readonly transport: 'resend'; readonly apiKey: string; readonly from: string; readonly to: string }
+  | { readonly transport: 'smtp'; readonly url: string; readonly from: string; readonly to: string };
+
+export const BENCH_MAIL_TRANSPORTS = ['none', 'resend', 'smtp'] as const;
 
 export const BENCH_BULLMQ_PREFIX = 'raijin-bench' as const;
 export const DEFAULT_BENCH_PORT = 3300;
@@ -240,6 +249,28 @@ export function loadBenchConfig(env: Env): BenchConfig {
   const dbAllocatedBytes = parseInteger(read(env, 'BENCH_DB_ALLOCATED_BYTES'), DEFAULT_DB_ALLOCATED_BYTES, 64 * 1024 ** 2, 1024 ** 4);
   if (dbAllocatedBytes === null) problems.push('BENCH_DB_ALLOCATED_BYTES doit être un nombre d’octets (64 Mio à 1 Tio)');
 
+  // E-mails d'alerte (T7) : port BenchMailSender, aucun envoi tant que BENCH_MAIL_TRANSPORT vaut none (défaut).
+  const mailTransport = read(env, 'BENCH_MAIL_TRANSPORT') ?? 'none';
+  let mail: BenchMailConfig = { transport: 'none' };
+  if (!(BENCH_MAIL_TRANSPORTS as readonly string[]).includes(mailTransport)) problems.push('BENCH_MAIL_TRANSPORT doit valoir none, resend ou smtp');
+  else if (mailTransport !== 'none') {
+    const from = read(env, 'BENCH_MAIL_FROM');
+    const toRaw = read(env, 'BENCH_ALERT_EMAIL') ?? ownerRaw;
+    const to = toRaw === undefined ? null : emailSchema.safeParse(toRaw);
+    if (from === undefined || !/^[^<>\r\n]{0,80}<?[^\s@<>]+@[^\s@<>]+>?$/.test(from)) problems.push('BENCH_MAIL_FROM doit être une adresse d’expédition (Nom <adresse>)');
+    if (!to || !to.success) problems.push('BENCH_ALERT_EMAIL doit être une adresse e-mail');
+    if (mailTransport === 'resend') {
+      const apiKey = read(env, 'BENCH_RESEND_API_KEY');
+      if (apiKey === undefined) problems.push('BENCH_RESEND_API_KEY est obligatoire avec BENCH_MAIL_TRANSPORT=resend');
+      else if (isProduction && looksFake(apiKey)) problems.push('BENCH_RESEND_API_KEY garde une valeur factice');
+      if (apiKey && from && to?.success) mail = { transport: 'resend', apiKey, from, to: to.data };
+    } else {
+      const url = read(env, 'BENCH_SMTP_URL');
+      if (url === undefined || !/^smtps?:\/\/[^\s]+$/.test(url)) problems.push('BENCH_SMTP_URL doit être une URL smtp:// ou smtps://');
+      else if (from && to?.success) mail = { transport: 'smtp', url, from, to: to.data };
+    }
+  }
+
   const jobsFlag = parseBoolean(read(env, 'BENCH_JOBS_ENABLED'), nodeEnv !== 'test');
   if (jobsFlag === null) problems.push('BENCH_JOBS_ENABLED doit valoir 1 ou 0');
 
@@ -272,5 +303,6 @@ export function loadBenchConfig(env: Env): BenchConfig {
     dbAllocatedBytes,
     jobsEnabled: jobsFlag && redisUrl !== null,
     solanaEnv,
+    mail,
   };
 }

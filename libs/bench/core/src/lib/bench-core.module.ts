@@ -20,7 +20,8 @@ import { BenchJobRunsController } from './jobs/job-runs.controller';
 import { JobRunStore, PrismaJobRunStore } from './jobs/job-runs.store';
 import { BenchJobScheduler } from './jobs/job-scheduler.service';
 import { BenchModeService } from './mode/bench-mode.service';
-import { BenchMailSender, BenchNotifier, NullBenchMailSender } from './mode/bench-notifier';
+import { BenchMailSender, BenchNotifier } from './mode/bench-notifier';
+import { createBenchMailSender } from './mode/mail-senders';
 import { BenchRedis } from './redis/bench-redis';
 import { BenchEventBus } from './sse/event-bus';
 import { BenchEventsController } from './sse/events.controller';
@@ -75,7 +76,7 @@ export class BenchCoreModule {
         { provide: JobRunStore, useClass: PrismaJobRunStore },
         { provide: BenchJobLock, useClass: RedisBenchJobLock },
         { provide: PushSender, useFactory: () => new WebPushSender(config.vapid) },
-        { provide: BenchMailSender, useClass: NullBenchMailSender },
+        { provide: BenchMailSender, useFactory: () => createBenchMailSender(config.mail) },
         BenchCookies,
         BenchCsrfService,
         BenchAuthService,

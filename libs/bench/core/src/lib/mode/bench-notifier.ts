@@ -61,6 +61,14 @@ export class BenchNotifier {
     return this.push.send(target, payload, options);
   }
 
+  /**
+   * Push au format historique du banc (charge `{ notification: { title, body, icon, tag, data } }` construite par le
+   * code porté de `scan-tokens`, lue par le service worker du banc) : même garde du mode ombre, même expéditeur.
+   */
+  async sendBenchPush(target: PushTarget, payload: object, options: PushSendOptions): Promise<PushResult | Suppressed> {
+    return this.sendPush(target, payload as PushNotificationPayload, options);
+  }
+
   async sendMail(message: BenchMailMessage): Promise<MailResult | Suppressed> {
     if (!this.mode.notificationsAllowed()) {
       this.logger.debug('E-mail non envoyé (mode ombre)');

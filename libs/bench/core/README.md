@@ -34,7 +34,7 @@ class ScanJob implements OnModuleInit {
 ```
 
 Seuls les jobs enregistrés sont planifiés ; un job lancé sans traitement est journalisé `skipped` (`not_registered`).
-L'e-mail est un port (`BenchMailSender`, non configuré par défaut) à fournir par T7.
+L'e-mail passe par le port `BenchMailSender` : `createBenchMailSender(config.mail)` (Resend ou SMTP selon `BENCH_MAIL_TRANSPORT`, `none` par défaut). Variables des fonctions portées : `legacyEnv(config)` (`JUP_API_KEY` → `BENCH_JUP_API_KEY`…).
 
 ## Commandes
 

@@ -1,0 +1,21 @@
+{
+  "name": "@raijin/bench-quality",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@raijin/api-solana": "*",
+    "@raijin/bench-contracts": "*",
+    "@raijin/bench-core": "*",
+    "@raijin/bench-engine": "*",
+    "@raijin/bench-prisma": "*",
+    "@raijin/bench-solana": "*",
+    "@raijin/bench-verdicts": "*",
+    "@raijin/shared-contracts": "*",
+    "@raijin/shared-risk-engine": "*",
+    "tslib": "^2.3.0"
+  }
+}
