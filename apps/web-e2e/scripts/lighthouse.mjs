@@ -27,7 +27,8 @@ const USAGE = `Usage : node apps/web-e2e/scripts/lighthouse.mjs [options]
   --landing <url>        landing (défaut : http://127.0.0.1:4332) ; démarrée par ce script si elle ne répond pas
   --landing-dist <dir>   build servi (défaut : dist/apps/landing-lighthouse, cible web-e2e:build-landing-lighthouse)
   --threshold <n>        seuil par catégorie (défaut : 95)
-  --cpu <n>              multiplicateur CPU (diagnostic seulement)`;
+  --cpu <n>              multiplicateur CPU (diagnostic seulement)
+  --timeout-min <n>      délai global du script en minutes (défaut : 15) ; au-delà, serveurs arrêtés et sortie 124`;
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(USAGE);
   process.exit(0);
@@ -65,6 +66,17 @@ const PAGES = ALL_PAGES.filter((page) => SCOPE === 'all' || page.site === SCOPE)
 const origin = (page) => (page.site === 'landing' ? LANDING : BASE);
 /** Libellé d'une page dans le résumé (mint remplacé, landing préfixée). */
 const label = (page) => `${page.site === 'landing' ? 'landing ' : ''}${page.url.replace(BONK, '<BONK>')}`;
+
+// Délai global : le script lance un serveur fils (landing) qui garde la boucle d'événements active ; sans sortie
+// explicite il ne se terminait jamais quand tous les scores passaient (run 45507777051, annulé au délai du job).
+// Le minuteur est `unref` : il ne retient pas le processus, il le coupe seulement s'il est encore là.
+const TIMEOUT_MIN = Number(arg('timeout-min', '15'));
+if (!(TIMEOUT_MIN > 0)) throw new Error(`--timeout-min invalide : « ${TIMEOUT_MIN} »`);
+const RUN_TIMEOUT_MS = 3 * 60_000;
+setTimeout(() => {
+  console.error(`Lighthouse : délai global de ${TIMEOUT_MIN} min dépassé, arrêt des serveurs lancés par le script`);
+  process.exit(124);
+}, TIMEOUT_MIN * 60_000).unref();
 
 const fullDir = join(workspace, 'dist', 'lighthouse', PHASE);
 const summaryDir = join(workspace, 'docs', 'lighthouse', PHASE);
@@ -125,7 +137,14 @@ function runLighthouseOnce(url, out) {
       '--chrome-flags=--headless=new --no-sandbox --disable-dev-shm-usage',
       ...(CPU ? [`--throttling.cpuSlowdownMultiplier=${CPU}`] : []),
     ],
-    { stdio: ['ignore', 'inherit', 'inherit'], env: { ...process.env, CHROME_PATH: chromium.executablePath() } },
+    // Délai par passage (~30 s d'habitude) : un appel synchrone bloque le minuteur global, il doit donc se borner
+    // lui-même ; au-delà, Lighthouse et son Chrome reçoivent SIGKILL et la tentative compte comme un échec.
+    {
+      stdio: ['ignore', 'inherit', 'inherit'],
+      env: { ...process.env, CHROME_PATH: chromium.executablePath() },
+      timeout: RUN_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    },
   );
   return JSON.parse(readFileSync(`${out}.report.json`, 'utf8'));
 }
@@ -305,3 +324,8 @@ if (failed) {
   console.error(`Au moins un score < ${THRESHOLD} (détail : docs/lighthouse/${PHASE}/summary.md)`);
   process.exit(1);
 }
+// Sortie explicite (le gestionnaire `exit` arrête serve-landing.mjs) : sans elle, le serveur fils garde le
+// processus en vie et Nx attend indéfiniment (serve-prod et serve-api-fixtures, tâches continues, ne sont
+// arrêtés par Nx qu'à la fin de cette tâche).
+console.log(`Tous les scores ≥ ${THRESHOLD} (détail : docs/lighthouse/${PHASE}/summary.md)`);
+process.exit(0);

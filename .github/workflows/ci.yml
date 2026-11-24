@@ -558,6 +558,8 @@ jobs:
       - name: Lighthouse (app de production + API fixtures + landing statique)
         id: lighthouse
         continue-on-error: ${{ github.event_name == 'workflow_dispatch' }}
+        # Builds (~2 min) + mesures (~5 min pour 6 pages × 3 passages) ; le script a son propre délai de 15 min.
+        timeout-minutes: 20
         run: pnpm nx run web-e2e:lighthouse --args="--runs $LH_RUNS --phase $LH_PHASE"
 
       - name: Résumé des scores
