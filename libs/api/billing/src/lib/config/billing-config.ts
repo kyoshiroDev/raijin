@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { catalogDriftWarnings, ConfigError, type AppConfig } from '@raijin/api-core';
+import { catalogDriftWarnings, ConfigError, withoutEmptyEnv, type AppConfig } from '@raijin/api-core';
 import { PUBLIC_PLAN_CATALOG } from '@raijin/shared-contracts';
 import * as z from 'zod';
 
@@ -97,7 +97,7 @@ export function loadBillingConfig(
   app: Pick<AppConfig, 'isProduction' | 'appUrl'>,
   warn: (message: string) => void = () => undefined,
 ): BillingConfig {
-  const parsed = billingEnvSchema.safeParse(env);
+  const parsed = billingEnvSchema.safeParse(withoutEmptyEnv(env));
   if (!parsed.success) {
     throw new ConfigError(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'env'} : ${issue.message}`));
   }

@@ -233,6 +233,19 @@ export interface AppConfig {
 /** Valeurs factices de `.env.example` : traitées comme absentes. */
 const PLACEHOLDER = /changeme|factice|^re_factice$|^sk_test_factice$|^whsec_factice$|^pk_test_factice$/i;
 
+/**
+ * Variables vides (`NOM=` ou espaces seuls, cas de `.env.example`) traitées comme **absentes** : la valeur par défaut
+ * s'applique. Sans cela, `z.coerce.number()` convertit `''` en `0` (« Too small ») et un booléen ou une liste vide
+ * ne retombe pas sur son défaut. Appliqué à tous les chargeurs de configuration de l'API.
+ */
+export function withoutEmptyEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && value.trim() !== '') result[key] = value;
+  }
+  return result;
+}
+
 const optionalString = z
   .string()
   .trim()
@@ -439,7 +452,7 @@ export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
   warn: (message: string) => void = () => undefined,
 ): AppConfig {
-  const parsed = envSchema.safeParse(env);
+  const parsed = envSchema.safeParse(withoutEmptyEnv(env));
   if (!parsed.success) {
     throw new ConfigError(
       parsed.error.issues.map((issue) => `${issue.path.join('.') || 'env'} : ${issue.message}`),
