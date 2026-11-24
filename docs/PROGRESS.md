@@ -390,6 +390,10 @@
   - [ ] `pnpm` signale des avertissements de dépendances pairs (préexistants, à examiner par architect).
   - [ ] Banc en production toujours sur Supabase + Vercel, inchangé (aucun déploiement, aucune commande supabase).
 
+## Après la v1 (décisions de l'utilisateur, 2026-11-24)
+- **v1.1 — Radar des nouveaux tokens Solana** (après l'ouverture de la PR v1, sur une branche dédiée) : liste purement informative des tokens récents, triée par date (jamais par potentiel de gain), avec verdict Raijin et contrôles clés ; aucun « opportunité / top / à acheter » ; réservé au Pro ; budget Helius dédié.
+- **Chiffrage préalable** : coût Helius du radar et des usages Pro actuels, puis rentabilité du Pro à 9,90 € TTC/mois (99 €/an) ; si le Pro n'est pas rentable, revoir le tarif.
+
 ## Blocages
 - **Lighthouse /t/<mint> (page de partage) sous 95** : 85–93 sur le runner selon les passages (dernière mesure `2f73bd7` : /analyse 99, /analyse/<mint> 97, /t 93, landing 100), seule perte le TBT (≈ 400 ms : démarrage d'Angular + rendu du verdict d'un seul tenant, la page étant déjà peinte à 0,77 s). /analyse 95–97 et /analyse/<mint> 96, landing 100. Pistes pour après la v1 : rendu côté serveur (SSR) ou HTML statique du verdict injecté par l'API dans /t (comme les balises OG), hydratation différée. Décision : non bloquant pour la v1, signalé au final-reviewer par ce journal.
 - **Lighthouse de l'app en recul** (run 45245131547) : /analyse 88 (96 en phase 3), /analyse/<mint> 79 (88), /t/<mint> 78 (87) ; Access./BP/SEO 100. Cause probable : bundle initial passé de ~430 kB à 468 kB (phases 4–6 bis) et TBT 430–970 ms. À traiter en phase 9 (polish) : audit du bundle initial (ce qui est chargé au démarrage hors /analyse et /t), pistes déjà notées (chunk framework, zod/mini).
