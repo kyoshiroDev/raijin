@@ -10,8 +10,8 @@ exports[`renderStaticVerdict résultat partiel (degraded) 1`] = `
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
   <p class="rj-static__note">Résultat partiel : une source était indisponible.</p>
   <nav class="rj-static__actions" aria-label="Actions">
-    <a class="rj-static__link rj-static__link--primary" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
-    <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
   </nav>
   <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
 </main>"
@@ -25,8 +25,8 @@ exports[`renderStaticVerdict sans symbole : repli sur le nom, puis aucune ligne 
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
   <nav class="rj-static__actions" aria-label="Actions">
-    <a class="rj-static__link rj-static__link--primary" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
-    <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
   </nav>
   <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
 </main>"
@@ -41,8 +41,8 @@ exports[`renderStaticVerdict verdict danger 1`] = `
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
   <nav class="rj-static__actions" aria-label="Actions">
-    <a class="rj-static__link rj-static__link--primary" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
-    <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
   </nav>
   <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
 </main>"
@@ -57,8 +57,8 @@ exports[`renderStaticVerdict verdict safe 1`] = `
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
   <nav class="rj-static__actions" aria-label="Actions">
-    <a class="rj-static__link rj-static__link--primary" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
-    <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
   </nav>
   <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
 </main>"
@@ -73,8 +73,8 @@ exports[`renderStaticVerdict verdict warn 1`] = `
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
   <nav class="rj-static__actions" aria-label="Actions">
-    <a class="rj-static__link rj-static__link--primary" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
-    <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
   </nav>
   <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
 </main>"

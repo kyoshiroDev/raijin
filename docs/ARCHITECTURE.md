@@ -885,8 +885,8 @@ celui des visiteurs).
      <!-- seulement si degraded : -->
      <p class="rj-static__note">Résultat partiel : une source était indisponible.</p>
      <nav class="rj-static__actions" aria-label="Actions">
-       <a class="rj-static__link rj-static__link--primary" href="/analyse/{mint}">Réanalyser ce token</a>
-       <a class="rj-static__link" href="/analyse">Analyser un autre token</a>
+       <a class="rj-static__link" href="/analyse/{mint}">Réanalyser ce token</a>
+       <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
      </nav>
      <p class="rj-static__disclaimer" data-disclaimer>{ANALYSIS_DISCLAIMER}</p>
    </main>
