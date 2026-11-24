@@ -65,6 +65,8 @@ const COLLAPSE_KEY = 'rj.sidebar.collapsed';
         </div>
       </header>
       }
+      <!-- Bandeaux de la coque (hors ligne, essai Pro) : au-dessus du contenu principal, hors de <main>. -->
+      <ng-content select="[rjShellBanners]" />
       <main id="rj-main" tabindex="-1" [class]="mainClasses()">
         <ng-content />
       </main>

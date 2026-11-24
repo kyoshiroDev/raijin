@@ -19,7 +19,8 @@ describe('RjOfflineBanner', () => {
   it('en ligne : rien d’affiché, région annoncée présente', async () => {
     const fixture = await render();
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.getAttribute('role')).toBe('status');
+    expect(host.getAttribute('aria-live')).toBe('polite');
+    expect(host.getAttribute('role')).toBeNull();
     expect(host.querySelector('[data-offline]')).toBeNull();
   });
 

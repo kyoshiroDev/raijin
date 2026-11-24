@@ -43,11 +43,13 @@ export function hidesAppChrome(snapshot: ActivatedRouteSnapshot | null): boolean
       (notifications)="openAlerts()"
     >
       <!-- Bandeaux « hors ligne » et d'essai Pro : chunk à part, chargé quand le navigateur est inactif (hors chemin du LCP). -->
-      @if (appChrome()) {
-        @defer (on idle) {
-          <rj-shell-banners />
+      <div rjShellBanners class="mx-auto w-full max-w-reading px-4 md:px-6 lg:px-8">
+        @if (appChrome()) {
+          @defer (on idle) {
+            <rj-shell-banners />
+          }
         }
-      }
+      </div>
       <router-outlet />
     </rj-app-shell>
   `,

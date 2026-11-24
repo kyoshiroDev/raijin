@@ -12,7 +12,7 @@ import { RjTrialBanner } from '@raijin/web-ui';
   imports: [RjTrialBanner],
   template: `
     @if (banner(); as banner) {
-      <rj-trial-banner class="mb-4 md:mb-6" [text]="banner.text" [linkLabel]="banner.linkLabel" [linkPath]="banner.linkPath" (dismiss)="state.dismiss()" />
+      <rj-trial-banner class="mt-4 md:mt-6 lg:mt-8" [text]="banner.text" [linkLabel]="banner.linkLabel" [linkPath]="banner.linkPath" (dismiss)="state.dismiss()" />
     }
   `,
   host: { class: 'block' },

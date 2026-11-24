@@ -12,13 +12,14 @@ import { RjIcon } from '@raijin/web-ui';
   imports: [RjIcon],
   template: `
     @if (offline()) {
-      <p class="mb-4 flex items-start gap-3 rounded-lg border border-line-strong bg-surface-raised px-4 py-3 text-body-sm text-ink md:mb-6" data-offline>
+      <p class="mt-4 flex items-start gap-3 rounded-lg border border-line-strong bg-surface-raised px-4 py-3 text-body-sm text-ink md:mt-6 lg:mt-8" data-offline>
         <rj-icon name="wifiOff" [size]="20" class="mt-0.5 shrink-0 text-warn" />
         <span><strong class="font-semibold">Tu es hors ligne.</strong> Les données affichées peuvent dater, et les nouvelles analyses attendront le retour de la connexion.</span>
       </p>
     }
   `,
-  host: { role: 'status', class: 'block' },
+  // Région live sans rôle `status` : annonce l'arrivée hors ligne sans ajouter un « status » permanent à la page.
+  host: { 'aria-live': 'polite', class: 'block' },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RjOfflineBanner {
