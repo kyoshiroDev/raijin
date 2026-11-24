@@ -162,7 +162,16 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   `/admin` chargé en différé derrière une garde (`apps/web/src/app/admin-area.guard.ts`).
 - **Tests** : `admin-area.http.spec.ts`, `admin.guard.spec.ts`, `apps/web/src/app/admin-area.guard.spec.ts`,
   `apps/api-e2e/src/api/admin-security.e2e.spec.ts`, `admin-analytics.e2e.spec.ts`, `apps/web-e2e` (admin.flow).
-- **Risque résiduel** : l'admin est servi par la même API publique (pas de restriction réseau ni d'IP).
+- **Limite de débit propre à l'espace admin** : `AdminAreaMiddleware`
+  (`libs/api/auth/src/lib/admin-security/admin-area.middleware.ts:37`) s'exécute avant la garde globale du
+  throttler ; il compte donc lui-même chaque requête sur `admin/*` (`RATE_LIMIT_PER_MINUTE` par préfixe d'IP,
+  IPv6 regroupée en /64, fenêtre de 60 s, compteur `admin-area` du stockage du throttler) **avant** de lire le
+  jeton et la base. Au-delà, il répond 404 `NOT_FOUND` sans lecture en base, **y compris à un admin légitime**,
+  jusqu'à la fin de la fenêtre de 60 s. Raison (audit 6 bis n2) : sans ce compteur, un jeton USER ou une rafale
+  anonyme déclencherait une lecture en base par requête sans limite ; et répondre 429 au lieu de 404
+  révélerait que les routes admin existent.
+- **Risque résiduel** : l'admin est servi par la même API publique (pas de restriction réseau ni d'IP) ; un
+  admin qui partage son préfixe d'IP avec un client bruyant (NAT, même /64) peut recevoir des 404 pendant 60 s.
 
 ### 11. Accès au banc (Raijin-banc-de-test)
 - **Parades** : `banc.raijinshield.com` derrière **basicAuth Traefik** (`raijin-bench-auth`, en-tête retiré),

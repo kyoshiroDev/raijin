@@ -9,7 +9,7 @@ import { fetchCandleHistory } from './gecko-history';
 
 const HOSTS: ReadonlySet<string> = new Set(['api.example-allowed.test']);
 const OK_URL = 'https://api.example-allowed.test/v1/x';
-const FAKE_KEY = 'abcd1234-ef56-7890-abcd-ef1234567890';
+const FAKE_KEY = '00000000-0000-4000-8000-000000000000';
 const PAIR = 'B8a1mw1vfm5pnm4RgUd8zhbtBnkPB2fBMdikU33Z1jqv';
 const MINT = 'D9EcoQZeAytCrF1kQFSpRNpoPhibJUvJcmRHXhubpump';
 

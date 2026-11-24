@@ -2,7 +2,15 @@
 [extend]
 useDefault = true
 
+# Adresses Solana publiques (base58, 32 à 44 caractères) : exception limitée aux tests, fixtures et suites e2e
+# (condition AND : la valeur ET le chemin doivent correspondre). Partout ailleurs, une valeur base58 reste signalée.
 [[allowlists]]
-description = "Adresses Solana publiques (base58, 32 à 44 caractères) des fixtures : identifiants publics, pas des secrets"
+description = "Adresses Solana publiques des tests et fixtures"
+condition = "AND"
 regexTarget = "secret"
 regexes = ['''^[1-9A-HJ-NP-Za-km-z]{32,44}$''']
+paths = [
+  '''(\.spec|\.db-spec|_test)\.ts$''',
+  '''(^|/)(fixtures|testing|test-support)/''',
+  '''^apps/[^/]+-e2e/''',
+]

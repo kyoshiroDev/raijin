@@ -19,6 +19,11 @@ const ADOPTED_URL = '/api/v1/analyses';
 /** `GET analyses/:mint/latest` : seul le 404 `ANALYSIS_NOT_FOUND` (réponse métier) est repris tel quel. */
 const ADOPTED_LATEST_ERROR_STATUSES: readonly number[] = [404];
 
+/** Raison du rejet de `analyse-prefetch.js` : seul `network` (POST parti sans réponse) interdit le renvoi. */
+function earlyFailure(reason: unknown): 'network' | null {
+  return reason instanceof Error && reason.message === 'network' ? 'network' : null;
+}
+
 /** Au-delà, une requête de démarrage non réclamée est abandonnée (l'écran en relancera une). */
 const MAX_AGE_MS = 30_000;
 
@@ -46,9 +51,12 @@ export class AnalysisPrefetch {
    * remise à l’écran ; autre échec, une requête normale part aussitôt à la place (intercepteurs compris).
    */
   adopt(input: string, startedAt: number, early: Promise<EarlyAnalysis>): void {
-    const response = from(early.then((result): EarlyAnalysis | null => result, () => null)).pipe(
+    const response = from(early.then((result): EarlyAnalysis | 'network' | null => result, earlyFailure)).pipe(
       switchMap((result) => {
-        // CSRF ou réseau en échec avant la réponse : requête normale.
+        // POST parti sans réponse : le serveur a pu le traiter (quota compté). Aucun renvoi automatique :
+        // erreur réseau affichée, « Réessayer » reste à l'initiative de l'utilisateur.
+        if (result === 'network') return throwError(() => new HttpErrorResponse({ status: 0, url: ADOPTED_URL }));
+        // CSRF en échec : le POST n'est jamais parti, requête normale.
         if (result === null) return this.api.analyze({ input });
         if (result.status >= 200 && result.status < 300) return of(result.body);
         if (ADOPTED_ERROR_STATUSES.includes(result.status)) {

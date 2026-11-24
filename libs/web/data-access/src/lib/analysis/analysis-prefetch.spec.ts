@@ -52,7 +52,16 @@ describe('AnalysisPrefetch.adopt (requête partie avant Angular)', () => {
     expect(await result).toEqual(fakeAnalysisResponse('warn'));
   });
 
-  it('CSRF ou réseau en échec : requête normale', async () => {
+  it('réseau en échec après l’envoi du POST : erreur réseau (statut 0), aucun renvoi automatique', async () => {
+    const { prefetch, ctrl } = setup();
+    prefetch.adopt(FAKE_MINTS.safe, Date.now(), Promise.reject(new Error('network')));
+    const error = await firstValueFrom(taken(prefetch)).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpErrorResponse);
+    expect(error).toMatchObject({ status: 0 });
+    ctrl.expectNone(`${API}/analyses`);
+  });
+
+  it('CSRF en échec (POST jamais parti) : requête normale', async () => {
     const { prefetch, ctrl } = setup();
     prefetch.adopt(FAKE_MINTS.safe, Date.now(), Promise.reject(new Error('csrf')));
     const result = firstValueFrom(taken(prefetch));

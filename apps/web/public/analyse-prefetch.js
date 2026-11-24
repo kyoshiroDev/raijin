@@ -4,7 +4,9 @@
  * jeton CSRF puis lance `POST /api/v1/analyses` ; sur /t/<mint>, il lit `GET /api/v1/analyses/<mint>/latest`. Le
  * tout dès la lecture du HTML, sans attendre le JavaScript d'Angular. L'app reprend ces promesses (`window.__rjStartup`, lu puis effacé par provideStartupPrefetch) :
  * une seule requête d'analyse, la même que l'écran aurait envoyée. Aucun stockage : le jeton reste en mémoire.
- * Tout échec est sans conséquence : l'app refait alors la requête normalement (refresh de session, maintenance).
+ * Rejets typés : `Error('csrf')` si le POST n'est jamais parti (jeton refusé ou injoignable) : l'app refait la
+ * requête normalement ; `Error('network')` si le POST est parti sans réponse lisible : le serveur a pu le traiter
+ * (quota compté), l'app affiche l'erreur réseau et laisse « Réessayer » à l'utilisateur.
  */
 (() => {
   'use strict';
@@ -46,6 +48,9 @@
       const token = result.status === 200 && result.body ? result.body.csrfToken : null;
       if (typeof token !== 'string' || !/^[A-Za-z0-9_.-]{32,256}$/.test(token)) throw new Error('csrf');
       return token;
+    })
+    .catch(() => {
+      throw new Error('csrf');
     });
   const analysis = csrf.then((token) =>
     window
@@ -55,7 +60,9 @@
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': token },
         body: JSON.stringify({ input: mint }),
       })
-      .then(json),
+      .then(json, () => {
+        throw new Error('network');
+      }),
   );
   // Rejets observés ici : jamais d'« unhandled rejection », l'app relit chaque promesse.
   csrf.catch(() => undefined);
