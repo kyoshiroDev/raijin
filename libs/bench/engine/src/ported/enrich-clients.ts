@@ -2,7 +2,7 @@
 // Rules (docs/SECURITY.md): fixed https hosts only, mints validated with isSolanaAddress before any URL is
 // built (and encodeURIComponent anyway), AbortSignal.timeout <= 8 s, zod on every payload, never throw
 // (null = unknown), no secret in URLs or logs. `fetchFn` is injectable so the whole path is unit tested.
-import { runtimeFetch } from './runtime-fetch';
+import { safeRequest } from './http-client';
 import {
   GeckoMultiSchema,
   GeckoPoolSchema,
@@ -32,7 +32,7 @@ const JUP_HOSTS = ['lite-api.jup.ag', 'api.jup.ag'] as const;
 export const ENRICH_HOSTS: ReadonlySet<string> = new Set([...JUP_HOSTS, 'api.rugcheck.xyz', 'api.geckoterminal.com']);
 
 const MAX_TIMEOUT_MS = 8_000;
-const MAX_BODY_CHARS = 2_000_000;
+const MAX_BODY_BYTES = 2_000_000;
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -52,36 +52,47 @@ export interface ClientOptions {
   onStatus?: (status: number) => void;
 }
 
-/** GET a JSON document from an allowed host. Returns null on any failure (bad URL/host, non-2xx, timeout, bad JSON). */
+/**
+ * GET a JSON document from an allowed host. Returns null on any failure (bad URL/host, redirect, non-2xx, timeout,
+ * body over 2 MB, bad JSON). Transport guards live in http-client.ts (safeRequest).
+ */
 export async function getJson(url: string, opts: ClientOptions = {}): Promise<unknown | null> {
   const log = opts.log ?? ((m: string) => engineLog.warn(m));
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== 'https:' || !(opts.hosts ?? ENRICH_HOSTS).has(u.hostname) || u.username || u.password || u.port) return null;
-  if (opts.signal?.aborted) return null; // run budget exhausted: no new request
-  const timeout = AbortSignal.timeout(Math.min(opts.timeoutMs ?? MAX_TIMEOUT_MS, MAX_TIMEOUT_MS));
-  try {
-    const res = await (opts.fetchFn ?? runtimeFetch())(u.toString(), {
-      headers: { accept: 'application/json', ...opts.headers },
-      redirect: 'error',
-      signal: opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout,
-    });
-    opts.onStatus?.(res.status);
-    if (!res.ok) {
-      log(`enrich fetch ${u.hostname} HTTP ${res.status}`);
-      await res.body?.cancel().catch(() => undefined);
+  const res = await safeRequest(url, {
+    hosts: opts.hosts ?? ENRICH_HOSTS,
+    headers: { accept: 'application/json', ...opts.headers },
+    timeoutMs: Math.min(opts.timeoutMs ?? MAX_TIMEOUT_MS, MAX_TIMEOUT_MS),
+    maxBytes: MAX_BODY_BYTES,
+    signal: opts.signal,
+    onStatus: opts.onStatus,
+    fetchFn: opts.fetchFn,
+  });
+  switch (res.kind) {
+    case 'ok':
+      try {
+        return JSON.parse(res.text) as unknown;
+      } catch (e) {
+        log(`enrich fetch ${hostOf(url)} failed: ${(e instanceof Error ? e.name : 'error')}`);
+        return null;
+      }
+    case 'http':
+      log(`enrich fetch ${hostOf(url)} HTTP ${res.status}`);
       return null;
-    }
-    const text = await res.text();
-    if (text.length > MAX_BODY_CHARS) return null;
-    return JSON.parse(text) as unknown;
-  } catch (e) {
-    log(`enrich fetch ${u.hostname} failed: ${(e instanceof Error ? e.name : 'error')}`);
-    return null;
+    case 'error':
+      log(`enrich fetch ${hostOf(url)} failed: ${res.name}`);
+      return null;
+    case 'refused':
+      if (res.reason === 'redirect') log(`enrich fetch ${hostOf(url)} redirect refused (HTTP ${res.status ?? 0})`);
+      else if (res.reason === 'too_large') log(`enrich fetch ${hostOf(url)} body too large`);
+      return null;
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'invalid-url';
   }
 }
 

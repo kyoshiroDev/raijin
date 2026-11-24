@@ -11,13 +11,14 @@
 // - `token=<mint address>` returns the price of THAT token in USD whichever side of the pool it is (verified: the
 //   same pool gives 0.00106 for the memecoin and 73.05 for SOL); an unknown token value → HTTP 400;
 // - an unknown pool → HTTP 404 { errors: [{ status: "404", title: "Not Found" }] }.
-import { runtimeFetch } from './runtime-fetch';
+import { safeRequest } from './http-client';
 import { z } from 'zod/v3';
 import { isSolanaAddress } from './solana';
 import type { Candle } from './types';
 
 export const GECKO_HISTORY_BASE = 'https://api.geckoterminal.com/api/v2';
 const GECKO_HOST = 'api.geckoterminal.com';
+const GECKO_HOSTS: ReadonlySet<string> = new Set([GECKO_HOST]);
 export const GECKO_MAX_LIMIT = 1000;
 /** Labels never look further than 7 days after the detection (outcomes.ts OUTCOME_HORIZON_H). */
 export const HISTORY_HORIZON_H = 24 * 7;
@@ -30,7 +31,7 @@ export const MINUTE_WINDOW_MAX_H = HISTORY_HORIZON_H + 1;
 export const MAX_PAGES = 3;
 
 const MAX_TIMEOUT_MS = 8_000;
-const MAX_BODY_CHARS = 2_000_000;
+const MAX_BODY_BYTES = 2_000_000;
 const HOUR_MS = 3_600_000;
 
 const numish = z.union([z.number(), z.string().max(100)]).transform((v) => Number(v)).pipe(z.number().finite());
@@ -139,30 +140,28 @@ interface Fetched {
 }
 
 async function getGecko(url: string, opts: HistoryOptions): Promise<Fetched | null> {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== 'https:' || u.hostname !== GECKO_HOST || u.username || u.password || u.port) return null;
-  if (opts.signal?.aborted) return null;
-  const timeout = AbortSignal.timeout(Math.min(opts.timeoutMs ?? MAX_TIMEOUT_MS, MAX_TIMEOUT_MS));
-  try {
-    const res = await (opts.fetchFn ?? runtimeFetch())(u.toString(), {
-      headers: { accept: 'application/json' },
-      redirect: 'error',
-      signal: opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout,
-    });
-    if (!res.ok) {
-      await res.body?.cancel().catch(() => undefined);
+  const res = await safeRequest(url, {
+    hosts: GECKO_HOSTS,
+    headers: { accept: 'application/json' },
+    timeoutMs: Math.min(opts.timeoutMs ?? MAX_TIMEOUT_MS, MAX_TIMEOUT_MS),
+    maxBytes: MAX_BODY_BYTES,
+    signal: opts.signal,
+    fetchFn: opts.fetchFn,
+  });
+  switch (res.kind) {
+    case 'ok':
+      try {
+        return { status: res.status, body: JSON.parse(res.text) as unknown };
+      } catch {
+        return { status: 0, body: null };
+      }
+    case 'http':
       return { status: res.status, body: null };
-    }
-    const text = await res.text();
-    if (text.length > MAX_BODY_CHARS) return { status: 0, body: null };
-    return { status: res.status, body: JSON.parse(text) as unknown };
-  } catch {
-    return { status: 0, body: null };
+    case 'error':
+      return { status: 0, body: null };
+    case 'refused':
+      // Bad URL / host / run aborted: no request was sent (null). Redirect or oversized body: failed request.
+      return res.reason === 'redirect' || res.reason === 'too_large' ? { status: 0, body: null } : null;
   }
 }
 
