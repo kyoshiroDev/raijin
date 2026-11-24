@@ -45,4 +45,8 @@ Légende : ✔ présent · — sans objet.
 
 ## Exceptions `px` / hex existantes (justifiées)
 
-`libs/web/ui/src/styles/extras.css` (déclaration des tokens), `@keyframes` (décalages de 4 à 8 px et géométrie du bouclier de `shield-scan.ts`, grille SVG 64 px), `check-item.ts` `md:w-[calc(100%+16px)]` (compense `md:-mx-2`), media queries `1024px` (point de rupture `lg`, en JS et dans `bottom-sheet.ts`), QR factice des fixtures admin, `theme-color` de `index.html` (méta HTML, pas de variable possible). `email-sent.ts` : `&#8209;` (tiret insécable), faux positif.
+`libs/web/ui/src/styles/extras.css` (déclaration des tokens), `@keyframes` (décalages de 4 à 8 px et géométrie du bouclier de `shield-scan.ts`, grille SVG 64 px), media queries `1024px` (point de rupture `lg`, en JS et dans `bottom-sheet.ts`), QR factice des fixtures admin, `theme-color` de `index.html` (méta HTML, pas de variable possible). `email-sent.ts` : `&#8209;` (tiret insécable), faux positif. `static-verdict.css` (verdict statique de `/t`, §10.7) : icônes de verdict en `data:` SVG (tracés Lucide, masque coloré par `currentColor`, aucune couleur propre) et `1px`/`2px` de bordure et de contour, comme `border`/`outline-2` des utilitaires. Plus aucune valeur arbitraire dans `check-item.ts` (négatif `md:-mx-2` porté par le `<h3>`), `data-table.ts` (`max-h-128`) ni `otp-input.ts` (`tracking-widest`).
+
+### Landing (`apps/landing/src/styles/landing.css`)
+
+Toutes les longueurs passent par `var(--spacing)` (pas de 4 px de la charte) et les tokens de `libs/brand/tokens.css`, sauf : `1px` de bordure des cellules de tableau `.prose` (filet, comme l'utilitaire `border`) ; `inset: 0.2em` des barres de squelette de la démonstration (relatif au texte, suit chaque hauteur de ligne) ; `line-height: 1.7` de `.prose` (ratio sans unité) ; durées d'animation (`ms`/`s`), angles et facteurs d'échelle (pas des longueurs). Aucun code couleur.

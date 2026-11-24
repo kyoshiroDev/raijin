@@ -19,6 +19,7 @@ export * from './lib/analysis/analysis.store';
 export * from './lib/testing/analysis-fixtures';
 export * from './lib/util/idle';
 export * from './lib/startup-prefetch';
+export * from './lib/startup-gate';
 export * from './lib/analysis/analysis-prefetch';
 export * from './lib/http/maintenance';
 export * from './lib/watch/watches-api';

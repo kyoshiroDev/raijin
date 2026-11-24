@@ -1,0 +1,188 @@
+/* Verdict statique de /t/<mint>, injecté par l'API dans <rj-root> avant le démarrage d'Angular
+   (docs/ARCHITECTURE.md §10.7). Les classes rj-static* sont un CONTRAT STABLE avec
+   renderStaticVerdict (libs/api/analysis/src/lib/share) : l'API ne dépend d'aucun utilitaire
+   généré. Tokens uniquement (libs/brand/tokens.css, extras.css), mobile d'abord.
+   Rendu aligné sur PublicTokenPage dans la coquille mobile : mêmes marges que le <main> de
+   RjAppShell, place de l'en-tête (h-14) réservée pour limiter le décalage à la prise de relais. */
+@layer components {
+  .rj-static {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing) * 4);
+    width: 100%;
+    max-width: var(--container-reading);
+    min-height: 100dvh;
+    margin-inline: auto;
+    padding: calc(var(--spacing) * 18 + env(safe-area-inset-top)) calc(var(--spacing) * 4 + env(safe-area-inset-right))
+      calc(var(--spacing) * 12 + env(safe-area-inset-bottom)) calc(var(--spacing) * 4 + env(safe-area-inset-left));
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-base);
+  }
+
+  .rj-static__eyebrow {
+    margin: 0;
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
+    font-weight: var(--font-weight-medium);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--color-ink-muted);
+  }
+
+  .rj-static__title {
+    margin: calc(var(--spacing) * -3) 0 calc(var(--spacing) * 2);
+    font-family: var(--font-display);
+    font-size: var(--text-h2);
+    line-height: var(--text-h2--line-height);
+    color: var(--color-ink);
+  }
+
+  /* Badge de verdict : icône (bouclier-check, triangle, octogone-croix, tracés Lucide) + mot, comme le
+     bloc de verdict d'AnalysisResult. L'icône est un masque (img-src 'self' data: dans la CSP). */
+  .rj-static__verdict {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 3);
+    margin: 0;
+    padding: calc(var(--spacing) * 4);
+    border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    font-family: var(--font-display);
+    font-size: var(--text-h1);
+    line-height: var(--text-h1--line-height);
+    color: var(--color-ink);
+  }
+  .rj-static__verdict::before {
+    content: '';
+    flex-shrink: 0;
+    width: calc(var(--spacing) * 8);
+    height: calc(var(--spacing) * 8);
+    background-color: currentColor;
+    mask: var(--rj-static-icon) center / contain no-repeat;
+  }
+  .rj-static__verdict[data-verdict='safe'] {
+    --rj-static-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E");
+    color: var(--color-safe);
+  }
+  .rj-static__verdict[data-verdict='warn'] {
+    --rj-static-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
+    color: var(--color-warn);
+  }
+  .rj-static__verdict[data-verdict='danger'] {
+    --rj-static-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 9-6 6'/%3E%3Cpath d='M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z'/%3E%3Cpath d='m9 9 6 6'/%3E%3C/svg%3E");
+    color: var(--color-danger);
+  }
+
+  .rj-static__token,
+  .rj-static__date,
+  .rj-static__disclaimer {
+    margin: 0;
+    font-size: var(--text-body-sm);
+    line-height: var(--text-body-sm--line-height);
+    color: var(--color-ink-muted);
+  }
+
+  .rj-static__explanation {
+    margin: 0;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    color: var(--color-ink);
+  }
+
+  .rj-static__note {
+    margin: 0;
+    padding: calc(var(--spacing) * 3);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-raised);
+    font-size: var(--text-body-sm);
+    line-height: var(--text-body-sm--line-height);
+    color: var(--color-ink);
+  }
+
+  .rj-static__actions {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing) * 2);
+    margin-top: calc(var(--spacing) * 2);
+  }
+
+  /* Liens : mêmes cibles que RjButton (44 px, 48 px pour l'action principale), focus visible. */
+  .rj-static__link {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(var(--spacing) * 11);
+    padding-inline: calc(var(--spacing) * 4);
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    font-weight: var(--font-weight-semibold);
+    text-align: center;
+    text-decoration: none;
+    color: var(--color-ink);
+    background: transparent;
+    transition:
+      background-color 200ms var(--ease-raijin),
+      box-shadow 200ms var(--ease-raijin);
+  }
+  .rj-static__link:hover {
+    background: var(--color-surface-raised);
+  }
+  .rj-static__link:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .rj-static__link--primary {
+    min-height: calc(var(--spacing) * 12);
+    padding-inline: calc(var(--spacing) * 6);
+    background: var(--color-thunder);
+    color: var(--color-on-thunder);
+  }
+  .rj-static__link--primary:hover,
+  .rj-static__link--primary:focus-visible {
+    background: var(--color-thunder);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .rj-static__disclaimer {
+    margin-top: calc(var(--spacing) * 2);
+    padding-top: calc(var(--spacing) * 4);
+    border-top: 1px solid var(--color-line);
+  }
+
+  @variant md {
+    .rj-static {
+      gap: calc(var(--spacing) * 5);
+      padding-top: calc(var(--spacing) * 20 + env(safe-area-inset-top));
+      padding-inline: calc(var(--spacing) * 6 + env(safe-area-inset-left)) calc(var(--spacing) * 6 + env(safe-area-inset-right));
+    }
+    .rj-static__title {
+      font-size: var(--text-h1);
+      line-height: var(--text-h1--line-height);
+    }
+    .rj-static__actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+  }
+
+  @variant lg {
+    .rj-static {
+      max-width: calc(var(--container-reading) / 2);
+      padding-top: calc(var(--spacing) * 22 + env(safe-area-inset-top));
+      padding-inline: calc(var(--spacing) * 8 + env(safe-area-inset-left)) calc(var(--spacing) * 8 + env(safe-area-inset-right));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rj-static__link {
+      transition: none;
+    }
+  }
+}

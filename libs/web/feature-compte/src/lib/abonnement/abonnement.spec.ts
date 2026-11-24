@@ -108,8 +108,8 @@ async function openSubscription(env: Env, url = '/abonnement', account: ReturnTy
 
 describe('textes de l’abonnement', () => {
   it('formate les centimes en fr-FR depuis la devise de l’API', () => {
-    expect(formatPrice(990, 'EUR')).toBe('9,90 €');
-    expect(formatPrice(9900, 'EUR')).toBe('99 €');
+    expect(formatPrice(1490, 'EUR')).toBe('14,90 €');
+    expect(formatPrice(14900, 'EUR')).toBe('149 €');
   });
 
   it('liste les droits renvoyés par l’API (icône + texte)', () => {
@@ -138,14 +138,14 @@ describe('Page Abonnement', () => {
   it('visiteur : offres, prix de l’API, bascule annuelle, offre d’essai, une seule action jaune, mention légale', async () => {
     const env = await setup('anonymous');
     await openSubscription(env, '/abonnement', null);
-    expect(env.q('[data-price]')?.textContent).toContain('9,90');
+    expect(env.q('[data-price]')?.textContent).toContain('14,90');
     expect(env.q('[data-trial-offer]')?.textContent).toBe('Essaie Pro gratuitement pendant 7 jours. Sans carte bancaire.');
     const year = env.root().querySelectorAll<HTMLInputElement>('input[type="radio"]')[1] as HTMLInputElement;
     year.click();
     await stable(env);
-    expect(env.q('[data-price]')?.textContent).toContain('99');
+    expect(env.q('[data-price]')?.textContent).toContain('149');
     expect(env.root().textContent).toContain('−17 %');
-    expect(env.q('[data-price-detail]')?.textContent).toContain('8,25');
+    expect(env.q('[data-price-detail]')?.textContent).toContain('12,42');
     expect(env.q('[data-checkout]')?.getAttribute('href')).toBe('/compte/inscription?redirect=%2Fabonnement');
     expect(primaries(env)).toHaveLength(1);
     expect(env.q('[data-disclaimer]')?.textContent).toBe(DISCLAIMER);

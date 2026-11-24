@@ -11,8 +11,8 @@ export function fakeBillingPlans(overrides: Partial<BillingPlansResponse> = {}):
     pro: {
       plan: 'PRO',
       entitlements: PRO_ENTITLEMENTS,
-      monthly: { interval: 'month', amountCents: 990, currency: 'EUR' },
-      yearly: { interval: 'year', amountCents: 9900, currency: 'EUR' },
+      monthly: { interval: 'month', amountCents: 1490, currency: 'EUR' },
+      yearly: { interval: 'year', amountCents: 14900, currency: 'EUR' },
     },
     trial: { days: 7, entitlements: TRIAL_ENTITLEMENTS },
     mode: 'stripe',

@@ -15,13 +15,13 @@ let nextId = 0;
   selector: 'rj-check-item',
   imports: [RjIcon],
   template: `
-    <h3>
+    <h3 class="md:-mx-2">
       <button
         type="button"
         [id]="buttonId"
         [attr.aria-expanded]="expanded()"
         [attr.aria-controls]="panelId"
-        class="flex min-h-16 w-full items-start gap-3 rounded-md py-3 text-left transition-colors duration-150 ease-raijin hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring md:-mx-2 md:w-[calc(100%+16px)] md:px-2"
+        class="flex min-h-16 w-full items-start gap-3 rounded-md py-3 text-left transition-colors duration-150 ease-raijin hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring md:px-2"
         (click)="toggle()"
       >
         <span [class]="'mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-md border ' + display().chip">

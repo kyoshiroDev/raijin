@@ -2,7 +2,7 @@ import type { BillingAccount, BillingInterval, Entitlements, Price } from '@raij
 
 const DATE = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-/** Montant en centimes → « 9,90 € » (fr-FR, devise renvoyée par l'API). Rien n'est écrit en dur. */
+/** Montant en centimes → « 14,90 € » (fr-FR, devise renvoyée par l'API). Rien n'est écrit en dur. */
 export function formatPrice(amountCents: number, currency: string): string {
   const fractionDigits = amountCents % 100 === 0 ? 0 : 2;
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: fractionDigits, maximumFractionDigits: 2 }).format(amountCents / 100);

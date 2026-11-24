@@ -81,7 +81,7 @@ interface Row {
     } @else {
       <!-- Région défilante atteignable au clavier (flèches) et nommée : axe scrollable-region-focusable. -->
       <div
-        class="hidden max-h-[32rem] overflow-auto rounded-md border border-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring md:block"
+        class="hidden max-h-128 overflow-auto rounded-md border border-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring md:block"
         role="region"
         tabindex="0"
         [attr.aria-label]="caption()"

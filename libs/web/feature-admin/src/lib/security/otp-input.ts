@@ -55,7 +55,7 @@ export class RjOtpInput {
   protected readonly hintId = `${this.id}-hint`;
   protected readonly classes = computed(
     () =>
-      'min-h-14 w-full rounded-md border bg-surface-raised px-4 text-center font-mono text-h2 tracking-[0.4em] text-ink tabular-nums ' +
+      'min-h-14 w-full rounded-md border bg-surface-raised px-4 text-center font-mono text-h2 tracking-widest text-ink tabular-nums ' +
       'placeholder:text-ink-muted/50 transition-colors duration-150 ease-raijin focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' +
       'disabled:cursor-not-allowed disabled:opacity-60 ' +
       (this.error() ? 'border-danger' : 'border-line-strong hover:border-ink-muted'),
