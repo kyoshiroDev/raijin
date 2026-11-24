@@ -7,7 +7,7 @@ import type { AnalysisService } from '../analysis/analysis.service';
 import { DefaultRiskEngine } from '../analysis/risk-engine.provider';
 import { buildAnalysisResult } from '../analysis/result-builder';
 import { FIXTURE_MINTS, FixtureFactsCollector, HOSTILE_TOKEN_NAME } from '../fixtures/fixture-facts-collector';
-import { escapeHtml, injectMeta, minimalHtml, SharePageService } from './share-page.service';
+import { escapeHtml, injectMeta, injectStaticVerdict, minimalHtml, renderStaticVerdict, SharePageService } from './share-page.service';
 
 const NOW = new Date('2026-11-22T12:00:00.000Z');
 
@@ -78,13 +78,15 @@ describe('SharePageService', () => {
     expect(html).toContain(`<meta property="og:image" content="https://api.raijinshield.com/api/v1/og/${FIXTURE_MINTS.hostile}.png" />`);
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
     expect(html).toContain('pas un conseil en investissement');
-    expect(html).toContain('<rj-root></rj-root>');
+    expect(html).toContain('<rj-root><main data-rj-static="t"');
     expect(html).toContain('<base href="/" />');
   });
 
-  it('mint sans analyse : balises génériques du token', async () => {
+  it('mint sans analyse : balises génériques du token, aucun verdict statique', async () => {
     const html = await service(null, { WEB_INDEX_HTML_PATH: indexFile() }).render(FIXTURE_MINTS.safe);
     expect(html).toContain('<title>Token 8hVd…Gypt · Raijin Shield</title>');
+    expect(html).toContain('<rj-root></rj-root>');
+    expect(html).not.toContain('data-rj-static');
   });
 
   it('mint invalide : page générique vers /analyse', async () => {
@@ -121,5 +123,117 @@ describe('SharePageService', () => {
       imageAlt: 'A',
     });
     expect(html.indexOf('<title>T</title>')).toBeLessThan(html.indexOf('</head>'));
+  });
+});
+
+const SHELL_INDEX = `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Raijin</title>
+    <script src="analyse-prefetch.js"></script>
+    <link rel="modulepreload" href="chunk-ABC.js" />
+  </head>
+  <body>
+    <RJ-ROOT ng-version="x"></RJ-ROOT>
+    <script src="main-ABC123.js" type="module"></script>
+  </body>
+</html>`;
+
+function staticResult(overrides: Partial<AnalysisResult> = {}, token: Partial<AnalysisResult['token']> = {}): AnalysisResult {
+  return {
+    mint: FIXTURE_MINTS.safe,
+    verdict: 'safe',
+    explanation: 'Aucun signal critique détecté.',
+    analyzedAt: '2026-11-22T14:03:00.000Z',
+    degraded: false,
+    ...overrides,
+    token: { name: 'Bonk', symbol: 'BONK', decimals: 5, tokenProgram: 'spl-token', ...token },
+  } as unknown as AnalysisResult;
+}
+
+function indexWith(content: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'raijin-share-'));
+  const path = join(dir, 'index.html');
+  writeFileSync(path, content);
+  return path;
+}
+
+describe('renderStaticVerdict', () => {
+  it.each(['safe', 'warn', 'danger'] as const)('verdict %s', (verdict) => {
+    expect(renderStaticVerdict(staticResult({ verdict }), FIXTURE_MINTS.safe)).toMatchSnapshot();
+  });
+
+  it('résultat partiel (degraded)', () => {
+    const html = renderStaticVerdict(staticResult({ verdict: 'warn', degraded: true }), FIXTURE_MINTS.safe);
+    expect(html).toContain('<p class="rj-static__note">Résultat partiel : une source était indisponible.</p>');
+    expect(html).toMatchSnapshot();
+  });
+
+  it('sans symbole : repli sur le nom, puis aucune ligne', () => {
+    expect(renderStaticVerdict(staticResult({}, { symbol: null }), FIXTURE_MINTS.safe)).toContain('Symbole déclaré « Bonk » (non vérifié)');
+    const html = renderStaticVerdict(staticResult({}, { symbol: null, name: null }), FIXTURE_MINTS.safe);
+    expect(html).not.toContain('rj-static__token');
+    expect(html).toMatchSnapshot();
+  });
+
+  it('nom piégé : rendu inerte, bidi retiré, tronqué à 32 caractères sans couper un emoji', () => {
+    const trap = `</rj-root><script>alert("x")</script> ' & \u202Eevil\u2066 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀`;
+    const html = renderStaticVerdict(staticResult({}, { symbol: null, name: trap }), FIXTURE_MINTS.safe);
+    expect(html).not.toMatch(/<script|<\/rj-root>/i);
+    expect(html).not.toMatch(/[\u202A-\u202E\u2066-\u2069\u200B-\u200F]/);
+    expect(html).not.toMatch(/ on\w+=|style=/i);
+    expect(html).toContain('&lt;/rj-root&gt;&lt;script&gt;');
+    expect(html).toContain('&quot;');
+    const token = /« (.*) » \(non vérifié\)/.exec(html)?.[1] ?? '';
+    const decoded = token.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+    expect(Array.from(decoded).length).toBeLessThanOrEqual(32);
+    expect(decoded).not.toMatch(/[\uD800-\uDBFF]$/);
+  });
+
+  it('symbole contenant & et apostrophe : échappés', () => {
+    const html = renderStaticVerdict(staticResult({}, { symbol: `A&B'"` }), FIXTURE_MINTS.safe);
+    expect(html).toContain('« A&amp;B&#39;&quot; »');
+  });
+});
+
+describe('injection du verdict statique', () => {
+  it('dans <rj-root> du build web, head, main-*.js et analyse-prefetch.js intacts', async () => {
+    const html = await service(staticResult({ verdict: 'warn' }), { WEB_INDEX_HTML_PATH: indexWith(SHELL_INDEX) }).render(FIXTURE_MINTS.safe);
+    expect(html).toMatch(/<RJ-ROOT ng-version="x"><main data-rj-static="t"[\s\S]*<\/main><\/RJ-ROOT>/);
+    expect(html.match(/data-rj-static/g)).toHaveLength(1);
+    expect(html).toContain('<p class="rj-static__verdict" data-verdict="warn">Prudence</p>');
+    expect(html).toContain('<script src="main-ABC123.js" type="module"></script>');
+    expect(html).toContain('<script src="analyse-prefetch.js"></script>');
+    expect(html).toContain('<link rel="modulepreload" href="chunk-ABC.js" />');
+    expect(html).toContain('property="og:title"');
+  });
+
+  it('nom piégé : ne ferme pas <rj-root> et n’ajoute aucun script', async () => {
+    const result = staticResult({}, { symbol: null, name: '</rj-root><script>alert(1)</script>' });
+    const html = await service(result, { WEB_INDEX_HTML_PATH: indexWith(SHELL_INDEX) }).render(FIXTURE_MINTS.safe);
+    expect(html.match(/<\/rj-root>/gi)).toHaveLength(1);
+    expect(html.match(/<script/gi)).toHaveLength(2);
+  });
+
+  it('gabarit sans <rj-root> : aucune injection', async () => {
+    const path = indexWith(SHELL_INDEX.replace('<RJ-ROOT ng-version="x"></RJ-ROOT>', ''));
+    const html = await service(staticResult(), { WEB_INDEX_HTML_PATH: path }).render(FIXTURE_MINTS.safe);
+    expect(html).not.toContain('data-rj-static');
+    expect(injectStaticVerdict('<body></body>', '<main></main>')).toBeNull();
+  });
+
+  it('sans build web (HTML minimal) : aucune injection', async () => {
+    const html = await service(staticResult()).render(FIXTURE_MINTS.safe);
+    expect(html).not.toContain('data-rj-static');
+  });
+
+  it('mint invalide : aucune injection', async () => {
+    const html = await service(staticResult(), { WEB_INDEX_HTML_PATH: indexWith(SHELL_INDEX) }).render(null);
+    expect(html).not.toContain('data-rj-static');
+  });
+
+  it('contenu avec motifs $& : inséré tel quel', () => {
+    expect(injectStaticVerdict('<rj-root></rj-root>', 'a$&b')).toBe('<rj-root>a$&b</rj-root>');
   });
 });

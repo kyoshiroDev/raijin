@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, errorCode, GLOBAL_PREFIX, type AppConfig } from '@raijin/api-core';
 import { ANALYSIS_DISCLAIMER, VERDICT_LABELS, type AnalysisResult } from '@raijin/shared-contracts';
-import { truncateMiddle } from '@raijin/shared-util';
+import { sanitizeUntrustedText, truncateMiddle } from '@raijin/shared-util';
 import { readFile, stat } from 'node:fs/promises';
 import { AnalysisService } from '../analysis/analysis.service';
 import { OG_HEIGHT, OG_WIDTH } from '../og/og-template';
@@ -53,7 +53,15 @@ export class SharePageService {
   /** HTML de la page publique d'un mint (`null` : mint invalide, page générique). */
   async render(mint: string | null): Promise<string> {
     const analysis = mint ? await this.analyses.findLatest(mint) : null;
-    return injectMeta(await this.loadTemplate(mint), this.meta(mint, analysis));
+    const template = await this.loadTemplate(mint);
+    let html = template.html;
+    // Verdict statique dans `<rj-root>` (§10.7) : seulement avec une analyse publiée et le gabarit du build web.
+    if (mint && analysis && template.fromBuild) {
+      const injected = injectStaticVerdict(html, renderStaticVerdict(analysis, mint));
+      if (injected === null) this.logger.warn('Balise <rj-root> introuvable dans index.html, verdict statique non injecté');
+      else html = injected;
+    }
+    return injectMeta(html, this.meta(mint, analysis));
   }
 
   meta(mint: string | null, analysis: AnalysisResult | null): SharePageMeta {
@@ -96,22 +104,80 @@ export class SharePageService {
    * changé. Sans cela, après un nouveau build les noms des chunks changent et `/t/<mint>` resterait
    * blanche jusqu'au redémarrage de l'API.
    */
-  private async loadTemplate(mint: string | null): Promise<string> {
+  private async loadTemplate(mint: string | null): Promise<{ html: string; fromBuild: boolean }> {
     const path = this.config.analysis.webIndexHtmlPath;
-    const fallback = minimalHtml(this.config.appUrl, mint);
+    const fallback = { html: minimalHtml(this.config.appUrl, mint), fromBuild: false };
     if (!path) return fallback;
     try {
       const { mtimeMs } = await stat(path);
       if (!this.template || this.template.path !== path || this.template.mtimeMs !== mtimeMs) {
         this.template = { path, mtimeMs, html: await readFile(path, 'utf8') };
       }
-      return this.template.html.includes('</head>') ? this.template.html : fallback;
+      return this.template.html.includes('</head>') ? { html: this.template.html, fromBuild: true } : fallback;
     } catch (error) {
       this.template = null;
       this.logger.warn(`index.html du build web illisible, HTML minimal servi (${errorCode(error)})`);
       return fallback;
     }
   }
+}
+
+/** Longueur maximale (points de code) du symbole ou du nom déclaré dans le verdict statique. */
+const STATIC_TOKEN_MAX = 32;
+
+const STATIC_DATE = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/**
+ * Verdict statique de `/t/<mint>` (docs/ARCHITECTURE.md §10.7), injecté dans `<rj-root>` : lisible sans
+ * Angular, remplacé au démarrage de l'app. Toute valeur est échappée ; symbole ou nom (non fiables)
+ * nettoyés (contrôles, invisibles, bidi), tronqués à 32 caractères, entre « » et marqués non vérifiés.
+ * Aucun attribut `style`, aucun `on*`, aucun script, aucune URL issue des données du token.
+ */
+export function renderStaticVerdict(analysis: AnalysisResult, mint: string): string {
+  const e = (value: string) => escapeHtml(value);
+  const declared = sanitizeUntrustedText(analysis.token.symbol ?? analysis.token.name ?? '', STATIC_TOKEN_MAX);
+  const date = new Date(analysis.analyzedAt);
+  const valid = !Number.isNaN(date.getTime());
+  const lines = [
+    `<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">`,
+    `  <p class="rj-static__eyebrow">Analyse partagée</p>`,
+    `  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>`,
+    `  <p class="rj-static__verdict" data-verdict="${e(analysis.verdict)}">${e(VERDICT_LABELS[analysis.verdict])}</p>`,
+    ...(declared ? [`  <p class="rj-static__token">Symbole déclaré « ${e(declared)} » (non vérifié)</p>`] : []),
+    `  <p class="rj-static__explanation">${e(analysis.explanation)}</p>`,
+    ...(valid
+      ? [`  <p class="rj-static__date">Analyse du <time datetime="${e(date.toISOString())}">${e(STATIC_DATE.format(date))}</time></p>`]
+      : []),
+    ...(analysis.degraded ? [`  <p class="rj-static__note">Résultat partiel : une source était indisponible.</p>`] : []),
+    `  <nav class="rj-static__actions" aria-label="Actions">`,
+    `    <a class="rj-static__link rj-static__link--primary" href="/analyse/${e(mint)}">Réanalyser ce token</a>`,
+    `    <a class="rj-static__link" href="/analyse">Analyser un autre token</a>`,
+    `  </nav>`,
+    `  <p class="rj-static__disclaimer" data-disclaimer>${e(ANALYSIS_DISCLAIMER)}</p>`,
+    `</main>`,
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * Remplace le contenu de la première balise `<rj-root>` (insensible à la casse) par `content`.
+ * `null` si la balise est introuvable : la page est alors servie sans verdict statique.
+ */
+export function injectStaticVerdict(html: string, content: string): string | null {
+  const match = /<rj-root\b[^>]*>[\s\S]*?<\/rj-root>/i.exec(html);
+  if (!match) return null;
+  const openEnd = match[0].indexOf('>') + 1;
+  const closeStart = match[0].length - '</rj-root>'.length;
+  const replaced = `${match[0].slice(0, openEnd)}${content}${match[0].slice(closeStart)}`;
+  // Concaténation plutôt que `String.replace` : `content` pourrait contenir des motifs `$&`.
+  return `${html.slice(0, match.index)}${replaced}${html.slice(match.index + match[0].length)}`;
 }
 
 /** HTML minimal (sans build web) : lien vers l'app. */
