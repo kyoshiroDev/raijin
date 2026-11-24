@@ -7,7 +7,7 @@
 
 - ~~`.env.example`~~ : fait (créé par toi, commité `2289dc9`).
 
-## Statut : phase 9 — Polish final — en cours (phases 1 à 8 ter terminées ; 8 ter reportée faute de comptes, voir « À brancher »)
+## Statut : phase 10 — Relecture finale et livraison — en cours (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -343,6 +343,10 @@
 - [x] SECURITY.md (architect, `d4a8933`) : 16 menaces avec parade, mécanisme, test et risque résiduel. Risques résiduels réduits : `pnpm audit --prod --audit-level=high` bloquant + job gitleaks (`c913e30`) ; client HTTP durci du code porté du banc (`f688b2a`) ; politique de confidentialité alignée sur les données réellement conservées (`2742dd4`, 3 affirmations fausses corrigées). Acceptés pour la v1 : pas de CDN, réseau Traefik partagé (M7), budget Helius global, `style-src 'unsafe-inline'`, Stripe jamais testé en réel.
 - [x] T11 tests (test-e2e) : poids initial 447,2 kB (inchangé) ; 148 captures phase-9 (390/1440, états hors ligne) et landing phase-7 régénérée (`2a88db4`) ; écarts corrigés : analyse bloquée hors ligne, icône hors ligne, « il reste N jours », course de rafraîchissement entre onglets (409 → relecture de session) (`20f4948`) ; bandeau hors ligne sorti de `<main>` (`32c4940`, e2e GitHub vert) ; cartes admin non tronquées (`c70fc2b`) ; landing : inversions insécables, fil d'Ariane, alignement, carte Pro sobre (`1a2990b`).
 - Sécurité phase 9 (security-reviewer, e16cbba^..HEAD) : **aucun point critique ou important**. Mineurs : m1 exception gitleaks « adresse Solana » trop large (→ architect) ; m2 double POST possible du préchargement après erreur réseau (→ ui-mobile-first) ; m3 limite de débit de l'espace admin à documenter (→ architect).
+- [x] Mineurs de l'audit corrigés (`2f73bd7`) : exception gitleaks limitée aux tests, préchargement sans double envoi après erreur réseau, limite de l'espace admin documentée, clé de test visiblement factice. Fil d'Ariane : séparateur en pseudo-élément hors du texte lu (`281174d`). Variables vides de `.env` traitées comme absentes (bug trouvé en lançant l'aperçu local ; test sur le modèle de docs/ENV.md).
+- [x] Contrôle final : CI vert, suite e2e 45491821498 verte (`281174d`), images vertes (45470165711), Lighthouse 45490009146 : /analyse 99, /analyse/<mint> 97, /t 93 (blocage noté), landing 100.
+- **Phase 9 terminée.**
+
 
 
 - [~] T3 performance (ui-mobile-first, `7856c9d`) : G1–G6 appliqués (bundle 471,3 → 446,1 kB, 118,7 kB transférés), analyse préchargée dès le HTML (`analyse-prefetch.js`, une seule requête), validation Zod dans un worker, service worker enregistré 10 s après la stabilisation. Lighthouse runner 45442429144 : /analyse **99**, /analyse/<mint> **96**, /t/<mint> **88**, landing 100. Puis 3 essais sur /t (`6ac17aa` préchargement de /t : 97/96/90 ; `fe6c342` verdict découpé en deux tâches : régression 95/86/88 ; `5672132` retour arrière, date sans Intl gardée : **95 / 96 / 85**). Cause de /t identifiée : TBT 365–450 ms (une tâche démarrage Angular + rendu du verdict), FCP = LCP 0,77 s. Arrêt après 3 essais (règle CLAUDE.md §4) → blocage noté.
