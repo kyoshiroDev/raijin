@@ -7,6 +7,7 @@ import {
   WebhookSignatureError,
   type BillingWebhookEvent,
   type CheckoutInput,
+  type CustomerInput,
   type PriceCheck,
   type ProviderInvoice,
   type ProviderSubscription,
@@ -64,6 +65,8 @@ export class FakeBillingProvider extends BillingProvider {
   private readonly subscriptions = new Map<string, Json>();
   private readonly invoices = new Map<string, Json>();
   private readonly deletedCustomers = new Set<string>();
+  /** Clés d'idempotence des clients (comme Stripe : même clé, même client). */
+  private readonly customerKeys = new Map<string, string>();
   /** Pannes simulées (tests e2e) : la prochaine résiliation / suppression de client échoue. */
   private readonly failures = new Set<'cancel' | 'deleteCustomer'>();
 
@@ -79,12 +82,22 @@ export class FakeBillingProvider extends BillingProvider {
     return 'simulation';
   }
 
-  /** Client simulé (aucune donnée envoyée nulle part). */
-  async createCustomer(): Promise<string> {
-    return fakeId('cus_fake_', 16);
+  /** Client simulé (aucune donnée envoyée nulle part) ; même clé d'idempotence : même client, comme Stripe. */
+  async createCustomer(input: CustomerInput): Promise<string> {
+    const known = this.customerKeys.get(input.idempotencyKey);
+    if (known) return known;
+    if (this.customerKeys.size >= MAX_SESSIONS) {
+      const oldest = this.customerKeys.keys().next().value;
+      if (oldest !== undefined) this.customerKeys.delete(oldest);
+    }
+    const id = fakeId('cus_fake_', 16);
+    this.customerKeys.set(input.idempotencyKey, id);
+    return id;
   }
 
+  /** Client supprimé : refusé comme par Stripe (`resource_missing`). */
   async createCheckoutSession(input: CheckoutInput): Promise<string> {
+    if (this.deletedCustomers.has(input.customerId)) throw Object.assign(new Error('No such customer'), { code: 'resource_missing' });
     this.pruneSessions();
     const id = fakeId('cs_fake_', 32);
     this.sessions.set(id, { id, userId: input.userId, customerId: input.customerId, interval: input.interval, createdAt: this.now().getTime() });
@@ -106,6 +119,16 @@ export class FakeBillingProvider extends BillingProvider {
     if (this.failures.delete('cancel')) throw Object.assign(new Error('panne simulée'), { code: 'FAKE_PROVIDER_DOWN' });
     const current = this.subscriptions.get(id);
     if (current && current['status'] !== 'canceled') this.updateSubscription(id, { status: 'canceled', cancelAtPeriodEnd: false });
+  }
+
+  async expireOpenCheckoutSessions(customerId: string): Promise<number> {
+    let expired = 0;
+    for (const [id, session] of this.sessions) {
+      if (session.customerId !== customerId) continue;
+      this.sessions.delete(id);
+      expired += 1;
+    }
+    return expired;
   }
 
   async deleteCustomer(customerId: string): Promise<void> {

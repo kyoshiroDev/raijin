@@ -34,6 +34,17 @@ export function billingError(code: BillingErrorCode, status: HttpStatus): ApiExc
   return new ApiException(code, status, BILLING_ERROR_MESSAGES[code]);
 }
 
+/**
+ * Clé d'idempotence de création du client Stripe (audit phase 6, n1) : `customer:<userId>:<génération>`, la
+ * génération étant l'horodatage `updatedAt` du compte lu avant l'appel. Un double clic lit la même ligne (même
+ * clé, même client) ; la clôture de la facturation (`BillingAccountCloser`) réécrit la ligne, donc un nouveau
+ * Checkout juste après obtient une nouvelle clé et un nouveau client, au lieu du client supprimé que Stripe
+ * renverrait pendant 24 h pour l'ancienne clé fixe `customer:<userId>`.
+ */
+export function customerIdempotencyKey(userId: string, generation: Date): string {
+  return `customer:${userId}:${generation.getTime()}`;
+}
+
 const notConfigured = () => billingError('BILLING_NOT_CONFIGURED', HttpStatus.SERVICE_UNAVAILABLE);
 
 /**
@@ -115,16 +126,17 @@ export class BillingService {
   /**
    * `POST billing/checkout-sessions` : e-mail vérifié, aucun abonnement Pro en cours, ni en base ni chez le
    * prestataire (`ALREADY_SUBSCRIBED`). Le client Stripe est créé **hors transaction** (aucun verrou tenu pendant
-   * l'appel réseau) avec la clé d'idempotence `customer:<userId>` (double clic : même client), puis rattaché
+   * l'appel réseau) avec la clé d'idempotence `customerIdempotencyKey` (double clic : même client ; après une
+   * clôture : nouveau client), puis rattaché
    * seulement si le compte n'en a pas encore (`UPDATE … WHERE stripeCustomerId IS NULL`).
    */
   async createCheckout(userId: string, interval: BillingInterval): Promise<BillingRedirect> {
     if (this.provider.mode() === 'unavailable') throw notConfigured();
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true, stripeCustomerId: true } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true, stripeCustomerId: true, updatedAt: true } });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
     if (!user.emailVerifiedAt) throw ApiException.auth('AUTH_EMAIL_NOT_VERIFIED', HttpStatus.FORBIDDEN);
     if ((await this.prisma.subscription.count({ where: { userId, status: { in: PRO_STATUSES } } })) > 0) throw billingError('ALREADY_SUBSCRIBED', HttpStatus.CONFLICT);
-    const customer = user.stripeCustomerId ?? (await this.attachCustomer(userId, user.email));
+    const customer = user.stripeCustomerId ?? (await this.attachCustomer(userId, user.email, customerIdempotencyKey(userId, user.updatedAt)));
     // Webhook pas encore reçu (ou perdu) : Stripe fait foi.
     if ((await this.call(() => this.provider.listProSubscriptions(customer))).length > 0) throw billingError('ALREADY_SUBSCRIBED', HttpStatus.CONFLICT);
     const minute = Math.floor(this.clock.now().getTime() / 60_000);
@@ -142,12 +154,19 @@ export class BillingService {
     return { url };
   }
 
-  /** Crée le client Stripe (idempotent) puis le rattache au compte s'il n'en a toujours pas ; renvoie le client du compte. */
-  private async attachCustomer(userId: string, email: string): Promise<string> {
-    const created = await this.call(() => this.provider.createCustomer({ userId, email, idempotencyKey: `customer:${userId}` }));
+  /**
+   * Crée le client Stripe (idempotent) puis le rattache au compte s'il n'en a toujours pas ; renvoie le client du
+   * compte. Requête concurrente gagnante avec un autre client (génération différente) : le client créé ici, resté
+   * orphelin, est supprimé (au mieux, sans bloquer le Checkout).
+   */
+  private async attachCustomer(userId: string, email: string, idempotencyKey: string): Promise<string> {
+    const created = await this.call(() => this.provider.createCustomer({ userId, email, idempotencyKey }));
     await this.prisma.user.updateMany({ where: { id: userId, stripeCustomerId: null }, data: { stripeCustomerId: created } });
     const current = await this.prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true } });
     if (!current?.stripeCustomerId) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+    if (current.stripeCustomerId !== created) {
+      await this.provider.deleteCustomer(created).catch((error: unknown) => this.logger.warn(`Client de paiement orphelin non supprimé (${errorCode(error)})`));
+    }
     return current.stripeCustomerId;
   }
 

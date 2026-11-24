@@ -29,6 +29,27 @@ describe('FakeBillingProvider', () => {
     expect(fake.takeSession(late, 'u1')).toBeNull();
   });
 
+  it('clients : même clé d’idempotence, même client ; client supprimé refusé au Checkout ; expiration des sessions', async () => {
+    const fake = new FakeBillingProvider(config, 'http://localhost:4200');
+    const a = await fake.createCustomer({ userId: 'u1', email: 'a@b.fr', idempotencyKey: 'customer:u1:1' });
+    await expect(fake.createCustomer({ userId: 'u1', email: 'a@b.fr', idempotencyKey: 'customer:u1:1' })).resolves.toBe(a);
+    await expect(fake.createCustomer({ userId: 'u1', email: 'a@b.fr', idempotencyKey: 'customer:u1:2' })).resolves.not.toBe(a);
+    const input = { userId: 'u1', customerId: a, interval: 'month' as const, successUrl: '', cancelUrl: '', idempotencyKey: 'k' };
+    await fake.createCheckoutSession(input);
+    await fake.createCheckoutSession(input);
+    await expect(fake.expireOpenCheckoutSessions(a)).resolves.toBe(2);
+    await expect(fake.expireOpenCheckoutSessions(a)).resolves.toBe(0);
+    await fake.deleteCustomer(a);
+    await expect(fake.createCheckoutSession(input)).rejects.toMatchObject({ code: 'resource_missing' });
+  });
+
+  it('clés d’idempotence des clients bornées en mémoire', async () => {
+    const fake = new FakeBillingProvider(config, 'http://localhost:4200');
+    const first = await fake.createCustomer({ userId: 'u', email: 'a@b.fr', idempotencyKey: 'key-0' });
+    for (let i = 1; i <= 10_000; i += 1) await fake.createCustomer({ userId: 'u', email: 'a@b.fr', idempotencyKey: `key-${i}` });
+    await expect(fake.createCustomer({ userId: 'u', email: 'a@b.fr', idempotencyKey: 'key-0' })).resolves.not.toBe(first);
+  });
+
   it('abonnements et factures au format Stripe, événements vérifiables', async () => {
     const fake = new FakeBillingProvider(config, 'http://localhost:4200');
     const sub = fake.createSubscription({ customerId: 'cus_1', userId: '0195a0c4-0000-7000-8000-0000000000aa', interval: 'year', status: 'active' });

@@ -19,9 +19,11 @@ export class BillingAccountCloseError extends ApiException {
 }
 
 /**
- * Clôture de la facturation avant la suppression d'un compte (audit phase 6, I1) : résilie **immédiatement**
+ * Clôture de la facturation avant la suppression d'un compte (audit phase 6, I1) : expire d'abord les sessions
+ * Checkout encore ouvertes (audit phase 6, n2 : un onglet de paiement resté ouvert ne doit pas créer d'abonnement
+ * sur un client supprimé), puis résilie **immédiatement**
  * (sans prorata) tout abonnement `active` / `trialing` / `past_due` chez le prestataire (ceux qu'il connaît et
- * ceux de la base), puis supprime le client Stripe et le détache du compte. Idempotent : sans client Stripe,
+ * ceux de la base) après avoir expiré les sessions Checkout encore ouvertes (audit phase 6, n2), puis supprime le client Stripe et le détache du compte. Idempotent : sans client Stripe,
  * rien à faire. Toute erreur du prestataire → `BillingAccountCloseError` (compte conservé, l'appelant répond 503).
  */
 @Injectable()
@@ -42,6 +44,8 @@ export class BillingAccountCloser {
       throw new BillingAccountCloseError();
     }
     try {
+      // D'abord fermer les Checkout ouverts : aucun abonnement ne doit naître pendant ou après la clôture.
+      await this.provider.expireOpenCheckoutSessions(customerId);
       const local = await this.prisma.subscription.findMany({ where: { userId, status: { in: PRO_STATUSES } }, select: { stripeSubscriptionId: true } });
       const remote = await this.provider.listProSubscriptions(customerId);
       const ids = new Set([...remote.map((sub) => sub.id), ...local.map((row) => row.stripeSubscriptionId)]);

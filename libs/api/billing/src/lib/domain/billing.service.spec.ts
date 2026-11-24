@@ -139,9 +139,58 @@ describe('BillingService : Checkout et portail', () => {
       return 'cus_fake_second';
     });
     const create = jest.spyOn(kit.fake, 'createCheckoutSession');
+    const remove = jest.spyOn(kit.fake, 'deleteCustomer');
     await kit.billing.createCheckout(USER, 'month');
     expect(kit.prisma.tables['user']?.[0]?.['stripeCustomerId']).toBe('cus_fake_premier');
     expect(create.mock.calls[0]?.[0]).toMatchObject({ customerId: 'cus_fake_premier' });
+    // Le client créé ici reste orphelin : supprimé chez le prestataire.
+    expect(remove).toHaveBeenCalledWith('cus_fake_second');
+  });
+
+  it('client orphelin non supprimable (panne) : Checkout servi quand même', async () => {
+    const kit = billingKit();
+    kit.prisma.addUser({ id: USER });
+    jest.spyOn(kit.fake, 'createCustomer').mockImplementationOnce(async () => {
+      await kit.prisma.user.update({ where: { id: USER }, data: { stripeCustomerId: 'cus_fake_premier' } });
+      return 'cus_fake_second';
+    });
+    kit.fake.failNext('deleteCustomer');
+    await expect(kit.billing.createCheckout(USER, 'month')).resolves.toMatchObject({ url: expect.stringContaining('session=cs_fake_') });
+  });
+
+  it('double clic simultané : même clé d’idempotence, un seul client', async () => {
+    const kit = billingKit();
+    kit.prisma.addUser({ id: USER });
+    const customers = jest.spyOn(kit.fake, 'createCustomer');
+    const remove = jest.spyOn(kit.fake, 'deleteCustomer');
+    await Promise.all([kit.billing.createCheckout(USER, 'month'), kit.billing.createCheckout(USER, 'month')]);
+    const keys = customers.mock.calls.map(([input]) => input.idempotencyKey);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toMatch(new RegExp(`^customer:${USER}:\\d+$`));
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('clôture de la facturation puis nouveau Checkout immédiat : nouvelle clé, nouveau client (pas le client supprimé)', async () => {
+    const kit = billingKit();
+    kit.prisma.addUser({ id: USER });
+    const customers = jest.spyOn(kit.fake, 'createCustomer');
+    await kit.billing.createCheckout(USER, 'month');
+    const before = kit.prisma.tables['user']?.[0]?.['stripeCustomerId'] as string;
+    await kit.closer.closeForUser(USER);
+    expect(kit.fake.customerState(before).deleted).toBe(true);
+    // Même minute, même horloge : seule la génération du compte change.
+    const again = await kit.billing.createCheckout(USER, 'month');
+    const after = kit.prisma.tables['user']?.[0]?.['stripeCustomerId'];
+    expect(after).toMatch(/^cus_fake_/);
+    expect(after).not.toBe(before);
+    expect(again.url).toContain('session=cs_fake_');
+    const [first, second] = customers.mock.calls.map(([input]) => input.idempotencyKey);
+    expect(second).not.toBe(first);
+    // L'ancienne clé fixe aurait renvoyé le client supprimé, refusé par le prestataire.
+    const stale = await kit.fake.createCustomer({ userId: USER, email: 'x@exemple.fr', idempotencyKey: first as string });
+    expect(stale).toBe(before);
+    await expect(kit.fake.createCheckoutSession({ userId: USER, customerId: stale, interval: 'month', successUrl: '', cancelUrl: '', idempotencyKey: 'k' })).rejects.toMatchObject({ code: 'resource_missing' });
   });
 
   it('Stripe non configuré : mode unavailable, 503 BILLING_NOT_CONFIGURED', async () => {

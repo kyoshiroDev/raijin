@@ -26,7 +26,13 @@ function notFound() {
 function client() {
   return {
     customers: { create: jest.fn(async () => ({ id: 'cus_1' })), del: jest.fn(async () => ({ deleted: true })) },
-    checkout: { sessions: { create: jest.fn(async () => ({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' })) } },
+    checkout: {
+      sessions: {
+        create: jest.fn(async () => ({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' })),
+        list: jest.fn(async (): Promise<{ data: { id: string }[]; has_more: boolean }> => ({ data: [], has_more: false })),
+        expire: jest.fn(async (_id: string): Promise<unknown> => ({})),
+      },
+    },
     billingPortal: { sessions: { create: jest.fn(async () => ({ url: 'https://billing.stripe.com/p/session/x' })) } },
     prices: { retrieve: jest.fn(async (id: string) => (id.includes('Monthly') ? price('month', 990) : price('year', 9900))) },
     subscriptions: { retrieve: jest.fn(), list: jest.fn(), cancel: jest.fn(async () => ({})) },
@@ -67,6 +73,33 @@ describe('StripeBillingProvider', () => {
     expect(mock.customers.create).toHaveBeenCalledWith({ email: 'a@b.fr', metadata: { userId: 'u1' } }, { idempotencyKey: 'customer:u1' });
     await expect(stripe.createPortalSession('cus_1', 'https://app/abonnement')).resolves.toBe('https://billing.stripe.com/p/session/x');
     expect(mock.billingPortal.sessions.create).toHaveBeenCalledWith({ customer: 'cus_1', return_url: 'https://app/abonnement', locale: 'fr', configuration: 'bpc_1portal01' });
+  });
+
+  it('expire les sessions Checkout ouvertes du client (pagination, sessions déjà closes ignorées)', async () => {
+    const { mock, stripe } = provider();
+    mock.checkout.sessions.list
+      .mockResolvedValueOnce({ data: [{ id: 'cs_1' }, { id: 'cs_2' }], has_more: true })
+      .mockResolvedValueOnce({ data: [{ id: 'cs_3' }], has_more: false });
+    mock.checkout.sessions.expire.mockImplementation(async (id: string) => {
+      if (id === 'cs_2') throw new Stripe.errors.StripeInvalidRequestError({ type: 'invalid_request_error', message: 'Only open sessions can be expired', statusCode: 400 } as never);
+      return {};
+    });
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).resolves.toBe(2);
+    expect(mock.checkout.sessions.list.mock.calls).toEqual([
+      [{ customer: 'cus_1', status: 'open', limit: 100 }],
+      [{ customer: 'cus_1', status: 'open', limit: 100, starting_after: 'cs_2' }],
+    ]);
+    expect(mock.checkout.sessions.expire).toHaveBeenCalledWith('cs_1', {}, { idempotencyKey: 'expire:cs_1' });
+  });
+
+  it('expiration des sessions : panne réseau propagée, aucune session ouverte : 0', async () => {
+    const { mock, stripe } = provider();
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).resolves.toBe(0);
+    mock.checkout.sessions.list.mockResolvedValueOnce({ data: [{ id: 'cs_1' }], has_more: false });
+    mock.checkout.sessions.expire.mockRejectedValueOnce(new Error('réseau'));
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).rejects.toThrow('réseau');
+    mock.checkout.sessions.list.mockResolvedValueOnce({ data: [], has_more: true });
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).resolves.toBe(0);
   });
 
   it('prix Stripe différents de la configuration : indisponible', async () => {

@@ -93,6 +93,11 @@ export abstract class BillingProvider {
   abstract listProSubscriptions(customerId: string): Promise<ProviderSubscription[]>;
   /** Résiliation immédiate, sans prorata ni facture finale ; abonnement déjà résilié ou introuvable : sans effet. */
   abstract cancelSubscriptionNow(id: string): Promise<void>;
+  /**
+   * Expire les sessions Checkout encore ouvertes d'un client (avant sa suppression : aucun abonnement ne peut plus
+   * naître d'un onglet de paiement resté ouvert). Renvoie le nombre de sessions expirées ; déjà closes : ignorées.
+   */
+  abstract expireOpenCheckoutSessions(customerId: string): Promise<number>;
   /** Suppression du client (moyens de paiement compris) ; client déjà supprimé ou introuvable : sans effet. */
   abstract deleteCustomer(customerId: string): Promise<void>;
   /** `null` : abonnement introuvable chez le prestataire. */

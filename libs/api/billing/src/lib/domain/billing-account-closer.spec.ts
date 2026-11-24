@@ -39,6 +39,32 @@ describe('BillingAccountCloser', () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
+  it('expire les sessions Checkout ouvertes du client avant toute résiliation (celles des autres clients restent)', async () => {
+    const { kit } = setup();
+    const input = { userId: USER, interval: 'month' as const, successUrl: '', cancelUrl: '', idempotencyKey: 'k' };
+    const mine = new URL(await kit.fake.createCheckoutSession({ ...input, customerId: CUSTOMER })).searchParams.get('session') ?? '';
+    const other = new URL(await kit.fake.createCheckoutSession({ ...input, userId: 'u2', customerId: 'cus_fake_autre' })).searchParams.get('session') ?? '';
+    const expire = jest.spyOn(kit.fake, 'expireOpenCheckoutSessions');
+    const cancel = jest.spyOn(kit.fake, 'cancelSubscriptionNow');
+    const remove = jest.spyOn(kit.fake, 'deleteCustomer');
+    await kit.closer.closeForUser(USER);
+    expect(expire).toHaveBeenCalledWith(CUSTOMER);
+    await expect(expire.mock.results[0]?.value).resolves.toBe(1);
+    expect(expire.mock.invocationCallOrder[0]).toBeLessThan(cancel.mock.invocationCallOrder[0] as number);
+    expect(expire.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0] as number);
+    expect(kit.fake.takeSession(mine, USER)).toBeNull();
+    expect(kit.fake.takeSession(other, 'u2')).toMatchObject({ customerId: 'cus_fake_autre' });
+  });
+
+  it('échec de l’expiration des sessions : erreur 503, client conservé', async () => {
+    const { kit } = setup();
+    jest.spyOn(kit.fake, 'expireOpenCheckoutSessions').mockRejectedValueOnce(new Error('réseau'));
+    const remove = jest.spyOn(kit.fake, 'deleteCustomer');
+    await expect(kit.closer.closeForUser(USER)).rejects.toBeInstanceOf(BillingAccountCloseError);
+    expect(remove).not.toHaveBeenCalled();
+    expect(kit.prisma.tables['user']?.[0]).toMatchObject({ stripeCustomerId: CUSTOMER });
+  });
+
   it.each(['cancel', 'deleteCustomer'] as const)('panne du prestataire (%s) : erreur 503 dédiée, base inchangée, réessai possible', async (operation) => {
     const { kit } = setup();
     kit.fake.failNext(operation);

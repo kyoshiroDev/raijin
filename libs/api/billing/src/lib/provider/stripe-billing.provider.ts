@@ -38,6 +38,9 @@ export function verifyStripeSignature(rawBody: Buffer, signature: string | undef
   return { id: event.id, type: event.type, created: new Date(event.created * 1000), livemode: event.livemode === true, object: object as Record<string, unknown> };
 }
 
+/** Pages de 100 sessions ouvertes parcourues au plus par client (borne défensive). */
+const MAX_SESSION_PAGES = 10;
+
 /** Objet introuvable chez Stripe (404 / `resource_missing`). */
 function isMissing(error: unknown): boolean {
   return error instanceof Stripe.errors.StripeInvalidRequestError && (error.statusCode === 404 || error.code === 'resource_missing');
@@ -133,6 +136,27 @@ export class StripeBillingProvider extends BillingProvider {
       if (isMissing(error)) return;
       throw error;
     }
+  }
+
+  async expireOpenCheckoutSessions(customerId: string): Promise<number> {
+    let expired = 0;
+    let after: string | undefined;
+    for (let page = 0; page < MAX_SESSION_PAGES; page += 1) {
+      const list = await this.stripe().checkout.sessions.list({ customer: customerId, status: 'open', limit: 100, ...(after ? { starting_after: after } : {}) });
+      for (const session of list.data) {
+        try {
+          await this.stripe().checkout.sessions.expire(session.id, {}, { idempotencyKey: `expire:${session.id}` });
+          expired += 1;
+        } catch (error) {
+          // Session terminée ou expirée entre la liste et l'appel : plus rien à fermer.
+          if (!(error instanceof Stripe.errors.StripeInvalidRequestError)) throw error;
+        }
+      }
+      const last = list.data.at(-1);
+      if (!list.has_more || !last) break;
+      after = last.id;
+    }
+    return expired;
   }
 
   async deleteCustomer(customerId: string): Promise<void> {
