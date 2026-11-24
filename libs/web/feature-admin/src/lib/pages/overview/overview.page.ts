@@ -80,7 +80,9 @@ import { ADMIN_PAGE_PERIODS, RjAdminReportState, comparisonLabel, previousLabel,
                   <span class="text-label text-ink-muted">{{ i + 1 }}. {{ labels[step.key] }}</span>
                   <span class="tabular text-h3 font-semibold text-ink">{{ count(step.value) }}</span>
                   <span class="text-label text-ink-muted">
-                    @if (step.rateFromPrevious !== null) {
+                    @if (step.rateFromPrevious !== null && step.exceedsPrevious) {
+                      <span class="tabular">{{ ratio(step.rateFromPrevious) }}</span> (plafonné)<span aria-hidden="true">*</span>
+                    } @else if (step.rateFromPrevious !== null) {
                       <span class="tabular">{{ ratio(step.rateFromPrevious) }}</span> de l’étape précédente
                     } @else if (step.status === 'not_connected') {
                       Non connecté
@@ -91,6 +93,12 @@ import { ADMIN_PAGE_PERIODS, RjAdminReportState, comparisonLabel, previousLabel,
                 </li>
               }
             </ol>
+            @if (funnelExceeds()) {
+              <p class="text-body-sm text-ink-muted" data-testid="funnel-cap-note">
+                <span aria-hidden="true">* </span>Plafonné à 100 % : l’étape dépasse la précédente, mesurée par une autre source (visites Google Analytics
+                comptées seulement après consentement, inscriptions sans analyse démo).
+              </p>
+            }
           </rj-admin-panel>
         }
       </rj-admin-report-state>
@@ -105,6 +113,7 @@ export class AdminOverviewPage {
   protected readonly labels = FUNNEL_STEP_LABELS;
   protected readonly period = signal<AdminPeriod>('7d');
   protected readonly report = createAdminReport<AdminOverview>();
+  protected readonly funnelExceeds = computed(() => (this.report.data()?.funnel ?? []).some((step) => step.exceedsPrevious));
   protected readonly comparison = computed(() => comparisonLabel(this.period()));
   protected readonly day = formatLongDay;
 

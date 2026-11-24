@@ -120,6 +120,16 @@ describe('Entonnoir visites → démo → inscription → vérifié → essai �
     expect(funnel[2]?.rateFromPrevious).toBeCloseTo(84 / 280);
   });
 
+  it('étape au-delà de la précédente (sources différentes) : taux plafonné à 100 % et dépassement signalé', () => {
+    // Visites GA4 sous-comptées (refus du consentement) : moins de visites que d'analyses démo.
+    const data: AdminTrafficData = { ...traffic, totals: { ...traffic.totals, sessions: 120 }, events: [{ name: 'analyse_demo_lancee', count: 300, isKeyEvent: false }] };
+    const funnel = service.funnel(RANGE.current, grid, connected, data);
+    expect(funnel[0]).toMatchObject({ value: 120, rateFromPrevious: null, exceedsPrevious: false });
+    expect(funnel[1]).toMatchObject({ value: 300, rateFromPrevious: 1, exceedsPrevious: true });
+    expect(funnel[2]).toMatchObject({ value: 84, exceedsPrevious: false });
+    expect(funnel.every((step) => step.rateFromPrevious === null || step.rateFromPrevious <= 1)).toBe(true);
+  });
+
   it('taux borné à 1 et nul sans étape précédente', () => {
     expect(stepRate(5, 2)).toBe(1);
     expect(stepRate(5, 0)).toBeNull();

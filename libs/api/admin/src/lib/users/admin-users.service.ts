@@ -1,4 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { BILLING_CONFIG, type BillingConfig } from '@raijin/api-billing';
 import { AdminSecurityService, AuditService, AuthService, type AuditEntry, type ClientInfo } from '@raijin/api-auth';
 import {
   afterCursor,
@@ -20,6 +22,7 @@ import {
   ADMIN_GIFT_DAYS,
   ADMIN_GIFT_MAX_DAYS_AHEAD,
   ADMIN_USER_AUDIT_MAX,
+  stripeDashboardCustomerUrl,
   type AdminUserActionRequest,
   type AdminUserActionResult,
   type AdminUserActionType,
@@ -96,6 +99,8 @@ export class AdminUsersService {
     private readonly auth: AuthService,
     private readonly users: UsersService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    /** Résout `BILLING_CONFIG` (fourni par `ApiBillingModule.forRoot` de l'app) pour le mode de facturation. */
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   // ---------------------------------------------------------------------------------------------
@@ -411,9 +416,21 @@ export class AdminUsersService {
     }
   }
 
-  /** Lien vers le client dans le dashboard Stripe (mode réel en production, test sinon) ; identifiant vérifié. */
+  /**
+   * Lien vers le client dans le dashboard Stripe selon le **mode de facturation** (clé `sk_live_` → réel, sinon
+   * `/test/`), jamais selon `NODE_ENV` ; identifiant vérifié (`stripeDashboardCustomerUrl`).
+   */
   stripeDashboardUrl(customerId: string | null): string | null {
     if (!customerId || !/^cus_[A-Za-z0-9]{1,64}$/.test(customerId)) return null;
-    return `https://dashboard.stripe.com/${this.config.isProduction ? '' : 'test/'}customers/${customerId}`;
+    return stripeDashboardCustomerUrl(customerId, this.billingLivemode());
+  }
+
+  /** `BillingConfig.livemode` ; configuration de facturation absente : mode test (lien `/test/`). */
+  private billingLivemode(): boolean {
+    try {
+      return this.moduleRef.get<BillingConfig>(BILLING_CONFIG, { strict: false }).livemode === true;
+    } catch {
+      return false;
+    }
   }
 }

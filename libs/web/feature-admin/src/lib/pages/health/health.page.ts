@@ -70,16 +70,26 @@ const QUOTA_TEXT: Readonly<Record<AdminQuotaUsage['level'], { icon: RjIconName; 
           }
 
           <rj-kpi-grid>
-            <rj-kpi-card label="Requêtes API (24 h)" [value]="health.api.requests" />
-            <rj-kpi-card label="Taux d’erreur 5xx" unit="ratio" [value]="health.api.errorRate" [status]="health.api.errorRate === null ? 'unavailable' : 'ok'" />
+            <rj-kpi-card [label]="health.api.estimated ? 'Requêtes API (24 h, estimé)' : 'Requêtes API (24 h)'" [value]="health.api.requests" />
+            <rj-kpi-card [label]="health.api.estimated ? 'Taux d’erreur 5xx (estimé)' : 'Taux d’erreur 5xx'" unit="ratio" [value]="health.api.errorRate" [status]="health.api.errorRate === null ? 'unavailable' : 'ok'" />
             <rj-kpi-card [label]="'E-mails envoyés (24 h, ' + health.emails.provider + ')'" [value]="health.emails.sent24h" />
             <rj-kpi-card label="E-mails en échec (24 h)" [value]="health.emails.failed24h" />
             <rj-kpi-card label="Abonnements push actifs" [value]="health.push.activeSubscriptions" />
             <rj-kpi-card label="Taille de la base" unit="bytes" [value]="health.database.sizeBytes" [status]="health.database.sizeBytes === null ? 'unavailable' : 'ok'" />
           </rj-kpi-grid>
+          @if (health.api.estimated) {
+            <p class="text-body-sm text-ink-muted" data-testid="api-estimated-note">
+              Estimé : les compteurs sont journaliers (UTC). Les 24 dernières heures additionnent le jour en cours et la part de la veille au prorata de l’heure.
+            </p>
+          }
 
-          <rj-admin-panel title="Jobs" description="Dernière exécution, durée et échecs consécutifs (alerte à 3)">
+          <rj-admin-panel title="Jobs" description="Dernière et prochaine exécution, durée et échecs consécutifs (alerte à 3)">
             <rj-data-table caption="État des jobs" [columns]="jobColumns" [rows]="health.jobs" [trackBy]="byName" />
+            @if (hasUnscheduledJobs()) {
+              <p class="text-body-sm text-ink-muted" data-testid="next-run-note">
+                « {{ noValue }} » en prochaine exécution : job non planifié (jobs désactivés, déclenchement manuel en test) ou date connue seulement de la file (intervalle déjà écoulé).
+              </p>
+            }
           </rj-admin-panel>
 
           <div class="grid gap-4 md:gap-6 xl:grid-cols-2">
@@ -141,9 +151,11 @@ export class AdminHealthPage {
   protected readonly bar = QUOTA_BAR;
   protected readonly level = QUOTA_TEXT;
   protected readonly time = formatTime;
+  protected readonly noValue = NO_VALUE;
   protected readonly byName = (row: AdminJobHealth) => row.name;
   protected readonly byId = (row: AdminAlert) => row.id;
 
+  protected readonly hasUnscheduledJobs = computed(() => (this.report.data()?.jobs ?? []).some((job) => job.nextRunAt === null));
   protected readonly openAlerts = computed(() => (this.report.data()?.alerts ?? []).filter((alert) => alert.resolvedAt === null));
   protected readonly resolvedAlerts = computed(() => (this.report.data()?.alerts ?? []).filter((alert) => alert.resolvedAt !== null));
   protected readonly services = computed(() =>
@@ -155,7 +167,8 @@ export class AdminHealthPage {
   protected readonly jobColumns: readonly RjTableColumn<AdminJobHealth>[] = [
     { key: 'name', label: 'Job', value: (row) => ADMIN_JOB_LABELS[row.name] ?? row.name, primary: true },
     { key: 'status', label: 'Statut', value: (row) => jobStatus(row) },
-    { key: 'last', label: 'Dernière exécution', value: (row) => (row.lastRunAt ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(row.lastRunAt)) : NO_VALUE) },
+    { key: 'last', label: 'Dernière exécution', value: (row) => shortDateTime(row.lastRunAt) },
+    { key: 'next', label: 'Prochaine exécution', value: (row) => shortDateTime(row.nextRunAt) },
     { key: 'duration', label: 'Durée', value: (row) => row.lastDurationMs, unit: 'ms' },
     { key: 'failures', label: 'Échecs de suite', value: (row) => row.consecutiveFailures, unit: 'count' },
     { key: 'error', label: 'Code', value: (row) => row.lastErrorCode, mono: true, hideOnMobile: true },
@@ -202,6 +215,10 @@ export class AdminHealthPage {
   protected percent(ratio: number): number {
     return Math.min(100, Math.round(ratio * 100));
   }
+}
+
+function shortDateTime(iso: string | null): string {
+  return iso ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso)) : NO_VALUE;
 }
 
 function jobStatus(job: AdminJobHealth): string {

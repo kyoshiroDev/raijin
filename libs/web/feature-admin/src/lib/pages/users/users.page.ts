@@ -145,7 +145,7 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
             <div><dt class="text-label text-ink-muted">E-mail vérifié</dt><dd class="text-body text-ink">{{ user.emailVerified ? 'Oui' : 'Non' }}</dd></div>
           </dl>
           @if (user.stripeDashboardUrl; as stripe) {
-            <a rjButton="secondary" icon="external" [href]="stripe" target="_blank" rel="noopener noreferrer">Ouvrir dans le dashboard Stripe</a>
+            <a rjButton="secondary" icon="external" [href]="stripe" target="_blank" rel="noopener noreferrer">{{ stripe.includes('/test/') ? 'Ouvrir dans le dashboard Stripe (mode test)' : 'Ouvrir dans le dashboard Stripe' }}</a>
           }
 
           <section class="flex flex-col gap-2">

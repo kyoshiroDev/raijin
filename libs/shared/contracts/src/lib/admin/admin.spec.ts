@@ -18,6 +18,8 @@ import {
   adminUserDetailSchema,
   adminUserListQuerySchema,
   apiErrorCodeSchema,
+  funnelStepRate,
+  stripeDashboardCustomerUrl,
   auditLogEntrySchema,
   billingAccountSchema,
   computeChange,
@@ -296,5 +298,28 @@ describe('admin : impacts sur les contrats existants', () => {
 
   it('paramètres d’attribution alignés sur le contrat d’inscription', () => {
     expect(Object.keys(ATTRIBUTION_QUERY_PARAMS).sort()).toEqual(Object.keys(signupAttributionSchema.shape).sort());
+  });
+});
+
+describe('Justesse des métriques admin (phase 9)', () => {
+  it('funnelStepRate : jamais au-delà de 100 %, dépassement signalé, null sans base', () => {
+    expect(funnelStepRate(25, 100)).toEqual({ rateFromPrevious: 0.25, exceedsPrevious: false });
+    expect(funnelStepRate(100, 100)).toEqual({ rateFromPrevious: 1, exceedsPrevious: false });
+    expect(funnelStepRate(300, 120)).toEqual({ rateFromPrevious: 1, exceedsPrevious: true });
+    expect(funnelStepRate(5, 0)).toEqual({ rateFromPrevious: null, exceedsPrevious: false });
+    expect(funnelStepRate(null, 10)).toEqual({ rateFromPrevious: null, exceedsPrevious: false });
+  });
+
+  it('stripeDashboardCustomerUrl : réel ou /test/ selon le mode, identifiant vérifié', () => {
+    expect(stripeDashboardCustomerUrl('cus_A1', true)).toBe('https://dashboard.stripe.com/customers/cus_A1');
+    expect(stripeDashboardCustomerUrl('cus_A1', false)).toBe('https://dashboard.stripe.com/test/customers/cus_A1');
+    expect(stripeDashboardCustomerUrl('cus_A1/../x', true)).toBeNull();
+    expect(stripeDashboardCustomerUrl(null, true)).toBeNull();
+  });
+
+  it('analyses : échec complet et résultat partiel sont deux métriques distinctes ; api.estimated vaut true par défaut', () => {
+    expect(DAILY_METRICS.analyses_failed).toEqual({ unit: 'count', aggregation: 'sum' });
+    expect(DAILY_METRICS.analyses_partial).toEqual({ unit: 'count', aggregation: 'sum' });
+    expect(adminHealthSchema.shape.api.parse({ window: '24h', requests: 1, serverErrors: 0, errorRate: 0 }).estimated).toBe(true);
   });
 });

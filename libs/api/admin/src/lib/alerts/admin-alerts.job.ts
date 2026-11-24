@@ -8,7 +8,7 @@ import {
   QUOTA_SERVICE_LABELS,
   quotaServiceSchema,
   type AdminAlert,
-  type PushNotificationPayload,
+  type AdminPushNotificationPayload,
 } from '@raijin/shared-contracts';
 import { AdminStore } from '../common/admin-store';
 import { utcDay } from '../common/range';
@@ -52,11 +52,11 @@ export function alertLabel(alert: Pick<AdminAlert, 'kind' | 'subject'>): string 
  * Le contrat `pushNotificationPayloadSchema` est propre aux alertes de token (`tag alert:<mint>`) : cette charge utile
  * a la même enveloppe (`notification`, `data.onActionClick`) mais un `tag` et des données propres à l'admin.
  */
-export function adminPushPayload(alerts: readonly AdminAlert[], now: Date): PushNotificationPayload {
+export function adminPushPayload(alerts: readonly AdminAlert[], now: Date): AdminPushNotificationPayload {
   const first = alerts[0];
   const title = alerts.length === 1 ? 'Raijin admin : alerte technique' : `Raijin admin : ${alerts.length} alertes techniques`;
   const body = first ? `${alertLabel(first)}${alerts.length > 1 ? ` et ${alerts.length - 1} autre(s)` : ''}. Ouvre la santé technique.` : 'Ouvre la santé technique.';
-  const payload = {
+  return {
     notification: {
       title: title.slice(0, 80),
       body: body.slice(0, 240),
@@ -69,7 +69,6 @@ export function adminPushPayload(alerts: readonly AdminAlert[], now: Date): Push
       data: { onActionClick: { default: { operation: 'navigateLastFocusedOrOpen', url: '/admin/sante' } } },
     },
   };
-  return payload as unknown as PushNotificationPayload;
 }
 
 /**

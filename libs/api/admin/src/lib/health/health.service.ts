@@ -26,6 +26,16 @@ export function last24h(today: DailyCounterValues | null, yesterday: DailyCounte
   return Math.round((today?.[field] ?? 0) + (yesterday?.[field] ?? 0) * Math.max(0, 1 - elapsed));
 }
 
+/**
+ * La fenêtre de 24 h est-elle reconstituée (`api.estimated`) ? Exacte seulement si la veille n'y contribue pas : minuit
+ * UTC pile, ou veille relue sans aucune requête. Veille illisible (stockage indisponible) : estimée (valeur incomplète).
+ */
+export function last24hEstimated(yesterday: DailyCounterValues | null, now: Date): boolean {
+  const elapsed = (now.getTime() - Date.parse(`${utcDay(now)}T00:00:00Z`)) / 86_400_000;
+  if (elapsed <= 0) return false;
+  return yesterday === null || yesterday.api_requests > 0 || yesterday.api_errors_5xx > 0;
+}
+
 /** État interne d'un job → contrat (sans l'identifiant du premier échec ni la date du dernier succès). */
 export function toJobHealth(state: JobState): AdminJobHealth {
   const { name, lastRunAt, lastStatus, lastDurationMs, consecutiveFailures, lastErrorCode, nextRunAt } = state;
@@ -105,7 +115,13 @@ export class HealthService {
       generatedAt: now.toISOString(),
       jobs: jobs.map(toJobHealth),
       quotas,
-      api: { window: '24h', requests, serverErrors, errorRate: requests > 0 ? serverErrors / requests : null },
+      api: {
+        window: '24h',
+        requests,
+        serverErrors,
+        errorRate: requests > 0 ? serverErrors / requests : null,
+        estimated: last24hEstimated(yesterdayCounters, now),
+      },
       emails: {
         provider: this.config.mail.provider === 'resend' && this.config.mail.resendApiKey ? 'resend' : 'smtp',
         sent24h: last24h(todayCounters, yesterdayCounters, now, 'emails_sent'),

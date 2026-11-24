@@ -3,7 +3,7 @@ import type { Mailer } from '@raijin/api-notifications';
 import { of } from 'rxjs';
 import { MemoryAdminStore, cached } from '../common/admin-store';
 import { addDays, rangeDays, resolveRange } from '../common/range';
-import { countMailer, DailyCounters, RequestMetricsInterceptor, dailyCounterKey } from './daily-counters';
+import { countMailer, DailyCounters, RequestMetricsInterceptor, dailyCounterKey, isAnalysisRequest } from './daily-counters';
 import { MetricsAggregateJob } from './metrics-aggregate.job';
 import { MetricsCalculator, mrrCents } from './metrics-calculator';
 import { MetricsReader } from './metrics-reader';
@@ -35,14 +35,39 @@ describe('Compteurs techniques journaliers', () => {
     counters.now = () => NOW;
     const listeners: Record<string, () => void> = {};
     const response = { statusCode: 200, once: (event: string, fn: () => void) => (listeners[event] = fn) };
-    const context = { getType: () => 'http', switchToHttp: () => ({ getResponse: () => response }) };
+    const context = { getType: () => 'http', switchToHttp: () => ({ getResponse: () => response, getRequest: () => ({ method: 'GET', route: { path: '/api/v1/me' } }) }) };
     const interceptor = new RequestMetricsInterceptor(counters);
     await new Promise((resolve) => interceptor.intercept(context as never, { handle: () => of(1) }).subscribe({ complete: () => resolve(null) }));
     response.statusCode = 503;
     listeners['finish']?.();
     await new Promise((resolve) => setImmediate(resolve));
-    expect(await counters.read('2026-11-22')).toEqual({ api_requests: 1, api_errors_5xx: 1, emails_sent: 0, emails_failed: 0 });
+    expect(await counters.read('2026-11-22')).toEqual({ api_requests: 1, api_errors_5xx: 1, emails_sent: 0, emails_failed: 0, analyses_failed: 0 });
     expect(dailyCounterKey('2026-11-22')).toBe('admin:counters:2026-11-22');
+  });
+
+  it('analyse en échec complet : POST /analyses terminé en 5xx seulement (4xx et autres routes exclus)', async () => {
+    const counters = new DailyCounters(new MemoryAdminStore());
+    counters.now = () => NOW;
+    const interceptor = new RequestMetricsInterceptor(counters);
+    const call = async (method: string, path: string, status: number) => {
+      let finish: (() => void) | undefined;
+      const response = { statusCode: status, once: (_event: string, fn: () => void) => (finish = fn) };
+      const context = { getType: () => 'http', switchToHttp: () => ({ getResponse: () => response, getRequest: () => ({ method, route: { path } }) }) };
+      await new Promise((resolve) => interceptor.intercept(context as never, { handle: () => of(1) }).subscribe({ complete: () => resolve(null) }));
+      finish?.();
+    };
+    await call('POST', '/api/v1/analyses', 503);
+    await call('POST', '/api/v1/analyses', 500);
+    await call('POST', '/api/v1/analyses', 404);
+    await call('POST', '/api/v1/analyses', 200);
+    await call('GET', '/api/v1/analyses/:mint', 503);
+    await call('POST', '/api/v1/wallets/scan', 503);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(await counters.read('2026-11-22')).toMatchObject({ api_requests: 6, api_errors_5xx: 4, analyses_failed: 2 });
+    expect(isAnalysisRequest({ method: 'POST', route: { path: '/analyses' } })).toBe(true);
+    expect(isAnalysisRequest({ method: 'POST', route: { path: '/api/v1/admin/analyses-x' } })).toBe(false);
+    expect(isAnalysisRequest({ method: 'POST' })).toBe(false);
+    expect(isAnalysisRequest(undefined)).toBe(false);
   });
 
   it('e-mails envoyés / en échec par décoration du Mailer (une seule fois), erreur relancée', async () => {
@@ -79,6 +104,48 @@ describe('Compteurs techniques journaliers', () => {
 describe('MRR', () => {
   it('mensuels + annuels / 12 aux prix configurés', () => {
     expect(mrrCents(3, 2, { prices: { monthlyCents: 990, yearlyCents: 9900, monthlyId: null, yearlyId: null, currency: 'EUR' } })).toBe(3 * 990 + 1650);
+  });
+});
+
+/** Calculateur sur des tables construites : première requête = ligne du jour, deuxième = sources, troisième = taille. */
+function calculatorKit(row: Record<string, number | null>, counters: Record<string, number> | null) {
+  const queries = [[row], [{ id: 'helius', checks: 10, unavailable: 2 }], [{ size: 1000n }]];
+  const prisma = { $queryRaw: jest.fn(async () => queries.shift() ?? []) };
+  const reader = { read: jest.fn(async () => counters) };
+  const usage = { snapshot: jest.fn(async () => ({ status: 'unavailable' })) };
+  const billing = { prices: { monthlyCents: 990, yearlyCents: 9900 } };
+  return new MetricsCalculator(prisma as never, reader as never, usage as never, billing as never, testConfig());
+}
+
+const DAY_ROW = {
+  signups: 3, email_verified: 2, trials_started: 1, trials_converted: 0, trials_expired: 0, trials_refused: 0, trials_active: 1,
+  accounts_deleted: 0, subscriptions_new: 0, subscriptions_canceled: 0, payments_failed: 0, subscribers_monthly: 2, subscribers_yearly: 1,
+  analyses_total: 40, analyses_anonymous: 25, analyses_partial: 6, verdict_safe: 20, verdict_warn: 12, verdict_danger: 8,
+  duration_avg: 812.4, duration_p95: 2100, wallet_scans: 4, watches_active: 3, alerts_sent: 1, push_sent: 1, push_subscriptions_active: 2,
+};
+
+describe('MetricsCalculator : analyses partielles et échecs complets', () => {
+  it('partielles = résultats dégradés enregistrés ; échecs complets = compteur des POST /analyses en 5xx', async () => {
+    const counters = { api_requests: 500, api_errors_5xx: 9, emails_sent: 4, emails_failed: 0, analyses_failed: 5 };
+    const metrics = await calculatorKit(DAY_ROW, counters).compute('2026-11-21', NOW);
+    expect(metrics.get('analyses_total')).toBe(40);
+    expect(metrics.get('analyses_partial')).toBe(6);
+    expect(metrics.get('analyses_failed')).toBe(5);
+    // Un échec complet n'est jamais compté comme partiel (et inversement) : les deux sources sont disjointes.
+    expect(metrics.get('analyses_partial')).not.toBe(metrics.get('analyses_failed'));
+    expect(metrics.get('subscribers_active')).toBe(3);
+    expect(metrics.get('mrr_cents')).toBe(2 * 990 + 825);
+    expect(metrics.get('analysis_duration_avg_ms')).toBe(812);
+    expect(metrics.get('checks_unavailable.helius')).toBe(2);
+  });
+
+  it('compteurs illisibles ou expirés (> 7 jours) : échecs complets non mesurés, partiels toujours calculés', async () => {
+    const unreadable = await calculatorKit(DAY_ROW, null).compute('2026-11-21', NOW);
+    expect(unreadable.has('analyses_failed')).toBe(false);
+    expect(unreadable.get('analyses_partial')).toBe(6);
+    const old = await calculatorKit(DAY_ROW, { api_requests: 1, api_errors_5xx: 0, emails_sent: 0, emails_failed: 0, analyses_failed: 3 }).compute('2026-11-01', NOW);
+    expect(old.has('analyses_failed')).toBe(false);
+    expect(old.get('analyses_partial')).toBe(6);
   });
 });
 

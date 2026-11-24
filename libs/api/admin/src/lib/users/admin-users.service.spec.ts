@@ -1,5 +1,5 @@
-import type { AdminSecurityService, AuditService, AuthService } from '@raijin/api-auth';
 import { testConfig } from '@raijin/api-core';
+import type { AdminSecurityService, AuditService, AuthService } from '@raijin/api-auth';
 import type { PrismaService } from '@raijin/api-prisma';
 import type { UsersService } from '@raijin/api-users';
 import { adminUserDetailSchema, adminUserPageSchema } from '@raijin/shared-contracts';
@@ -36,7 +36,8 @@ function userRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function setup(row: Record<string, unknown> = userRow(), options: { proSubscription?: boolean } = {}) {
+function setup(row: Record<string, unknown> = userRow(), options: { proSubscription?: boolean; livemode?: boolean } = {}) {
+  const billing = { livemode: options.livemode ?? false };
   let current: Record<string, unknown> | null = { ...row };
   let auditSeq = 0;
   const model = () => ({
@@ -99,6 +100,7 @@ function setup(row: Record<string, unknown> = userRow(), options: { proSubscript
     auth as unknown as AuthService,
     users as unknown as UsersService,
     testConfig(),
+    { get: () => ({ livemode: billing.livemode }) } as never,
   );
   return { service, prisma, audit, security, auth, users, current: () => current };
 }
@@ -156,6 +158,13 @@ describe('AdminUsersService — fiche', () => {
     prisma.auditLog.findFirst.mockResolvedValueOnce({ id: 'recent' });
     await service.detail(USER, actor, NOW);
     expect(audit.recordStrict).toHaveBeenCalledTimes(1);
+  });
+
+  it('lien Stripe selon le mode de facturation (clé live → dashboard réel), jamais selon NODE_ENV', async () => {
+    expect(setup(userRow(), { livemode: true }).service.stripeDashboardUrl('cus_ABC123')).toBe('https://dashboard.stripe.com/customers/cus_ABC123');
+    expect(setup(userRow(), { livemode: false }).service.stripeDashboardUrl('cus_ABC123')).toBe('https://dashboard.stripe.com/test/customers/cus_ABC123');
+    expect(setup().service.stripeDashboardUrl('cus_<script>')).toBeNull();
+    expect(setup().service.stripeDashboardUrl(null)).toBeNull();
   });
 
   it('compte inconnu : 404', async () => {

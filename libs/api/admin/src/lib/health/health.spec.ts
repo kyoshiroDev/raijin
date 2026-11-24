@@ -1,7 +1,8 @@
 import { testConfig } from '@raijin/api-core';
 import { adminHealthSchema } from '@raijin/shared-contracts';
-import { HealthService, last24h, snakeCase, toAdminAlert } from './health.service';
-import { jobState, type JobRunRow } from './job-health';
+import { nextCronRun, parseCron } from '../common/cron';
+import { HealthService, last24h, last24hEstimated, snakeCase, toAdminAlert } from './health.service';
+import { jobSchedules, jobState, nextRunAt, WEEKLY_DIGEST_SCHEDULE, type JobRunRow } from './job-health';
 import { quotasWithBudgets } from './quotas';
 
 const NOW = new Date('2026-11-22T06:00:00.000Z');
@@ -50,10 +51,21 @@ describe('Quotas', () => {
 describe('Santé : utilitaires', () => {
   it('clés des services en snake_case, fenêtre de 24 h au prorata', () => {
     expect(snakeCase('googleServiceAccount')).toBe('google_service_account');
-    const zero = { api_requests: 0, api_errors_5xx: 0, emails_sent: 0, emails_failed: 0 };
+    const zero = { api_requests: 0, api_errors_5xx: 0, emails_sent: 0, emails_failed: 0, analyses_failed: 0 };
     // 06:00 UTC : 25 % du jour écoulé → 75 % de la veille.
     expect(last24h({ ...zero, api_requests: 100 }, { ...zero, api_requests: 400 }, NOW, 'api_requests')).toBe(400);
     expect(last24h(null, null, NOW, 'emails_sent')).toBe(0);
+  });
+
+  it('fenêtre de 24 h « estimée » dès que la veille y contribue au prorata', () => {
+    const zero = { api_requests: 0, api_errors_5xx: 0, emails_sent: 0, emails_failed: 0, analyses_failed: 0 };
+    expect(last24hEstimated({ ...zero, api_requests: 400 }, NOW)).toBe(true);
+    // Veille sans aucune requête : jour en cours compté exactement.
+    expect(last24hEstimated(zero, NOW)).toBe(false);
+    // Veille illisible : valeur incomplète, donc estimée.
+    expect(last24hEstimated(null, NOW)).toBe(true);
+    // Minuit UTC pile : la veille ne compte plus.
+    expect(last24hEstimated({ ...zero, api_requests: 400 }, new Date('2026-11-22T00:00:00.000Z'))).toBe(false);
   });
 
   it('ligne AdminAlert hors contrat ignorée', () => {
@@ -68,7 +80,7 @@ describe('Santé : utilitaires', () => {
     const service = new HealthService(
       prisma as never,
       { states: async () => [jobState('purge', [run('r1', 'SUCCESS', 5)])] } as never,
-      { read: async () => ({ api_requests: 10, api_errors_5xx: 1, emails_sent: 2, emails_failed: 0 }) } as never,
+      { read: async () => ({ api_requests: 10, api_errors_5xx: 1, emails_sent: 2, emails_failed: 0, analyses_failed: 0 }) } as never,
       { snapshot: async () => ({ quotas: [{ service: 'helius', period: 'day', used: 1, limit: 10, ratio: 0.1, level: 'ok' }] }) } as never,
       { isConfigured: () => false } as never,
       { mode: () => 'simulation' } as never,
@@ -83,5 +95,46 @@ describe('Santé : utilitaires', () => {
     expect(health.services['ga4_data_api']).toBe('not_configured');
     expect(Object.values(health.services).every((value) => value === 'configured' || value === 'not_configured')).toBe(true);
     expect(health.api.errorRate).toBeCloseTo(health.api.serverErrors / health.api.requests);
+    expect(health.api.estimated).toBe(true);
+  });
+});
+
+describe('Prochaine exécution des jobs (nextRunAt)', () => {
+  it('cron à 5 champs : listes, plages, pas ; 7 = dimanche ; motif illisible refusé', () => {
+    expect(parseCron('*/10 * * * *')?.minutes.size).toBe(6);
+    expect(parseCron('0 8 * * 7')?.weekdays.has(0)).toBe(true);
+    expect(parseCron('61 * * * *')).toBeNull();
+    expect(parseCron('* * *')).toBeNull();
+    expect(nextCronRun('15 2 * * *', 'UTC', NOW)?.toISOString()).toBe('2026-11-23T02:15:00.000Z');
+    expect(nextCronRun('*/10 * * * *', 'UTC', new Date('2026-11-22T06:03:20Z'))?.toISOString()).toBe('2026-11-22T06:10:00.000Z');
+    expect(nextCronRun('5 * * * *', 'UTC', new Date('2026-11-22T06:05:00Z'))?.toISOString()).toBe('2026-11-22T07:05:00.000Z');
+    expect(nextCronRun('30 3 1,15 * *', 'UTC', NOW)?.toISOString()).toBe('2026-12-01T03:30:00.000Z');
+    expect(nextCronRun('pas un cron', 'UTC', NOW)).toBeNull();
+    expect(nextCronRun('0 8 * * 1', 'Pas/UnFuseau', NOW)).toBeNull();
+  });
+
+  it('résumé hebdomadaire : lundi 08:00 heure de Paris (07:00 UTC en hiver)', () => {
+    // NOW = dimanche 22 novembre 2026, 06:00 UTC.
+    expect(nextRunAt(WEEKLY_DIGEST_SCHEDULE, null, NOW)).toBe('2026-11-23T07:00:00.000Z');
+  });
+
+  it('intervalle fixe : dernier passage + intervalle, null si inconnu ou dépassé', () => {
+    expect(nextRunAt({ everyMs: 60_000 }, new Date(NOW.getTime() - 30_000), NOW)).toBe(new Date(NOW.getTime() + 30_000).toISOString());
+    expect(nextRunAt({ everyMs: 60_000 }, new Date(NOW.getTime() - 120_000), NOW)).toBeNull();
+    expect(nextRunAt({ everyMs: 60_000 }, null, NOW)).toBeNull();
+    expect(nextRunAt(undefined, null, NOW)).toBeNull();
+  });
+
+  it('planifications : jobs de base + registre ; aucune si jobs désactivés, sans Redis ou JOBS_TEST_TRIGGER', () => {
+    const jobs = { enabled: true, prefix: 'rj', testTrigger: false, tickSeconds: 60, purgeCron: '30 3 * * *', retentionDays: 90 };
+    const extra = [{ name: 'metrics-aggregate', scheduler: { pattern: '15 2 * * *', tz: 'UTC' } }, { name: 'manuel' }];
+    const schedules = jobSchedules({ jobs, redisUrl: 'redis://localhost:6379' }, extra);
+    expect([...schedules.keys()].sort()).toEqual(['metrics-aggregate', 'purge', 'watch-planner', 'weekly-digest']);
+    expect(jobState('metrics-aggregate', [], schedules.get('metrics-aggregate'), NOW).nextRunAt).toBe('2026-11-23T02:15:00.000Z');
+    expect(jobState('purge', [], schedules.get('purge'), NOW).nextRunAt).toBe('2026-11-23T03:30:00.000Z');
+    expect(jobSchedules({ jobs: { ...jobs, enabled: false }, redisUrl: 'redis://localhost:6379' }, extra).size).toBe(0);
+    expect(jobSchedules({ jobs, redisUrl: null }, extra).size).toBe(0);
+    expect(jobSchedules({ jobs: { ...jobs, testTrigger: true }, redisUrl: 'redis://localhost:6379' }, extra).size).toBe(0);
+    expect(jobState('purge', [], undefined, NOW).nextRunAt).toBeNull();
   });
 });

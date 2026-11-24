@@ -3,6 +3,7 @@ import { testConfig } from '@raijin/api-core';
 import type { MailMessage } from '@raijin/api-notifications';
 import { MemoryAdminStore } from '../common/admin-store';
 import { jobState, type JobRunRow } from '../health/job-health';
+import { adminPushNotificationPayloadSchema, outgoingPushPayloadSchema } from '@raijin/shared-contracts';
 import { AdminAlertsJob, adminPushPayload, alertLabel, jobAlertKey, quotaAlertKey } from './admin-alerts.job';
 
 const NOW = new Date('2026-11-22T06:00:00.000Z');
@@ -136,6 +137,14 @@ describe('Alertes admin', () => {
     expect(payload.notification.title.length).toBeLessThanOrEqual(80);
     expect(payload.notification.body).toContain('Helius (crédits, total)');
     expect(payload.notification.data.onActionClick.default.url).toBe('/admin/sante');
+    // Conforme au contrat admin (tag admin, clic limité à /admin) et donc à la charge sortante du PushSender.
+    expect(adminPushNotificationPayloadSchema.parse(payload)).toEqual(payload);
+    expect(outgoingPushPayloadSchema.safeParse(payload).success).toBe(true);
+    const many = adminPushPayload(
+      Array.from({ length: 3 }, () => ({ id: randomUUID(), kind: 'job_failing' as const, subject: 'purge', level: 'critical' as const, details: {}, createdAt: NOW.toISOString(), notifiedAt: null, resolvedAt: null })),
+      NOW,
+    );
+    expect(adminPushNotificationPayloadSchema.safeParse(many).success).toBe(true);
     expect(alertLabel({ kind: 'job_failing', subject: 'job-inconnu' })).toBe('job-inconnu');
   });
 });

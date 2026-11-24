@@ -152,6 +152,38 @@ describe('Écrans statistiques de l’admin', () => {
     expect(page).toContain('Au-delà de 80 %');
     expect(page).toContain('Non configuré');
     expect(root(kit).querySelector('[role="progressbar"]')).not.toBeNull();
+    // Taux d'erreur reconstitué : « estimé » visible et expliqué ; prochaine exécution inconnue : « — » expliqué.
+    expect(page).toContain('Taux d’erreur 5xx (estimé)');
+    expect(root(kit).querySelector('[data-testid="api-estimated-note"]')).not.toBeNull();
+    expect(page).toContain('Prochaine exécution');
+    expect(root(kit).querySelector('[data-testid="next-run-note"]')).not.toBeNull();
+  });
+
+  it('santé : fenêtre exacte et jobs planifiés → ni « estimé » ni note', async () => {
+    const kit = await open('/admin/sante');
+    const jobs = ADMIN_HEALTH_FIXTURE.jobs.map((job) => ({ ...job, nextRunAt: '2026-11-23T02:15:00.000Z' }));
+    kit.ctrl.expectOne(`${API}/admin/health`).flush({ ...ADMIN_HEALTH_FIXTURE, jobs, api: { ...ADMIN_HEALTH_FIXTURE.api, estimated: false } });
+    await flush(kit.harness);
+    const page = text(kit.harness);
+    expect(page).not.toContain('(estimé)');
+    expect(root(kit).querySelector('[data-testid="api-estimated-note"]')).toBeNull();
+    expect(root(kit).querySelector('[data-testid="next-run-note"]')).toBeNull();
+    expect(page).toContain('23/11/2026');
+  });
+
+  it('vue d’ensemble : étape au-delà de la précédente plafonnée à 100 % et expliquée', async () => {
+    const kit = await open('/admin');
+    const funnel = ADMIN_OVERVIEW_FIXTURE.funnel.map((step) =>
+      step.key === 'demo_analyses' ? { ...step, value: 2400, rateFromPrevious: 1, exceedsPrevious: true } : step,
+    );
+    kit.ctrl.expectOne(`${API}/admin/overview?period=7d`).flush({ ...ADMIN_OVERVIEW_FIXTURE, funnel });
+    await flush(kit.harness);
+    const page = text(kit.harness);
+    expect(page).toContain('(plafonné)');
+    const rates = [...root(kit).querySelectorAll('ol li span.text-label span.tabular')].map((rate) => Number((rate.textContent ?? '').replace(/[^\d,]/g, '').replace(',', '.')));
+    expect(rates.length).toBeGreaterThan(0);
+    expect(Math.max(...rates)).toBeLessThanOrEqual(100);
+    expect(root(kit).querySelector('[data-testid="funnel-cap-note"]')).not.toBeNull();
   });
 });
 
@@ -195,6 +227,18 @@ describe('Utilisateurs', () => {
     kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);
     await flush(kit.harness);
     expect(document.body.textContent).toContain('Compte suspendu depuis le 22 novembre 2026');
+  });
+
+  it('fiche : lien Stripe en mode test signalé', async () => {
+    const kit = await open(`/admin/utilisateurs?fiche=${ADMIN_USER_DETAIL_FIXTURE.id}`);
+    kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);
+    await flush(kit.harness);
+    kit.ctrl
+      .expectOne(`${API}/admin/users/${ADMIN_USER_DETAIL_FIXTURE.id}`)
+      .flush({ ...ADMIN_USER_DETAIL_FIXTURE, stripeDashboardUrl: 'https://dashboard.stripe.com/test/customers/cus_ABC123' });
+    await flush(kit.harness);
+    const link = document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="https://dashboard.stripe.com/"]');
+    expect(link?.textContent).toContain('dashboard Stripe (mode test)');
   });
 
   it('recherche : moins de 3 caractères refusée sans requête', async () => {

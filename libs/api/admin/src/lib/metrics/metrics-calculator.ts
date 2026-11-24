@@ -26,7 +26,7 @@ interface DayRow {
   subscribers_yearly: number;
   analyses_total: number;
   analyses_anonymous: number;
-  analyses_failed: number;
+  analyses_partial: number;
   verdict_safe: number;
   verdict_warn: number;
   verdict_danger: number;
@@ -46,8 +46,10 @@ export const COUNTER_HISTORY_DAYS = 7;
  * Calcul des métriques d'un jour UTC (catalogue `DAILY_METRICS`, docs/ARCHITECTURE.md §14.5) à partir des tables
  * sources et des compteurs Redis. **Aucune donnée personnelle** : uniquement des comptes, sommes, moyennes et
  * instantanés. Les instantanés (`last`) d'un jour passé sont reconstitués à la fin du jour (création / résiliation).
- * - `analyses_failed` : analyses au résultat partiel (au moins un contrôle indisponible ; les échecs complets ne sont
- *   pas enregistrés) ;
+ * - `analyses_partial` : analyses rendues au résultat partiel (`TokenAnalysis.degraded` : au moins un contrôle
+ *   indisponible) ;
+ * - `analyses_failed` : échecs complets (`POST /analyses` en 5xx, aucun résultat rendu ni enregistré), compteur Redis
+ *   `analyses_failed` : mesuré seulement pour les jours encore couverts par les compteurs (8 jours) ;
  * - `trials_converted`, `trials_expired`, `trials_refused`, `subscriptions_canceled`, `payments_failed`,
  *   `wallet_scans` : événements produit du jour (`ProductEvent`, conservés malgré la suppression du compte).
  */
@@ -92,7 +94,7 @@ export class MetricsCalculator {
           AND (s."status"::text IN ('ACTIVE', 'PAST_DUE') OR (s."status"::text IN ('CANCELED', 'UNPAID', 'PAUSED') AND s."updatedAt" >= ${end})))::int AS "subscribers_monthly",
         (SELECT count(*) FROM "Subscription" s WHERE s."interval" = 'YEAR' AND s."createdAt" < ${end}
           AND (s."status"::text IN ('ACTIVE', 'PAST_DUE') OR (s."status"::text IN ('CANCELED', 'UNPAID', 'PAUSED') AND s."updatedAt" >= ${end})))::int AS "subscribers_yearly",
-        a."analyses_total", a."analyses_anonymous", a."analyses_failed", a."verdict_safe", a."verdict_warn", a."verdict_danger",
+        a."analyses_total", a."analyses_anonymous", a."analyses_partial", a."verdict_safe", a."verdict_warn", a."verdict_danger",
         a."duration_avg", a."duration_p95",
         (SELECT count(*) FROM "ProductEvent" WHERE "type" = 'wallet_scanned' AND "createdAt" >= ${start} AND "createdAt" < ${end})::int AS "wallet_scans",
         (SELECT count(*) FROM "Watch" WHERE "status" = 'active' AND "createdAt" < ${end})::int AS "watches_active",
@@ -102,7 +104,7 @@ export class MetricsCalculator {
       FROM (
         SELECT count(*)::int AS "analyses_total",
           count(*) FILTER (WHERE "userId" IS NULL)::int AS "analyses_anonymous",
-          count(*) FILTER (WHERE "degraded")::int AS "analyses_failed",
+          count(*) FILTER (WHERE "degraded")::int AS "analyses_partial",
           count(*) FILTER (WHERE "verdict" = 'safe')::int AS "verdict_safe",
           count(*) FILTER (WHERE "verdict" = 'warn')::int AS "verdict_warn",
           count(*) FILTER (WHERE "verdict" = 'danger')::int AS "verdict_danger",
@@ -128,7 +130,7 @@ export class MetricsCalculator {
         'subscribers_yearly',
         'analyses_total',
         'analyses_anonymous',
-        'analyses_failed',
+        'analyses_partial',
         'verdict_safe',
         'verdict_warn',
         'verdict_danger',
@@ -171,6 +173,7 @@ export class MetricsCalculator {
         set('api_errors_5xx', counters.api_errors_5xx);
         set('emails_sent', counters.emails_sent);
         set('emails_failed', counters.emails_failed);
+        set('analyses_failed', counters.analyses_failed);
       }
       try {
         const snapshot = await this.usage.snapshot(day);

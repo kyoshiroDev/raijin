@@ -1,12 +1,16 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import type { Mailer } from '@raijin/api-notifications';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { Observable, tap } from 'rxjs';
 import { AdminStore } from '../common/admin-store';
 import { utcDay } from '../common/range';
 
-/** Compteurs techniques journaliers (jour UTC) lus par la santé et les agrégats nocturnes. Aucune donnée personnelle. */
-export const DAILY_COUNTER_FIELDS = ['api_requests', 'api_errors_5xx', 'emails_sent', 'emails_failed'] as const;
+/**
+ * Compteurs techniques journaliers (jour UTC) lus par la santé et les agrégats nocturnes. Aucune donnée personnelle.
+ * `analyses_failed` : `POST /analyses` terminé en 5xx (échec complet : aucun résultat rendu, rien n'est enregistré
+ * dans `TokenAnalysis`) ; les refus 4xx (adresse invalide, token introuvable, quota) n'en sont pas.
+ */
+export const DAILY_COUNTER_FIELDS = ['api_requests', 'api_errors_5xx', 'emails_sent', 'emails_failed', 'analyses_failed'] as const;
 export type DailyCounterField = (typeof DAILY_COUNTER_FIELDS)[number];
 export type DailyCounterValues = Readonly<Record<DailyCounterField, number>>;
 
@@ -49,9 +53,19 @@ export class DailyCounters {
   }
 }
 
+/** Route de l'analyse (`POST /api/v1/analyses`, préfixe global compris) : motif Express de la route résolue. */
+const ANALYSIS_ROUTE = /(?:^|\/)analyses\/?$/;
+
+/** La requête est-elle un lancement d'analyse (`POST …/analyses`) ? */
+export function isAnalysisRequest(request: Pick<Request, 'method'> & { route?: { path?: unknown } } | undefined): boolean {
+  const path = request?.route?.path;
+  return request?.method === 'POST' && typeof path === 'string' && ANALYSIS_ROUTE.test(path);
+}
+
 /**
- * Intercepteur global (enregistré par `ApiAdminModule`) : une requête comptée par réponse, et une erreur 5xx quand
- * le statut final est ≥ 500. Ni chemin, ni IP, ni identifiant ne sont conservés.
+ * Intercepteur global (enregistré par `ApiAdminModule`) : une requête comptée par réponse, une erreur 5xx quand le
+ * statut final est ≥ 500, et une analyse en échec complet quand c'est `POST /analyses` qui finit en 5xx. Ni chemin,
+ * ni IP, ni identifiant ne sont conservés.
  */
 @Injectable()
 export class RequestMetricsInterceptor implements NestInterceptor {
@@ -59,11 +73,15 @@ export class RequestMetricsInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle();
-    const response = context.switchToHttp().getResponse<Response>();
+    const http = context.switchToHttp();
+    const response = http.getResponse<Response>();
+    const request = http.getRequest<Request | undefined>();
     this.counters.record('api_requests');
     // Le statut final (filtre d'exception compris) n'est connu qu'à la fin de la réponse.
     response.once?.('finish', () => {
-      if (response.statusCode >= 500) this.counters.record('api_errors_5xx');
+      if (response.statusCode < 500) return;
+      this.counters.record('api_errors_5xx');
+      if (isAnalysisRequest(request)) this.counters.record('analyses_failed');
     });
     return next.handle().pipe(tap({ error: () => undefined }));
   }
