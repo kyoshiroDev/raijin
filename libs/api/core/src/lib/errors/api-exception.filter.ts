@@ -33,7 +33,8 @@ interface ErrorBody {
 /**
  * Filtre global : toute erreur devient `{code, message}` (contrat `ApiError`).
  * Les erreurs inattendues sont journalisées côté serveur et rendues en 500 `INTERNAL_ERROR` ;
- * la stack n'est jointe à la réponse qu'en développement.
+ * la stack n'est jointe à la réponse qu'en développement. Toute réponse d'erreur porte `Cache-Control: no-store`
+ * (audit 6 bis n1) : un 404 de route inconnue est identique au 404 de l'espace admin invisible.
  */
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -54,6 +55,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
       }
     }
     if (response.headersSent) return;
+    response.setHeader('Cache-Control', 'no-store');
     response.status(status).json(body);
   }
 

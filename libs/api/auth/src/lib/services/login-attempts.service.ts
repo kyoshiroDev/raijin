@@ -143,6 +143,18 @@ export class LoginAttemptsService implements OnModuleDestroy {
     return count === this.config.auth.lockoutThreshold;
   }
 
+  /**
+   * Réserve une tentative **avant** toute vérification du mot de passe (audit 6 bis n3, comme `reserveAttempt` de la
+   * 2FA admin) : le compteur est incrémenté d'un bloc (INCR + PEXPIRE), si bien qu'une rafale parallèle ne peut évaluer
+   * qu'au plus `lockoutThreshold` mots de passe par fenêtre. `locked` : tentative au-delà du seuil (refusée sans tenir
+   * compte du résultat) ; `lockedNow` : cette tentative est la dernière autorisée (verrouillage si elle échoue).
+   */
+  async reserve(emailNormalized: string): Promise<{ attempt: number; locked: boolean; lockedNow: boolean }> {
+    const attempt = await this.run((store) => store.increment(this.key(emailNormalized), this.config.auth.lockoutMs));
+    const threshold = this.config.auth.lockoutThreshold;
+    return { attempt, locked: attempt > threshold, lockedNow: attempt === threshold };
+  }
+
   async reset(emailNormalized: string): Promise<void> {
     await this.run((store) => store.reset(this.key(emailNormalized)));
   }

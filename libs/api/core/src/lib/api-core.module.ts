@@ -25,7 +25,8 @@ export class ApiCoreModule {
         { provide: APP_GUARD, useClass: ApiThrottlerGuard },
         { provide: APP_GUARD, useClass: CsrfGuard },
       ],
-      exports: [ApiConfigModule, AuthCookies, CsrfService, SessionIdResolverRegistry],
+      // `ApiThrottlerModule` exporté : `ThrottlerStorage` partagé avec les middlewares (espace admin, audit 6 bis n2).
+      exports: [ApiConfigModule, ApiThrottlerModule, AuthCookies, CsrfService, SessionIdResolverRegistry],
     };
   }
 }

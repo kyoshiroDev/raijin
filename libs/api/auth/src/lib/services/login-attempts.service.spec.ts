@@ -24,6 +24,16 @@ describe('LoginAttemptsService', () => {
     service.onModuleDestroy();
   });
 
+  it('reserve (n3) : tentative comptée d’avance, dernière autorisée signalée, refus au-delà du seuil', async () => {
+    const service = new LoginAttemptsService(config, new MemoryAttemptStore());
+    await expect(service.reserve('a@b.fr')).resolves.toEqual({ attempt: 1, locked: false, lockedNow: false });
+    await service.reserve('a@b.fr');
+    await expect(service.reserve('a@b.fr')).resolves.toEqual({ attempt: 3, locked: false, lockedNow: true });
+    await expect(service.reserve('a@b.fr')).resolves.toEqual({ attempt: 4, locked: true, lockedNow: false });
+    await expect(service.isLocked('a@b.fr')).resolves.toBe(true);
+    service.onModuleDestroy();
+  });
+
   it('le compteur expire', async () => {
     const store = new MemoryAttemptStore();
     await store.increment('k', 1);

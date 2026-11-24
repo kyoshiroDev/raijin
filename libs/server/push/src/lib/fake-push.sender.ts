@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import type { PushNotificationPayload } from '@raijin/shared-contracts';
+import type { OutgoingPushPayload } from '@raijin/shared-contracts';
 import { PushSender, type PushResult, type PushSendOptions, type PushTarget } from './push-sender';
 
 /** Notification enregistrée par `FakePushSender` (l'endpoint n'est gardé que sous forme d'empreinte). */
 export interface RecordedPush {
   readonly endpointHash: string;
-  readonly payload: PushNotificationPayload;
+  readonly payload: OutgoingPushPayload;
   readonly options: PushSendOptions;
   readonly at: string;
 }
@@ -28,7 +28,7 @@ export class FakePushSender extends PushSender {
     this.configured = publicKey !== null;
   }
 
-  async send(target: PushTarget, payload: PushNotificationPayload, options: PushSendOptions): Promise<PushResult> {
+  async send(target: PushTarget, payload: OutgoingPushPayload, options: PushSendOptions): Promise<PushResult> {
     const path = new URL(target.endpoint).pathname;
     if (path.includes('/gone')) return { status: 'gone' };
     if (path.includes('/fail')) return { status: 'failed', code: 'HTTP_503' };

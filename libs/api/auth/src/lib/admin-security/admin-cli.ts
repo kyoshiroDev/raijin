@@ -12,7 +12,7 @@ import {
   PushSender,
 } from '@raijin/api-notifications';
 import { ApiPrismaModule, PrismaService } from '@raijin/api-prisma';
-import { emailSchema, type PushNotificationPayload } from '@raijin/shared-contracts';
+import { emailSchema, type AdminPushNotificationPayload } from '@raijin/shared-contracts';
 import { AuditService } from '../audit/audit.service';
 import { normalizeEmail } from '../services/email-normalizer';
 
@@ -85,8 +85,8 @@ export function parseAdminCliArgs(argv: readonly string[]): AdminCliArgs | { err
 }
 
 /** Notification push d'un avis d'exploitation (enveloppe du service worker Angular, clic → santé technique). */
-export function adminNoticePushPayload(title: string, body: string, now: Date): PushNotificationPayload {
-  const payload = {
+export function adminNoticePushPayload(title: string, body: string, now: Date): AdminPushNotificationPayload {
+  return {
     notification: {
       title: `Raijin admin : ${title}`.slice(0, 80),
       body: (body.split('\n')[0] ?? '').slice(0, 240) || 'Ouvre la santé technique.',
@@ -99,7 +99,6 @@ export function adminNoticePushPayload(title: string, body: string, now: Date): 
       data: { onActionClick: { default: { operation: 'navigateLastFocusedOrOpen', url: '/admin/sante' } } },
     },
   };
-  return payload as unknown as PushNotificationPayload;
 }
 
 @Injectable()

@@ -173,16 +173,16 @@ export class AuthService {
    */
   async login(input: LoginRequest, client: ClientInfo): Promise<IssuedSession> {
     const emailNormalized = normalizeEmail(input.email);
-    const [user, locked] = await Promise.all([
+    // Tentative réservée avant la vérification (audit 6 bis n3) : pas de lecture du verrou puis écriture séparées.
+    const [user, { locked, lockedNow }] = await Promise.all([
       this.prisma.user.findUnique({ where: { emailNormalized } }),
-      this.attempts.isLocked(emailNormalized),
+      this.attempts.reserve(emailNormalized),
     ]);
     const valid = user
       ? await this.passwords.verify(user.passwordHash, input.password)
       : (await this.passwords.verifyDummy(input.password), false);
 
     if (!user || !valid || locked) {
-      const lockedNow = locked ? false : await this.attempts.recordFailure(emailNormalized);
       const action = locked ? 'auth.login_locked' : lockedNow ? 'auth.account_locked' : 'auth.login_failed';
       await this.audit.record(action, user?.id ?? null, client);
       throw invalidCredentials(HttpStatus.UNAUTHORIZED);
@@ -200,13 +200,13 @@ export class AuthService {
 
   /**
    * Confirmation par mot de passe d'une action sensible (changement de mot de passe, suppression
-   * du compte) : soumise au même compteur d'échecs que la connexion. Refus : 400 INVALID_CREDENTIALS.
+   * du compte) : soumise au même compteur d'échecs que la connexion, tentative réservée avant la vérification
+   * (audit 6 bis n3). Refus : 400 INVALID_CREDENTIALS.
    */
   async confirmPassword(user: User, password: string, client: ClientInfo, action: string): Promise<void> {
-    const locked = await this.attempts.isLocked(user.emailNormalized);
+    const { locked } = await this.attempts.reserve(user.emailNormalized);
     const valid = await this.passwords.verify(user.passwordHash, password);
     if (locked || !valid) {
-      if (!locked) await this.attempts.recordFailure(user.emailNormalized);
       await this.audit.record(`${action}_failed`, user.id, client, { locked });
       throw invalidCredentials(HttpStatus.BAD_REQUEST);
     }

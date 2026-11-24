@@ -258,6 +258,31 @@ describe('AuthService.login', () => {
     expect(mock.user.update).not.toHaveBeenCalled();
   });
 
+  it('n3 : rafale parallèle de mots de passe, au plus `lockoutThreshold` tentatives évaluées, le bon refusé au-delà', async () => {
+    const { mock, service, passwordHash, config, passwords } = await setup();
+    const user = userFixture({ passwordHash });
+    mock.user.findUnique.mockResolvedValue(user);
+    mock.user.update.mockResolvedValue(user);
+    const verify = jest.spyOn(passwords, 'verify').mockResolvedValue(false);
+    const burst = Array.from({ length: config.auth.lockoutThreshold * 3 }, () => login(service, 'jean.dupont@exemple.fr', 'faux'));
+    const results = await Promise.allSettled(burst);
+    expect(results.every((r) => r.status === 'rejected')).toBe(true);
+    expect(verify).toHaveBeenCalledTimes(config.auth.lockoutThreshold * 3); // coût argon2 constant, résultat ignoré au-delà
+    verify.mockRestore();
+    await expectApiError(login(service, 'jean.dupont@exemple.fr', PASSWORD), 'AUTH_INVALID_CREDENTIALS', 401);
+    expect(mock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('n3 : la tentative est réservée avant la vérification (verrou non lu puis écrit séparément)', async () => {
+    const { mock, service, passwordHash, attempts, passwords } = await setup();
+    mock.user.findUnique.mockResolvedValue(userFixture({ passwordHash }));
+    const order: string[] = [];
+    jest.spyOn(attempts, 'reserve').mockImplementation(async () => (order.push('reserve'), { attempt: 1, locked: false, lockedNow: false }));
+    jest.spyOn(passwords, 'verify').mockImplementation(async () => (order.push('verify'), false));
+    await expectApiError(login(service, 'jean.dupont@exemple.fr', 'faux'), 'AUTH_INVALID_CREDENTIALS', 401);
+    expect(order).toEqual(['reserve', 'verify']);
+  });
+
   it('adresse sans compte : verrouillée aussi au seuil (aucune différence observable)', async () => {
     const { mock, service, config, attempts } = await setup();
     mock.user.findUnique.mockResolvedValue(null);
@@ -374,6 +399,14 @@ describe('AuthService mots de passe', () => {
     for (let i = 0; i < config.auth.lockoutThreshold; i++) await attempts.recordFailure(user.emailNormalized);
     await expectApiError(service.confirmPassword(user, PASSWORD, client, 'account.delete'), 'AUTH_INVALID_CREDENTIALS', 400);
     expect(audit.record).toHaveBeenLastCalledWith('account.delete_failed', user.id, client, { locked: true });
+  });
+
+  it('n3 : confirmation par mot de passe en rafale, le bon mot de passe refusé une fois le seuil dépassé', async () => {
+    const { service, passwordHash, config } = await setup();
+    const user = userFixture({ passwordHash });
+    const burst = Array.from({ length: config.auth.lockoutThreshold + 2 }, () => service.confirmPassword(user, 'faux', client, 'account.delete'));
+    expect((await Promise.allSettled(burst)).every((r) => r.status === 'rejected')).toBe(true);
+    await expectApiError(service.confirmPassword(user, PASSWORD, client, 'account.delete'), 'AUTH_INVALID_CREDENTIALS', 400);
   });
 
   it('réinitialisation refusée : jeton invalide, utilisateur disparu, mot de passe = e-mail', async () => {

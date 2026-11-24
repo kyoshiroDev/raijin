@@ -2,7 +2,8 @@ import { testConfig } from '@raijin/api-core';
 import type { PrismaService } from '@raijin/api-prisma';
 import { createAdminSecurityDb } from '../../testing/admin-security-fake';
 import { AuditService } from '../audit/audit.service';
-import { AdminCliService, parseAdminCliArgs, readStdin, runAdminCli } from './admin-cli';
+import { adminPushNotificationPayloadSchema, outgoingPushPayloadSchema } from '@raijin/shared-contracts';
+import { AdminCliService, adminNoticePushPayload, parseAdminCliArgs, readStdin, runAdminCli } from './admin-cli';
 
 const USER = '0193a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
 const NOW = new Date('2026-11-22T10:00:00Z');
@@ -134,6 +135,16 @@ describe('CLI notify-admins (phase 8 : watchdog, sauvegardes)', () => {
     await expect(empty.cli.notifyAdmins('Watchdog', 'corps', NOW)).resolves.toMatchObject({ ok: false, message: expect.stringContaining('Aucun compte admin') });
     // Push seul réussi : succès.
     await expect(notifySetup({ mailFails: true }).cli.notifyAdmins('Watchdog', 'corps', NOW)).resolves.toMatchObject({ ok: true });
+  });
+
+  it('charge push typée (contrat admin, sans conversion) : valide le schéma admin, clic vers /admin/sante', () => {
+    const payload = adminNoticePushPayload('x'.repeat(200), `Première ligne\nseconde`, NOW);
+    expect(adminPushNotificationPayloadSchema.parse(payload)).toEqual(payload);
+    expect(outgoingPushPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(payload.notification.title).toHaveLength(80);
+    expect(payload.notification.body).toBe('Première ligne');
+    expect(payload.notification.data.onActionClick.default.url).toBe('/admin/sante');
+    expect(adminNoticePushPayload('T', '', NOW).notification.body).toBe('Ouvre la santé technique.');
   });
 
   it('readStdin : corps lu et borné en octets', async () => {

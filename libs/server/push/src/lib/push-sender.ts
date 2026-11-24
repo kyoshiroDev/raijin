@@ -1,4 +1,4 @@
-import type { PushNotificationPayload } from '@raijin/shared-contracts';
+import type { OutgoingPushPayload } from '@raijin/shared-contracts';
 
 /** Abonnement d'un appareil (endpoint du service push + clés de chiffrement du navigateur). */
 export interface PushTarget {
@@ -26,5 +26,5 @@ export abstract class PushSender {
   abstract readonly configured: boolean;
   /** Clé publique d'application (servie au front), `null` sans clés. */
   abstract readonly publicKey: string | null;
-  abstract send(target: PushTarget, payload: PushNotificationPayload, options: PushSendOptions): Promise<PushResult>;
+  abstract send(target: PushTarget, payload: OutgoingPushPayload, options: PushSendOptions): Promise<PushResult>;
 }

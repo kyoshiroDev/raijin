@@ -1,4 +1,4 @@
-import { PUSH_SERVICE_HOSTS, pushEndpointSchema, type PushNotificationPayload } from '@raijin/shared-contracts';
+import { PUSH_SERVICE_HOSTS, pushEndpointSchema, type OutgoingPushPayload } from '@raijin/shared-contracts';
 import { sendNotification, WebPushError, type RequestOptions } from 'web-push';
 import { PushSender, type PushResult, type PushSendOptions, type PushTarget } from './push-sender';
 
@@ -31,7 +31,7 @@ export class WebPushSender extends PushSender {
     this.publicKey = keys?.publicKey ?? null;
   }
 
-  async send(target: PushTarget, payload: PushNotificationPayload, options: PushSendOptions): Promise<PushResult> {
+  async send(target: PushTarget, payload: OutgoingPushPayload, options: PushSendOptions): Promise<PushResult> {
     if (!this.keys) return { status: 'failed', code: 'PUSH_NOT_CONFIGURED' };
     if (!pushEndpointSchema.safeParse(target.endpoint).success) return { status: 'gone' };
     const request: RequestOptions = {

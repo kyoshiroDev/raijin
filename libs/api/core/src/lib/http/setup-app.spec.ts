@@ -112,6 +112,8 @@ describe('setupApp (socle HTTP)', () => {
     expect(quota.body).toEqual({ code: 'QUOTA_EXCEEDED', message: 'Quota atteint.' });
     const missing = await request(app.getHttpServer()).get('/api/v1/inconnu').expect(404);
     expect(missing.body).toEqual({ code: 'NOT_FOUND', message: 'Ressource introuvable.' });
+    // Audit 6 bis n1 : toute erreur (404 de route inconnue compris) est `no-store`, comme le 404 de l'espace admin.
+    expect(missing.headers['cache-control']).toBe('no-store');
   });
 
   it('mutation sans CSRF : 403 AUTH_CSRF_INVALID', async () => {
