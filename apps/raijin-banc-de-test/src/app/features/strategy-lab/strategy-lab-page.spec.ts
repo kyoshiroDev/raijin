@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { describe, expect, it } from 'vitest';
-import { SUPABASE } from '../../core/supabase/supabase-client';
-import { backfillRows, candidateSummary, fakeSupabase, rpcByName, runRow, variantRows, type QueryCall, type QueryResult } from './lab-test-data';
+import { backfillRows, candidateSummary, fakeBench, rpcByName, runRow, variantRows, type QueryCall, type QueryResult } from './lab-test-data';
 import { StrategyLabPage } from './strategy-lab-page';
 
 async function render(handler: (call: QueryCall) => Promise<QueryResult>, rpc?: (name: string) => Promise<QueryResult>) {
-  const fake = fakeSupabase(handler, rpc);
-  TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: SUPABASE, useValue: fake.supabase }] });
+  const fake = fakeBench(handler, rpc);
+  TestBed.configureTestingModule({ providers: [provideRouter([]), ...fake.providers] });
   const fixture = TestBed.createComponent(StrategyLabPage);
   fixture.detectChanges();
   const settle = async () => {
@@ -85,16 +85,16 @@ describe('StrategyLabPage', () => {
   it('relaunches through the RPC and shows the French refusal', async () => {
     const { el, click, rpc } = await render(
       tables(runRow(), variantRows()),
-      rpcByName({ backtest_request_run: async () => ({ data: null, error: { code: '23514', message: 'Un backtest est déjà en file d’attente.' } }) }),
+      rpcByName({ [BENCH_ROUTES.labRuns]: async () => ({ data: null, error: { status: 409, code: 'BACKTEST_ALREADY_QUEUED', message: 'Un backtest est déjà en file d’attente.' } }) }),
     );
     await click('[data-request-run]');
-    expect(rpc).toHaveBeenCalledWith('backtest_request_run');
+    expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.labRuns);
     expect(el.querySelector('[data-lab-feedback]')?.textContent?.trim()).toBe('Un backtest est déjà en file d’attente.');
     expect(el.querySelector('[data-lab-feedback]')?.getAttribute('role')).toBe('alert');
   });
 
   it('says when the laboratory is not deployed yet, and when no backtest has finished', async () => {
-    const missing = await render(async () => ({ data: null, error: { code: '42P01', message: 'relation does not exist' } }));
+    const missing = await render(async () => ({ data: null, error: { status: 404, code: 'NOT_FOUND' } }));
     expect(missing.el.querySelector('[data-lab-unavailable]')).not.toBeNull();
     expect(missing.el.querySelector('[data-lab-disclaimer]')).not.toBeNull();
     TestBed.resetTestingModule();
@@ -136,7 +136,7 @@ describe('StrategyLabPage', () => {
   });
 
   it('shows one accessible progress bar per catch-up category with throughput and ETA', async () => {
-    const { el } = await render(tables(runRow(), []), rpcByName({ backfill_progress: async () => ({ data: backfillRows(), error: null }) }));
+    const { el } = await render(tables(runRow(), []), rpcByName({ [BENCH_ROUTES.labBackfill]: async () => ({ data: backfillRows(), error: null }) }));
     const bars = Array.from(el.querySelectorAll('[data-backfill] [role="progressbar"]'));
     expect(bars).toHaveLength(3);
     const scan = el.querySelector('[data-backfill-category="scan_labels"] [role="progressbar"]');
@@ -153,7 +153,7 @@ describe('StrategyLabPage', () => {
   });
 
   it('says the gauge is not available yet when the RPC is missing, even if the laboratory is not deployed', async () => {
-    const { el } = await render(async () => ({ data: null, error: { code: '42P01', message: 'relation does not exist' } }));
+    const { el } = await render(async () => ({ data: null, error: { status: 404, code: 'NOT_FOUND' } }));
     expect(el.querySelector('[data-lab-unavailable]')).not.toBeNull();
     expect(el.querySelector('[data-backfill-unavailable]')?.textContent).toContain('pas encore disponible');
     expect(el.querySelector('[role="progressbar"]')).toBeNull();

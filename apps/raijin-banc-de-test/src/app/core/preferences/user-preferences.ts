@@ -1,19 +1,18 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { DEFAULT_PAPER_SL_PCT, isValidSlPct, parseSlPct } from '../../shared/models/paper';
 import { DEFAULT_STAKE_SOL, isValidStake, parseStakeValue } from '../../shared/utils/stake';
-import { SUPABASE } from '../supabase/supabase-client';
-
-export const USER_PREFERENCE_COLUMNS = 'stake_sol,paper_sl_pct';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi } from '../api/bench-api';
 
 /**
  * Per-user preferences needed outside the settings page: the usual stake in SOL (round-trip estimate, paper trade
- * stake) and the default paper stop % (the paper strategy is always « tout à ×2 »). Read once from public.alert_settings (owner-only RLS)
- * when the signed-in shell starts; reset when it is destroyed (sign-out). Defaults when there is no row or the read
- * fails. Only talks to Supabase.
+ * stake) and the default paper stop % (the paper strategy is always « tout à ×2 »). Read once from the bench API
+ * (`GET /api/settings/preferences`) when the signed-in shell starts; reset when it is destroyed (sign-out). Defaults
+ * when the read fails.
  */
 @Injectable({ providedIn: 'root' })
 export class UserPreferences {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
 
   private readonly _stakeSol = signal(DEFAULT_STAKE_SOL);
   private readonly _paperSlPct = signal(DEFAULT_PAPER_SL_PCT);
@@ -26,8 +25,7 @@ export class UserPreferences {
   async load(): Promise<void> {
     const gen = ++this.generation;
     try {
-      const { data, error } = await this.supabase.from('alert_settings').select(USER_PREFERENCE_COLUMNS).maybeSingle();
-      if (error) throw error;
+      const data = await this.api.get(BENCH_ROUTES.preferences);
       const row: Record<string, unknown> = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
       if (gen !== this.generation) return;
       this._stakeSol.set(parseStakeValue(row['stake_sol']) ?? DEFAULT_STAKE_SOL);

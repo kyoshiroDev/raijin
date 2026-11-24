@@ -4,7 +4,7 @@ import { PaperTradePanel } from './paper-trade-panel';
 import { Icon } from '../../shared/ui/icon';
 
 /**
- * « Paper trade » button + its sheet (SIMULATION ONLY). The panel, and therefore its store and the Supabase
+ * « Paper trade » button + its sheet (SIMULATION ONLY). The panel, and therefore its store and the API
  * reads, only exist while the sheet is open.
  */
 @Component({

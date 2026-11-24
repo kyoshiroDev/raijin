@@ -1,66 +1,59 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, expect, it, vi } from 'vitest';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { describe, expect, it } from 'vitest';
+import { FakeBenchApi, apiError, list, provideFakeBench } from '../../core/api/bench-api.testing';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { SUPABASE } from '../../core/supabase/supabase-client';
 import { ALERT_FETCH_LIMIT } from './alert-log';
 import { AlertsPage } from './alerts-page';
 
 const A = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const B = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
+/** `error` simule un échec de l'API. */
 interface Result {
   data: unknown;
   error: unknown;
 }
 
+const answer = (r: Result) => {
+  if (r.error) throw apiError(500);
+  return list(Array.isArray(r.data) ? r.data : []);
+};
+
 describe('AlertsPage', () => {
   async function setup(log: Result, tokens: Result = { data: [], error: null }) {
-    const order = vi.fn();
-    const kindFilter = vi.fn();
-    const limit = vi.fn(async () => log);
-    const inFilter = vi.fn(async () => tokens);
-    const supabase = {
-      from: (table: string) =>
-        table === 'alert_log'
-          ? {
-              select: () => ({
-                in: (...k: unknown[]) => (kindFilter(...k), { order: (...args: unknown[]) => (order(...args), { limit }) }),
-              }),
-            }
-          : { select: () => ({ in: inFilter }) },
-    };
-    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: SUPABASE, useValue: supabase }] });
+    const api = new FakeBenchApi().on('GET', BENCH_ROUTES.alerts, () => answer(log)).on('GET', BENCH_ROUTES.tokenBriefs, () => answer(tokens));
+    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideFakeBench(api)] });
     const fixture = TestBed.createComponent(AlertsPage);
     fixture.detectChanges();
-    // Two chained queries (alert_log then tokens): let both promises settle.
+    // Two chained calls (alerts then token briefs): let both promises settle.
     await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
     fixture.detectChanges();
-    return { el: fixture.nativeElement as HTMLElement, fixture, order, limit, inFilter, kindFilter };
+    return { el: fixture.nativeElement as HTMLElement, fixture, api, briefs: () => api.callsTo('GET', BENCH_ROUTES.tokenBriefs) };
   }
 
   it('keeps the empty state when there is no alert', async () => {
-    const { el, inFilter } = await setup({ data: [], error: null });
+    const { el, briefs } = await setup({ data: [], error: null });
     expect(el.textContent).toContain('Aucune alerte pour l’instant');
-    expect(inFilter).not.toHaveBeenCalled();
+    expect(briefs()).toHaveLength(0);
   });
 
   it('lists the latest 50 alerts newest first, joined with tokens (symbol only), each linking to its token', async () => {
-    const { el, order, limit, inFilter, kindFilter } = await setup(
+    const { el, api, briefs } = await setup(
       {
         data: [
-          { id: 2, mint: B, sent_at: '2026-11-16T09:00:00Z', kind: 'grouped' },
+          { id: '2', mint: B, sent_at: '2026-11-16T09:00:00Z', kind: 'grouped' },
           { id: 1, mint: A, sent_at: '2026-11-16T08:00:00Z', kind: 'single' },
         ],
         error: null,
       },
       { data: [{ mint: A, symbol: '<img src=x onerror=alert(1)>', score: 77 }], error: null },
     );
-    expect(order).toHaveBeenCalledWith('sent_at', { ascending: false });
-    expect(kindFilter).toHaveBeenCalledWith('kind', ['single', 'grouped']);
-    expect(limit).toHaveBeenCalledWith(ALERT_FETCH_LIMIT); // the list shows 50, the 7-day summary needs the whole window
-    expect(inFilter).toHaveBeenCalledWith('mint', [B, A]);
+    // the list shows 50, the 7-day summary needs the whole window
+    expect(api.callsTo('GET', BENCH_ROUTES.alerts)[0]?.query).toEqual({ limit: ALERT_FETCH_LIMIT });
+    expect(briefs()[0]?.query).toEqual({ mints: [B, A] });
     const links = Array.from(el.querySelectorAll<HTMLAnchorElement>('app-alert-row a'));
     expect(links.map((a) => a.getAttribute('href'))).toEqual([`/token/${B}`, `/token/${A}`]);
     expect(links[0].textContent).toContain('Alerte groupée');

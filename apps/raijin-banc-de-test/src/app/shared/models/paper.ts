@@ -1,7 +1,7 @@
 // Paper trading v2 (SIMULATION ONLY: no wallet, no key, no signature, no real order).
-// Mirrors public.paper_wallets / paper_positions / paper_legs and the backend simulation constants.
-// Rows are owner-readable only (RLS). The browser never writes them directly: positions are opened, cancelled and
-// wallets reset through RPCs (paper_open_position, paper_cancel_position, paper_reset_wallet) that re-check everything.
+// Mirrors paper_wallets / paper_positions / paper_legs as served by the bench API (@raijin/bench-contracts, paper.ts)
+// and the backend simulation constants. The browser never writes them directly: positions are opened, cancelled and
+// wallets reset through API endpoints (POST /api/paper/positions, …/cancel, …/reset) that re-check everything.
 
 /** Simulated network fee per transaction (the buy, then each leg exit), in SOL. Mirrors the backend. */
 export const PAPER_NETWORK_FEE_SOL = 0.0002;
@@ -143,13 +143,6 @@ export interface PaperPosition {
   legs: PaperLeg[];
 }
 
-export const PAPER_WALLET_COLUMNS = 'book,balance_sol,initial_sol,created_at,reset_at';
-export const PAPER_LEG_COLUMNS = 'id,position_id,size_pct,tp_price,stop_price,status,exit_price,closed_at';
-/** Positions with their legs embedded (paper_legs.position_id → paper_positions.id). */
-export const PAPER_POSITION_COLUMNS =
-  'id,book,mint,symbol,strategy,stake_sol,source,status,entry_target_price,fill_price,sl_price,sl_pct,custom_tp_price,' +
-  `expires_at,created_at,filled_at,closed_at,pnl_sol,fees_sol,paper_legs(${PAPER_LEG_COLUMNS})`;
-
 /** Postgres numeric arrives as number or text. Non-finite → null. */
 export function toNumber(v: unknown): number | null {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
@@ -185,7 +178,7 @@ export function parsePaperLeg(row: unknown): PaperLeg | null {
   };
 }
 
-/** Defensive parse of a paper_positions row (legs embedded under `paper_legs`); null when invalid. */
+/** Defensive parse of a position of the API (legs embedded under `legs`); null when invalid. */
 export function parsePaperPosition(row: unknown): PaperPosition | null {
   const r = record(row);
   if (!r) return null;
@@ -200,7 +193,7 @@ export function parsePaperPosition(row: unknown): PaperPosition | null {
   const book = r['book'];
   const strategy = r['strategy'];
   if (!isPaperBook(book) || !isPaperStrategy(strategy)) return null;
-  const rawLegs = r['paper_legs'];
+  const rawLegs = r['legs'];
   const legs = (Array.isArray(rawLegs) ? rawLegs : [])
     .map(parsePaperLeg)
     .filter((l): l is PaperLeg => l !== null)

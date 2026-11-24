@@ -1,5 +1,6 @@
 // Test fixtures for the price chart / token detail specs (not imported by app code).
-import { vi } from 'vitest';
+import { BENCH_ROUTES, type BenchRoute } from '@raijin/bench-contracts';
+import { FakeBenchApi, apiError, list, provideFakeBench } from '../../../core/api/bench-api.testing';
 import type { TokenRow } from '../../../shared/models/token';
 
 export const CHART_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -9,36 +10,31 @@ export interface QueryResult {
   error: unknown;
 }
 
-export interface QueryCall {
-  table: string;
-  method: string;
-  args: unknown[];
-}
-
 type Responder = () => Promise<QueryResult>;
 
-const CHAIN = ['select', 'eq', 'gte', 'lte', 'order', 'limit', 'not', 'in', 'abortSignal'] as const;
+/** Tables of raijin_bench read by the chart → bench API route. */
+export const CHART_ROUTES = {
+  token_snapshots: BENCH_ROUTES.tokenSnapshots,
+  alert_log: BENCH_ROUTES.alerts,
+  paper_positions: BENCH_ROUTES.paperPositions,
+} as const;
+export type ChartTable = keyof typeof CHART_ROUTES;
 
 /**
- * Minimal Supabase mock: `from(table)` returns an awaitable query builder recording every call.
- * `responders[table]` decides the result (default: empty list).
+ * Bench API double for the chart: `responders[table]` decides the `{ items }` of the matching GET route (default: empty
+ * list); `error` simulates an API failure.
  */
-export function mockSupabase(responders: Record<string, Responder> = {}) {
-  const calls: QueryCall[] = [];
-  const from = vi.fn((table: string) => {
-    const query: Record<string, unknown> = {};
-    for (const method of CHAIN) {
-      query[method] = (...args: unknown[]) => {
-        calls.push({ table, method, args });
-        return query;
-      };
-    }
-    query['then'] = (onFulfilled: (r: QueryResult) => unknown, onRejected?: (e: unknown) => unknown) =>
-      (responders[table]?.() ?? Promise.resolve({ data: [], error: null })).then(onFulfilled, onRejected);
-    return query;
-  });
-  const callsOf = (table: string, method: string) => calls.filter((c) => c.table === table && c.method === method).map((c) => c.args);
-  return { client: { from }, from, calls, callsOf };
+export function mockBench(responders: Partial<Record<ChartTable, Responder>> = {}) {
+  const api = new FakeBenchApi();
+  for (const [table, route] of Object.entries(CHART_ROUTES) as [ChartTable, BenchRoute][]) {
+    api.on('GET', route, async () => {
+      const r = await (responders[table]?.() ?? Promise.resolve({ data: [], error: null }));
+      if (r.error) throw apiError(500);
+      return list(Array.isArray(r.data) ? r.data : []);
+    });
+  }
+  const callsOf = (table: ChartTable) => api.callsTo('GET', CHART_ROUTES[table]);
+  return { api, providers: provideFakeBench(api), callsOf };
 }
 
 export const ok = (data: unknown): Responder => () => Promise.resolve({ data, error: null });

@@ -1,11 +1,12 @@
-// Mirrors public.alert_settings (supabase/migrations/20261116200000_push_notifications.sql and later).
-// Hours are Europe/Paris. The database re-checks every range (check constraints).
+// Mirrors alert_settings as served by the bench API (`alertSettingsSchema` of @raijin/bench-contracts).
+// Hours are Europe/Paris. The API re-checks every range.
 // Archived columns (slim-down 2026-11-21), no longer read nor written: min_score, only_in_zone, min_p_x3, max_p_dd50,
 // min_rr, paper_default_strategy, auto_paper_parallel, early_enabled, early_min_score, young_strong_enabled.
+import type { PushSubscriptionRequest } from '@raijin/shared-contracts';
 import { DEFAULT_PAPER_SL_PCT, SL_PCT_LIMITS, isValidSlPct, parseSlPct } from '../../shared/models/paper';
 import { DEFAULT_STAKE_SOL, isValidStake, parseStakeValue } from '../../shared/utils/stake';
 
-/** The only alert profile left: « Jeune calme » (fixed backend criteria). Always written on save. */
+/** The only alert profile left: « Jeune calme » (fixed backend criteria, set server-side). */
 export const ALERT_PRESET = 'young_calm';
 
 /** User-editable preferences (everything but `enabled`, which the notification switch owns). */
@@ -27,9 +28,6 @@ export interface AlertPreferences {
 export interface AlertSettings extends AlertPreferences {
   enabled: boolean;
 }
-
-/** Row written by « Enregistrer »: the preferences plus the fixed profile. */
-export type AlertSettingsPayload = AlertPreferences & { alert_preset: typeof ALERT_PRESET };
 
 export const ALERT_SETTINGS_COLUMNS = 'enabled,hide_bonding_curve,quiet_start,quiet_end,max_per_hour,max_per_day,stake_sol,auto_paper,paper_sl_pct';
 
@@ -95,12 +93,7 @@ export function preferencesOf(p: AlertPreferences): AlertPreferences {
   };
 }
 
-/** Row upserted by « Enregistrer »: the preferences + alert_preset = 'young_calm' (the only profile left). */
-export function preferencesPayload(p: AlertPreferences): AlertSettingsPayload {
-  return { ...preferencesOf(p), alert_preset: ALERT_PRESET };
-}
-
-/** Defensive parse of a database row; unknown or out-of-range values fall back to the defaults. */
+/** Defensive parse of an API row; unknown or out-of-range values fall back to the defaults. */
 export function parseAlertSettings(row: unknown): AlertSettings {
   if (typeof row !== 'object' || row === null) return { ...DEFAULT_ALERT_SETTINGS };
   const r = row as Partial<Record<keyof AlertSettings, unknown>>;
@@ -124,22 +117,12 @@ export function quietHoursLabel(start: number, end: number): string {
   return start === end ? 'aucune' : `${start} h → ${end} h`;
 }
 
-/** Push subscription columns written to public.push_subscriptions. */
-export interface PushSubscriptionRow {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  user_agent: string | null;
-}
-
-export const USER_AGENT_MAX = 300;
-
-/** Extracts the row from `PushSubscription.toJSON()`; null if a field is missing. */
-export function subscriptionRow(json: PushSubscriptionJSON, userAgent: string): PushSubscriptionRow | null {
+/** Body of `POST /api/push/subscriptions` (`PushSubscriptionRequest`) from `PushSubscription.toJSON()`; null if a field is missing. */
+export function subscriptionRow(json: PushSubscriptionJSON): PushSubscriptionRequest | null {
   const endpoint = json.endpoint;
   const p256dh = json.keys?.['p256dh'];
   const auth = json.keys?.['auth'];
   if (!endpoint || !p256dh || !auth) return null;
-  const ua = userAgent.slice(0, USER_AGENT_MAX);
-  return { endpoint, p256dh, auth, user_agent: ua.length > 0 ? ua : null };
+  const expirationTime = typeof json.expirationTime === 'number' && Number.isInteger(json.expirationTime) && json.expirationTime >= 0 ? json.expirationTime : null;
+  return { endpoint, expirationTime, keys: { p256dh, auth } };
 }

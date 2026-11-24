@@ -1,4 +1,4 @@
-// Keep identical to supabase/functions/_shared/solana.ts (same tests on both sides).
+// Keep identical to the legacy Edge Functions _shared/solana.ts and the bench API (same tests on both sides).
 
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const INDEX = new Map<string, number>([...ALPHABET].map((c, i) => [c, i]));

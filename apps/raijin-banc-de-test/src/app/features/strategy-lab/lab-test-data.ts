@@ -1,15 +1,23 @@
-// Test fixtures of the laboratory (rows as PostgREST returns them, and a chainable Supabase double).
+// Test fixtures of the laboratory (rows as the bench API returns them, and a bench API double).
+import { BENCH_ROUTES, type BenchErrorCode } from '@raijin/bench-contracts';
 import { vi } from 'vitest';
+import { FakeBenchApi, apiError, list, provideFakeBench } from '../../core/api/bench-api.testing';
 
+/** `error` : `{ status, code?, message? }` of the simulated API failure. */
 export interface QueryResult {
   data: unknown;
   error: unknown;
 }
 
+/** One read of the laboratory, described by the table it serves and its filters. */
 export interface QueryCall {
-  table: string;
-  columns: string;
+  table: 'backtest_runs' | 'backtest_results';
   filters: Record<string, unknown>;
+}
+
+function fail(error: unknown): never {
+  const e = (typeof error === 'object' && error !== null ? error : {}) as { status?: number; code?: BenchErrorCode; message?: string };
+  throw apiError(e.status ?? 500, e.code ?? null, e.message);
 }
 
 export const runRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -83,51 +91,41 @@ export const variantRows = (over: Record<string, unknown> = {}, trainOver: Recor
   resultRow({ ...over, split: 'test' }),
 ];
 
-/** rpc('backfill_progress') rows (two categories with rows due, one up to date). */
+/** `GET /api/lab/backfill` categories (two with rows due, one up to date). */
 export const backfillRows = (): Record<string, unknown>[] => [
-  { category: 'scan_labels', done: 1000, total: 1392, due_now: 392, last_24h: 300, rows_per_hour: 12 },
-  { category: 'candles_1m', done: 5000, total: 6392, due_now: 1392, last_24h: 400, rows_per_hour: 18 },
-  { category: 'preset_labels', done: 40, total: 40, due_now: 0, last_24h: 10 },
+  { id: 'scan_labels', done: 1000, total: 1392, due_now: 392, last_24h: 300, rows_per_hour: 12 },
+  { id: 'candles_1m', done: 5000, total: 6392, due_now: 1392, last_24h: 400, rows_per_hour: 18 },
+  { id: 'preset_labels', done: 40, total: 40, due_now: 0, last_24h: 10 },
 ];
 
-/** rpc handler answering by function name (missing function = PGRST202). */
+/** Handler of the other laboratory routes (gauge, run request) by route; a missing route answers 404. */
 export const rpcByName =
-  (answers: Record<string, () => Promise<QueryResult>>) =>
+  (answers: Partial<Record<string, () => Promise<QueryResult>>>) =>
   (name: string): Promise<QueryResult> =>
-    answers[name]?.() ?? Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+    answers[name]?.() ?? Promise.resolve({ data: null, error: { status: 404, code: 'NOT_FOUND' } });
 
 /**
- * Supabase double: from(table).select(cols).eq(..).order(..).limit(..) is awaitable and answered by `handler`;
- * rpc() by `rpc`.
+ * Bench API double: `GET lab/runs` and `GET lab/runs/:id/results` are answered by `handler` (as a `QueryCall`),
+ * `GET lab/backfill` and `POST lab/runs` by `rpc(route)`. The gauge answers `data` as the whole body.
  */
-export function fakeSupabase(handler: (call: QueryCall) => Promise<QueryResult>, rpc: (name: string) => Promise<QueryResult> = async () => ({ data: null, error: null })) {
+export function fakeBench(handler: (call: QueryCall) => Promise<QueryResult>, rpc: (name: string) => Promise<QueryResult> = async () => ({ data: null, error: null })) {
   const calls: QueryCall[] = [];
-  const from = (table: string) => ({
-    select: (columns: string) => {
-      const call: QueryCall = { table, columns, filters: {} };
-      const builder = {
-        eq: (col: string, value: unknown) => {
-          call.filters[col] = value;
-          return builder;
-        },
-        or: (filter: string) => {
-          call.filters['or'] = filter;
-          return builder;
-        },
-        gte: (col: string, value: unknown) => {
-          call.filters[`${col}.gte`] = value;
-          return builder;
-        },
-        order: () => builder,
-        limit: () => builder,
-        then: <T>(resolve: (r: QueryResult) => T, reject?: (e: unknown) => T) => {
-          calls.push(call);
-          return handler(call).then(resolve, reject);
-        },
-      };
-      return builder;
-    },
-  });
   const rpcSpy = vi.fn(rpc);
-  return { supabase: { from, rpc: rpcSpy }, calls, rpc: rpcSpy };
+  const read = async (call: QueryCall) => {
+    calls.push(call);
+    const r = await handler(call);
+    if (r.error) fail(r.error);
+    return list(Array.isArray(r.data) ? r.data : []);
+  };
+  const other = async (route: string) => {
+    const r = await rpcSpy(route);
+    if (r.error) fail(r.error);
+    return r.data;
+  };
+  const api = new FakeBenchApi()
+    .on('GET', BENCH_ROUTES.labRuns, (c) => read({ table: 'backtest_runs', filters: c.query['status'] === undefined ? {} : { status: c.query['status'] } }))
+    .on('GET', BENCH_ROUTES.labRunResults, (c) => read({ table: 'backtest_results', filters: { run_id: c.params['id'], retained: c.query['retained'] } }))
+    .on('GET', BENCH_ROUTES.labBackfill, () => other(BENCH_ROUTES.labBackfill))
+    .on('POST', BENCH_ROUTES.labRuns, () => other(BENCH_ROUTES.labRuns));
+  return { api, providers: provideFakeBench(api), calls, rpc: rpcSpy };
 }

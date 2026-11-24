@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { SUPABASE } from '../supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi } from '../api/bench-api';
 
 /** Rates are re-read at most every 5 minutes. */
 export const MARKET_CONTEXT_TTL_MS = 5 * 60_000;
@@ -26,14 +27,14 @@ export function parseMarketRates(row: unknown): MarketRates | null {
 }
 
 /**
- * SOL/USD and EUR/USD rates recorded by the latest scan run (public.scan_runs, authenticated
- * SELECT), used only to show a € equivalent next to SOL amounts. Read from Supabase only — the
- * browser never calls a price API. Any failure (column not deployed yet, RLS, network, null
+ * SOL/USD and EUR/USD rates recorded by the latest scan run (`GET /api/market/rates`, read from
+ * scan_runs by the bench API), used only to show a € equivalent next to SOL amounts. The browser
+ * never calls a price API. Any failure (route not deployed yet, network, null
  * values) simply leaves `eurPerSol` null: the UI then shows SOL without €.
  */
 @Injectable({ providedIn: 'root' })
 export class MarketContext {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
 
   private readonly _rates = signal<MarketRates | null>(null);
   private loadedAt: number | null = null;
@@ -69,14 +70,8 @@ export class MarketContext {
   private async fetch(gen: number, now: number): Promise<void> {
     let rates: MarketRates | null;
     try {
-      const { data, error } = await this.supabase
-        .from('scan_runs')
-        .select('sol_usd,eur_usd')
-        .not('sol_usd', 'is', null)
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      rates = error ? null : parseMarketRates(data);
+      const body = await this.api.get(BENCH_ROUTES.marketRates);
+      rates = typeof body === 'object' && body !== null ? parseMarketRates((body as { rates?: unknown }).rates) : null;
     } catch {
       rates = null;
     }

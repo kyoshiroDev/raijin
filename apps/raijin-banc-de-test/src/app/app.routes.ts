@@ -9,20 +9,6 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login-page').then((m) => m.LoginPage),
   },
   {
-    path: 'forgot-password',
-    canActivate: [guestGuard],
-    title: 'Mot de passe oublié · Raijin-banc-de-test',
-    loadComponent: () => import('./features/auth/forgot-password-page').then((m) => m.ForgotPasswordPage),
-  },
-  {
-    // No guard on purpose: the recovery session makes the user "authenticated",
-    // so guestGuard would bounce them away before they can set a new password.
-    // The page itself only shows the form after a PASSWORD_RECOVERY event (AuthStore).
-    path: 'auth/reset',
-    title: 'Nouveau mot de passe · Raijin-banc-de-test',
-    loadComponent: () => import('./features/auth/reset-password-page').then((m) => m.ResetPasswordPage),
-  },
-  {
     // Signed-in area: every child renders inside the shell (sticky headers + bottom tab bar).
     path: '',
     canActivate: [authGuard],
@@ -61,10 +47,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/strategy-lab/strategy-lab-page').then((m) => m.StrategyLabPage),
       },
       {
-        // Justesse des verdicts du moteur (phase 7 bis, docs/ARCHITECTURE.md §16.6) : données simulées jusqu'à la phase 8 bis.
+        // Justesse des verdicts du moteur (phase 7 bis, docs/ARCHITECTURE.md §16.6) : rapport calculé par l'API du banc (GET /api/verdicts/quality).
         path: 'justesse',
         title: 'Justesse des verdicts · Raijin-banc-de-test',
         loadComponent: () => import('./features/verdict-quality/verdict-quality-page').then((m) => m.VerdictQualityPage),
+      },
+      {
+        // Mode ombre (docs/ARCHITECTURE.md §17.6) : collecte du VPS comparée à l'instantané `shadow_ref`.
+        path: 'comparaison',
+        title: 'Comparaison mode ombre · Raijin-banc-de-test',
+        loadComponent: () => import('./features/shadow/shadow-comparison-page').then((m) => m.ShadowComparisonPage),
       },
       {
         path: 'settings',

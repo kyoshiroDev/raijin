@@ -1,42 +1,37 @@
 import { TestBed } from '@angular/core/testing';
+import { BENCH_ROUTES, type BenchRoute } from '@raijin/bench-contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { provideFakeBench } from '../../core/api/bench-api.testing';
 import { BOOKS_LOAD_ERROR, LOAD_ERROR, PerformanceStore } from './performance-store';
-import { bookRow, breakdownRow, presetRow } from './performance-test-data';
-
-interface Result {
-  data: unknown;
-  error: unknown;
-}
+import { bookRow, breakdownRow, performanceApi, presetRow, type PerfResult as Result } from './performance-test-data';
 
 function setup(
   breakdown: () => Promise<Result>,
   presets: () => Promise<Result> = async () => ({ data: [], error: null }),
   books: () => Promise<Result> = async () => ({ data: [], error: null }),
 ) {
-  const rpc = vi.fn((name: string) => (name === 'performance_by_preset' ? presets() : name === 'paper_book_comparison' ? books() : breakdown()));
-  const from = vi.fn();
-  const supabase = { rpc, from };
-  TestBed.configureTestingModule({ providers: [PerformanceStore, { provide: SUPABASE, useValue: supabase }] });
-  return { store: TestBed.inject(PerformanceStore), rpc, from };
+  const rpc = vi.fn((name: BenchRoute) => (name === BENCH_ROUTES.performancePresets ? presets() : name === BENCH_ROUTES.performanceBooks ? books() : breakdown()));
+  const api = performanceApi(rpc);
+  TestBed.configureTestingModule({ providers: [PerformanceStore, ...provideFakeBench(api)] });
+  return { store: TestBed.inject(PerformanceStore), rpc, api };
 }
 
 describe('PerformanceStore', () => {
-  it('calls rpc(performance_breakdown), keeps the main scanner rows only, never reads the archived model', async () => {
-    const { store, rpc, from } = setup(async () => ({ data: [breakdownRow(), breakdownRow({ source: 'radar', n: 3, n_final: 0, x2: 0, x3: 0, x2_before_sl30: 0, sl30_before_x2: 0, dd50_first: 0 }), { junk: true }], error: null }));
+  it('reads GET /api/performance/breakdown, keeps the main scanner rows only, never reads the archived model', async () => {
+    const { store, rpc, api } = setup(async () => ({ data: [breakdownRow(), breakdownRow({ source: 'radar', n: 3, n_final: 0, x2: 0, x3: 0, x2_before_sl30: 0, sl30_before_x2: 0, dd50_first: 0 }), { junk: true }], error: null }));
     expect(store.loaded()).toBe(false);
     await store.load();
-    expect(rpc).toHaveBeenCalledWith('performance_breakdown');
+    expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.performanceBreakdown);
     expect(rpc).toHaveBeenCalledTimes(3);
-    expect(from).not.toHaveBeenCalled(); // model_weights archived
+    expect(api.calls).toHaveLength(3); // model_weights archived: nothing else is read
     expect(store.loaded()).toBe(true);
     expect(store.rows()).toHaveLength(1);
     expect(store.view().overall?.n).toBe(40);
     expect('set' in store.rows).toBe(false);
   });
 
-  it('degrades to « unavailable » (no error) while the RPC is not deployed', async () => {
-    const { store } = setup(async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }));
+  it('degrades to « unavailable » (no error) while the route is not deployed', async () => {
+    const { store } = setup(async () => ({ data: null, error: { status: 404 } }));
     await store.load();
     expect(store.error()).toBeNull();
     expect(store.unavailable()).toBe(true);
@@ -62,22 +57,22 @@ describe('PerformanceStore', () => {
     expect(store.loading()).toBe(true);
     release({ data: [], error: null });
     await first;
-    expect(rpc.mock.calls.filter(([name]) => name === 'performance_breakdown')).toHaveLength(1);
+    expect(rpc.mock.calls.filter(([name]) => name === BENCH_ROUTES.performanceBreakdown)).toHaveLength(1);
     expect(store.loading()).toBe(false);
   });
 
   describe('« Calme vs Frénésie » (performance_by_preset)', () => {
     const ok = async (): Promise<Result> => ({ data: [breakdownRow()], error: null });
 
-    it('calls rpc(performance_by_preset) with no argument and keeps the young_calm / young_frenzy rows only', async () => {
+    it('reads GET /api/performance/presets with no argument and keeps the young_calm / young_frenzy rows only', async () => {
       const { store, rpc } = setup(ok, async () => ({
         data: [presetRow(), presetRow({ preset: 'momentum' }), presetRow({ preset: 'young_strong', segment: 'age_lt_3h' }), { preset: 'x' }],
         error: null,
       }));
       await store.load();
       await Promise.resolve();
-      expect(rpc).toHaveBeenCalledWith('performance_by_preset');
-      expect(rpc.mock.calls.find(([name]) => name === 'performance_by_preset')).toHaveLength(1);
+      expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.performancePresets);
+      expect(rpc.mock.calls.find(([name]) => name === BENCH_ROUTES.performancePresets)).toHaveLength(1);
       expect(store.presetState()).toBe('ready');
       expect(store.presetRows().map((r) => r.preset)).toEqual(['young_calm']);
       expect('set' in store.presetRows).toBe(false);
@@ -106,8 +101,8 @@ describe('PerformanceStore', () => {
       expect('set' in store.comparisonSegment).toBe(false);
     });
 
-    it('is « unavailable » while the RPC is not deployed, without affecting the breakdown', async () => {
-      const { store } = setup(ok, async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }));
+    it('is « unavailable » while the route is not deployed, without affecting the breakdown', async () => {
+      const { store } = setup(ok, async () => ({ data: null, error: { status: 404 } }));
       await store.load();
       expect(store.presetState()).toBe('unavailable');
       expect(store.error()).toBeNull();
@@ -136,13 +131,13 @@ describe('PerformanceStore', () => {
   describe('test books (paper_book_comparison)', () => {
     const ok = async () => ({ data: [breakdownRow()], error: null });
 
-    it('calls rpc(paper_book_comparison) with no argument on load and exposes the 3-book view (read-only signals)', async () => {
+    it('reads GET /api/performance/books with no argument on load and exposes the 3-book view (read-only signals)', async () => {
       const { store, rpc } = setup(ok, undefined, async () => ({ data: [bookRow(), bookRow({ book: 'calm_all_x2' }), bookRow({ book: 'calm_sl40', trades: 31, tp_hits: 15, sl_hits: 16 })], error: null }));
       expect(store.bookState()).toBe('idle');
       await store.load();
       await Promise.resolve();
-      expect(rpc).toHaveBeenCalledWith('paper_book_comparison');
-      expect(rpc.mock.calls.find(([name]) => name === 'paper_book_comparison')).toHaveLength(1);
+      expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.performanceBooks);
+      expect(rpc.mock.calls.find(([name]) => name === BENCH_ROUTES.performanceBooks)).toHaveLength(1);
       expect(store.bookState()).toBe('ready');
       expect(store.bookRows().map((r) => r.book)).toEqual(['calm_sl30', 'calm_sl40']);
       expect(store.bookComparison().columns.map((c) => c.row?.trades ?? null)).toEqual([12, 31, null]);
@@ -150,8 +145,8 @@ describe('PerformanceStore', () => {
       expect('set' in store.bookState).toBe(false);
     });
 
-    it('degrades to « unavailable » while the RPC is not deployed, without touching the breakdown', async () => {
-      const { store } = setup(ok, undefined, async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }));
+    it('degrades to « unavailable » while the route is not deployed, without touching the breakdown', async () => {
+      const { store } = setup(ok, undefined, async () => ({ data: null, error: { status: 404 } }));
       await store.load();
       await Promise.resolve();
       expect(store.bookState()).toBe('unavailable');
@@ -181,7 +176,7 @@ describe('PerformanceStore', () => {
       expect(store.bookState()).toBe('loading');
       release({ data: [], error: null });
       await first;
-      expect(rpc.mock.calls.filter(([name]) => name === 'paper_book_comparison')).toHaveLength(1);
+      expect(rpc.mock.calls.filter(([name]) => name === BENCH_ROUTES.performanceBooks)).toHaveLength(1);
     });
 
     it('treats a rejected call as an error', async () => {

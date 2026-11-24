@@ -14,7 +14,7 @@ import { ProportionValue } from './components/proportion-value';
 import { SignalPowerTable } from './components/signal-power-table';
 import { VariantComparison } from './components/variant-comparison';
 import { formatPeriod } from './verdict-quality-format';
-import { SimulatedVerdictQualitySource, VerdictQualitySource } from './verdict-quality-source';
+import { HttpVerdictQualitySource, VerdictQualitySource } from './verdict-quality-source';
 
 export const HORIZON_LABELS: Readonly<Record<FollowUpHorizon, string>> = { '24h': '24 h', '72h': '72 h', '7d': '7 jours' };
 
@@ -37,12 +37,12 @@ export const LOAD_ERROR = 'Impossible de charger la justesse des verdicts.';
  * /justesse — justesse des verdicts du moteur par horizon (24 h, 72 h, 7 j), pouvoir prédictif des
  * signaux, comparaison moteur actuel / variante. Le banc mesure le risque pour améliorer les
  * verdicts de Raijin, jamais une stratégie de gain. Aucun calcul ici : tout vient de
- * `@raijin/bench-verdicts` via le port `VerdictQualitySource` (simulé jusqu'à la phase 8 bis).
+ * `@raijin/bench-verdicts`, calculé par l'API du banc, via le port `VerdictQualitySource` (simulé dans les tests).
  */
 @Component({
   selector: 'app-verdict-quality-page',
   imports: [PageHeader, ProportionValue, RouterLink, SignalPowerTable, VariantComparison],
-  providers: [{ provide: VerdictQualitySource, useClass: SimulatedVerdictQualitySource }],
+  providers: [{ provide: VerdictQualitySource, useClass: HttpVerdictQualitySource }],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-page-header>
@@ -61,7 +61,7 @@ export const LOAD_ERROR = 'Impossible de charger la justesse des verdicts.';
           <div class="rounded-xl border border-info/40 bg-info/10 px-3 py-2 text-sm text-info" role="note" data-simulated-banner>
             <p class="font-semibold">Données simulées</p>
             <p class="text-xs">
-              Jeu de test déterministe en attendant l’API du banc : aucun de ces chiffres ne mesure un résultat réel.
+              Jeu de test déterministe : aucun de ces chiffres ne mesure un résultat réel.
             </p>
           </div>
         }

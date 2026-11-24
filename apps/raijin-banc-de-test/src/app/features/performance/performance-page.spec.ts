@@ -1,37 +1,32 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { BENCH_ROUTES, type BenchRoute } from '@raijin/bench-contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { provideFakeBench } from '../../core/api/bench-api.testing';
 import { PerformancePage } from './performance-page';
-import { bookRow, breakdownRow, presetRow } from './performance-test-data';
-
-interface Result {
-  data: unknown;
-  error: unknown;
-}
+import { bookRow, breakdownRow, performanceApi, presetRow, type PerfResult as Result } from './performance-test-data';
 
 const small = (over: Record<string, unknown>) =>
   breakdownRow({ n: 12, n_final: 4, x2: 3, x3: 1, x2_before_sl30: 2, sl30_before_x2: 6, dd50_first: 1, ...over });
 
 describe('PerformancePage', () => {
   async function setup(breakdown: Result, presets: Result = { data: [], error: null }, books: Result = { data: [], error: null }) {
-    const rpc = vi.fn(async (name: string) => (name === 'performance_by_preset' ? presets : name === 'paper_book_comparison' ? books : breakdown));
-    const from = vi.fn();
-    const supabase = { rpc, from };
-    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: SUPABASE, useValue: supabase }] });
+    const rpc = vi.fn(async (name: BenchRoute) => (name === BENCH_ROUTES.performancePresets ? presets : name === BENCH_ROUTES.performanceBooks ? books : breakdown));
+    const api = performanceApi(rpc);
+    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideFakeBench(api)] });
     const fixture = TestBed.createComponent(PerformancePage);
     fixture.detectChanges();
     for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
-    return { el, fixture, rpc, from };
+    return { el, fixture, rpc, api };
   }
 
   it('loads the breakdown of the main scanner only: no source selector, no model card, no model read', async () => {
-    const { el, rpc, from } = await setup({ data: [breakdownRow(), small({ source: 'radar' })], error: null });
-    expect(rpc).toHaveBeenCalledWith('performance_breakdown');
-    expect(from).not.toHaveBeenCalled();
+    const { el, rpc, api } = await setup({ data: [breakdownRow(), small({ source: 'radar' })], error: null });
+    expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.performanceBreakdown);
+    expect(api.calls).toHaveLength(3);
     expect(el.querySelectorAll('[data-source]')).toHaveLength(0);
     expect(el.querySelector('app-source-selector, app-model-card, [data-model-card]')).toBeNull();
     expect(el.querySelector('[data-source-hint]')?.textContent).toContain('scanner principal');
@@ -120,8 +115,8 @@ describe('PerformancePage', () => {
     expect(el.querySelector('[role="alert"] button')?.textContent).toContain('Réessayer');
   });
 
-  it('degrades gracefully while the RPC is not deployed', async () => {
-    const { el } = await setup({ data: null, error: { code: 'PGRST202', message: 'not found' } });
+  it('degrades gracefully while the route is not deployed', async () => {
+    const { el } = await setup({ data: null, error: { status: 404 } });
     expect(el.querySelector('[role="alert"]')).toBeNull();
     expect(el.querySelector('[data-unavailable]')?.textContent).toContain('pas encore disponibles');
   });
@@ -136,7 +131,7 @@ describe('PerformancePage', () => {
 
     it('shows only the « Calme vs Frénésie » card (no Momentum / Jeune & fort / Strict cards) above the breakdown', async () => {
       const { el, fixture, rpc } = await setup({ data: [breakdownRow()], error: null }, { data: ROWS, error: null });
-      expect(rpc).toHaveBeenCalledWith('performance_by_preset');
+      expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.performancePresets);
       expect(el.querySelectorAll('[data-preset-card]')).toHaveLength(0);
       const card = el.querySelector('[data-calm-frenzy-card]') as HTMLElement;
       expect(card).not.toBeNull();
@@ -160,7 +155,7 @@ describe('PerformancePage', () => {
     });
 
     it('says so when the preset RPC is not deployed, and the breakdown still shows', async () => {
-      const { el } = await setup({ data: [breakdownRow()], error: null }, { data: null, error: { code: 'PGRST202', message: 'not found' } });
+      const { el } = await setup({ data: [breakdownRow()], error: null }, { data: null, error: { status: 404 } });
       expect(el.querySelector('[data-presets-unavailable]')?.textContent).toContain('pas encore disponibles');
       expect(el.querySelector('[data-calm-frenzy-card]')).toBeNull();
       expect(el.querySelector('[data-overview]')).not.toBeNull();
@@ -174,7 +169,7 @@ describe('PerformancePage', () => {
       expect(el.querySelector('[data-overview]')).not.toBeNull();
       box.querySelector<HTMLButtonElement>('button')?.click();
       await fixture.whenStable();
-      expect(rpc.mock.calls.filter(([name]) => name === 'performance_by_preset')).toHaveLength(2);
+      expect(rpc.mock.calls.filter(([name]) => name === BENCH_ROUTES.performancePresets)).toHaveLength(2);
     });
   });
 
@@ -187,7 +182,7 @@ describe('PerformancePage', () => {
 
     it('shows the 3-book comparison first, rates in clear only from 30 trades, Frénésie flagged as a control', async () => {
       const { el, rpc } = await setup({ data: [breakdownRow()], error: null }, { data: [], error: null }, { data: BOOKS, error: null });
-      expect(rpc).toHaveBeenCalledWith('paper_book_comparison');
+      expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.performanceBooks);
       const card = el.querySelector('[data-test-books-card]') as HTMLElement;
       expect(card).not.toBeNull();
       const presets = el.querySelector('[data-preset-section]') as HTMLElement;
@@ -232,7 +227,7 @@ describe('PerformancePage', () => {
     });
 
     it('says so when the RPC is not deployed, and shows its own error with a retry otherwise', async () => {
-      const missing = await setup({ data: [breakdownRow()], error: null }, { data: [], error: null }, { data: null, error: { code: 'PGRST202', message: 'x' } });
+      const missing = await setup({ data: [breakdownRow()], error: null }, { data: [], error: null }, { data: null, error: { status: 404 } });
       expect(missing.el.querySelector('[data-test-books-unavailable]')?.textContent).toContain('pas encore disponible');
       expect(missing.el.querySelector('[data-overview]')).not.toBeNull();
       TestBed.resetTestingModule();
@@ -242,7 +237,7 @@ describe('PerformancePage', () => {
       expect(el.querySelector('[data-overview]')).not.toBeNull();
       box.querySelector<HTMLButtonElement>('button')?.click();
       await fixture.whenStable();
-      expect(rpc.mock.calls.filter(([name]) => name === 'paper_book_comparison')).toHaveLength(2);
+      expect(rpc.mock.calls.filter(([name]) => name === BENCH_ROUTES.performanceBooks)).toHaveLength(2);
     });
   });
 });

@@ -2,11 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { SwPush } from '@angular/service-worker';
 import { BehaviorSubject } from 'rxjs';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { describe, expect, it, vi } from 'vitest';
+import { FakeBenchApi, provideFakeBench } from '../../core/api/bench-api.testing';
 import { AuthStore } from '../../core/auth/auth-store';
 import { BROWSER_SNAPSHOT, type BrowserSnapshot } from '../../core/pwa/push-environment';
-import { VAPID_PUBLIC_KEY } from '../../core/pwa/push-config';
-import { SUPABASE } from '../../core/supabase/supabase-client';
 import { SettingsPage } from './settings-page';
 
 const ANDROID: BrowserSnapshot = {
@@ -30,7 +30,7 @@ const IPHONE_SAFARI: BrowserSnapshot = {
 };
 
 describe('SettingsPage', () => {
-  async function setup(snapshot: BrowserSnapshot = ANDROID) {
+  async function setup(snapshot: BrowserSnapshot = ANDROID, mode: 'shadow' | 'primary' = 'primary') {
     const signOut = vi.fn(async () => undefined);
     const subscription$ = new BehaviorSubject<PushSubscription | null>(null);
     const requestSubscription = vi.fn(async () => {
@@ -39,24 +39,25 @@ describe('SettingsPage', () => {
       subscription$.next(sub);
       return sub;
     });
-    const ok = async () => ({ data: null, error: null });
-    const supabase = {
-      from: () => ({ select: () => ({ maybeSingle: ok }), upsert: ok, delete: () => ({ eq: ok }) }),
-      functions: { invoke: vi.fn(ok) },
-    };
+    const api = new FakeBenchApi()
+      .on('GET', BENCH_ROUTES.alertSettings, {})
+      .on('GET', BENCH_ROUTES.pushVapidKey, { publicKey: 'B' + 'k'.repeat(86) })
+      .on('POST', BENCH_ROUTES.pushSubscriptions, {})
+      .on('PUT', BENCH_ROUTES.alertEnabled, {});
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: AuthStore, useValue: { signOut, email: () => 'me@example.com' } },
-        { provide: SUPABASE, useValue: supabase },
+        { provide: AuthStore, useValue: { signOut, email: () => 'me@example.com', mode: () => mode } },
+        ...provideFakeBench(api),
         { provide: SwPush, useValue: { isEnabled: true, subscription: subscription$, requestSubscription, unsubscribe: vi.fn() } },
-        { provide: VAPID_PUBLIC_KEY, useValue: 'BTestPublicKey' },
         { provide: BROWSER_SNAPSHOT, useValue: () => snapshot },
       ],
     });
     const navigateByUrl = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     const fixture = TestBed.createComponent(SettingsPage);
     fixture.detectChanges();
+    // API double: a few promise hops before the settings are loaded.
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
@@ -116,5 +117,13 @@ describe('SettingsPage', () => {
     const { el } = await setup();
     const btn = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Envoyer une notification de test'));
     expect(btn?.disabled).toBe(true);
+  });
+
+  it('says that no notification leaves the bench in shadow mode', async () => {
+    const shadow = await setup(ANDROID, 'shadow');
+    expect(shadow.el.querySelector('[data-shadow-mode]')?.textContent).toContain('mode ombre');
+    TestBed.resetTestingModule();
+    const primary = await setup(ANDROID, 'primary');
+    expect(primary.el.querySelector('[data-shadow-mode]')).toBeNull();
   });
 });

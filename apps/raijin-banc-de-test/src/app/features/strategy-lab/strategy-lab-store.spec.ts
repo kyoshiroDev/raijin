@@ -1,11 +1,11 @@
 import { TestBed } from '@angular/core/testing';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../../core/supabase/supabase-client';
-import { LAB_MSG, LEGACY_RUN_COLUMNS, RESULT_COLUMNS, RUN_COLUMNS } from './backtest';
+import { LAB_MSG } from './backtest';
 import {
   backfillRows,
   candidateSummary,
-  fakeSupabase,
+  fakeBench,
   resultRow,
   rpcByName,
   runRow,
@@ -16,8 +16,8 @@ import {
 import { BACKFILL_POLL_MS, LAB_POLL_MS, StrategyLabStore } from './strategy-lab-store';
 
 function setup(handler: (call: QueryCall) => Promise<QueryResult>, rpc?: (name: string) => Promise<QueryResult>) {
-  const fake = fakeSupabase(handler, rpc);
-  TestBed.configureTestingModule({ providers: [StrategyLabStore, { provide: SUPABASE, useValue: fake.supabase }] });
+  const fake = fakeBench(handler, rpc);
+  TestBed.configureTestingModule({ providers: [StrategyLabStore, ...fake.providers] });
   return { store: TestBed.inject(StrategyLabStore), ...fake };
 }
 
@@ -42,10 +42,7 @@ describe('StrategyLabStore', () => {
     await store.load();
     expect(store.state()).toBe('ready');
     const main = calls.filter((c) => !('preset' in c.filters));
-    expect(main.map((c) => [c.table, c.columns])).toEqual([
-      ['backtest_runs', RUN_COLUMNS],
-      ['backtest_results', RESULT_COLUMNS],
-    ]);
+    expect(main.map((c) => c.table)).toEqual(['backtest_runs', 'backtest_results']);
     expect(main[1].filters).toEqual({ run_id: '7', retained: true });
     expect(store.lastDone()?.id).toBe('7');
     expect(store.variants()).toHaveLength(1);
@@ -97,12 +94,12 @@ describe('StrategyLabStore', () => {
     expect(calls.length).toBe(count);
   });
 
-  it('degrades to « unavailable » when the tables are not deployed, and to an error otherwise', async () => {
-    const missing = setup(tables({ latest: null, error: { code: 'PGRST205', message: 'Could not find the table' } }));
+  it('degrades to « unavailable » when the routes are not deployed, and to an error otherwise', async () => {
+    const missing = setup(tables({ latest: null, error: { status: 404, code: 'NOT_FOUND' } }));
     await missing.store.load();
     expect(missing.store.state()).toBe('unavailable');
     TestBed.resetTestingModule();
-    const broken = setup(tables({ latest: null, error: { code: '500', message: 'boom' } }));
+    const broken = setup(tables({ latest: null, error: { status: 500 } }));
     await broken.store.load();
     expect(broken.store.state()).toBe('error');
     expect(broken.store.canRequest()).toBe(false);
@@ -115,12 +112,12 @@ describe('StrategyLabStore', () => {
     expect([store.latest(), store.lastDone(), store.variants()]).toEqual([null, null, []]);
   });
 
-  it('requests a run through the RPC, then reloads (running → button disabled)', async () => {
+  it('requests a run through POST /api/lab/runs, then reloads (running → button disabled)', async () => {
     const state: { latest: unknown; done: unknown } = { latest: runRow(), done: runRow() };
     const { store, rpc } = setup(
       tables(state),
       rpcByName({
-        backtest_request_run: async () => {
+        [BENCH_ROUTES.labRuns]: async () => {
           state.latest = runRow({ id: 9, status: 'queued', trigger: 'manual' });
           return { data: 9, error: null };
         },
@@ -128,22 +125,22 @@ describe('StrategyLabStore', () => {
     );
     await store.load();
     await store.requestRun();
-    expect(rpc).toHaveBeenCalledWith('backtest_request_run');
+    expect(rpc).toHaveBeenCalledWith(BENCH_ROUTES.labRuns);
     expect(store.feedback()).toEqual({ kind: 'ok', text: LAB_MSG.requested });
     expect(store.running()).toBe(true);
     expect(store.canRequest()).toBe(false);
     await store.requestRun();
-    expect(rpc.mock.calls.filter(([name]) => name === 'backtest_request_run')).toHaveLength(1);
+    expect(rpc.mock.calls.filter(([name]) => name === BENCH_ROUTES.labRuns)).toHaveLength(1);
     TestBed.resetTestingModule();
   });
 
-  it('surfaces the French refusal of the RPC', async () => {
+  it('surfaces the French refusal of the API (409)', async () => {
     const { store } = setup(
       tables({ latest: runRow(), results: [resultRow()] }),
       rpcByName({
-        backtest_request_run: async () => ({
+        [BENCH_ROUTES.labRuns]: async () => ({
           data: null,
-          error: { code: '23514', message: 'Le dernier backtest a démarré il y a moins de 10 minutes.' },
+          error: { status: 409, code: 'BACKTEST_ALREADY_QUEUED', message: 'Le dernier backtest a démarré il y a moins de 10 minutes.' },
         }),
       }),
     );
@@ -164,33 +161,16 @@ describe('StrategyLabStore', () => {
     expect(legacy.store.summary()).toBeNull();
   });
 
-  it('falls back to the legacy SELECT when the summary column is not readable yet, and remembers it', async () => {
-    const state = { latest: runRow({ id: 8, status: 'running' }), done: runRow() };
-    const base = tables(state);
-    const { store, calls } = setup(async (call) =>
-      call.table === 'backtest_runs' && call.columns === RUN_COLUMNS ? { data: null, error: { code: '42501', message: 'permission denied' } } : base(call),
-    );
-    await store.load();
-    expect(store.state()).toBe('ready');
-    expect(store.lastDone()?.id).toBe('7');
-    expect(store.summary()).toBeNull();
-    const runCalls = calls.filter((c) => c.table === 'backtest_runs').map((c) => c.columns);
-    expect(runCalls).toEqual([RUN_COLUMNS, LEGACY_RUN_COLUMNS, LEGACY_RUN_COLUMNS]);
-    await store.refresh();
-    expect(calls.filter((c) => c.table === 'backtest_runs').slice(3).every((c) => c.columns === LEGACY_RUN_COLUMNS)).toBe(true);
-    TestBed.resetTestingModule();
-  });
-
   it('reads the catch-up gauge and polls it every 60 s while rows are due, then stops', async () => {
     vi.useFakeTimers();
     let rows = backfillRows();
-    const { store, rpc } = setup(tables({ latest: runRow(), results: variantRows() }), rpcByName({ backfill_progress: async () => ({ data: rows, error: null }) }));
+    const { store, rpc } = setup(tables({ latest: runRow(), results: variantRows() }), rpcByName({ [BENCH_ROUTES.labBackfill]: async () => ({ data: rows, error: null }) }));
     await store.load();
     expect(store.backfillState()).toBe('ready');
     expect(store.backfill()?.dueNow).toBe(392 + 1392);
     expect(store.backfill()?.rowsPerHour).toBe(30);
     expect('set' in store.backfill).toBe(false);
-    const gaugeCalls = () => rpc.mock.calls.filter(([name]) => name === 'backfill_progress').length;
+    const gaugeCalls = () => rpc.mock.calls.filter(([name]) => name === BENCH_ROUTES.labBackfill).length;
     expect(gaugeCalls()).toBe(1);
     await vi.advanceTimersByTimeAsync(BACKFILL_POLL_MS);
     expect(gaugeCalls()).toBe(2);
@@ -204,7 +184,7 @@ describe('StrategyLabStore', () => {
 
   it('stops the gauge poll when destroyed', async () => {
     vi.useFakeTimers();
-    const { store, rpc } = setup(tables({ latest: runRow() }), rpcByName({ backfill_progress: async () => ({ data: backfillRows(), error: null }) }));
+    const { store, rpc } = setup(tables({ latest: runRow() }), rpcByName({ [BENCH_ROUTES.labBackfill]: async () => ({ data: backfillRows(), error: null }) }));
     await store.load();
     const count = rpc.mock.calls.length;
     TestBed.resetTestingModule();
@@ -212,7 +192,7 @@ describe('StrategyLabStore', () => {
     expect(rpc.mock.calls.length).toBe(count);
   });
 
-  it('marks the gauge unavailable when the RPC is missing (no poll), keeps the last gauge on a background error', async () => {
+  it('marks the gauge unavailable when the route is missing (no poll), keeps the last gauge on a background error', async () => {
     vi.useFakeTimers();
     const missing = setup(tables({ latest: runRow() }));
     await missing.store.load();
@@ -225,7 +205,7 @@ describe('StrategyLabStore', () => {
     let fail = false;
     const flaky = setup(
       tables({ latest: runRow() }),
-      rpcByName({ backfill_progress: async () => (fail ? { data: null, error: { code: '500', message: 'boom' } } : { data: backfillRows(), error: null }) }),
+      rpcByName({ [BENCH_ROUTES.labBackfill]: async () => (fail ? { data: null, error: { status: 500 } } : { data: backfillRows(), error: null }) }),
     );
     await flaky.store.load();
     fail = true;
@@ -234,7 +214,7 @@ describe('StrategyLabStore', () => {
     expect(flaky.store.backfill()?.categories).toHaveLength(3);
     TestBed.resetTestingModule();
 
-    const broken = setup(tables({ latest: runRow() }), rpcByName({ backfill_progress: async () => ({ data: null, error: { code: '500', message: 'boom' } }) }));
+    const broken = setup(tables({ latest: runRow() }), rpcByName({ [BENCH_ROUTES.labBackfill]: async () => ({ data: null, error: { status: 500 } }) }));
     await broken.store.load();
     expect(broken.store.backfillState()).toBe('error');
     expect(broken.store.state()).toBe('ready');

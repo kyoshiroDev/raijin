@@ -1,15 +1,13 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { SUPABASE } from '../../../core/supabase/supabase-client';
-import { PAPER_POSITION_COLUMNS } from '../../../shared/models/paper';
-import { HISTORY_LIMIT, MAX_POINTS, RANGE_MS } from './price-chart-data';
+import { MAX_POINTS, RANGE_MS } from './price-chart-data';
 import { MARKER_LIMIT, PriceChartStore } from './price-chart-store';
-import { CHART_MINT, mockSupabase, ok, snapshotRows, type QueryResult } from './price-chart-test-data';
+import { CHART_MINT, mockBench, ok, snapshotRows, type QueryResult } from './price-chart-test-data';
 
-function setup(responders: Parameters<typeof mockSupabase>[0] = {}) {
-  const sb = mockSupabase(responders);
-  TestBed.configureTestingModule({ providers: [PriceChartStore, { provide: SUPABASE, useValue: sb.client }] });
+function setup(responders: Parameters<typeof mockBench>[0] = {}) {
+  const sb = mockBench(responders);
+  TestBed.configureTestingModule({ providers: [PriceChartStore, ...sb.providers] });
   return { store: TestBed.inject(PriceChartStore), sb };
 }
 
@@ -19,19 +17,14 @@ async function settle() {
 }
 
 describe('PriceChartStore', () => {
-  it('reads the last 24 h of snapshots for the mint, oldest first, capped, abortable', async () => {
+  it('reads the last 24 h of snapshots for the mint (GET /api/tokens/:mint/snapshots), abortable', async () => {
     const { store, sb } = setup({ token_snapshots: ok(snapshotRows(24)) });
     store.setMint(CHART_MINT);
     await settle();
-    expect(sb.from).toHaveBeenCalledWith('token_snapshots');
-    expect(sb.callsOf('token_snapshots', 'select')).toEqual([['price_usd,captured_at']]);
-    expect(sb.callsOf('token_snapshots', 'eq')).toEqual([['mint', CHART_MINT]]);
-    const [[column, since]] = sb.callsOf('token_snapshots', 'gte');
-    expect(column).toBe('captured_at');
-    expect(Math.abs(Date.parse(String(since)) - (Date.now() - RANGE_MS['24h']))).toBeLessThan(10_000);
-    expect(sb.callsOf('token_snapshots', 'order')).toEqual([['captured_at', { ascending: true }]]);
-    expect(sb.callsOf('token_snapshots', 'limit')).toEqual([[HISTORY_LIMIT]]);
-    expect(sb.callsOf('token_snapshots', 'abortSignal')[0]?.[0]).toBeInstanceOf(AbortSignal);
+    const [call] = sb.callsOf('token_snapshots');
+    expect(call?.params).toEqual({ mint: CHART_MINT });
+    expect(Math.abs(Date.parse(String(call?.query['since'])) - (Date.now() - RANGE_MS['24h']))).toBeLessThan(10_000);
+    expect(call?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('never queries with an invalid mint', async () => {
@@ -39,7 +32,7 @@ describe('PriceChartStore', () => {
     store.setMint('<script>');
     await settle();
     expect(store.mint()).toBeNull();
-    expect(sb.from).not.toHaveBeenCalled();
+    expect(sb.api.calls).toHaveLength(0);
     expect(store.points()).toEqual([]);
   });
 
@@ -60,7 +53,7 @@ describe('PriceChartStore', () => {
     expect(day.length).toBe(MAX_POINTS);
     expect(day[day.length - 1].t - day[0].t).toBe(RANGE_MS['24h']);
     expect(day.at(-1)).toEqual(six.at(-1));
-    expect(sb.callsOf('token_snapshots', 'select')).toHaveLength(1);
+    expect(sb.callsOf('token_snapshots')).toHaveLength(1);
   });
 
   it('ignores an unknown range', () => {
@@ -99,7 +92,7 @@ describe('PriceChartStore', () => {
           fill_price: 0.000408,
           created_at: new Date(now - 60 * 60_000).toISOString(),
           filled_at: new Date(now - 50 * 60_000).toISOString(),
-          paper_legs: [
+          legs: [
             { id: 'l1', position_id: 'p1', size_pct: 100, tp_price: 0.0008, stop_price: 0.0003, status: 'sl_hit', exit_price: 0.00039, closed_at: new Date(now - 20 * 60_000).toISOString() },
           ],
         },
@@ -107,11 +100,8 @@ describe('PriceChartStore', () => {
     });
     store.setMint(CHART_MINT);
     await settle();
-    expect(sb.callsOf('alert_log', 'select')).toEqual([['sent_at,entry_price']]);
-    expect(sb.callsOf('alert_log', 'eq')).toEqual([['mint', CHART_MINT]]);
-    expect(sb.callsOf('alert_log', 'limit')).toEqual([[MARKER_LIMIT]]);
-    expect(sb.callsOf('paper_positions', 'select')).toEqual([[PAPER_POSITION_COLUMNS]]);
-    expect(sb.callsOf('paper_positions', 'eq')).toEqual([['mint', CHART_MINT]]);
+    expect(sb.callsOf('alert_log')[0]?.query).toMatchObject({ mint: CHART_MINT, limit: MARKER_LIMIT });
+    expect(sb.callsOf('paper_positions')[0]?.query).toMatchObject({ mint: CHART_MINT, limit: MARKER_LIMIT });
     expect(store.markers().map((m) => m.kind)).toEqual(['fill', 'alert', 'exit']);
   });
 
@@ -126,7 +116,7 @@ describe('PriceChartStore', () => {
     expect(store.markers()).toEqual([]);
   });
 
-  it('treats absent marker tables / columns as « no markers » without failing the chart', async () => {
+  it('treats absent marker routes as « no markers » without failing the chart', async () => {
     const missing: QueryResult = { data: null, error: { code: '42P01', message: 'relation does not exist' } };
     const { store } = setup({
       token_snapshots: ok(snapshotRows(1)),

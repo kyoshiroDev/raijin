@@ -1,8 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { SUPABASE } from '../../../core/supabase/supabase-client';
 import type { TokenRow } from '../../../shared/models/token';
-import { mockSupabase, ok, snapshotRows } from './price-chart-test-data';
+import { mockBench, ok, snapshotRows } from './price-chart-test-data';
 import { TokenDetail } from './token-detail';
 
 const HOSTILE = '<img src=x onerror=alert(1)>';
@@ -70,12 +69,12 @@ function render(t: TokenRow, stake?: number, eurPerSol?: number | null) {
 }
 
 describe('TokenDetail', () => {
-  let sb: ReturnType<typeof mockSupabase>;
+  let sb: ReturnType<typeof mockBench>;
 
   beforeEach(() => {
     // The price chart reads token_snapshots / alert_log / paper_positions: never the real client in tests.
-    sb = mockSupabase({ token_snapshots: ok(snapshotRows(6)) });
-    TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: sb.client }] });
+    sb = mockBench({ token_snapshots: ok(snapshotRows(6)) });
+    TestBed.configureTestingModule({ providers: sb.providers });
   });
 
   it('shows the « Signaux » badges first, then the price chart for this mint (no entry zone section)', async () => {
@@ -91,7 +90,7 @@ describe('TokenDetail', () => {
     expect(signals).not.toBeNull();
     if (chart && signals) expect(signals.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(Array.from(el.querySelectorAll('h3')).some((h) => h.textContent?.includes('Zone d’entrée'))).toBe(false);
-    expect(sb.callsOf('token_snapshots', 'eq')).toEqual([['mint', MINT]]);
+    expect(sb.callsOf('token_snapshots').map((c) => c.params)).toEqual([{ mint: MINT }]);
     expect(el.querySelector('[data-chart-surface]')?.getAttribute('role')).toBe('img');
   });
 

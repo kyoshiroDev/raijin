@@ -6,7 +6,7 @@ import { AlertSettingsForm } from './components/alert-settings-form';
 import { IosInstallGuide } from './components/ios-install-guide';
 import { PushToggle } from './components/push-toggle';
 import { TestPushButton } from './components/test-push-button';
-import { SettingsStore } from './settings-store';
+import { MSG, SettingsStore } from './settings-store';
 import { Icon } from '../../shared/ui/icon';
 
 @Component({
@@ -27,7 +27,7 @@ import { Icon } from '../../shared/ui/icon';
             <p class="truncate px-4 py-3 text-sm text-muted">Connecté : <span class="text-fg">{{ email }}</span></p>
           }
           <a routerLink="/account" class="flex min-h-12 items-center justify-between gap-3 px-4 text-sm font-semibold hover:bg-surface-2">
-            Mon compte et mot de passe
+            Mon compte et session
             <app-icon name="chevron-right" class="size-4 text-muted" />
           </a>
           <button
@@ -43,6 +43,9 @@ import { Icon } from '../../shared/ui/icon';
 
       <section aria-labelledby="settings-notifications" class="space-y-3" data-section="notifications">
         <h2 id="settings-notifications" class="text-xs font-semibold tracking-wide text-muted uppercase">Notifications</h2>
+        @if (auth.mode() === 'shadow') {
+          <p class="card text-sm text-warn" role="note" data-shadow-mode>{{ shadowMessage }}</p>
+        }
         @if (store.status() === 'ios-install') {
           <app-ios-install-guide />
         }
@@ -82,6 +85,7 @@ import { Icon } from '../../shared/ui/icon';
 })
 export class SettingsPage implements OnInit {
   protected readonly auth = inject(AuthStore);
+  protected readonly shadowMessage = MSG.shadow;
   protected readonly store = inject(SettingsStore);
   private readonly router = inject(Router);
   readonly signingOut = signal(false);

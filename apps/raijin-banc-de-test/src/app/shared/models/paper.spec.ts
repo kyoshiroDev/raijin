@@ -10,7 +10,6 @@ import {
   STRATEGY_LABEL,
   isPaperStrategy,
   isPaperBook,
-  PAPER_POSITION_COLUMNS,
   defaultWallet,
   isInsufficientBalanceError,
   legGrossPnl,
@@ -38,7 +37,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   sl_price: 0.7,
   sl_pct: 30,
   created_at: '2026-11-18T10:00:00Z',
-  paper_legs: [
+  legs: [
     { id: 'lb', position_id: 'p1', size_pct: 50, tp_price: 3, stop_price: 0.7, status: 'open' },
     { id: 'la', position_id: 'p1', size_pct: '50', tp_price: '2', stop_price: 0.7, status: 'tp_hit', exit_price: 1.96 },
   ],
@@ -57,14 +56,10 @@ describe('paper v2 model', () => {
     for (const over of [{ status: 'filled' }, { book: 'other' }, { strategy: 'x10' }, { stake_sol: 0 }, { entry_target_price: null }, { mint: '' }]) {
       expect(parsePaperPosition(row(over))).toBeNull();
     }
-    const p = parsePaperPosition(row({ paper_legs: [{ id: 'x', position_id: 'p1', size_pct: 25, status: 'open' }, { id: 'y', position_id: 'p1', size_pct: 100, status: 'won' }] }));
+    const p = parsePaperPosition(row({ legs: [{ id: 'x', position_id: 'p1', size_pct: 25, status: 'open' }, { id: 'y', position_id: 'p1', size_pct: 100, status: 'won' }] }));
     expect(p?.legs).toEqual([]);
     expect(parsePaperPositions([row(), null, 'x', row({ id: 'p2' })]).map((x) => x.id)).toEqual(['p1', 'p2']);
     expect(parsePaperPositions(null)).toEqual([]);
-  });
-
-  it('selects the legs embedded in the positions query', () => {
-    expect(PAPER_POSITION_COLUMNS).toContain('paper_legs(id,position_id,size_pct,tp_price,stop_price,status,exit_price,closed_at)');
   });
 
   it('parses wallets per book, defaulting initial_sol to 1, and a fresh default wallet', () => {
@@ -134,7 +129,7 @@ describe('paper v2 model', () => {
     const p = parsePaperPosition(
       row({
         strategy: 'thirds_x2_x3_x4',
-        paper_legs: [
+        legs: [
           { id: 'c', position_id: 'p1', size_pct: 34, tp_price: 4, status: 'open' },
           { id: 'a', position_id: 'p1', size_pct: 33, tp_price: 2, status: 'tp_hit' },
           { id: 'b', position_id: 'p1', size_pct: '33', tp_price: 3, status: 'open' },

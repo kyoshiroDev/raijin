@@ -1,7 +1,6 @@
 import { isSolanaAddress } from '../utils/solana-address';
 
-// Mirrors public.tokens. Regenerate with:
-// supabase gen types typescript --local > src/app/shared/models/database.types.ts
+// Mirrors public.tokens as served by the bench API (`tokenRowSchema` of @raijin/bench-contracts, snake_case columns).
 // Archived columns (slim-down, 2026-11-21: score, zone_*, tp1/tp2, invalidation, p_x3, p_dd50, rr, model_*) are no
 // longer written by the backend and no longer read here.
 export type DataConfidence = 'high' | 'medium' | 'low';

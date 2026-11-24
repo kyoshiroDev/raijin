@@ -1,51 +1,57 @@
-import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import type { Session } from '@supabase/supabase-js';
-import { SUPABASE } from '../supabase/supabase-client';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { BENCH_MODES, BENCH_ROUTES, type BenchLoginRequest, type BenchMode, type BenchSession } from '@raijin/bench-contracts';
+import { BenchApi, isBenchApiError } from '../api/bench-api';
 
-export type ChangePasswordResult = 'ok' | 'wrong-current' | 'update-failed';
+/** Résultat d'une connexion : jamais le texte brut du serveur (un seul message pour identifiants et code). */
+export type SignInResult = 'ok' | 'invalid' | 'throttled' | 'error';
+
+const MODES: readonly string[] = BENCH_MODES;
+
+/** Réponse `BenchSession` non fiable → session, ou null. */
+export function parseBenchSession(body: unknown): BenchSession | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const r = body as Record<string, unknown>;
+  const email = r['email'];
+  const mode = r['mode'];
+  const expiresAt = r['expiresAt'];
+  if (typeof email !== 'string' || email.length === 0 || email.length > 254) return null;
+  if (typeof mode !== 'string' || !MODES.includes(mode)) return null;
+  if (typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt))) return null;
+  return { email, mode: mode as BenchMode, expiresAt };
+}
 
 /**
- * Global auth state. MUST be instantiated at bootstrap (see `provideAppInitializer` in
- * app.config.ts): the constructor creates the Supabase client, which starts the PKCE code
- * exchange of a reset link right away. The auth listener is registered synchronously in the
- * same tick, before any await, so the PASSWORD_RECOVERY event cannot be missed even though
- * the reset page is lazy-loaded much later.
+ * Session du propriétaire du banc (compte unique, mot de passe + TOTP, docs/ARCHITECTURE.md §17.7). La session vit
+ * dans un cookie httpOnly posé par l'API : le front ne garde que la description renvoyée (`BenchSession`). Créé au
+ * démarrage (app.config.ts) pour lire la session avant la première garde de route. Tout 401 d'une route protégée
+ * oublie la session et renvoie à /login.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthStore {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
+  private readonly router = inject(Router);
 
-  private readonly _session = signal<Session | null>(null);
+  private readonly _session = signal<BenchSession | null>(null);
   private readonly _ready = signal(false);
-  /**
-   * True only once a PASSWORD_RECOVERY event has been received during THIS page load.
-   * In memory only (never persisted): a plain session never unlocks the reset form.
-   */
-  private readonly _recoveryPending = signal(false);
 
   readonly session = this._session.asReadonly();
   readonly ready = this._ready.asReadonly();
-  readonly recoveryPending = this._recoveryPending.asReadonly();
   readonly isAuthenticated = computed(() => this._session() !== null);
-  readonly email = computed(() => this._session()?.user.email ?? null);
+  readonly email = computed(() => this._session()?.email ?? null);
+  /** `shadow` : banc en mode ombre (aucune notification) ; `primary` : référence après bascule. */
+  readonly mode = computed(() => this._session()?.mode ?? null);
 
-  // Field order matters: `supabase` (client creation) → listener → init(). No await before this.
-  private readonly subscription = this.supabase.auth.onAuthStateChange((event, session) => {
-    this._session.set(session);
-    if (event === 'PASSWORD_RECOVERY') this._recoveryPending.set(true);
-    if (event === 'SIGNED_OUT') this._recoveryPending.set(false);
-  }).data.subscription;
-
-  private readonly initialized: Promise<void> = this.init();
+  private readonly initialized: Promise<void>;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.subscription.unsubscribe());
+    this.api.onUnauthorized(() => this.expire());
+    this.initialized = this.init();
   }
 
   private async init(): Promise<void> {
     try {
-      const { data } = await this.supabase.auth.getSession();
-      this._session.set(data.session);
+      this._session.set(parseBenchSession(await this.api.get(BENCH_ROUTES.authSession, { anonymous: true })));
     } catch {
       this._session.set(null);
     } finally {
@@ -57,72 +63,33 @@ export class AuthStore {
     return this.initialized;
   }
 
-  /**
-   * Email + password sign-in. Returns false on any failure (wrong credentials, unknown
-   * account, network…): callers show one generic message, never the raw error.
-   */
-  async signInWithPassword(email: string, password: string): Promise<boolean> {
+  /** Connexion en une étape : e-mail, mot de passe et code TOTP (ou code de secours). */
+  async signIn(request: BenchLoginRequest): Promise<SignInResult> {
     try {
-      const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
-      if (error || !data.session) return false;
-      this._session.set(data.session);
-      return true;
-    } catch {
-      return false;
+      const session = parseBenchSession(await this.api.post(BENCH_ROUTES.authLogin, request, { anonymous: true }));
+      if (session === null) return 'error';
+      this._session.set(session);
+      return 'ok';
+    } catch (error) {
+      if (isBenchApiError(error, 429)) return 'throttled';
+      if (isBenchApiError(error, 401) || isBenchApiError(error, 400)) return 'invalid';
+      return 'error';
     }
   }
 
-  /**
-   * Sends a password reset e-mail. Never throws and never reports the outcome:
-   * callers show the same message whatever happens (no account enumeration).
-   */
-  async requestPasswordReset(email: string): Promise<void> {
-    try {
-      await this.supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset`,
-      });
-    } catch {
-      // Swallowed on purpose: see above.
-    }
-  }
-
-  /** Sets a new password for the current session. Returns false on any failure. */
-  async updatePassword(password: string): Promise<boolean> {
-    try {
-      const { error } = await this.supabase.auth.updateUser({ password });
-      if (error) return false;
-      this._recoveryPending.set(false);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * In-app password change for a signed-in user: proves knowledge of the current password
-   * with a fresh sign-in (which also makes the session recent for `secure_password_change`),
-   * then updates the password, then revokes every other session.
-   */
-  async changePassword(currentPassword: string, newPassword: string): Promise<ChangePasswordResult> {
-    const email = this.email();
-    if (!email) return 'wrong-current';
-    if (!(await this.signInWithPassword(email, currentPassword))) return 'wrong-current';
-    if (!(await this.updatePassword(newPassword))) return 'update-failed';
-    await this.signOutOtherSessions();
-    return 'ok';
-  }
-
-  /** Revokes every other session of the user (e.g. after a password change). Best effort. */
-  async signOutOtherSessions(): Promise<void> {
-    try {
-      await this.supabase.auth.signOut({ scope: 'others' });
-    } catch {
-      // Best effort: the password is already changed.
-    }
-  }
-
+  /** Déconnexion : la session est révoquée côté API (best effort) et oubliée ici dans tous les cas. */
   async signOut(): Promise<void> {
-    this._recoveryPending.set(false);
-    await this.supabase.auth.signOut();
+    try {
+      await this.api.post(BENCH_ROUTES.authLogout, undefined, { anonymous: true });
+    } catch {
+      // Session déjà expirée ou API injoignable : rien d'autre à faire côté navigateur.
+    }
+    this._session.set(null);
+  }
+
+  /** 401 d'une route protégée : session expirée, révoquée, ou cookie d'une autre application. */
+  private expire(): void {
+    this._session.set(null);
+    if (!this.router.url.startsWith('/login')) void this.router.navigateByUrl('/login', { replaceUrl: true });
   }
 }

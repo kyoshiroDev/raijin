@@ -1,19 +1,21 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { FakeBenchApi, apiError, provideFakeBench } from '../api/bench-api.testing';
 import { MARKET_CONTEXT_TTL_MS, MarketContext, parseMarketRates } from './market-context';
 
+/** `data` : taux renvoyés dans `{ rates }` ; `error` : échec de l'API. */
 interface Result { data: unknown; error: unknown }
 
 function setup(result: () => Promise<Result>) {
-  const maybeSingle = vi.fn(result);
-  const limit = vi.fn(() => ({ maybeSingle }));
-  const order = vi.fn(() => ({ limit }));
-  const not = vi.fn(() => ({ order }));
-  const select = vi.fn(() => ({ not }));
-  const from = vi.fn(() => ({ select }));
-  TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: { from } }] });
-  return { market: TestBed.inject(MarketContext), from, select, not, order, limit, maybeSingle };
+  const from = vi.fn(async () => {
+    const r = await result();
+    if (r.error) throw apiError(500);
+    return { rates: r.data };
+  });
+  const api = new FakeBenchApi().on('GET', BENCH_ROUTES.marketRates, from);
+  TestBed.configureTestingModule({ providers: provideFakeBench(api) });
+  return { market: TestBed.inject(MarketContext), from, api };
 }
 
 describe('parseMarketRates', () => {
@@ -34,18 +36,14 @@ describe('MarketContext', () => {
     expect(from).not.toHaveBeenCalled();
   });
 
-  it('reads the latest scan_runs rates from Supabase and computes € per SOL', async () => {
-    const { market, from, select, not, order, limit } = setup(async () => ({ data: { sol_usd: 162, eur_usd: 1.08 }, error: null }));
+  it('reads the latest rates from GET /api/market/rates and computes € per SOL', async () => {
+    const { market, api } = setup(async () => ({ data: { sol_usd: 162, eur_usd: 1.08 }, error: null }));
     await market.load();
-    expect(from).toHaveBeenCalledWith('scan_runs');
-    expect(select).toHaveBeenCalledWith('sol_usd,eur_usd');
-    expect(not).toHaveBeenCalledWith('sol_usd', 'is', null);
-    expect(order).toHaveBeenCalledWith('started_at', { ascending: false });
-    expect(limit).toHaveBeenCalledWith(1);
+    expect(api.callsTo('GET', BENCH_ROUTES.marketRates)).toHaveLength(1);
     expect(market.eurPerSol()).toBeCloseTo(150, 10);
   });
 
-  it('stays null-safe: null values, no row, a select error (column not deployed) or a throw → no €', async () => {
+  it('stays null-safe: null values, no row, an API error or a throw → no €', async () => {
     const results: (() => Promise<Result>)[] = [
       async () => ({ data: { sol_usd: null, eur_usd: null }, error: null }),
       async () => ({ data: { sol_usd: 162, eur_usd: null }, error: null }),

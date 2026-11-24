@@ -1,3 +1,4 @@
+import { paperOpenRequestSchema } from '@raijin/bench-contracts';
 import { describe, expect, it } from 'vitest';
 import {
   DRAFT_ERRORS,
@@ -76,18 +77,20 @@ describe('paper sheet summary maths', () => {
   });
 });
 
-describe('paper_open_position payload', () => {
-  it('sends exactly the RPC parameters: all_x2, market entry, main book, no custom prices', () => {
-    expect(openPositionParams(DRAFT, MINT)).toEqual({
-      p_mint: MINT,
-      p_strategy: 'all_x2',
-      p_stake: 0.1,
-      p_entry: 1,
-      p_sl_pct: 30,
-      p_custom_tp: null,
-      p_custom_sl: null,
-      p_book: 'main',
+describe('POST /api/paper/positions body', () => {
+  it('sends exactly the contract fields: all_x2, market entry, main book, no custom prices', () => {
+    const body = openPositionParams(DRAFT, MINT);
+    expect(body).toEqual({
+      mint: MINT,
+      strategy: 'all_x2',
+      stake_sol: 0.1,
+      entry_price: 1,
+      sl_pct: 30,
+      custom_tp_price: null,
+      custom_sl_price: null,
+      book: 'main',
     });
+    expect(paperOpenRequestSchema.safeParse(body).success).toBe(true);
   });
 
   it('formats input numbers with a French comma and no exponent', () => {

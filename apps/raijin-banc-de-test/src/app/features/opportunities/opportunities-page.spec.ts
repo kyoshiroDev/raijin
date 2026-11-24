@@ -1,8 +1,9 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeBenchApi, FakeBenchEvents, apiError, list, provideFakeBench } from '../../core/api/bench-api.testing';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { SUPABASE } from '../../core/supabase/supabase-client';
 import type { TokenRow } from '../../shared/models/token';
 import { OpportunitiesPage } from './opportunities-page';
 
@@ -31,17 +32,25 @@ const ROWS = [
 describe('OpportunitiesPage', () => {
   let fixture: ComponentFixture<OpportunitiesPage>;
   let el: HTMLElement;
+  /** Réponse de GET /api/tokens : `{ data, error }` (`error` = échec de l'API). */
   const limit = vi.fn();
+  let api: FakeBenchApi;
+  let events: FakeBenchEvents;
 
   beforeEach(async () => {
     limit.mockReset().mockResolvedValue({ data: ROWS, error: null });
-    const query = { select: () => query, gte: () => query, order: () => query, limit };
-    const channel = { on: () => channel, subscribe: () => channel };
-    const supabase = { from: () => query, channel: () => channel, removeChannel: vi.fn() };
-    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: SUPABASE, useValue: supabase }] });
+    api = new FakeBenchApi().on('GET', BENCH_ROUTES.tokens, async () => {
+      const r = (await limit()) as { data: unknown[]; error: unknown };
+      if (r.error) throw apiError(500);
+      return list(r.data);
+    });
+    events = new FakeBenchEvents();
+    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideFakeBench(api, events)] });
     fixture = TestBed.createComponent(OpportunitiesPage);
     el = fixture.nativeElement;
     fixture.detectChanges();
+    // API double: a few promise hops before the list is loaded.
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
     fixture.detectChanges();
   });
@@ -51,6 +60,7 @@ describe('OpportunitiesPage', () => {
   const detailDialog = () => el.querySelectorAll('dialog')[1];
   const settle = async () => {
     fixture.detectChanges();
+    for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
     fixture.detectChanges();
   };
@@ -194,5 +204,27 @@ describe('OpportunitiesPage', () => {
     expect(symbols()).toContain('OLD');
     expect(symbols().at(-1)).toBe('OLD');
     expect(el.querySelector('[data-filter-badge]')).toBeNull(); // the switch is not a sheet filter
+  });
+
+  it('reads GET /api/tokens (last 30 min, 300 rows) and follows the SSE « tokens » stream', async () => {
+    const call = api.callsTo('GET', BENCH_ROUTES.tokens)[0];
+    expect(call?.query['limit']).toBe(300);
+    expect(Date.now() - Date.parse(String(call?.query['since']))).toBeGreaterThanOrEqual(30 * 60_000);
+    expect(events.subscriptions.map((s) => s.topics)).toEqual([['tokens']]);
+
+    events.emit({ type: 'token.delete', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' });
+    await settle();
+    expect(el.querySelectorAll('app-token-card')).toHaveLength(1);
+
+    events.reconnect();
+    await settle();
+    expect(api.callsTo('GET', BENCH_ROUTES.tokens)).toHaveLength(2);
+    await settle();
+    expect(el.querySelectorAll('app-token-card')).toHaveLength(2);
+  });
+
+  it('closes the stream when the page is destroyed', () => {
+    fixture.destroy();
+    expect(events.open).toBe(0);
   });
 });

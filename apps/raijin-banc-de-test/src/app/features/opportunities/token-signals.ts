@@ -1,6 +1,6 @@
 // Factual badges of a token (card + detail), replacing the score /100 and the Fibonacci zone (slim-down 2026-11-21).
 // Pure, no I/O. The thresholds mirror the « Jeune calme » / « Jeune frénésie » presets of the backend
-// (supabase/functions/_shared/presets.ts: YOUNG_BASE_RULES, YOUNG_CALM_RULES, YOUNG_FRENZY_RULES, safetyRejection,
+// (legacy Edge Functions _shared/presets.ts: YOUNG_BASE_RULES, YOUNG_CALM_RULES, YOUNG_FRENZY_RULES, safetyRejection,
 // youngLpOk, FLAG_ZONE_BROKEN): if they change there, change them here. These badges describe the token, they are
 // not a buy signal.
 import type { TokenRow } from '../../shared/models/token';

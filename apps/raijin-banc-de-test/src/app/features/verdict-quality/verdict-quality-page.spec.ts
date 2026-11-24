@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { DEMO_VARIANTS, buildQualityReport, simulateHistory, type QualityReport } from '@raijin/bench-verdicts';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { describe, expect, it } from 'vitest';
-import { SIMULATION_SIZE, SimulatedVerdictQualitySource, VerdictQualitySource } from './verdict-quality-source';
+import { FakeBenchApi, provideFakeBench } from '../../core/api/bench-api.testing';
+import { HttpVerdictQualitySource, SIMULATION_SIZE, SimulatedVerdictQualitySource, VerdictQualitySource } from './verdict-quality-source';
 import { LOAD_ERROR, VerdictQualityPage } from './verdict-quality-page';
 
 class FakeSource extends VerdictQualitySource {
@@ -30,6 +32,26 @@ const FULL = buildQualityReport(simulateHistory(7, 400), DEMO_VARIANTS);
 const full = () => new FakeSource(() => Promise.resolve(FULL));
 
 const small = (simulated = true) => buildQualityReport({ ...simulateHistory(3, 20), simulated }, DEMO_VARIANTS);
+
+describe('HttpVerdictQualitySource', () => {
+  function source(body: unknown) {
+    const api = new FakeBenchApi().on('GET', BENCH_ROUTES.verdictQuality, body);
+    TestBed.configureTestingModule({ providers: [HttpVerdictQualitySource, ...provideFakeBench(api)] });
+    return { src: TestBed.inject(HttpVerdictQualitySource), api };
+  }
+
+  it('reads the report computed by the bench API (GET /api/verdicts/quality)', async () => {
+    const report = small(false);
+    const { src, api } = source(report);
+    await expect(src.load()).resolves.toEqual(report);
+    expect(api.callsTo('GET', BENCH_ROUTES.verdictQuality)).toHaveLength(1);
+  });
+
+  it('refuses a body that is not a QualityReport', async () => {
+    const { src } = source({ simulated: 'non', horizons: [] });
+    await expect(src.load()).rejects.toThrow('Rapport de justesse invalide.');
+  });
+});
 
 describe('VerdictQualityPage', () => {
   it('source par défaut : jeu simulé déterministe de la lib', async () => {

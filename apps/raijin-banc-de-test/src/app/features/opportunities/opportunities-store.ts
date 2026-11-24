@@ -1,7 +1,8 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { SUPABASE } from '../../core/supabase/supabase-client';
-import { TOKEN_COLUMNS, parseTokenRow, type TokenRow } from '../../shared/models/token';
+import { BENCH_ROUTES, type BenchEvent } from '@raijin/bench-contracts';
+import { BenchApi, itemsOf } from '../../core/api/bench-api';
+import { BenchEvents, type BenchEventSubscription } from '../../core/api/bench-events';
+import { parseTokenRow, type TokenRow } from '../../shared/models/token';
 import { DEFAULT_FILTERS, activeFilterCount, applyFilters, type OpportunityFilters } from './opportunity-filters';
 
 const FRESH_WINDOW_MS = 30 * 60 * 1000; // only tokens refreshed in the last 30 min
@@ -9,8 +10,9 @@ const MAX_ROWS = 300;
 
 @Injectable()
 export class OpportunitiesStore {
-  private readonly supabase = inject(SUPABASE);
-  private channel: RealtimeChannel | null = null;
+  private readonly api = inject(BenchApi);
+  private readonly events = inject(BenchEvents);
+  private stream: BenchEventSubscription | null = null;
 
   private readonly _tokens = signal<TokenRow[]>([]);
   private readonly _loading = signal(false);
@@ -43,7 +45,8 @@ export class OpportunitiesStore {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
-      if (this.channel) void this.supabase.removeChannel(this.channel);
+      this.stream?.close();
+      this.stream = null;
     });
   }
 
@@ -53,15 +56,9 @@ export class OpportunitiesStore {
     this._error.set(null);
     const since = new Date(Date.now() - FRESH_WINDOW_MS).toISOString();
     try {
-      const { data, error } = await this.supabase
-        .from('tokens')
-        .select(TOKEN_COLUMNS)
-        .gte('updated_at', since)
-        // Youngest pairs first (the list shows pairs < 24 h by default); the score column is archived.
-        .order('pair_created_at', { ascending: false, nullsFirst: false })
-        .limit(MAX_ROWS);
-      if (error) throw error;
-      this._tokens.set((data as unknown[]).map(parseTokenRow).filter((t): t is TokenRow => t !== null));
+      // Youngest pairs first (the list shows pairs < 24 h by default), sorted by the API.
+      const body = await this.api.get(BENCH_ROUTES.tokens, { query: { since, limit: MAX_ROWS } });
+      this._tokens.set(itemsOf(body).map(parseTokenRow).filter((t): t is TokenRow => t !== null));
       this._lastUpdate.set(new Date());
     } catch {
       this._error.set('Impossible de charger les opportunités. Réessaie dans un instant.');
@@ -70,20 +67,22 @@ export class OpportunitiesStore {
     }
   }
 
+  /** Live updates (SSE `tokens`, ex-Realtime `tokens-live`). After a reconnection the list is reloaded (no replay). Idempotent. */
   listen(): void {
-    if (this.channel) return;
-    this.channel = this.supabase
-      .channel('tokens-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tokens' }, (payload) => {
-        if (payload.eventType === 'DELETE') {
-          const old = payload.old as Partial<TokenRow>;
-          this._tokens.update((list) => list.filter((t) => t.mint !== old.mint));
-        } else {
-          const row = parseTokenRow(payload.new);
-          if (row) this.upsert(row);
-        }
-      })
-      .subscribe();
+    if (this.stream) return;
+    this.stream = this.events.connect(['tokens'], {
+      onEvent: (event) => this.onEvent(event),
+      onReconnect: () => void this.load(),
+    });
+  }
+
+  private onEvent(event: BenchEvent): void {
+    if (event.type === 'token.delete') {
+      this._tokens.update((list) => list.filter((t) => t.mint !== event.mint));
+    } else if (event.type === 'token.upsert') {
+      const row = parseTokenRow(event.token);
+      if (row) this.upsert(row);
+    }
   }
 
   private upsert(row: TokenRow): void {

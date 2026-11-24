@@ -1,222 +1,131 @@
 import { TestBed } from '@angular/core/testing';
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../supabase/supabase-client';
-import { AuthStore } from './auth-store';
+import { provideRouter, Router, UrlTree, type ActivatedRouteSnapshot, type RouterStateSnapshot } from '@angular/router';
+import { BENCH_ROUTES, type BenchSession } from '@raijin/bench-contracts';
+import { describe, expect, it, vi } from 'vitest';
+import { BenchApi, BENCH_COOKIES, BENCH_FETCH } from '../api/bench-api';
+import { FakeBenchApi, apiError, provideFakeBench } from '../api/bench-api.testing';
+import { authGuard, guestGuard } from './auth-guard';
+import { AuthStore, parseBenchSession } from './auth-store';
 
-const session = { access_token: 't', user: { email: 'a@b.co' } } as unknown as Session;
+const SESSION: BenchSession = { email: 'me@example.com', mode: 'shadow', expiresAt: '2026-11-24T20:00:00.000Z' };
+const LOGIN = { email: 'me@example.com', password: 'pw', totp: '123456' };
 
-type AuthListener = (event: AuthChangeEvent, session: Session | null) => void;
-
-function setup(initial: { session?: Session | null } = {}) {
-  const listeners: AuthListener[] = [];
-  const unsubscribe = vi.fn();
-  const auth = {
-    getSession: vi.fn().mockResolvedValue({ data: { session: initial.session ?? null } }),
-    onAuthStateChange: vi.fn((cb: AuthListener) => {
-      listeners.push(cb);
-      return { data: { subscription: { unsubscribe } } };
-    }),
-    signInWithPassword: vi.fn(),
-    resetPasswordForEmail: vi.fn().mockResolvedValue({ data: {}, error: null }),
-    updateUser: vi.fn(),
-    signOut: vi.fn().mockResolvedValue({ error: null }),
-  };
-  TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: { auth } }] });
-  return { auth, listeners, unsubscribe, store: TestBed.inject(AuthStore) };
+function setup(api: FakeBenchApi) {
+  TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideFakeBench(api)] });
+  return TestBed.inject(AuthStore);
 }
 
+describe('parseBenchSession', () => {
+  it('keeps a valid session and rejects anything else', () => {
+    expect(parseBenchSession(SESSION)).toEqual(SESSION);
+    expect(parseBenchSession({ ...SESSION, mode: 'other' })).toBeNull();
+    expect(parseBenchSession({ ...SESSION, expiresAt: 'demain' })).toBeNull();
+    expect(parseBenchSession(null)).toBeNull();
+  });
+});
+
 describe('AuthStore', () => {
-  beforeEach(() => TestBed.resetTestingModule());
-
-  describe('signInWithPassword', () => {
-    it('stores the session and returns true on success', async () => {
-      const { auth, store } = setup();
-      await store.whenReady();
-      auth.signInWithPassword.mockResolvedValue({ data: { session, user: session.user }, error: null });
-      await expect(store.signInWithPassword('a@b.co', 'pw')).resolves.toBe(true);
-      expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.co', password: 'pw' });
-      expect(store.isAuthenticated()).toBe(true);
-    });
-
-    it('returns false on a Supabase error', async () => {
-      const { auth, store } = setup();
-      auth.signInWithPassword.mockResolvedValue({
-        data: { session: null, user: null },
-        error: { message: 'Invalid login credentials' },
-      });
-      await expect(store.signInWithPassword('a@b.co', 'bad')).resolves.toBe(false);
-      expect(store.isAuthenticated()).toBe(false);
-    });
-
-    it('returns false when the call throws', async () => {
-      const { auth, store } = setup();
-      auth.signInWithPassword.mockRejectedValue(new Error('network'));
-      await expect(store.signInWithPassword('a@b.co', 'pw')).resolves.toBe(false);
-    });
+  it('reads the current session at start-up (anonymous call: a 401 is not a redirect)', async () => {
+    const api = new FakeBenchApi().on('GET', BENCH_ROUTES.authSession, SESSION);
+    const store = setup(api);
+    await store.whenReady();
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.email()).toBe('me@example.com');
+    expect(store.mode()).toBe('shadow');
+    expect(api.callsTo('GET', BENCH_ROUTES.authSession)).toHaveLength(1);
   });
 
-  describe('requestPasswordReset', () => {
-    it('redirects the reset link to /auth/reset', async () => {
-      const { auth, store } = setup();
-      await store.requestPasswordReset('a@b.co');
-      expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('a@b.co', {
-        redirectTo: `${window.location.origin}/auth/reset`,
-      });
+  it('starts signed out when the session is missing', async () => {
+    const api = new FakeBenchApi().on('GET', BENCH_ROUTES.authSession, () => {
+      throw apiError(401, 'AUTH_SESSION_EXPIRED');
     });
-
-    it('never throws', async () => {
-      const { auth, store } = setup();
-      auth.resetPasswordForEmail.mockRejectedValue(new Error('network'));
-      await expect(store.requestPasswordReset('a@b.co')).resolves.toBeUndefined();
-    });
+    const store = setup(api);
+    await store.whenReady();
+    expect(store.ready()).toBe(true);
+    expect(store.isAuthenticated()).toBe(false);
   });
 
-  describe('recoveryPending', () => {
-    it('subscribes to auth events synchronously at construction, before getSession', () => {
-      const { auth } = setup();
-      expect(auth.onAuthStateChange).toHaveBeenCalledTimes(1);
-      expect(auth.onAuthStateChange.mock.invocationCallOrder[0]).toBeLessThan(
-        auth.getSession.mock.invocationCallOrder[0],
-      );
-    });
-
-    it('is set only by a PASSWORD_RECOVERY event', async () => {
-      const { listeners, store } = setup();
-      await store.whenReady();
-      expect(store.recoveryPending()).toBe(false);
-      for (const event of ['INITIAL_SESSION', 'SIGNED_IN', 'TOKEN_REFRESHED', 'USER_UPDATED'] as const) {
-        listeners[0](event, session);
-        expect(store.recoveryPending(), event).toBe(false);
-      }
-      listeners[0]('PASSWORD_RECOVERY', session);
-      expect(store.recoveryPending()).toBe(true);
-      expect(store.isAuthenticated()).toBe(true);
-    });
-
-    it('is not set by an existing session alone', async () => {
-      const { auth, store } = setup({ session });
-      await store.whenReady();
-      expect(auth.getSession).toHaveBeenCalled();
-      expect(store.isAuthenticated()).toBe(true);
-      expect(store.recoveryPending()).toBe(false);
-    });
-
-    it('records an event emitted before getSession resolves', async () => {
-      const { listeners, store } = setup();
-      listeners[0]('PASSWORD_RECOVERY', session);
-      await store.whenReady();
-      expect(store.recoveryPending()).toBe(true);
-    });
-
-    it('is cleared after a successful password update', async () => {
-      const { auth, listeners, store } = setup();
-      listeners[0]('PASSWORD_RECOVERY', session);
-      auth.updateUser.mockResolvedValueOnce({ data: { user: null }, error: { message: 'weak' } });
-      await store.updatePassword('x');
-      expect(store.recoveryPending()).toBe(true);
-      auth.updateUser.mockResolvedValueOnce({ data: { user: session.user }, error: null });
-      await store.updatePassword('N3w-Password!!');
-      expect(store.recoveryPending()).toBe(false);
-    });
-
-    it('is cleared on sign-out and on a SIGNED_OUT event', async () => {
-      const { listeners, store } = setup();
-      listeners[0]('PASSWORD_RECOVERY', session);
-      await store.signOut();
-      expect(store.recoveryPending()).toBe(false);
-      listeners[0]('PASSWORD_RECOVERY', session);
-      listeners[0]('SIGNED_OUT', null);
-      expect(store.recoveryPending()).toBe(false);
-      expect(store.isAuthenticated()).toBe(false);
-    });
-
-    it('unsubscribes when the injector is destroyed', () => {
-      const { unsubscribe } = setup();
-      TestBed.resetTestingModule();
-      expect(unsubscribe).toHaveBeenCalled();
-    });
+  it('signs in with password + TOTP in one step', async () => {
+    const api = new FakeBenchApi()
+      .on('GET', BENCH_ROUTES.authSession, () => {
+        throw apiError(401);
+      })
+      .on('POST', BENCH_ROUTES.authLogin, SESSION);
+    const store = setup(api);
+    await store.whenReady();
+    expect(await store.signIn(LOGIN)).toBe('ok');
+    expect(api.callsTo('POST', BENCH_ROUTES.authLogin)[0]?.body).toEqual(LOGIN);
+    expect(store.isAuthenticated()).toBe(true);
   });
 
-  describe('changePassword', () => {
-    async function signedIn() {
-      const ctx = setup({ session });
-      await ctx.store.whenReady();
-      return ctx;
-    }
-
-    it('verifies the current password, then updates, then signs out the other sessions', async () => {
-      const { auth, store } = await signedIn();
-      const calls: string[] = [];
-      auth.signInWithPassword.mockImplementation(async () => {
-        calls.push('signInWithPassword');
-        return { data: { session, user: session.user }, error: null };
-      });
-      auth.updateUser.mockImplementation(async () => {
-        calls.push('updateUser');
-        return { data: { user: session.user }, error: null };
-      });
-      auth.signOut.mockImplementation(async () => {
-        calls.push('signOut');
-        return { error: null };
-      });
-      await expect(store.changePassword('old-Passw0rd!', 'N3w-Password!!')).resolves.toBe('ok');
-      expect(calls).toEqual(['signInWithPassword', 'updateUser', 'signOut']);
-      expect(auth.signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.co', password: 'old-Passw0rd!' });
-      expect(auth.updateUser).toHaveBeenCalledWith({ password: 'N3w-Password!!' });
-      expect(auth.signOut).toHaveBeenCalledWith({ scope: 'others' });
+  it.each([
+    [401, 'invalid'],
+    [400, 'invalid'],
+    [429, 'throttled'],
+    [500, 'error'],
+    [0, 'error'],
+  ] as const)('maps a %i on sign-in to « %s »', async (status, expected) => {
+    const api = new FakeBenchApi().on('POST', BENCH_ROUTES.authLogin, () => {
+      throw apiError(status);
     });
-
-    it('stops at a wrong current password: no updateUser, no signOut', async () => {
-      const { auth, store } = await signedIn();
-      auth.signInWithPassword.mockResolvedValue({
-        data: { session: null, user: null },
-        error: { message: 'Invalid login credentials' },
-      });
-      await expect(store.changePassword('wrong', 'N3w-Password!!')).resolves.toBe('wrong-current');
-      expect(auth.updateUser).not.toHaveBeenCalled();
-      expect(auth.signOut).not.toHaveBeenCalled();
-      expect(store.isAuthenticated()).toBe(true);
-    });
-
-    it('reports update-failed and keeps the other sessions when updateUser fails', async () => {
-      const { auth, store } = await signedIn();
-      auth.signInWithPassword.mockResolvedValue({ data: { session, user: session.user }, error: null });
-      auth.updateUser.mockResolvedValue({ data: { user: null }, error: { message: 'reauthentication_needed' } });
-      await expect(store.changePassword('old-Passw0rd!', 'N3w-Password!!')).resolves.toBe('update-failed');
-      expect(auth.signOut).not.toHaveBeenCalled();
-    });
-
-    it('refuses without a signed-in e-mail', async () => {
-      const { auth, store } = setup();
-      await store.whenReady();
-      await expect(store.changePassword('x', 'N3w-Password!!')).resolves.toBe('wrong-current');
-      expect(auth.signInWithPassword).not.toHaveBeenCalled();
-    });
+    const store = setup(api);
+    expect(await store.signIn(LOGIN)).toBe(expected);
+    expect(store.isAuthenticated()).toBe(false);
   });
 
-  describe('updatePassword', () => {
-    it('returns true on success', async () => {
-      const { auth, store } = setup();
-      auth.updateUser.mockResolvedValue({ data: { user: session.user }, error: null });
-      await expect(store.updatePassword('N3w-Password!!')).resolves.toBe(true);
-      expect(auth.updateUser).toHaveBeenCalledWith({ password: 'N3w-Password!!' });
-    });
+  it('signs out even when the API is unreachable', async () => {
+    const api = new FakeBenchApi()
+      .on('GET', BENCH_ROUTES.authSession, SESSION)
+      .on('POST', BENCH_ROUTES.authLogout, () => {
+        throw apiError(0);
+      });
+    const store = setup(api);
+    await store.whenReady();
+    await store.signOut();
+    expect(store.isAuthenticated()).toBe(false);
+    expect(api.callsTo('POST', BENCH_ROUTES.authLogout)).toHaveLength(1);
+  });
+});
 
-    it('returns false on error or throw', async () => {
-      const { auth, store } = setup();
-      auth.updateUser.mockResolvedValueOnce({ data: { user: null }, error: { message: 'weak' } });
-      await expect(store.updatePassword('x')).resolves.toBe(false);
-      auth.updateUser.mockRejectedValueOnce(new Error('network'));
-      await expect(store.updatePassword('x')).resolves.toBe(false);
+describe('AuthStore with the real client: 401 → /login', () => {
+  it('forgets the session and goes back to /login when a protected route answers 401', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url.endsWith('/api/auth/session')
+        ? new Response(JSON.stringify(SESSION), { status: 200 })
+        : new Response(JSON.stringify({ code: 'AUTH_SESSION_EXPIRED', message: 'Session expirée.' }), { status: 401 }),
+    );
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), { provide: BENCH_FETCH, useValue: fetchFn }, { provide: BENCH_COOKIES, useValue: () => '' }],
     });
+    const store = TestBed.inject(AuthStore);
+    await store.whenReady();
+    expect(store.isAuthenticated()).toBe(true);
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    await expect(TestBed.inject(BenchApi).get(BENCH_ROUTES.tokens)).rejects.toMatchObject({ status: 401 });
+    expect(store.isAuthenticated()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith('/login', { replaceUrl: true });
+  });
+});
+
+describe('route guards', () => {
+  const route = {} as ActivatedRouteSnapshot;
+  const state = {} as RouterStateSnapshot;
+
+  it('authGuard sends a visitor without session to /login and lets the owner in', async () => {
+    const api = new FakeBenchApi().on('GET', BENCH_ROUTES.authSession, () => {
+      throw apiError(401);
+    });
+    setup(api);
+    const denied = await TestBed.runInInjectionContext(() => authGuard(route, state));
+    expect(denied).toBeInstanceOf(UrlTree);
+    expect(String(denied)).toBe('/login');
   });
 
-  it('signs out the other sessions only, without throwing', async () => {
-    const { auth, store } = setup();
-    await store.signOutOtherSessions();
-    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'others' });
-    auth.signOut.mockRejectedValueOnce(new Error('network'));
-    await expect(store.signOutOtherSessions()).resolves.toBeUndefined();
+  it('guestGuard sends a signed-in owner home', async () => {
+    setup(new FakeBenchApi().on('GET', BENCH_ROUTES.authSession, SESSION));
+    expect(await TestBed.runInInjectionContext(() => authGuard(route, state))).toBe(true);
+    const home = await TestBed.runInInjectionContext(() => guestGuard(route, state));
+    expect(String(home)).toBe('/');
   });
 });

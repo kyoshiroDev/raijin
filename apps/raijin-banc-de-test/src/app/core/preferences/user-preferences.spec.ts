@@ -1,13 +1,19 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { FakeBenchApi, apiError, provideFakeBench } from '../api/bench-api.testing';
 import { UserPreferences } from './user-preferences';
 
+/** `error` simule un échec de l'API (500). */
 function setup(result: () => Promise<{ data: unknown; error: unknown }>) {
-  const select = vi.fn(() => ({ maybeSingle: result }));
-  const from = vi.fn(() => ({ select }));
-  TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: { from } }] });
-  return { prefs: TestBed.inject(UserPreferences), from, select };
+  const from = vi.fn(async () => {
+    const r = await result();
+    if (r.error) throw apiError(500);
+    return r.data;
+  });
+  const api = new FakeBenchApi().on('GET', BENCH_ROUTES.preferences, from);
+  TestBed.configureTestingModule({ providers: provideFakeBench(api) });
+  return { prefs: TestBed.inject(UserPreferences), from, api };
 }
 
 describe('UserPreferences', () => {
@@ -17,11 +23,10 @@ describe('UserPreferences', () => {
     expect(from).not.toHaveBeenCalled();
   });
 
-  it('reads stake_sol from alert_settings (Supabase only)', async () => {
-    const { prefs, from, select } = setup(async () => ({ data: { stake_sol: 0.5 }, error: null }));
+  it('reads stake_sol from GET /api/settings/preferences', async () => {
+    const { prefs, api } = setup(async () => ({ data: { stake_sol: 0.5 }, error: null }));
     await prefs.load();
-    expect(from).toHaveBeenCalledWith('alert_settings');
-    expect(select).toHaveBeenCalledWith('stake_sol,paper_sl_pct');
+    expect(api.callsTo('GET', BENCH_ROUTES.preferences)).toHaveLength(1);
     expect(prefs.stakeSol()).toBe(0.5);
   });
 

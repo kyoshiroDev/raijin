@@ -1,16 +1,14 @@
 import { DOCUMENT, DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SwPush } from '@angular/service-worker';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi, isBenchApiError } from '../../core/api/bench-api';
 import { BROWSER_SNAPSHOT, pushCapability, type PushCapability } from '../../core/pwa/push-environment';
-import { VAPID_PUBLIC_KEY } from '../../core/pwa/push-config';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { SUPABASE } from '../../core/supabase/supabase-client';
 import {
-  ALERT_SETTINGS_COLUMNS,
   DEFAULT_ALERT_SETTINGS,
   parseAlertSettings,
   preferencesOf,
-  preferencesPayload,
   subscriptionRow,
   validateAlertPreferences,
   type AlertErrors,
@@ -27,8 +25,6 @@ export interface Feedback {
 }
 
 export const MSG = {
-  otherAccount:
-    'Cet appareil est déjà lié à un autre compte. Il vient d’en être délié : touche à nouveau l’interrupteur pour l’activer sur ce compte.',
   tooMany: 'Trop d’appareils enregistrés (10 maximum). Désactive les notifications sur un ancien appareil.',
   denied: 'Notifications refusées. Pour les réactiver : Réglages iOS → Banc test → Notifications.',
   enableFailed: 'Impossible d’activer les notifications. Réessaie dans un instant.',
@@ -36,26 +32,15 @@ export const MSG = {
   loadFailed: 'Impossible de charger tes réglages d’alerte.',
   saved: 'Réglages enregistrés.',
   saveFailed: 'Impossible d’enregistrer les réglages. Réessaie dans un instant.',
+  /** Mode ombre : le banc du VPS n'envoie aucune notification (le banc de référence reste Supabase jusqu'à la bascule). */
+  shadow: 'Banc en mode ombre : aucune notification n’est envoyée tant que la bascule n’est pas faite.',
 } as const;
 
-interface DbError {
-  code?: string;
-  message?: string;
-}
-
-function asDbError(error: unknown): DbError {
-  return typeof error === 'object' && error !== null ? (error as DbError) : {};
-}
-
-/** HTTP status of a failed `functions.invoke` (FunctionsHttpError keeps the Response in `context`). */
-function httpStatus(error: unknown): number | null {
-  if (typeof error !== 'object' || error === null || !('context' in error)) return null;
-  const context: unknown = (error as { context: unknown }).context;
-  if (typeof context === 'object' && context !== null && 'status' in context) {
-    const status: unknown = (context as { status: unknown }).status;
-    return typeof status === 'number' ? status : null;
-  }
-  return null;
+/** Clé publique VAPID du banc (`GET /api/push/vapid-public-key`), ou null si le push n'est pas configuré. */
+function vapidKeyOf(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const key = (body as { publicKey?: unknown }).publicKey;
+  return typeof key === 'string' && /^[A-Za-z0-9_-]{86,88}$/.test(key) ? key : null;
 }
 
 function sentCount(data: unknown): number {
@@ -71,9 +56,8 @@ function sentCount(data: unknown): number {
  */
 @Injectable()
 export class SettingsStore {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
   private readonly swPush = inject(SwPush);
-  private readonly vapidPublicKey = inject(VAPID_PUBLIC_KEY);
   private readonly readSnapshot = inject(BROWSER_SNAPSHOT);
   private readonly document = inject(DOCUMENT);
   private readonly preferences = inject(UserPreferences);
@@ -134,9 +118,8 @@ export class SettingsStore {
   async load(): Promise<void> {
     this._loadError.set(null);
     try {
-      const { data, error } = await this.supabase.from('alert_settings').select(ALERT_SETTINGS_COLUMNS).maybeSingle();
-      if (error) throw error;
-      this._settings.set(data ? parseAlertSettings(data) : { ...DEFAULT_ALERT_SETTINGS });
+      // The API answers the defaults when no row exists yet.
+      this._settings.set(parseAlertSettings(await this.api.get(BENCH_ROUTES.alertSettings)));
       this.preferences.setStake(this._settings().stake_sol);
       this.preferences.setPaperSlPct(this._settings().paper_sl_pct);
     } catch {
@@ -161,9 +144,19 @@ export class SettingsStore {
     this._pushBusy.set(true);
     this._pushMessage.set(null);
     try {
+      let serverPublicKey: string | null = null;
+      try {
+        serverPublicKey = vapidKeyOf(await this.api.get(BENCH_ROUTES.pushVapidKey));
+      } catch {
+        serverPublicKey = null;
+      }
+      if (serverPublicKey === null) {
+        this._pushMessage.set({ kind: 'error', text: MSG.enableFailed });
+        return;
+      }
       let subscription: PushSubscription;
       try {
-        subscription = await this.swPush.requestSubscription({ serverPublicKey: this.vapidPublicKey });
+        subscription = await this.swPush.requestSubscription({ serverPublicKey });
       } catch {
         this.refreshEnvironment();
         this._pushMessage.set({ kind: 'error', text: this._snapshot().permission === 'denied' ? MSG.denied : MSG.enableFailed });
@@ -174,16 +167,13 @@ export class SettingsStore {
 
       const saved = await this.saveSubscription(subscription);
       if (saved !== 'ok') {
-        if (saved === 'other-account') await this.unsubscribeBrowser();
-        this._pushMessage.set({
-          kind: 'error',
-          text: saved === 'other-account' ? MSG.otherAccount : saved === 'too-many' ? MSG.tooMany : MSG.enableFailed,
-        });
+        this._pushMessage.set({ kind: 'error', text: saved === 'too-many' ? MSG.tooMany : MSG.enableFailed });
         return;
       }
 
-      const { error } = await this.supabase.from('alert_settings').upsert({ enabled: true }, { onConflict: 'user_id' });
-      if (error) {
+      try {
+        await this.api.put(BENCH_ROUTES.alertEnabled, { enabled: true });
+      } catch {
         this._pushMessage.set({ kind: 'error', text: MSG.enableFailed });
         return;
       }
@@ -205,12 +195,17 @@ export class SettingsStore {
       await this.unsubscribeBrowser();
       let failed = false;
       if (endpoint) {
-        const { error } = await this.supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
-        failed ||= !!error;
+        failed = !(await this.api.post(BENCH_ROUTES.pushUnsubscribe, { endpoint }).then(
+          () => true,
+          () => false,
+        ));
       }
-      const { error } = await this.supabase.from('alert_settings').upsert({ enabled: false }, { onConflict: 'user_id' });
-      if (error) failed = true;
-      else this._settings.update((s) => ({ ...s, enabled: false }));
+      try {
+        await this.api.put(BENCH_ROUTES.alertEnabled, { enabled: false });
+        this._settings.update((s) => ({ ...s, enabled: false }));
+      } catch {
+        failed = true;
+      }
       if (failed) this._pushMessage.set({ kind: 'error', text: MSG.disableFailed });
     } catch {
       this._pushMessage.set({ kind: 'error', text: MSG.disableFailed });
@@ -220,19 +215,17 @@ export class SettingsStore {
   }
 
   /**
-   * « Enregistrer » : validates then upserts the preferences, stake included, with alert_preset = 'young_calm' (the
-   * only profile left). Never `enabled`, never an archived column.
+   * « Enregistrer » : validates then saves the preferences, stake included (`PUT /api/settings/alerts`; the profile is
+   * fixed server-side to 'young_calm', the only one left). Never `enabled`, never an archived column.
    */
   async savePreferences(prefs: AlertPreferences): Promise<AlertErrors> {
     const errors = validateAlertPreferences(prefs);
     if (Object.keys(errors).length > 0 || this._saving()) return errors;
     this._saving.set(true);
     this._saveMessage.set(null);
-    const payload = preferencesPayload(prefs);
+    const saved = preferencesOf(prefs);
     try {
-      const { error } = await this.supabase.from('alert_settings').upsert(payload, { onConflict: 'user_id' });
-      if (error) throw error;
-      const saved = preferencesOf(payload);
+      await this.api.put(BENCH_ROUTES.alertSettings, saved);
       this._settings.update((s) => ({ ...s, ...saved }));
       this.preferences.setStake(saved.stake_sol);
       this.preferences.setPaperSlPct(saved.paper_sl_pct);
@@ -249,15 +242,10 @@ export class SettingsStore {
     if (!this.canSendTest()) return;
     this._testState.set('pending');
     try {
-      const { data, error } = await this.supabase.functions.invoke('send-test-push', { method: 'POST' });
-      if (error) {
-        this._testState.set(httpStatus(error) === 429 ? 'throttled' : 'error');
-        return;
-      }
-      this._testSent.set(sentCount(data));
+      this._testSent.set(sentCount(await this.api.post(BENCH_ROUTES.pushTest)));
       this._testState.set('sent');
-    } catch {
-      this._testState.set('error');
+    } catch (error) {
+      this._testState.set(isBenchApiError(error, 429) ? 'throttled' : 'error');
     }
   }
 
@@ -267,16 +255,16 @@ export class SettingsStore {
     if (sub) await this.saveSubscription(sub).catch(() => undefined);
   }
 
-  private async saveSubscription(sub: PushSubscription): Promise<'ok' | 'other-account' | 'too-many' | 'error'> {
-    const row = subscriptionRow(sub.toJSON(), this.document.defaultView?.navigator.userAgent ?? '');
-    if (!row) return 'error';
-    // user_id is filled by its default (auth.uid()); RLS rejects an endpoint owned by another account.
-    const { error } = await this.supabase.from('push_subscriptions').upsert(row, { onConflict: 'endpoint' });
-    if (!error) return 'ok';
-    const { code, message } = asDbError(error);
-    if (code === '42501') return 'other-account';
-    if (code === '23514' && /too many push subscriptions/i.test(message ?? '')) return 'too-many';
-    return 'error';
+  /** `POST /api/push/subscriptions` (single account: no ownership check needed). 409 = too many devices. */
+  private async saveSubscription(sub: PushSubscription): Promise<'ok' | 'too-many' | 'error'> {
+    const body = subscriptionRow(sub.toJSON());
+    if (!body) return 'error';
+    try {
+      await this.api.post(BENCH_ROUTES.pushSubscriptions, body);
+      return 'ok';
+    } catch (error) {
+      return isBenchApiError(error, 409) ? 'too-many' : 'error';
+    }
   }
 
   private async unsubscribeBrowser(): Promise<void> {

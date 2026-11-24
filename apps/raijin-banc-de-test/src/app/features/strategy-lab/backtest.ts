@@ -1,8 +1,9 @@
-// Pure parsing / ranking / naming of the backtest laboratory (public.backtest_runs, public.backtest_results).
-// SIMULATION ONLY: past data replayed, nothing predicts the future. Rows are written by the backtest-run Edge
-// Function (service_role) and read here (SELECT authenticated); every field is parsed defensively.
+// Pure parsing / ranking / naming of the backtest laboratory (backtest_runs, backtest_results).
+// SIMULATION ONLY: past data replayed, nothing predicts the future. Rows are written by the backtest-run job of the
+// bench API and read here (`GET /api/lab/runs`, `GET /api/lab/runs/:id/results`); every field is parsed defensively.
 //
-// Column semantics, checked against supabase/migrations/20261119090000_backtest_lab.sql and _shared/backtest.ts:
+// Column semantics (contract: @raijin/bench-contracts lab.ts; origin: legacy migration 20261119090000_backtest_lab.sql
+// and _shared/backtest.ts):
 // - backtest_results.split ∈ 'train' | 'test'; narrative ∈ 'all' | 'gta' | 'other'; only DISTINCT variants are
 //   written (no breakeven row for single-leg exits); retained / robust repeated on the train and test rows.
 // - win_rate is a fraction (0–1); avg_*_pct and ci_low / ci_high are percentages of the stake (12.5 = +12,5 %).
@@ -26,15 +27,7 @@ export type LabExit = 'all_x2';
 export type LabNarrative = 'all' | 'gta' | 'other';
 export type LabSplit = 'train' | 'test';
 
-/** Columns of backtest_runs before lab-v2 (column-level grant); used when `summary` is not readable yet. */
-export const LEGACY_RUN_COLUMNS =
-  'id,status,trigger,data_version,n_detections,n_variants,n_distinct_variants,progress,created_at,started_at,finished_at';
-export const RUN_COLUMNS = `${LEGACY_RUN_COLUMNS},summary`;
-export const RESULT_COLUMNS =
-  'run_id,preset,exit,sl_pct,breakeven,time_exit_h,delay_min,narrative,split,trades,win_rate,avg_win_pct,avg_loss_pct,' +
-  'avg_net_pct,avg_net_sol,profit_factor,max_drawdown_sol,worst_losing_streak,ci_low,ci_high,ci_contains_zero,open_at_end,' +
-  'retained,robust';
-/** Retained rows read for one run (PostgREST max rows); reaching it is reported as truncated. */
+/** Retained rows read for one run (API maximum); reaching it is reported as truncated. */
 export const RESULT_FETCH_LIMIT = 1000;
 
 export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
@@ -378,20 +371,15 @@ export function narrativeCounts(rows: readonly ResultRow[]): Record<LabNarrative
   return out;
 }
 
-/** PostgREST / Postgres « relation or function does not exist » (laboratory not deployed yet). */
-export function isMissingRelationError(error: unknown): boolean {
+/** Bench API error (`BenchApiError`, read structurally to keep this module pure): HTTP status and code. */
+function apiStatus(error: unknown): { status: number | null; code: unknown; message: unknown } {
   const e = record(error);
-  const code = e?.['code'];
-  return code === 'PGRST205' || code === '42P01' || code === 'PGRST202' || code === '42883';
+  return { status: typeof e?.['status'] === 'number' ? e['status'] : null, code: e?.['code'], message: e?.['message'] };
 }
 
-/**
- * A column of the SELECT is not readable: unknown column (42703, PGRST204) or no column-level grant yet (42501).
- * Used to fall back to LEGACY_RUN_COLUMNS while the lab-v2 migration is not deployed.
- */
-export function isMissingColumnError(error: unknown): boolean {
-  const code = record(error)?.['code'];
-  return code === '42703' || code === '42501' || code === 'PGRST204';
+/** 404: the laboratory routes are not deployed yet on the bench API. */
+export function isMissingRelationError(error: unknown): boolean {
+  return apiStatus(error).status === 404;
 }
 
 export const LAB_MSG = {
@@ -402,16 +390,14 @@ export const LAB_MSG = {
 } as const;
 
 /**
- * French message of a failed rpc('backtest_request_run'). The RPC raises its own French explanation (run already
- * queued / running, or started less than 10 min ago) with errcode 23514 (P0001 also accepted): that text is shown
- * (interpolated, never as HTML, control characters removed, capped).
- * Any other error gets a generic message; the database text is never shown.
+ * French message of a refused `POST /api/lab/runs`. The API answers 409 `BACKTEST_ALREADY_QUEUED` with its own French
+ * explanation (run already queued / running, or started less than 10 min ago): that text is shown (interpolated,
+ * never as HTML, control characters removed, capped). Any other error gets a generic message.
  */
 export function requestErrorMessage(error: unknown): string {
   if (isMissingRelationError(error)) return LAB_MSG.unavailable;
-  const e = record(error);
-  const message = e?.['message'];
-  if ((e?.['code'] === '23514' || e?.['code'] === 'P0001') && typeof message === 'string') {
+  const { code, message } = apiStatus(error);
+  if (code === 'BACKTEST_ALREADY_QUEUED' && typeof message === 'string') {
     const clean = message.replace(/\p{Cc}/gu, ' ').trim();
     if (clean.length > 0 && clean.length <= 200) return clean;
   }

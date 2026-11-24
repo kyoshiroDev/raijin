@@ -40,7 +40,7 @@ const usableLiquidity = (v: number | null | undefined): v is number => typeof v 
 /**
  * Retained liquidity, used when liquidity_effective_usd is null: median of the usable
  * DexScreener (liquidity_dex_usd, else liquidity_usd) and GeckoTerminal values (2 → mean, 1 → that one, 0 → 0).
- * Mirrors effectiveLiquidity() in supabase/functions/_shared/consensus.ts. Jupiter never enters it (tooltip only).
+ * Mirrors effectiveLiquidity() of the legacy Edge Functions (_shared/consensus.ts, ported to the bench API). Jupiter never enters it (tooltip only).
  */
 export function retainedLiquidity(t: LiquidityFields): number {
   const dex = usableLiquidity(t.liquidity_dex_usd) ? t.liquidity_dex_usd : t.liquidity_usd;

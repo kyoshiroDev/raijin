@@ -1,13 +1,13 @@
+import { alertPreferencesSchema } from '@raijin/bench-contracts';
+import { pushSubscriptionRequestSchema } from '@raijin/shared-contracts';
 import { describe, expect, it } from 'vitest';
 import {
   ALERT_PRESET,
   ALERT_SETTINGS_COLUMNS,
   DEFAULT_ALERT_SETTINGS,
   PAPER_SL_ERROR,
-  USER_AGENT_MAX,
   parseAlertSettings,
   preferencesOf,
-  preferencesPayload,
   quietHoursLabel,
   subscriptionRow,
   validateAlertPreferences,
@@ -60,19 +60,19 @@ describe('alert settings', () => {
     expect(Object.keys(validateAlertPreferences({ ...VALID, max_per_day: 2.5 }))).toEqual(['max_per_day']);
   });
 
-  it('builds a payload with exactly the editable columns + alert_preset « young_calm » (never enabled, never archived)', () => {
-    const payload = preferencesPayload({ ...DEFAULT_ALERT_SETTINGS, enabled: true, min_score: 80 } as AlertPreferences);
+  it('builds a body with exactly the editable columns, accepted by the strict contract (never enabled, never archived)', () => {
+    const payload = preferencesOf({ ...DEFAULT_ALERT_SETTINGS, enabled: true, min_score: 80 } as AlertPreferences);
     expect(Object.keys(payload).sort()).toEqual(
-      ['hide_bonding_curve', 'quiet_start', 'quiet_end', 'max_per_hour', 'max_per_day', 'stake_sol', 'auto_paper', 'paper_sl_pct', 'alert_preset'].sort(),
+      ['hide_bonding_curve', 'quiet_start', 'quiet_end', 'max_per_hour', 'max_per_day', 'stake_sol', 'auto_paper', 'paper_sl_pct'].sort(),
     );
-    expect(payload.alert_preset).toBe('young_calm');
+    expect(alertPreferencesSchema.safeParse(payload).success).toBe(true);
     expect(ALERT_PRESET).toBe('young_calm');
-    for (const c of [...ARCHIVED, 'enabled']) expect(c in payload).toBe(false);
+    for (const c of [...ARCHIVED, 'enabled', 'alert_preset']) expect(c in payload).toBe(false);
   });
 
   it('auto-paper: off by default, part of the payload, parsed strictly', () => {
     expect(DEFAULT_ALERT_SETTINGS.auto_paper).toBe(false);
-    expect(preferencesPayload({ ...VALID, auto_paper: true }).auto_paper).toBe(true);
+    expect(preferencesOf({ ...VALID, auto_paper: true }).auto_paper).toBe(true);
     expect(parseAlertSettings({ auto_paper: true }).auto_paper).toBe(true);
     for (const v of ['true', 1, null, undefined]) expect(parseAlertSettings({ auto_paper: v }).auto_paper).toBe(false);
   });
@@ -120,15 +120,14 @@ describe('alert settings', () => {
 describe('subscriptionRow', () => {
   const json: PushSubscriptionJSON = { endpoint: 'https://web.push.apple.com/abc', keys: { p256dh: 'P'.repeat(87), auth: 'A'.repeat(22) } };
 
-  it('maps toJSON() to the push_subscriptions columns and truncates the user agent to 300', () => {
-    const row = subscriptionRow(json, 'x'.repeat(500));
-    expect(row).toEqual({ endpoint: json.endpoint, p256dh: 'P'.repeat(87), auth: 'A'.repeat(22), user_agent: 'x'.repeat(USER_AGENT_MAX) });
-    expect(USER_AGENT_MAX).toBe(300);
+  it('maps toJSON() to the PushSubscriptionRequest body (no user agent sent)', () => {
+    const row = subscriptionRow({ ...json, expirationTime: null });
+    expect(row).toEqual({ endpoint: json.endpoint, expirationTime: null, keys: { p256dh: 'P'.repeat(87), auth: 'A'.repeat(22) } });
+    expect(pushSubscriptionRequestSchema.safeParse(row).success).toBe(true);
   });
 
-  it('stores null for an empty user agent and rejects incomplete subscriptions', () => {
-    expect(subscriptionRow(json, '')?.user_agent).toBeNull();
-    expect(subscriptionRow({ endpoint: json.endpoint }, 'ua')).toBeNull();
-    expect(subscriptionRow({ keys: json.keys }, 'ua')).toBeNull();
+  it('rejects incomplete subscriptions', () => {
+    expect(subscriptionRow({ endpoint: json.endpoint })).toBeNull();
+    expect(subscriptionRow({ keys: json.keys })).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
-// Server catch-up gauge: rpc('backfill_progress') (docs/contracts/lab-v2.md §1), parsed defensively.
-// Accepted shapes (the RPC is not frozen yet):
+// Server catch-up gauge: `GET /api/lab/backfill` (`backfillProgressSchema`, ex-RPC backfill_progress), parsed defensively.
+// Accepted shapes (the contract names a category `id`; older rows named it `category`):
 // - a set of rows `{ category, done, total, due_now, last_24h, [rows_per_hour], [eta_hours | eta_at] }`;
 // - an object `{ categories: [...rows], rows_per_hour, eta_hours | eta_at }` (or the same as a one-element array).
 // Global throughput = the top-level value, else the sum of the per-category values. ETA = the top-level value, else
@@ -81,7 +81,7 @@ export function parseBackfillProgress(data: unknown): BackfillProgress | null {
   const rates: number[] = [];
   for (const raw of rows) {
     const r = record(raw);
-    const id = categoryId(r?.['category']);
+    const id = categoryId(r?.['id'] ?? r?.['category']);
     if (!r || !id || byId.has(id)) continue;
     const total = count(r['total']);
     const done = count(r['done']);

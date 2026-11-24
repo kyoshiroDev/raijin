@@ -1,13 +1,12 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../../../core/supabase/supabase-client';
 import type { TokenRow } from '../../../shared/models/token';
 import { PriceChart } from './price-chart';
 import { formatParisTime } from './price-chart-data';
 import {
   CHART_MINT,
   chartToken,
-  mockSupabase,
+  mockBench,
   ok,
   snapshotRows,
   type QueryResult,
@@ -15,9 +14,9 @@ import {
 
 const HOSTILE = '<img src=x onerror=alert(1)>';
 
-async function render(token: TokenRow, responders: Parameters<typeof mockSupabase>[0]) {
-  const sb = mockSupabase(responders);
-  TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: sb.client }] });
+async function render(token: TokenRow, responders: Parameters<typeof mockBench>[0]) {
+  const sb = mockBench(responders);
+  TestBed.configureTestingModule({ providers: sb.providers });
   const fixture = TestBed.createComponent(PriceChart);
   fixture.componentRef.setInput('token', token);
   fixture.detectChanges();
@@ -42,8 +41,8 @@ function key(el: HTMLElement, k: string) {
 
 describe('PriceChart', () => {
   it('shows a loading skeleton while the history loads', async () => {
-    const sb = mockSupabase({ token_snapshots: () => new Promise<QueryResult>(() => undefined) });
-    TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: sb.client }] });
+    const sb = mockBench({ token_snapshots: () => new Promise<QueryResult>(() => undefined) });
+    TestBed.configureTestingModule({ providers: sb.providers });
     const fixture = TestBed.createComponent(PriceChart);
     fixture.componentRef.setInput('token', chartToken());
     fixture.detectChanges();
@@ -56,13 +55,13 @@ describe('PriceChart', () => {
   });
 
   it('aborts the queries when the detail closes', async () => {
-    const sb = mockSupabase({ token_snapshots: () => new Promise<QueryResult>(() => undefined) });
-    TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: sb.client }] });
+    const sb = mockBench({ token_snapshots: () => new Promise<QueryResult>(() => undefined) });
+    TestBed.configureTestingModule({ providers: sb.providers });
     const fixture = TestBed.createComponent(PriceChart);
     fixture.componentRef.setInput('token', chartToken());
     fixture.detectChanges();
     TestBed.tick();
-    const signal = sb.callsOf('token_snapshots', 'abortSignal')[0]?.[0];
+    const signal = sb.callsOf('token_snapshots')[0]?.signal;
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(signal instanceof AbortSignal && signal.aborted).toBe(false);
     fixture.destroy();
@@ -77,7 +76,7 @@ describe('PriceChart', () => {
       const { el, sb } = await render(chartToken(), {
         token_snapshots: ok(snapshotRows(24, Date.now(), (i) => 0.00041 + (i % 10) * 0.000007)),
       });
-      expect(sb.callsOf('token_snapshots', 'eq')).toEqual([['mint', CHART_MINT]]);
+      expect(sb.callsOf('token_snapshots').map((c) => c.params)).toEqual([{ mint: CHART_MINT }]);
       const chart = surface(el);
       expect(chart?.getAttribute('role')).toBe('img');
       expect(chart?.getAttribute('tabindex')).toBe('0');
@@ -132,7 +131,7 @@ describe('PriceChart', () => {
           fill_price: 0.000408,
           created_at: at(100),
           filled_at: at(80),
-          paper_legs: [
+          legs: [
             {
               id: 'l1',
               position_id: 'p1',

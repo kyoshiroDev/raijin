@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, resource } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { BenchApi } from '../../core/api/bench-api';
 import { MarketContext } from '../../core/market/market-context';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { SUPABASE } from '../../core/supabase/supabase-client';
 import { PageHeader } from '../../shared/ui/page-header';
 import { isSolanaAddress } from '../../shared/utils/solana-address';
 import { TokenDetail } from './components/token-detail';
@@ -44,7 +44,7 @@ export class TokenPage {
   /** Bound from the :mint route param (withComponentInputBinding). Untrusted. */
   readonly mint = input('');
 
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
   protected readonly preferences = inject(UserPreferences);
   protected readonly market = inject(MarketContext);
   protected readonly validMint = computed(() => (isSolanaAddress(this.mint()) ? this.mint() : undefined));
@@ -52,7 +52,7 @@ export class TokenPage {
   /** `params` returns undefined for an invalid mint → the resource stays idle, no query. */
   protected readonly token = resource({
     params: () => this.validMint(),
-    loader: ({ params, abortSignal }) => fetchTokenByMint(this.supabase, params, abortSignal),
+    loader: ({ params, abortSignal }) => fetchTokenByMint(this.api, params, abortSignal),
   });
 
   protected readonly found = computed(() => (this.token.hasValue() ? this.token.value() : null));

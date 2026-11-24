@@ -1,12 +1,11 @@
 import { Injectable, computed, inject, resource, signal } from '@angular/core';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { SUPABASE } from '../../../core/supabase/supabase-client';
-import { PAPER_POSITION_COLUMNS, parsePaperPositions } from '../../../shared/models/paper';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi, itemsOf } from '../../../core/api/bench-api';
+import { parsePaperPositions } from '../../../shared/models/paper';
 import { isSolanaAddress } from '../../../shared/utils/solana-address';
 import {
   CHART_RANGES,
   DEFAULT_CHART_RANGE,
-  HISTORY_LIMIT,
   RANGE_MS,
   chartSeries,
   paperMarkers,
@@ -22,67 +21,40 @@ import {
 /** Markers read at most per source (own alerts / own paper positions on one mint). */
 export const MARKER_LIMIT = 50;
 
-/** Last 24 h of snapshots for `mint` (authenticated read), oldest first. Throws on a query error. */
-export async function fetchPriceHistory(
-  supabase: SupabaseClient,
-  mint: string,
-  now: number,
-  signal?: AbortSignal,
-): Promise<PricePoint[]> {
+type ApiReader = Pick<BenchApi, 'get'>;
+
+/** Last 24 h of snapshots for `mint` (`GET /api/tokens/:mint/snapshots?since=`), oldest first. Throws on an API error. */
+export async function fetchPriceHistory(api: ApiReader, mint: string, now: number, signal?: AbortSignal): Promise<PricePoint[]> {
   if (!isSolanaAddress(mint)) return [];
   const since = new Date(now - RANGE_MS['24h']).toISOString();
-  let query = supabase
-    .from('token_snapshots')
-    .select('price_usd,captured_at')
-    .eq('mint', mint)
-    .gte('captured_at', since)
-    .order('captured_at', { ascending: true })
-    .limit(HISTORY_LIMIT);
-  if (signal) query = query.abortSignal(signal);
-  const { data, error } = await query;
-  if (error) throw new Error('price history query failed');
-  return parseSnapshots(data);
+  let body: unknown;
+  try {
+    body = await api.get(BENCH_ROUTES.tokenSnapshots, { params: { mint }, query: { since }, signal });
+  } catch {
+    throw new Error('price history query failed');
+  }
+  return parseSnapshots(itemsOf(body));
 }
 
 /**
- * The user's alert entries and paper fills / exits on `mint` (owner RLS). Best effort: a missing table or column,
- * an error or a malformed row only removes markers, it never fails the chart.
+ * The owner's alert entries and paper fills / exits on `mint` (`GET /api/alerts`, `GET /api/paper/positions`). Best
+ * effort: a missing route, an error or a malformed row only removes markers, it never fails the chart.
  */
-export async function fetchChartMarkers(
-  supabase: SupabaseClient,
-  mint: string,
-  now: number,
-  signal?: AbortSignal,
-): Promise<ChartMarker[]> {
+export async function fetchChartMarkers(api: ApiReader, mint: string, now: number, signal?: AbortSignal): Promise<ChartMarker[]> {
   if (!isSolanaAddress(mint)) return [];
   const since = new Date(now - RANGE_MS['24h']).toISOString();
   const alerts = async (): Promise<ChartMarker[]> => {
     try {
-      let query = supabase
-        .from('alert_log')
-        .select('sent_at,entry_price')
-        .eq('mint', mint)
-        .gte('sent_at', since)
-        .order('sent_at', { ascending: true })
-        .limit(MARKER_LIMIT);
-      if (signal) query = query.abortSignal(signal);
-      const { data, error } = await query;
-      return error ? [] : parseAlertMarkers(data);
+      const body = await api.get(BENCH_ROUTES.alerts, { query: { mint, since, limit: MARKER_LIMIT }, signal });
+      return parseAlertMarkers(itemsOf(body));
     } catch {
       return [];
     }
   };
   const paper = async (): Promise<ChartMarker[]> => {
     try {
-      let query = supabase
-        .from('paper_positions')
-        .select(PAPER_POSITION_COLUMNS)
-        .eq('mint', mint)
-        .order('created_at', { ascending: false })
-        .limit(MARKER_LIMIT);
-      if (signal) query = query.abortSignal(signal);
-      const { data, error } = await query;
-      return error ? [] : paperMarkers(parsePaperPositions(data));
+      const body = await api.get(BENCH_ROUTES.paperPositions, { query: { mint, limit: MARKER_LIMIT }, signal });
+      return paperMarkers(parsePaperPositions(itemsOf(body)));
     } catch {
       return [];
     }
@@ -103,7 +75,7 @@ interface LivePrice {
  */
 @Injectable()
 export class PriceChartStore {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
 
   private readonly _mint = signal<string | null>(null);
   private readonly _range = signal<ChartRange>(DEFAULT_CHART_RANGE);
@@ -114,12 +86,12 @@ export class PriceChartStore {
 
   private readonly history = resource({
     params: () => this._mint() ?? undefined,
-    loader: ({ params, abortSignal }) => fetchPriceHistory(this.supabase, params, Date.now(), abortSignal),
+    loader: ({ params, abortSignal }) => fetchPriceHistory(this.api, params, Date.now(), abortSignal),
   });
 
   private readonly markerSource = resource({
     params: () => this._mint() ?? undefined,
-    loader: ({ params, abortSignal }) => fetchChartMarkers(this.supabase, params, Date.now(), abortSignal),
+    loader: ({ params, abortSignal }) => fetchChartMarkers(this.api, params, Date.now(), abortSignal),
   });
 
   readonly loading = computed(() => this.history.isLoading());
@@ -149,7 +121,7 @@ export class PriceChartStore {
     if (CHART_RANGES.includes(range)) this._range.set(range);
   }
 
-  /** Live price of the token (Realtime), appended when newer than the last snapshot. */
+  /** Live price of the token (SSE), appended when newer than the last snapshot. */
   setLive(price: number | null, at: string | null): void {
     this._live.set({ price, at });
   }

@@ -1,10 +1,10 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi, itemsOf } from '../../core/api/bench-api';
+import { fetchTokenBriefs } from '../../core/api/token-briefs';
 import { UserPreferences } from '../../core/preferences/user-preferences';
-import { SUPABASE } from '../../core/supabase/supabase-client';
 import {
   ALERT_FETCH_LIMIT,
-  ALERT_LOG_COLUMNS,
-  ALERT_TOKEN_COLUMNS,
   mergeAlerts,
   parseAlertLogRows,
   uniqueMints,
@@ -13,10 +13,10 @@ import {
 } from './alert-log';
 import { SIMULATION_WINDOW_MS, simulateAlerts } from './alert-simulation';
 
-/** The user's latest alerts and their 7-day simulation (alert_log is owner-readable only, RLS). Provided by AlertsPage. */
+/** The user's latest alerts and their 7-day simulation (`GET /api/alerts`, single and grouped alerts only). Provided by AlertsPage. */
 @Injectable()
 export class AlertsStore {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
   private readonly preferences = inject(UserPreferences);
 
   private readonly _rows = signal<AlertLogRow[]>([]);
@@ -43,14 +43,8 @@ export class AlertsStore {
     this._loading.set(true);
     this._error.set(null);
     try {
-      const { data, error } = await this.supabase
-        .from('alert_log')
-        .select(ALERT_LOG_COLUMNS)
-        .in('kind', ['single', 'grouped']) // archived radar ('early') alerts are not shown: don't let them eat the limit
-        .order('sent_at', { ascending: false })
-        .limit(ALERT_FETCH_LIMIT);
-      if (error) throw error;
-      const raw: unknown[] = Array.isArray(data) ? data : [];
+      // Most recent first; archived radar ('early') alerts are not served by the API.
+      const raw = itemsOf(await this.api.get(BENCH_ROUTES.alerts, { query: { limit: ALERT_FETCH_LIMIT } }));
       const rows = parseAlertLogRows(raw);
       const now = Date.now();
       const oldest = rows.at(-1);
@@ -71,8 +65,7 @@ export class AlertsStore {
     const mints = uniqueMints(rows);
     if (mints.length === 0) return [];
     try {
-      const { data, error } = await this.supabase.from('tokens').select(ALERT_TOKEN_COLUMNS).in('mint', mints);
-      return !error && Array.isArray(data) ? data : [];
+      return await fetchTokenBriefs(this.api, mints);
     } catch {
       return [];
     }

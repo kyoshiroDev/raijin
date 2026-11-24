@@ -1,7 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi, isNotFound, itemsOf } from '../../core/api/bench-api';
 import { bookComparisonView, parseBookComparisonRows, type BookComparisonRow } from './book-comparison';
-import { isMissingFunctionError, parseBreakdownRows, sourceView, type BreakdownRow } from './performance-breakdown';
+import { parseBreakdownRows, sourceView, type BreakdownRow } from './performance-breakdown';
 import { comparisonView, isComparisonSegment, parsePresetRows, type PresetRow, type PresetSegment } from './preset-performance';
 
 export const LOAD_ERROR = 'Impossible de charger les performances. Réessaie dans un instant.';
@@ -14,14 +15,15 @@ export type PresetState = 'idle' | 'loading' | 'ready' | 'unavailable' | 'error'
 export type BookCompareState = PresetState;
 
 /**
- * Aggregated outcomes from rpc('performance_breakdown') (main scanner, per dimension bucket) and
- * rpc('performance_by_preset') (« Calme vs Frénésie »: young_calm / young_frenzy) and rpc('paper_book_comparison')
- * (the three test books of the signed-in user). Provided by PerformancePage. Read-only: nothing is written from this
- * screen. Each card fails or degrades on its own, never the breakdown.
+ * Aggregated outcomes computed by the bench API (ex-RPC): `GET /api/performance/breakdown` (main scanner, per
+ * dimension bucket), `GET /api/performance/presets` (« Calme vs Frénésie »: young_calm / young_frenzy) and
+ * `GET /api/performance/books` (the three test books). Provided by PerformancePage. Read-only: nothing is written from
+ * this screen. Each card fails or degrades on its own, never the breakdown. A 404 (route not deployed) reads as
+ * « unavailable ».
  */
 @Injectable()
 export class PerformanceStore {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
 
   private readonly _rows = signal<BreakdownRow[]>([]);
   private readonly _loading = signal(false);
@@ -38,7 +40,7 @@ export class PerformanceStore {
   readonly loading = this._loading.asReadonly();
   readonly loaded = this._loaded.asReadonly();
   readonly error = this._error.asReadonly();
-  /** The RPC is not deployed yet: the screen says so instead of an error. */
+  /** The route is not deployed yet: the screen says so instead of an error. */
   readonly unavailable = this._unavailable.asReadonly();
   readonly presetRows = this._presetRows.asReadonly();
   readonly presetState = this._presetState.asReadonly();
@@ -63,15 +65,10 @@ export class PerformanceStore {
     if (this._presetState() === 'loading') return;
     this._presetState.set('loading');
     try {
-      const { data, error } = await this.supabase.rpc('performance_by_preset');
-      if (error) {
-        this._presetState.set(isMissingFunctionError(error) ? 'unavailable' : 'error');
-        return;
-      }
-      this._presetRows.set(parsePresetRows(data));
+      this._presetRows.set(parsePresetRows(itemsOf(await this.api.get(BENCH_ROUTES.performancePresets))));
       this._presetState.set('ready');
-    } catch {
-      this._presetState.set('error');
+    } catch (error) {
+      this._presetState.set(isNotFound(error) ? 'unavailable' : 'error');
     }
   }
 
@@ -80,15 +77,10 @@ export class PerformanceStore {
     if (this._bookState() === 'loading') return;
     this._bookState.set('loading');
     try {
-      const { data, error } = await this.supabase.rpc('paper_book_comparison');
-      if (error) {
-        this._bookState.set(isMissingFunctionError(error) ? 'unavailable' : 'error');
-        return;
-      }
-      this._bookRows.set(parseBookComparisonRows(data));
+      this._bookRows.set(parseBookComparisonRows(itemsOf(await this.api.get(BENCH_ROUTES.performanceBooks))));
       this._bookState.set('ready');
-    } catch {
-      this._bookState.set('error');
+    } catch (error) {
+      this._bookState.set(isNotFound(error) ? 'unavailable' : 'error');
     }
   }
 
@@ -109,15 +101,17 @@ export class PerformanceStore {
   }
 
   private async loadBreakdown(): Promise<BreakdownRow[]> {
-    const { data, error } = await this.supabase.rpc('performance_breakdown');
-    if (error) {
-      if (isMissingFunctionError(error)) {
+    let body: unknown;
+    try {
+      body = await this.api.get(BENCH_ROUTES.performanceBreakdown);
+    } catch (error) {
+      if (isNotFound(error)) {
         this._unavailable.set(true);
         return [];
       }
       throw error;
     }
     this._unavailable.set(false);
-    return parseBreakdownRows(data);
+    return parseBreakdownRows(itemsOf(body));
   }
 }

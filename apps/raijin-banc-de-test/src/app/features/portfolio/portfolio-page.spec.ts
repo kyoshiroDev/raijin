@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { FakeBenchApi, list, provideFakeBench } from '../../core/api/bench-api.testing';
 import { PortfolioPage } from './portfolio-page';
 
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -23,38 +24,25 @@ const row = (over: Record<string, unknown>) => ({
   sl_price: 0.7,
   sl_pct: 30,
   created_at: '2026-11-17T10:00:00Z',
-  paper_legs: [leg({})],
+  legs: [leg({})],
   ...over,
 });
 
 const closed = (id: string, pnl: number, legStatus: string, closedAt: string, over: Record<string, unknown> = {}) =>
-  row({ id, status: 'closed', pnl_sol: pnl, fees_sol: 0.0004, closed_at: closedAt, paper_legs: [leg({ position_id: id, status: legStatus })], ...over });
+  row({ id, status: 'closed', pnl_sol: pnl, fees_sol: 0.0004, closed_at: closedAt, legs: [leg({ position_id: id, status: legStatus })], ...over });
 
 const wallet = (book: string, balance = 1) => ({ book, balance_sol: balance, initial_sol: 1, created_at: '2026-11-01T00:00:00Z', reset_at: null });
 
 async function render(positions: unknown[], wallets: unknown[] = [wallet('main', 0.9)]) {
-  const rpc = vi.fn(async () => ({ data: null, error: null }));
-  const query = (data: unknown) => {
-    const q = {
-      select: () => q,
-      order: () => q,
-      limit: () => q,
-      in: () => q,
-      eq: () => q,
-      then: (ok: (v: { data: unknown; error: null }) => unknown) => Promise.resolve({ data, error: null }).then(ok),
-    };
-    return q;
-  };
-  const client = {
-    rpc,
-    from: (table: string) => query(table === 'paper_positions' ? positions : table === 'paper_wallets' ? wallets : [{ mint: MINT, price_usd: 1.2 }]),
-    channel: () => {
-      const ch = { on: () => ch, subscribe: () => ch };
-      return ch;
-    },
-    removeChannel: async () => 'ok',
-  };
-  TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: client }] });
+  /** Écritures (annulation, remise à zéro) : route et paramètres de chemin. */
+  const writes = vi.fn((route: string, params: unknown) => ({ route, params }));
+  const api = new FakeBenchApi()
+    .on('GET', BENCH_ROUTES.paperPositions, () => list(positions))
+    .on('GET', BENCH_ROUTES.paperWallets, () => list(wallets))
+    .on('GET', BENCH_ROUTES.tokenBriefs, () => list([{ mint: MINT, symbol: 'GTA6', price_usd: 1.2 }]))
+    .on('POST', BENCH_ROUTES.paperPositionCancel, (c) => writes(c.route, c.params))
+    .on('POST', BENCH_ROUTES.paperWalletReset, (c) => writes(c.route, c.params));
+  TestBed.configureTestingModule({ providers: provideFakeBench(api) });
   const fixture = TestBed.createComponent(PortfolioPage);
   fixture.detectChanges();
   await flush();
@@ -67,7 +55,7 @@ async function render(positions: unknown[], wallets: unknown[] = [wallet('main',
     await flush();
     fixture.detectChanges();
   };
-  return { fixture, el, rpc, click };
+  return { fixture, el, writes, click };
 }
 
 describe('PortfolioPage', () => {
@@ -85,7 +73,7 @@ describe('PortfolioPage', () => {
   });
 
   it('lists open positions with live P&L and leg badges; hostile symbols stay text; cancel only on pending', async () => {
-    const { el, rpc, click } = await render([row({ id: 'o1', symbol: HOSTILE }), row({ id: 'p1', status: 'pending', fill_price: null, paper_legs: [] })]);
+    const { el, writes, click } = await render([row({ id: 'o1', symbol: HOSTILE }), row({ id: 'p1', status: 'pending', fill_price: null, legs: [] })]);
     const open = el.querySelector('[data-position="open"]');
     expect(open?.textContent).toContain(HOSTILE);
     expect(el.querySelector('img[src="x"]')).toBeNull();
@@ -94,7 +82,7 @@ describe('PortfolioPage', () => {
     expect(open?.querySelector('[data-cancel-position]')).toBeNull();
     expect(el.querySelector('[data-position="pending"] [data-cancel-position]')?.classList).toContain('btn-ghost');
     await click('[data-position="pending"] [data-cancel-position]');
-    expect(rpc).toHaveBeenCalledWith('paper_cancel_position', { p_id: 'p1' });
+    expect(writes).toHaveBeenCalledWith(BENCH_ROUTES.paperPositionCancel, { id: 'p1' });
   });
 
   it('shows the legs of ½ ×2 + ½ ×3: TP touché on A, B open with its stop moved up to the fill price (breakeven)', async () => {
@@ -102,7 +90,7 @@ describe('PortfolioPage', () => {
       row({
         id: 'o1',
         strategy: 'half_x2_rest_x3',
-        paper_legs: [
+        legs: [
           leg({ id: 'a', size_pct: 50, tp_price: 2, status: 'tp_hit', exit_price: 1.96 }),
           leg({ id: 'b', size_pct: 50, tp_price: 3, stop_price: 1, status: 'open' }),
         ],
@@ -122,9 +110,9 @@ describe('PortfolioPage', () => {
       closed('h2', -0.03, 'sl_hit', '2026-11-17T10:00:00Z'),
       closed('h3', 0.02, 'tp_hit', '2026-11-15T10:00:00Z', {
         strategy: 'half_x2_rest_x3',
-        paper_legs: [leg({ position_id: 'h3', size_pct: 50, status: 'tp_hit' }), leg({ position_id: 'h3', size_pct: 50, tp_price: 3, status: 'breakeven_hit' })],
+        legs: [leg({ position_id: 'h3', size_pct: 50, status: 'tp_hit' }), leg({ position_id: 'h3', size_pct: 50, tp_price: 3, status: 'breakeven_hit' })],
       }),
-      row({ id: 'h4', status: 'expired', closed_at: '2026-11-14T10:00:00Z', paper_legs: [] }),
+      row({ id: 'h4', status: 'expired', closed_at: '2026-11-14T10:00:00Z', legs: [] }),
     ]);
     expect(Array.from(el.querySelectorAll('[data-history]')).map((li) => li.getAttribute('data-history'))).toEqual(['closed', 'closed', 'closed', 'expired']);
     expect(el.querySelector('[data-history]')?.textContent).toContain('SL');
@@ -190,15 +178,15 @@ describe('PortfolioPage', () => {
 
   it('asks for confirmation in a sheet before resetting the selected book (never window.confirm)', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm');
-    const { el, rpc, click } = await render([], [wallet('main'), wallet('calm_sl30'), wallet('calm_sl40'), wallet('frenzy_sl30')]);
+    const { el, writes, click } = await render([], [wallet('main'), wallet('calm_sl30'), wallet('calm_sl40'), wallet('frenzy_sl30')]);
     await click('[data-book="calm_sl40"]');
     await click('[data-reset]');
-    expect(rpc).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
     const sheet = el.querySelector('dialog[open] [data-reset-confirm]');
     expect(sheet?.getAttribute('data-reset-book')).toBe('calm_sl40');
     expect(sheet?.textContent).toContain('Calme SL −40 %');
     await click('[data-confirm-reset]');
-    expect(rpc).toHaveBeenCalledWith('paper_reset_wallet', { p_book: 'calm_sl40' });
+    expect(writes).toHaveBeenCalledWith(BENCH_ROUTES.paperWalletReset, { book: 'calm_sl40' });
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
@@ -207,7 +195,7 @@ describe('PortfolioPage', () => {
     const { el, click } = await render(
       [
         closed('z1', 0.1, 'tp_hit', '2026-11-16T10:00:00Z', { book: 'calm_all_x2' }),
-        row({ id: 'z2', book: 'calm_all_x2', status: 'pending', fill_price: null, paper_legs: [] }),
+        row({ id: 'z2', book: 'calm_all_x2', status: 'pending', fill_price: null, legs: [] }),
       ],
       [wallet('main'), wallet('calm_all_x2', 1.1), wallet('frenzy_all_x2', 1)],
     );
@@ -223,17 +211,9 @@ describe('PortfolioPage', () => {
   });
 
   it('shows a wallet skeleton (screen-reader label only) until the first load completes', () => {
-    const pending = { select: () => pending, order: () => pending, limit: () => pending, in: () => pending, eq: () => pending, then: () => undefined };
-    const client = {
-      rpc: vi.fn(),
-      from: () => pending,
-      channel: () => {
-        const ch = { on: () => ch, subscribe: () => ch };
-        return ch;
-      },
-      removeChannel: async () => 'ok',
-    };
-    TestBed.configureTestingModule({ providers: [{ provide: SUPABASE, useValue: client }] });
+    const never = () => new Promise(() => undefined);
+    const api = new FakeBenchApi().on('GET', BENCH_ROUTES.paperPositions, never).on('GET', BENCH_ROUTES.paperWallets, never);
+    TestBed.configureTestingModule({ providers: provideFakeBench(api) });
     const fixture = TestBed.createComponent(PortfolioPage);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
@@ -246,8 +226,8 @@ describe('PortfolioPage', () => {
 
   it('shows the exit slippage on stops (planned stop vs executed price), « Aucun stop touché » without stops', async () => {
     const stopped = await render([
-      closed('s1', -0.03, 'sl_hit', '2026-11-17T10:00:00Z', { paper_legs: [leg({ position_id: 's1', status: 'sl_hit', stop_price: 0.7, exit_price: 0.63 })] }),
-      closed('s2', -0.03, 'sl_hit', '2026-11-16T10:00:00Z', { paper_legs: [leg({ position_id: 's2', status: 'sl_hit', stop_price: 0.7, exit_price: 0.686 })] }),
+      closed('s1', -0.03, 'sl_hit', '2026-11-17T10:00:00Z', { legs: [leg({ position_id: 's1', status: 'sl_hit', stop_price: 0.7, exit_price: 0.63 })] }),
+      closed('s2', -0.03, 'sl_hit', '2026-11-16T10:00:00Z', { legs: [leg({ position_id: 's2', status: 'sl_hit', stop_price: 0.7, exit_price: 0.686 })] }),
     ]);
     const card = stopped.el.querySelector('[data-stop-slippage]');
     expect(card?.textContent).toContain('stop prévu et le prix réellement exécuté');

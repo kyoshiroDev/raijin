@@ -1,11 +1,11 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi, itemsOf } from '../../core/api/bench-api';
+import { BenchEvents, type BenchEventSubscription } from '../../core/api/bench-events';
+import { fetchTokenBriefs } from '../../core/api/token-briefs';
 import {
   BOOK_LABEL,
-  PAPER_POSITION_COLUMNS,
   PAPER_BOOKS,
-  PAPER_WALLET_COLUMNS,
   TEST_BOOKS,
   isArchivedBook,
   isPaperBook,
@@ -37,14 +37,16 @@ export interface Feedback {
 }
 
 /**
- * Virtual books, positions (with legs) and history of the signed-in user (SIMULATION ONLY; owner-only RLS).
- * Provided by PortfolioPage. Realtime on paper_positions + paper_legs (wallets reloaded with them; not published) and a periodic price refresh, cleaned up
- * on destroy. Every write goes through an RPC.
+ * Virtual books, positions (with legs) and history of the owner (SIMULATION ONLY), read from the bench API.
+ * Provided by PortfolioPage. SSE `paper` (ex-Realtime `paper-positions-live`: any position, leg or wallet change, and a
+ * reconnection, reloads everything) and a periodic price refresh, cleaned up on destroy. Every write goes through an
+ * API endpoint that re-checks everything.
  */
 @Injectable()
 export class PortfolioStore {
-  private readonly supabase = inject(SUPABASE);
-  private channel: RealtimeChannel | null = null;
+  private readonly api = inject(BenchApi);
+  private readonly events = inject(BenchEvents);
+  private stream: BenchEventSubscription | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private reloading: Promise<void> | null = null;
   private reloadAgain = false;
@@ -88,8 +90,8 @@ export class PortfolioStore {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
-      if (this.channel) void this.supabase.removeChannel(this.channel);
-      this.channel = null;
+      this.stream?.close();
+      this.stream = null;
       if (this.timer !== null) clearInterval(this.timer);
       this.timer = null;
     });
@@ -121,30 +123,32 @@ export class PortfolioStore {
     }
   }
 
-  /** Opens the Realtime subscription on own positions, legs and wallets (RLS) and the price timer. Idempotent. */
+  /** Opens the SSE stream (`paper`) and the price timer. Idempotent. */
   listen(): void {
-    if (this.channel) return;
+    if (this.stream) return;
     const onChange = () => void this.reloadAfterChange();
-    this.channel = this.supabase
-      .channel('paper-positions-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'paper_positions' }, onChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'paper_legs' }, onChange)
-      .subscribe();
+    this.stream = this.events.connect(['paper'], {
+      onEvent: (event) => {
+        if (event.type === 'paper.changed') onChange();
+      },
+      onReconnect: onChange,
+    });
     this.timer = setInterval(() => void this.refreshPrices(), PRICE_REFRESH_MS);
   }
 
-  /** Cancels a PENDING position (the RPC re-checks ownership and status). */
+  /** Cancels a PENDING position (`POST /api/paper/positions/:id/cancel`, which re-checks the status). */
   async cancel(id: string): Promise<void> {
     const position = this._positions().find((p) => p.id === id);
     if (!position || position.status !== 'pending' || isArchivedBook(position.book) || this._busyId() !== null) return;
     this._busyId.set(id);
     this._feedback.set(null);
     try {
-      const { data, error } = await this.supabase.rpc('paper_cancel_position', { p_id: id });
-      // false = not cancelled (already filled, expired or not ours): reload and say so.
-      if (error || data === false) {
+      try {
+        await this.api.post(BENCH_ROUTES.paperPositionCancel, undefined, { params: { id } });
+      } catch (error) {
+        // Refused (already filled or expired, archived book): reload and say so.
         await this.reloadAfterChange();
-        throw error ?? new Error('not cancelled');
+        throw error;
       }
       await this.reloadAfterChange();
     } catch {
@@ -171,8 +175,7 @@ export class PortfolioStore {
     if (book === null || isArchivedBook(book) || this._resetting()) return;
     this._resetting.set(true);
     try {
-      const { error } = await this.supabase.rpc('paper_reset_wallet', { p_book: book });
-      if (error) throw error;
+      await this.api.post(BENCH_ROUTES.paperWalletReset, undefined, { params: { book } });
       this._confirmingBook.set(null);
       await this.reloadAfterChange();
       this._feedback.set({ kind: 'ok', text: PORTFOLIO_MSG.resetDone(book) });
@@ -183,7 +186,7 @@ export class PortfolioStore {
     }
   }
 
-  /** Re-reads everything after a change (Realtime event, cancel, reset). Coalesces bursts. Best effort. */
+  /** Re-reads everything after a change (SSE event or reconnection, cancel, reset). Coalesces bursts. Best effort. */
   private async reloadAfterChange(): Promise<void> {
     if (this.reloading) {
       this.reloadAgain = true;
@@ -208,46 +211,27 @@ export class PortfolioStore {
   }
 
   private async loadAll(): Promise<void> {
+    // Older archived books (half_x2_rest_x3, all_x2, young_*) are not read: only main, the test books and calm_all_x2 / frenzy_all_x2.
+    const books = [...PAPER_BOOKS];
     const [wallets, positions] = await Promise.all([
-      // Older archived books (half_x2_rest_x3, all_x2, young_*) are not read: only main, the test books and calm_all_x2 / frenzy_all_x2.
-      this.supabase.from('paper_wallets').select(PAPER_WALLET_COLUMNS).in('book', PAPER_BOOKS),
-      this.supabase
-        .from('paper_positions')
-        .select(PAPER_POSITION_COLUMNS)
-        .in('book', PAPER_BOOKS)
-        .order('created_at', { ascending: false })
-        .limit(PAPER_FETCH_LIMIT),
+      this.api.get(BENCH_ROUTES.paperWallets, { query: { books } }),
+      // Most recent first, legs included.
+      this.api.get(BENCH_ROUTES.paperPositions, { query: { books, limit: PAPER_FETCH_LIMIT } }),
     ]);
-    if (wallets.error) throw wallets.error;
-    if (positions.error) throw positions.error;
-    this._wallets.set(parsePaperWallets(wallets.data));
-    this._positions.set(parsePaperPositions(positions.data));
+    this._wallets.set(parsePaperWallets(itemsOf(wallets)));
+    this._positions.set(parsePaperPositions(itemsOf(positions)));
   }
 
   /**
-   * Latest price of every mint with a pending or open position: public.tokens.price_usd when available,
-   * else the latest token_snapshots row. Failures keep the previous prices.
+   * Latest price of every mint with a pending or open position (`GET /api/tokens/briefs`: tokens.price_usd when
+   * available, else the latest snapshot). Failures keep the previous prices.
    */
   private async refreshPrices(): Promise<void> {
     const mints = [...new Set(this._positions().filter((p) => p.status === 'open' || p.status === 'pending').map((p) => p.mint))];
     if (mints.length === 0) return;
     const prices = new Map(this._prices());
     try {
-      const { data, error } = await this.supabase.from('tokens').select('mint,price_usd').in('mint', mints);
-      const fresh = new Set<string>();
-      if (!error) readPrices(data, prices, fresh);
-      const missing = mints.filter((m) => !fresh.has(m));
-      await Promise.all(
-        missing.map(async (mint) => {
-          const snap = await this.supabase
-            .from('token_snapshots')
-            .select('mint,price_usd')
-            .eq('mint', mint)
-            .order('captured_at', { ascending: false })
-            .limit(1);
-          if (!snap.error) readPrices(snap.data, prices, new Set());
-        }),
-      );
+      readPrices(await fetchTokenBriefs(this.api, mints), prices, new Set());
     } catch {
       // keep what we have
     }

@@ -1,15 +1,12 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { BenchApi, itemsOf, truncatedOf } from '../../core/api/bench-api';
 import { parseBackfillProgress, type BackfillProgress } from './backfill';
 import {
   LAB_MSG,
-  LEGACY_RUN_COLUMNS,
   NARRATIVES,
-  RESULT_COLUMNS,
   RESULT_FETCH_LIMIT,
-  RUN_COLUMNS,
   isActiveRun,
-  isMissingColumnError,
   isMissingRelationError,
   narrativeCounts,
   parseResultRows,
@@ -29,7 +26,7 @@ export const BACKFILL_POLL_MS = 60_000;
 
 export type LabState = 'idle' | 'loading' | 'ready' | 'unavailable' | 'error';
 
-/** idle = not read yet; unavailable = rpc('backfill_progress') not deployed; error = no data could be read. */
+/** idle = not read yet; unavailable = `GET /api/lab/backfill` not deployed; error = no data could be read. */
 export type BackfillState = 'idle' | 'ready' | 'unavailable' | 'error';
 
 export interface LabFeedback {
@@ -38,23 +35,21 @@ export interface LabFeedback {
 }
 
 /**
- * Backtest laboratory (Performance › Laboratoire). Reads the latest backtest_runs row, the latest DONE run and its
- * retained backtest_results rows (SELECT authenticated; only the young_calm / young_frenzy presets parse). The only
- * write is rpc('backtest_request_run'), which re-checks everything server-side. Also reads the server catch-up gauge
- * (rpc('backfill_progress'), read only).
+ * Backtest laboratory (Performance › Laboratoire). Reads the latest run, the latest DONE run and its retained results
+ * (`GET /api/lab/runs`, `GET /api/lab/runs/:id/results`; only the young_calm / young_frenzy presets parse). The only
+ * write is `POST /api/lab/runs`, which re-checks everything server-side. Also reads the server catch-up gauge
+ * (`GET /api/lab/backfill`, read only).
  * No Realtime: a poll runs only while a run is queued / running (20 s) and while catch-up rows are due (60 s, gauge
  * only), both cleared on destroy. Provided by StrategyLabPage.
  */
 @Injectable()
 export class StrategyLabStore {
-  private readonly supabase = inject(SUPABASE);
+  private readonly api = inject(BenchApi);
   private timer: ReturnType<typeof setInterval> | null = null;
   private destroyed = false;
   private inFlight: Promise<void> | null = null;
   private backfillTimer: ReturnType<typeof setInterval> | null = null;
   private backfillInFlight: Promise<void> | null = null;
-  /** backtest_runs.summary is not readable yet (lab-v2 grant not deployed): select the legacy columns. */
-  private legacyColumns = false;
 
   private readonly _state = signal<LabState>('idle');
   private readonly _latest = signal<BacktestRun | null>(null);
@@ -165,9 +160,7 @@ export class StrategyLabStore {
 
   private async readBackfill(): Promise<void> {
     try {
-      const { data, error } = await this.supabase.rpc('backfill_progress');
-      if (error) throw error;
-      const progress = parseBackfillProgress(data);
+      const progress = parseBackfillProgress(await this.api.get(BENCH_ROUTES.labBackfill));
       if (progress === null) {
         if (this._backfill() === null) this._backfillState.set('unavailable');
         return;
@@ -190,14 +183,10 @@ export class StrategyLabStore {
     this._requesting.set(true);
     this._feedback.set(null);
     try {
-      const { error } = await this.supabase.rpc('backtest_request_run');
-      if (error) {
-        this._feedback.set({ kind: 'error', text: requestErrorMessage(error) });
-      } else {
-        this._feedback.set({ kind: 'ok', text: LAB_MSG.requested });
-      }
-    } catch {
-      this._feedback.set({ kind: 'error', text: LAB_MSG.requestFailed });
+      await this.api.post(BENCH_ROUTES.labRuns);
+      this._feedback.set({ kind: 'ok', text: LAB_MSG.requested });
+    } catch (error) {
+      this._feedback.set({ kind: 'error', text: requestErrorMessage(error) });
     } finally {
       this._requesting.set(false);
     }
@@ -205,27 +194,16 @@ export class StrategyLabStore {
   }
 
   private async readRun(doneOnly: boolean): Promise<BacktestRun | null> {
-    let query = this.supabase.from('backtest_runs').select(this.legacyColumns ? LEGACY_RUN_COLUMNS : RUN_COLUMNS);
-    if (doneOnly) query = query.eq('status', 'done');
-    const { data, error } = await query.order('created_at', { ascending: false }).limit(1);
-    if (error && !this.legacyColumns && isMissingColumnError(error)) {
-      this.legacyColumns = true;
-      return this.readRun(doneOnly);
-    }
-    if (error) throw error;
-    return parseRun(data);
+    // Most recent first.
+    const body = await this.api.get(BENCH_ROUTES.labRuns, { query: { status: doneOnly ? 'done' : undefined, limit: 1 } });
+    return parseRun(itemsOf(body));
   }
 
   private async readResults(runId: string): Promise<void> {
-    const { data, error } = await this.supabase
-      .from('backtest_results')
-      .select(RESULT_COLUMNS)
-      .eq('run_id', runId)
-      .eq('retained', true)
-      .limit(RESULT_FETCH_LIMIT);
-    if (error) throw error;
-    this._rows.set(parseResultRows(data));
-    this._truncated.set(Array.isArray(data) && data.length >= RESULT_FETCH_LIMIT);
+    const body = await this.api.get(BENCH_ROUTES.labRunResults, { params: { id: runId }, query: { retained: true } });
+    const rows = itemsOf(body);
+    this._rows.set(parseResultRows(rows));
+    this._truncated.set(truncatedOf(body) || rows.length >= RESULT_FETCH_LIMIT);
   }
 
   private syncPoll(): void {

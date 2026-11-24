@@ -1,26 +1,26 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SUPABASE } from '../../core/supabase/supabase-client';
+import { BENCH_ROUTES } from '@raijin/bench-contracts';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { FakeBenchApi, apiError, provideFakeBench } from '../../core/api/bench-api.testing';
 import { TokenPage } from './token-page';
 
 const MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 describe('TokenPage (/token/:mint)', () => {
+  /** `data: null` = 404 (token inconnu) ; `error` = échec de l'API. */
   let result: { data: unknown; error: unknown };
-  const eq = vi.fn();
-  const from = vi.fn();
+  let api: FakeBenchApi;
+  const tokenCalls = () => api.callsTo('GET', BENCH_ROUTES.token);
 
   beforeEach(() => {
     result = { data: null, error: null };
-    const query = {
-      select: vi.fn(() => query),
-      eq: eq.mockImplementation(() => query),
-      abortSignal: vi.fn(() => query),
-      maybeSingle: vi.fn(async () => result),
-    };
-    from.mockReset().mockReturnValue(query);
-    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: SUPABASE, useValue: { from } }] });
+    api = new FakeBenchApi().on('GET', BENCH_ROUTES.token, () => {
+      if (result.error) throw apiError(500, 'INTERNAL_ERROR', 'raw db error');
+      if (result.data === null) throw apiError(404, 'NOT_FOUND');
+      return result.data;
+    });
+    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideFakeBench(api)] });
   });
 
   async function render(mint: string) {
@@ -32,19 +32,18 @@ describe('TokenPage (/token/:mint)', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('shows « Token introuvable » for an invalid mint without querying Supabase', async () => {
+  it('shows « Token introuvable » for an invalid mint without querying the API', async () => {
     for (const bad of ['', 'not-a-mint', '<script>', `${MINT}0`, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDtlv']) {
       const el = await render(bad);
       expect(el.textContent).toContain('Token introuvable');
       expect(el.querySelector('a[href="/"]')).not.toBeNull();
     }
-    expect(from).not.toHaveBeenCalled();
+    expect(tokenCalls()).toHaveLength(0);
   });
 
   it('shows « Token introuvable » for a valid but unknown mint', async () => {
     const el = await render(MINT);
-    expect(from).toHaveBeenCalledWith('tokens');
-    expect(eq).toHaveBeenCalledWith('mint', MINT);
+    expect(tokenCalls()[0]?.params).toEqual({ mint: MINT });
     expect(el.textContent).toContain('Token introuvable');
   });
 

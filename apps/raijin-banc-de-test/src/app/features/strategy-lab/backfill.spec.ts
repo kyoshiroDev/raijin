@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { backfillSummaryText, categoryId, categoryText, donePercent, formatEta, parseBackfillProgress } from './backfill';
 
 const rows = [
-  { category: 'scan_labels', done: 1000, total: 1392, due_now: 392, last_24h: 300, rows_per_hour: 12 },
+  { id: 'scan_labels', done: 1000, total: 1392, due_now: 392, last_24h: 300, rows_per_hour: 12 },
   { category: 'radar_labels', done: 5000, total: 6392, due_now: 1392, last_24h: 400, rows_per_hour: 18 },
   { category: 'preset_labels', done: 40, total: 40, due_now: 0, last_24h: 10 },
   { category: 'candles_1m', done: '12', total: '20', due_now: 8, last_24h: null },

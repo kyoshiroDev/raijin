@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   LAB_MSG,
-  LEGACY_RUN_COLUMNS,
-  RUN_COLUMNS,
   fraction,
   isActiveRun,
-  isMissingColumnError,
   isMissingRelationError,
   narrativeCounts,
   parseDataVersion,
@@ -17,6 +14,7 @@ import {
   variantName,
 } from './backtest';
 import { formatCi, formatDrawdown, formatProfitFactor, formatShare, metricLines, resolutionText } from './lab-format';
+import { apiError } from '../../core/api/bench-api.testing';
 import { resultRow, runRow, variantRows } from './lab-test-data';
 
 describe('backtest run parsing', () => {
@@ -77,13 +75,6 @@ describe('backtest run parsing', () => {
     // Shape written by the lab-v2 backtest worker (finalDataVersion).
     expect(parseDataVersion({ n_detections: 700, events: 90, events_pending: 10 })).toMatchObject({ events: 90, pendingCandles: 10 });
     expect(parseRun(runRow({ summary: { verdict: 'none' } }))?.summaryRaw).toEqual({ verdict: 'none' });
-  });
-
-  it('recognises an unreadable column (fallback to the legacy SELECT)', () => {
-    for (const code of ['42703', '42501', 'PGRST204']) expect(isMissingColumnError({ code })).toBe(true);
-    expect(isMissingColumnError({ code: 'PGRST205' })).toBe(false);
-    expect(isMissingColumnError(null)).toBe(false);
-    expect(RUN_COLUMNS).toBe(`${LEGACY_RUN_COLUMNS},summary`);
   });
 
   it('rejects a run without id, with an unknown status or no creation date; progress as fraction or percent', () => {
@@ -192,18 +183,18 @@ describe('variant ranking', () => {
 });
 
 describe('laboratory errors', () => {
-  it('recognises a missing table or function', () => {
-    for (const code of ['PGRST205', '42P01', 'PGRST202', '42883']) expect(isMissingRelationError({ code })).toBe(true);
-    expect(isMissingRelationError({ code: '42501' })).toBe(false);
+  it('recognises a route not deployed on the bench API (404)', () => {
+    expect(isMissingRelationError(apiError(404, 'NOT_FOUND'))).toBe(true);
+    expect(isMissingRelationError(apiError(500))).toBe(false);
     expect(isMissingRelationError(null)).toBe(false);
   });
 
-  it('shows the French refusal raised by the RPC, a generic message otherwise', () => {
-    expect(requestErrorMessage({ code: '23514', message: 'Un backtest est déjà en cours.' })).toBe('Un backtest est déjà en cours.');
-    expect(requestErrorMessage({ code: 'P0001', message: 'Réessayez après 21:05.' })).toBe('Réessayez après 21:05.');
-    expect(requestErrorMessage({ code: 'P0001', message: 'x'.repeat(300) })).toBe(LAB_MSG.requestFailed);
-    expect(requestErrorMessage({ code: '42501', message: 'permission denied for table backtest_runs' })).toBe(LAB_MSG.requestFailed);
-    expect(requestErrorMessage({ code: 'PGRST202' })).toBe(LAB_MSG.unavailable);
+  it('shows the French refusal of the API (409 BACKTEST_ALREADY_QUEUED), a generic message otherwise', () => {
+    expect(requestErrorMessage(apiError(409, 'BACKTEST_ALREADY_QUEUED', 'Un backtest est déjà en cours.'))).toBe('Un backtest est déjà en cours.');
+    expect(requestErrorMessage(apiError(409, 'BACKTEST_ALREADY_QUEUED', 'Réessayez\u0007 après 21:05.'))).toBe('Réessayez  après 21:05.');
+    expect(requestErrorMessage(apiError(409, 'BACKTEST_ALREADY_QUEUED', 'x'.repeat(250)))).toBe(LAB_MSG.requestFailed);
+    expect(requestErrorMessage(apiError(500, 'INTERNAL_ERROR', 'Erreur interne.'))).toBe(LAB_MSG.requestFailed);
+    expect(requestErrorMessage(apiError(404, 'NOT_FOUND'))).toBe(LAB_MSG.unavailable);
     expect(requestErrorMessage('boom')).toBe(LAB_MSG.requestFailed);
   });
 });

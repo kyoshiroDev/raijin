@@ -73,11 +73,17 @@ function toIsoDate(value: unknown): string | null {
   return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
 }
 
+/** `bigint` id: a number, or its text as served by the bench API (`rowIdSchema`). */
+function alertId(value: unknown): number | null {
+  const n = typeof value === 'string' && /^\d{1,15}$/.test(value) ? Number(value) : value;
+  return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null;
+}
+
 export function isAlertLogRow(value: unknown): value is AlertLogBase {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Partial<Record<keyof AlertLogBase, unknown>>;
   return (
-    typeof v.id === 'number' &&
+    alertId(v.id) !== null &&
     isSolanaAddress(v.mint) &&
     typeof v.sent_at === 'string' &&
     Number.isFinite(Date.parse(v.sent_at)) &&
@@ -90,7 +96,7 @@ export function parseAlertLogRow(value: unknown): AlertLogRow | null {
   if (!isAlertLogRow(value)) return null;
   const v = value as AlertLogBase & Partial<Record<keyof AlertLogRow, unknown>>;
   return {
-    id: v.id,
+    id: alertId(v.id) ?? 0,
     mint: v.mint,
     sent_at: v.sent_at,
     kind: v.kind,

@@ -33,6 +33,14 @@ import { BOOKS_LOAD_ERROR, PRESET_LOAD_ERROR, PerformanceStore } from './perform
         <span>Justesse des verdicts du moteur</span>
         <span aria-hidden="true" class="text-muted">→</span>
       </a>
+      <a
+        routerLink="/comparaison"
+        class="card press flex min-h-11 items-center justify-between gap-3 text-sm font-semibold hover:border-line-strong"
+        data-shadow-link
+      >
+        <span>Comparaison mode ombre (VPS / Supabase)</span>
+        <span aria-hidden="true" class="text-muted">→</span>
+      </a>
       <section aria-labelledby="perf-test-books">
         <app-test-books-section
           [state]="store.bookState()"

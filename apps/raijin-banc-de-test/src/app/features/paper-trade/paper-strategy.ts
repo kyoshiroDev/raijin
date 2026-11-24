@@ -1,9 +1,10 @@
 // Paper trade sheet maths (SIMULATION ONLY). Pure, no I/O. Mirrors the backend v2 engine
-// (supabase/functions/_shared/paper.ts planLegs / step / reservedSol) for the only strategy left (slim-down 2026-11-21):
+// (legacy Edge Function _shared/paper.ts, ported to the bench API: planLegs / step / reservedSol) for the only strategy left (slim-down 2026-11-21):
 // - all_x2: one leg of 100 %, target ×2, stop −sl % (editable), MARKET entry at the current price.
 // The levels are set from the entry at creation, then RECOMPUTED FROM THE FILL PRICE when the entry fills (same SL
 // distance). Fees: one network fee for the buy + one for the exit. Rent: locked at the fill, returned at close (not a
 // cost). Slippage: paid on the buy (fill = entry × 1.02) and on the sell (exit = level × 0.98).
+import type { PaperOpenRequest } from '@raijin/bench-contracts';
 import {
   PAPER_NETWORK_FEE_SOL,
   PAPER_RENT_SOL,
@@ -124,29 +125,17 @@ export function tradeSummary(d: PaperDraft): TradeSummary | null {
   };
 }
 
-/** Exact parameters of rpc('paper_open_position'). */
-export interface OpenPositionParams {
-  p_mint: string;
-  p_strategy: typeof PAPER_STRATEGY;
-  p_stake: number;
-  p_entry: number;
-  p_sl_pct: number;
-  p_custom_tp: null;
-  p_custom_sl: null;
-  p_book: 'main';
-}
-
-/** RPC payload of a valid draft: all_x2, market entry, main book. */
-export function openPositionParams(d: PaperDraft, mint: string): OpenPositionParams {
+/** Body of `POST /api/paper/positions` (`PaperOpenRequest`, ex-RPC paper_open_position) for a valid draft: all_x2, market entry, main book. */
+export function openPositionParams(d: PaperDraft, mint: string): PaperOpenRequest {
   return {
-    p_mint: mint,
-    p_strategy: PAPER_STRATEGY,
-    p_stake: d.stake,
-    p_entry: d.entry,
-    p_sl_pct: d.slPct,
-    p_custom_tp: null,
-    p_custom_sl: null,
-    p_book: 'main',
+    mint,
+    strategy: PAPER_STRATEGY,
+    stake_sol: d.stake,
+    entry_price: d.entry,
+    sl_pct: d.slPct,
+    custom_tp_price: null,
+    custom_sl_price: null,
+    book: 'main',
   };
 }
 

@@ -3,7 +3,6 @@ import {
   bucketLabel,
   bucketView,
   formatMultiple,
-  isMissingFunctionError,
   parseBreakdownRow,
   parseBreakdownRows,
   parseCount,
@@ -170,13 +169,5 @@ describe('source view', () => {
 
   it('has no overview without rows', () => {
     expect(sourceView([], 'scan').overall).toBeNull();
-  });
-});
-
-describe('isMissingFunctionError', () => {
-  it('recognises PGRST202 / 42883 only', () => {
-    expect(isMissingFunctionError({ code: 'PGRST202' })).toBe(true);
-    expect(isMissingFunctionError({ code: '42883' })).toBe(true);
-    for (const other of [{ code: '42501' }, { message: 'x' }, null, 'PGRST202']) expect(isMissingFunctionError(other)).toBe(false);
   });
 });

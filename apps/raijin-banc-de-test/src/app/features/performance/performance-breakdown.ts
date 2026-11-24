@@ -261,10 +261,3 @@ const MULTIPLE_FR = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, m
 export function formatMultiple(v: number | null): string {
   return v === null || !Number.isFinite(v) ? '—' : `×${MULTIPLE_FR.format(v)}`;
 }
-
-/** PostgREST « function not found » (PGRST202) or Postgres undefined_function (42883): RPC not deployed yet. */
-export function isMissingFunctionError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const code = (error as { code?: unknown }).code;
-  return code === 'PGRST202' || code === '42883';
-}

@@ -24,8 +24,8 @@ describe('ngsw-config.json', () => {
     expect(config.dataGroups).toBeUndefined();
   });
 
-  it('never mentions Supabase (or any cross-origin URL)', () => {
-    expect(ngswConfigText.toLowerCase()).not.toContain('supabase');
+  it('never caches the bench API nor any cross-origin URL', () => {
+    expect(ngswConfigText).not.toContain('/api');
     for (const group of config.assetGroups ?? []) {
       expect(group.resources.urls ?? []).toEqual([]);
       for (const file of group.resources.files ?? []) expect(file.startsWith('/')).toBe(true);
@@ -47,7 +47,7 @@ describe('ngsw-config.json', () => {
     expect(fonts?.resources.files).toEqual(expect.arrayContaining([expect.stringContaining('woff2')]));
   });
 
-  it('keeps the default navigation URLs (deep links like /auth/reset?code=… get index.html)', () => {
+  it('keeps the default navigation URLs (deep links like /token/<mint> get index.html)', () => {
     expect(config.index).toBe('/index.html');
     expect(config.navigationUrls).toBeUndefined();
   });

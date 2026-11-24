@@ -1,5 +1,5 @@
 // Pure statistics of closed paper positions (SIMULATION ONLY), per strategy. Mirrors the backend v2 definitions
-// (supabase/functions/_shared/paper.ts statsOf):
+// (legacy Edge Functions _shared/paper.ts statsOf, ported to the bench API):
 // - a trade = a filled position that closed with a finite pnl_sol (cancelled / expired entries never traded);
 // - TP / SL rates are LEG-level: closed legs at TP (or SL) ÷ closed legs (a breakeven exit is neither);
 // - losing streak: consecutive pnl < 0 by closed_at, a pnl ≥ 0 resets it;

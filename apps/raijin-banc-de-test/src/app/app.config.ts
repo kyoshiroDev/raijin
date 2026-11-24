@@ -17,14 +17,13 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
-    // Eager on purpose: creating the store creates the Supabase client (which starts the
-    // reset link's PKCE exchange) and registers the auth listener in the same tick, so the
-    // PASSWORD_RECOVERY event is recorded before any lazy route loads. Do not await here.
+    // Créé au démarrage : la session du banc (GET /api/auth/session) est lue avant la première garde de route,
+    // et le renvoi vers /login sur 401 est branché. Ne pas attendre ici.
     provideAppInitializer(() => {
       inject(AuthStore);
     }),
     provideRouter(routes, withComponentInputBinding()),
-    // Static files only: ngsw-config.json has no dataGroups, Supabase calls are never cached.
+    // Fichiers statiques seulement : ngsw-config.json n'a aucun dataGroup, les appels /api ne sont jamais mis en cache.
     provideServiceWorker('ngsw-worker.js', {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
