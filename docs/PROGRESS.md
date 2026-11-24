@@ -326,6 +326,8 @@
 - Commits :
 - Décisions : dispense CSRF du POST anonyme non rouverte (refus phase 3) ; budget `initial` ≤ 420 kB visé ; captures de polish dans `phase-9/` (sans écraser les phases 1–6 bis), landing régénérée dans `phase-7/` ; si Lighthouse reste < 95 après T3 + 2 itérations, blocage chiffré noté et mentionné dans `docs/PR_BODY.md` (pas de contournement).
 
+- [x] T5 landing (seo-astro) : relecture conforme (aucune promesse de gain, tutoiement, mention « pas un conseil en investissement », Rai et reduced-motion) ; démonstration avant clic avec squelettes à l'emplacement des valeurs masquées ; `text-wrap: balance/pretty` (plus de mots orphelins). CSS seul, 127 tests verts. Lighthouse à remesurer sur GitHub (T11).
+
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
 - Outils : node v22.23.2, pnpm 11.6.0 (corepack), git 2.43.0, docker compose v2.35.1, gh 2.45.0.

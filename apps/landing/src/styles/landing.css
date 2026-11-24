@@ -28,6 +28,18 @@
   }
 }
 
+/* Typographie : titres équilibrés, pas de mot orphelin en fin de paragraphe (« ? » ou « Pro. » seuls). */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p,
+li,
+dd {
+  text-wrap: pretty;
+}
+
 /* Menu mobile : <details> natif, icône qui bascule, marqueur masqué. */
 .menu-mobile > summary::-webkit-details-marker {
   display: none;
@@ -56,6 +68,22 @@
    démonstration », puis révélés contrôle par contrôle. */
 [data-demo='idle'] .demo-reveal {
   visibility: hidden;
+}
+/* État d'attente : chaque valeur masquée est remplacée par une barre de squelette à sa place exacte (pseudo-élément
+   décoratif, ignoré des lecteurs d'écran ; le contenu reste `visibility: hidden`). */
+[data-demo='idle'] .demo-check .demo-reveal {
+  position: relative;
+}
+[data-demo='idle'] .demo-check .demo-reveal::after {
+  content: '';
+  position: absolute;
+  inset: 0.2em 0;
+  visibility: visible;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+[data-demo='idle'] .demo-check p.demo-reveal:last-child::after {
+  right: 40%;
 }
 [data-demo='done'] .demo-check {
   animation: demo-in 250ms var(--ease-raijin) both;
