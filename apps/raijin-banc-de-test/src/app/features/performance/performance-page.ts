@@ -109,7 +109,7 @@ export class PerformancePage implements OnInit {
   protected readonly presetError = PRESET_LOAD_ERROR;
   protected readonly booksError = BOOKS_LOAD_ERROR;
   /** The main scanner, the only source left. */
-  protected readonly source = SOURCES[0];
+  protected readonly source = SOURCES[0]!;
 
   ngOnInit(): void {
     void this.store.load();

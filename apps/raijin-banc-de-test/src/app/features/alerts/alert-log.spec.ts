@@ -35,7 +35,7 @@ describe('alert log', () => {
     const rows = Array.from({ length: 80 }, (_, i) => ({ id: i, mint: A, sent_at: new Date(Date.UTC(2026, 10, 1) + i * 60_000).toISOString(), kind: 'single' }));
     const items = mergeAlerts(rows, []);
     expect(items).toHaveLength(ALERT_LOG_LIMIT);
-    expect(items[0].id).toBe(79);
+    expect(items[0]!.id).toBe(79);
   });
 
   it('lists distinct mints', () => {

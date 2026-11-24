@@ -168,10 +168,10 @@ describe('variant ranking', () => {
       [30, 'young_frenzy', 3],
       [40, 'young_calm', null],
     ]);
-    expect(ranked[1].train?.avgNetPct).toBe(9.1);
-    expect(ranked[1].robust).toBe(true);
-    expect(ranked[0].robust).toBe(false);
-    expect(ranked[3].test).toBeNull();
+    expect(ranked[1]!.train?.avgNetPct).toBe(9.1);
+    expect(ranked[1]!.robust).toBe(true);
+    expect(ranked[0]!.robust).toBe(false);
+    expect(ranked[3]!.test).toBeNull();
     expect(new Set(ranked.map((v) => v.id)).size).toBe(4);
   });
 
@@ -213,16 +213,16 @@ describe('laboratory formatting', () => {
 
   it('builds the train vs test lines, colouring the signed test values', () => {
     const [v] = rankVariants(parseResultRows(variantRows()), 'all');
-    const lines = metricLines(v.train, v.test);
+    const lines = metricLines(v!.train, v!.test);
     expect(lines.map((l) => l.key)).toEqual(['trades', 'win', 'net', 'sol', 'pf', 'dd', 'streak']);
     const by = Object.fromEntries(lines.map((l) => [l.key, l]));
-    expect([by['trades'].train, by['trades'].test]).toEqual(['98', '42']);
-    expect(by['win'].test).toBe('45,0 %');
-    expect([by['net'].train, by['net'].test, by['net'].testSign]).toEqual(['+9,1 %', '+12,5 %', 1]);
-    expect(by['sol'].test).toBe('+0,013 SOL');
-    expect(by['streak'].test).toBe('5 trades');
+    expect([by['trades']!.train, by['trades']!.test]).toEqual(['98', '42']);
+    expect(by['win']!.test).toBe('45,0 %');
+    expect([by['net']!.train, by['net']!.test, by['net']!.testSign]).toEqual(['+9,1 %', '+12,5 %', 1]);
+    expect(by['sol']!.test).toBe('+0,013 SOL');
+    expect(by['streak']!.test).toBe('5 trades');
     expect(metricLines(null, null).every((l) => l.train === '–' && l.test === '–')).toBe(true);
-    const test = v.test;
+    const test = v!.test;
     if (!test) throw new Error('test metrics expected');
     const noLoss = metricLines(null, { ...test, profitFactor: null, avgLossPct: null });
     expect(noLoss.find((l) => l.key === 'pf')?.test).toBe('∞ (aucune perte)');

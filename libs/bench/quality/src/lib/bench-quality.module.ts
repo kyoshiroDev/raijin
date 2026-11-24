@@ -1,9 +1,10 @@
 import { Inject, Module } from '@nestjs/common';
-import { BENCH_SOLANA } from '@raijin/bench-core';
+import { BENCH_SOLANA, BenchRedis } from '@raijin/bench-core';
 import type { BenchSolana } from '@raijin/bench-solana';
 import type { RiskFacts } from '@raijin/shared-contracts';
 import { BenchMarketReader, MarketReader } from './market-reader';
 import { BenchQualityJobs, FactsSource } from './quality-jobs';
+import { QualityReportCache, QualityReportService, createQualityReportCache } from './quality-report';
 import { QualityStore, SqlQualityStore } from './quality-store';
 import { BenchQualityController } from './quality.controllers';
 
@@ -21,7 +22,7 @@ export class SolanaFactsSource extends FactsSource {
 
 /**
  * Mesure des verdicts et entretien (ARCHITECTURE §16) : `verdict-follow-up`, `verdict-aggregate`, `retention-purge`,
- * `storage-check`, `GET /api/verdicts/quality`, `GET /api/shadow/comparison`.
+ * `storage-check`, `GET /api/verdicts/quality` (précalculé la nuit), `GET /api/shadow/comparison`.
  */
 @Module({
   controllers: [BenchQualityController],
@@ -29,6 +30,8 @@ export class SolanaFactsSource extends FactsSource {
     { provide: QualityStore, useClass: SqlQualityStore },
     { provide: FactsSource, useClass: SolanaFactsSource },
     { provide: MarketReader, inject: [BENCH_SOLANA], useFactory: (solana: BenchSolana) => new BenchMarketReader(solana.service) },
+    { provide: QualityReportCache, inject: [BenchRedis], useFactory: createQualityReportCache },
+    QualityReportService,
     BenchQualityJobs,
   ],
   exports: [BenchQualityJobs],

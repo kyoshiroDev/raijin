@@ -82,9 +82,9 @@ describe('bookComparisonView', () => {
       ['—', null],
       ['−0,05 SOL', 'bear'],
     ]);
-    expect(cells('drawdown')[0].text).toBe('−0,12 SOL');
-    expect(cells('streak')[0].text).toBe('3 d’affilée');
-    expect(cells('open')[0].text).toBe('2');
+    expect(cells('drawdown')[0]!.text).toBe('−0,12 SOL');
+    expect(cells('streak')[0]!.text).toBe('3 d’affilée');
+    expect(cells('open')[0]!.text).toBe('2');
     expect(v.progress.map((p) => p.value)).toEqual([12, 0, 12]);
     expect(v.hasData).toBe(true);
     expect(v.insufficient).toBe(true);
@@ -92,8 +92,8 @@ describe('bookComparisonView', () => {
 
   it('reads « aucune » for no drawdown / no losing streak, and no data when the server returned nothing', () => {
     const v = bookComparisonView(parseBookComparisonRows([bookRow({ trades: 30, tp_hits: 30, sl_hits: 0, max_drawdown_sol: 0, worst_losing_streak: 0 })]));
-    expect(v.rows.find((r) => r.key === 'drawdown')?.cells[0].text).toBe('aucune');
-    expect(v.rows.find((r) => r.key === 'streak')?.cells[0].text).toBe('aucune');
+    expect(v.rows.find((r) => r.key === 'drawdown')?.cells[0]!.text).toBe('aucune');
+    expect(v.rows.find((r) => r.key === 'streak')?.cells[0]!.text).toBe('aucune');
     expect(v.rows.find((r) => r.key === 'tp')?.cells[0]).toMatchObject({ text: '100,0 %', muted: false });
     expect(v.insufficient).toBe(false);
     const empty = bookComparisonView([]);

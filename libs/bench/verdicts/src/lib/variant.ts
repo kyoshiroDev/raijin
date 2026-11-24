@@ -42,6 +42,8 @@ export interface ResolvedVariant {
   readonly label: string;
   readonly version: string;
   readonly config: RiskEngineConfig;
+  /** Surcharges validées (copie de `parsed.overrides`), vides pour la référence. */
+  readonly overrides: Readonly<Record<string, number>>;
   /** FNV-1a 32 bits (8 caractères hexadécimaux) du JSON à clés triées de `config`. */
   readonly fingerprint: string;
 }
@@ -89,7 +91,14 @@ export function configFingerprint(config: RiskEngineConfig): string {
 /** Moteur de référence : configuration par défaut, version publiée. */
 export function resolveReference(): ResolvedVariant {
   const config = resolveRiskEngineConfig();
-  return { id: REFERENCE_VARIANT_ID, label: 'Moteur actuel', version: config.version, config, fingerprint: configFingerprint(config) };
+  return {
+    id: REFERENCE_VARIANT_ID,
+    label: 'Moteur actuel',
+    version: config.version,
+    config,
+    overrides: {},
+    fingerprint: configFingerprint(config),
+  };
 }
 
 /**
@@ -109,7 +118,14 @@ export function resolveVariant(variant: EngineVariant): ResolvedVariant {
     ...(parsed.reasonWeights === undefined ? {} : { reasonWeights: parsed.reasonWeights }),
     version,
   });
-  return { id: parsed.id, label: parsed.label, version, config, fingerprint: configFingerprint(config) };
+  return {
+    id: parsed.id,
+    label: parsed.label,
+    version,
+    config,
+    overrides: { ...parsed.overrides },
+    fingerprint: configFingerprint(config),
+  };
 }
 
 /** Verdict rejoué sous une forme mesurable (contrôles en `warn` ou `danger`). */
@@ -222,7 +238,7 @@ export function replayVariants(
   });
   const reference = side(referenceVariant, referenceVerdicts);
 
-  const replays = resolved.map((variant, index): VariantReplay => {
+  const replays = resolved.map((variant): VariantReplay => {
     const scored = evaluateAll(replayable, createRiskEngine(variant.config));
     const matrix = emptyVerdictMatrix();
     let changed = 0;
@@ -247,7 +263,7 @@ export function replayVariants(
     const ref = reference.accuracy;
     return {
       ...own,
-      overrides: { ...(variants[index] as EngineVariant).overrides },
+      overrides: variant.overrides,
       changes: { matrix, changed, improved, degraded, unscored },
       delta: {
         dangerPrecision: difference(own.accuracy.dangerPrecision.value, ref.dangerPrecision.value),

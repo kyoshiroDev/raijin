@@ -89,7 +89,7 @@ describe('preset performance (performance_by_preset)', () => {
     ]);
     const gta = presetCardView(rows, 'young_calm', 'gta');
     expect(gta).toMatchObject({ segment: 'gta', n: 8, enough: false });
-    expect(gta.rates[0].rate).toBe(0.25);
+    expect(gta.rates[0]!.rate).toBe(0.25);
     expect(presetCardView(rows, 'young_frenzy', 'all')).toMatchObject({ row: null, rates: [], n: 0 });
   });
 
@@ -143,8 +143,8 @@ describe('preset performance (performance_by_preset)', () => {
       expect(byKey('paper_open').map((c) => c.text)).toEqual(['2', '1']);
 
       const gta = comparisonRows(comparisonView(rows, 'gta'));
-      expect(gta.every((r) => r.cells[0].text === '—' && r.cells[0].muted)).toBe(true);
-      expect(gta.find((r) => r.key === 'paper_pnl')?.cells[1].text).toBe('Aucun portefeuille');
+      expect(gta.every((r) => r.cells[0]!.text === '—' && r.cells[0]!.muted)).toBe(true);
+      expect(gta.find((r) => r.key === 'paper_pnl')?.cells[1]!.text).toBe('Aucun portefeuille');
     });
   });
 });

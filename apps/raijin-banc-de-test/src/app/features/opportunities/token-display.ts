@@ -46,7 +46,7 @@ export function retainedLiquidity(t: LiquidityFields): number {
   const dex = usableLiquidity(t.liquidity_dex_usd) ? t.liquidity_dex_usd : t.liquidity_usd;
   const values = [dex, t.liquidity_gecko_usd].filter(usableLiquidity);
   if (values.length === 0) return 0;
-  return values.length === 2 ? (values[0] + values[1]) / 2 : values[0];
+  return values.length === 2 ? (values[0]! + values[1]!) / 2 : values[0]!;
 }
 
 /** Market stats of the detail (liquidity is rendered separately by <app-liquidity-info>). */

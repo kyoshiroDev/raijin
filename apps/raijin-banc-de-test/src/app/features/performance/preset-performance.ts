@@ -135,8 +135,8 @@ export function presetCardView(rows: readonly PresetRow[], preset: PerfPreset, s
   const rate = (hits: number) => (n > 0 ? hits / n : null);
   return {
     preset,
-    label: def.label,
-    hint: def.hint,
+    label: def!.label,
+    hint: def!.hint,
     segment: seg,
     row,
     enough: hasEnoughSample(n),

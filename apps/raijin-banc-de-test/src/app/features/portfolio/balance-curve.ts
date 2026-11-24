@@ -42,16 +42,16 @@ export function curveGeometry(points: readonly CurvePoint[], width: number, heig
   const start = values[0];
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const span = max - min || Math.max(Math.abs(start) * 0.1, 0.01);
-  const lo = max - min === 0 ? start - span / 2 : min;
+  const span = max - min || Math.max(Math.abs(start!) * 0.1, 0.01);
+  const lo = max - min === 0 ? start! - span / 2 : min;
   const x = (i: number) => (points.length === 1 ? width / 2 : pad + (i * (width - 2 * pad)) / (points.length - 1));
   const y = (v: number) => pad + (1 - (v - lo) / span) * (height - 2 * pad);
   const r = (n: number) => Math.round(n * 10) / 10;
   const coords = values.map((v, i) => `${r(x(i))},${r(y(v))}`);
   const line = `M${coords.join(' L')}`;
-  const baseY = r(y(start));
+  const baseY = r(y(start!));
   const area = `${line} L${r(x(values.length - 1))},${baseY} L${r(x(0))},${baseY} Z`;
-  return { line, area, baseY, min, max, last: { x: r(x(values.length - 1)), y: r(y(values[values.length - 1])) } };
+  return { line, area, baseY, min, max, last: { x: r(x(values.length - 1)), y: r(y(values[values.length - 1]!)) } };
 }
 
 /** Accessible summary of the curve (aria-label). */

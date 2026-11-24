@@ -44,14 +44,14 @@ describe('PriceChartStore', () => {
     expect(store.range()).toBe('6h');
     const six = store.points();
     const lastRow = rows[rows.length - 1];
-    expect(six.at(-1)).toEqual({ t: Date.parse(lastRow.captured_at), price: lastRow.price_usd });
-    expect(six[six.length - 1].t - six[0].t).toBeLessThanOrEqual(RANGE_MS['6h']);
+    expect(six.at(-1)).toEqual({ t: Date.parse(lastRow!.captured_at), price: lastRow!.price_usd });
+    expect(six[six.length - 1]!.t - six[0]!.t).toBeLessThanOrEqual(RANGE_MS['6h']);
     expect(six.length).toBe(181);
 
     store.setRange('24h');
     const day = store.points();
     expect(day.length).toBe(MAX_POINTS);
-    expect(day[day.length - 1].t - day[0].t).toBe(RANGE_MS['24h']);
+    expect(day[day.length - 1]!.t - day[0]!.t).toBe(RANGE_MS['24h']);
     expect(day.at(-1)).toEqual(six.at(-1));
     expect(sb.callsOf('token_snapshots')).toHaveLength(1);
   });

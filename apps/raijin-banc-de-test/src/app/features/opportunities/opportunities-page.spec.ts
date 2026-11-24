@@ -99,13 +99,13 @@ describe('OpportunitiesPage', () => {
     filtersButton()?.focus();
     filtersButton()?.click();
     await settle();
-    expect(filterDialog().hasAttribute('open')).toBe(true);
-    expect(filterDialog().querySelector('app-filter-bar')).not.toBeNull();
-    expect(filterDialog().contains(document.activeElement)).toBe(true);
+    expect(filterDialog()!.hasAttribute('open')).toBe(true);
+    expect(filterDialog()!.querySelector('app-filter-bar')).not.toBeNull();
+    expect(filterDialog()!.contains(document.activeElement)).toBe(true);
 
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await settle();
-    expect(filterDialog().hasAttribute('open')).toBe(false);
+    expect(filterDialog()!.hasAttribute('open')).toBe(false);
     expect(document.activeElement).toBe(filtersButton());
   });
 
@@ -113,9 +113,9 @@ describe('OpportunitiesPage', () => {
     filtersButton()?.focus();
     filtersButton()?.click();
     await settle();
-    filterDialog().querySelector<HTMLElement>('[data-sheet-backdrop]')?.click();
+    filterDialog()!.querySelector<HTMLElement>('[data-sheet-backdrop]')?.click();
     await settle();
-    expect(filterDialog().hasAttribute('open')).toBe(false);
+    expect(filterDialog()!.hasAttribute('open')).toBe(false);
     expect(document.activeElement).toBe(filtersButton());
   });
 
@@ -125,9 +125,9 @@ describe('OpportunitiesPage', () => {
 
     filtersButton()?.click();
     await settle();
-    const risky = Array.from(filterDialog().querySelectorAll('label')).find((l) => l.textContent?.includes('Masquer les tokens risqués'));
+    const risky = Array.from(filterDialog()!.querySelectorAll('label')).find((l) => l.textContent?.includes('Masquer les tokens risqués'));
     risky?.querySelector('input')?.click();
-    const all = Array.from(filterDialog().querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Toutes');
+    const all = Array.from(filterDialog()!.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Toutes');
     all?.click();
     await settle();
 
@@ -141,13 +141,13 @@ describe('OpportunitiesPage', () => {
     open?.focus();
     open?.click();
     await settle();
-    expect(detailDialog().hasAttribute('open')).toBe(true);
-    expect(detailDialog().querySelector('app-token-detail')).not.toBeNull();
-    expect(detailDialog().querySelector('h2')?.textContent?.trim()).toBe('AAA');
+    expect(detailDialog()!.hasAttribute('open')).toBe(true);
+    expect(detailDialog()!.querySelector('app-token-detail')).not.toBeNull();
+    expect(detailDialog()!.querySelector('h2')?.textContent?.trim()).toBe('AAA');
 
-    detailDialog().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    detailDialog()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await settle();
-    expect(detailDialog().querySelector('app-token-detail')).toBeNull();
+    expect(detailDialog()!.querySelector('app-token-detail')).toBeNull();
     expect(document.activeElement).toBe(open);
   });
 
@@ -178,7 +178,7 @@ describe('OpportunitiesPage', () => {
 
     el.querySelector<HTMLButtonElement>('app-token-card button[data-open]')?.click();
     await settle();
-    expect(detailDialog().querySelector('[data-roundtrip-breakdown]')?.textContent).toContain('Coût aller-retour pour 0,3 SOL (estimé)');
+    expect(detailDialog()!.querySelector('[data-roundtrip-breakdown]')?.textContent).toContain('Coût aller-retour pour 0,3 SOL (estimé)');
   });
 
   it('shows the « Mis à jour » indicator in a polite live region', () => {

@@ -162,7 +162,7 @@ describe('Sheet (nested)', () => {
     last.focus();
     last.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
     const dialogs = el.querySelectorAll('dialog');
-    expect(dialogs[1].contains(document.activeElement)).toBe(true);
+    expect(dialogs[1]!.contains(document.activeElement)).toBe(true);
     fixture.destroy();
   });
 });

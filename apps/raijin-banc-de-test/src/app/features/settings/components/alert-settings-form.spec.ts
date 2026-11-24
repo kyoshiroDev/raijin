@@ -74,8 +74,8 @@ describe('AlertSettingsForm', () => {
     const { submit, type, emitted, el } = setup();
     type('#alert-max-per-hour', '6');
     const selects = el.querySelectorAll('select');
-    selects[0].value = '22';
-    selects[0].dispatchEvent(new Event('change'));
+    selects[0]!.value = '22';
+    selects[0]!.dispatchEvent(new Event('change'));
     submit().click();
     expect(emitted).toEqual([
       {
@@ -113,7 +113,7 @@ describe('AlertSettingsForm', () => {
     expect(sw.getAttribute('aria-checked')).toBe('true');
     submit().click();
     expect(emitted).toHaveLength(1);
-    expect(emitted[0].auto_paper).toBe(true);
+    expect(emitted[0]!.auto_paper).toBe(true);
   });
 
   it('shows the « Paper trading » section: fixed « tout à ×2 » (no strategy selector), stop 30 %, stake reminder', () => {
@@ -136,7 +136,7 @@ describe('AlertSettingsForm', () => {
     type('#paper-sl-pct', '25');
     submit().click();
     expect(emitted[0]).toMatchObject({ paper_sl_pct: 25 });
-    expect('paper_default_strategy' in emitted[0]).toBe(false);
+    expect('paper_default_strategy' in emitted[0]!).toBe(false);
   });
 
   it('shows « Jeune calme » as fixed information (no profile selector, no score / zone / model / Radar / Jeune & fort controls)', () => {

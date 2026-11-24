@@ -45,7 +45,7 @@ describe('BottomNav', () => {
   it('marks the Alertes tab as current on /alerts', async () => {
     const { links } = await renderAt('/alerts');
     expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null, null, null]);
-    expect(links[1].classList).toContain('active');
+    expect(links[1]!.classList).toContain('active');
   });
 
   it('marks the Performance tab as current on /performance', async () => {

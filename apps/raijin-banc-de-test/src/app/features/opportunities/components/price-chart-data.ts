@@ -62,7 +62,7 @@ export function parseSnapshots(rows: unknown): PricePoint[] {
     if (t !== null && price !== null) points.push({ t, price });
   }
   points.sort((a, b) => a.t - b.t);
-  return points.filter((p, i) => i === 0 || p.t !== points[i - 1].t);
+  return points.filter((p, i) => i === 0 || p.t !== points[i - 1]!.t);
 }
 
 /** alert_log rows (sent_at, entry_price) → alert markers. Rows without an entry price are ignored. */
@@ -130,8 +130,8 @@ export function windowPoints(points: readonly PricePoint[], range: ChartRange): 
 export function downsample(points: readonly PricePoint[], max = MAX_POINTS): PricePoint[] {
   const n = points.length;
   if (n <= max) return points.slice();
-  if (max < 3) return max <= 0 ? [] : max === 1 ? [points[n - 1]] : [points[0], points[n - 1]];
-  const out: PricePoint[] = [points[0]];
+  if (max < 3) return max <= 0 ? [] : max === 1 ? [points[n - 1]!] : [points[0]!, points[n - 1]!];
+  const out: PricePoint[] = [points[0]!];
   const every = (n - 2) / (max - 2);
   let a = 0;
   for (let i = 0; i < max - 2; i++) {
@@ -140,8 +140,8 @@ export function downsample(points: readonly PricePoint[], max = MAX_POINTS): Pri
     let avgT = 0;
     let avgP = 0;
     for (let j = avgStart; j < avgEnd; j++) {
-      avgT += points[j].t;
-      avgP += points[j].price;
+      avgT += points[j]!.t;
+      avgP += points[j]!.price;
     }
     const count = Math.max(1, avgEnd - avgStart);
     avgT /= count;
@@ -152,16 +152,16 @@ export function downsample(points: readonly PricePoint[], max = MAX_POINTS): Pri
     let best = rangeStart;
     let bestArea = -1;
     for (let j = rangeStart; j < rangeEnd; j++) {
-      const area = Math.abs((pa.t - avgT) * (points[j].price - pa.price) - (pa.t - points[j].t) * (avgP - pa.price));
+      const area = Math.abs((pa!.t - avgT) * (points[j]!.price - pa!.price) - (pa!.t - points[j]!.t) * (avgP - pa!.price));
       if (area > bestArea) {
         bestArea = area;
         best = j;
       }
     }
-    out.push(points[best]);
+    out.push(points[best]!);
     a = best;
   }
-  out.push(points[n - 1]);
+  out.push(points[n - 1]!);
   return out;
 }
 
@@ -234,16 +234,16 @@ export interface LabelSlot {
 export function placeLabels(items: readonly LabelSlot[], gap: number, top: number, bottom: number): LabelSlot[] {
   const sorted = items.map((it, index) => ({ ...it, index })).sort((a, b) => a.y - b.y || a.index - b.index);
   for (let i = 0; i < sorted.length; i++) {
-    const min = i === 0 ? top : sorted[i - 1].y + gap;
-    sorted[i].y = Math.max(sorted[i].y, min);
+    const min = i === 0 ? top : sorted[i - 1]!.y + gap;
+    sorted[i]!.y = Math.max(sorted[i]!.y, min);
   }
   for (let i = sorted.length - 1; i >= 0; i--) {
-    const max = i === sorted.length - 1 ? bottom : sorted[i + 1].y - gap;
-    sorted[i].y = Math.min(sorted[i].y, max);
+    const max = i === sorted.length - 1 ? bottom : sorted[i + 1]!.y - gap;
+    sorted[i]!.y = Math.min(sorted[i]!.y, max);
   }
-  if (sorted.length > 0 && sorted[0].y < top) {
+  if (sorted.length > 0 && sorted[0]!.y < top) {
     // Not enough room: keep the top inside, accept overlap at the bottom rather than leaving the chart.
-    for (let i = 0; i < sorted.length; i++) sorted[i].y = Math.max(sorted[i].y, i === 0 ? top : sorted[i - 1].y + gap);
+    for (let i = 0; i < sorted.length; i++) sorted[i]!.y = Math.max(sorted[i]!.y, i === 0 ? top : sorted[i - 1]!.y + gap);
   }
   const out = new Array<LabelSlot>(items.length);
   for (const s of sorted) out[s.index] = { id: s.id, y: s.y };
@@ -270,7 +270,7 @@ export function areaPath(points: readonly XY[], baseY: number): string {
   if (points.length === 0) return '';
   const first = points[0];
   const last = points[points.length - 1];
-  return `${linePath(points)} L${r1(last.x)} ${r1(baseY)} L${r1(first.x)} ${r1(baseY)} Z`;
+  return `${linePath(points)} L${r1(last!.x)} ${r1(baseY)} L${r1(first!.x)} ${r1(baseY)} Z`;
 }
 
 /** Index of the x closest to `x` (xs sorted ascending); -1 when empty. */
@@ -280,10 +280,10 @@ export function nearestIndex(xs: readonly number[], x: number): number {
   let hi = xs.length - 1;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
-    if (xs[mid] <= x) lo = mid;
+    if (xs[mid]! <= x) lo = mid;
     else hi = mid;
   }
-  return Math.abs(xs[hi] - x) < Math.abs(xs[lo] - x) ? hi : lo;
+  return Math.abs(xs[hi]! - x) < Math.abs(xs[lo]! - x) ? hi : lo;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -304,7 +304,7 @@ export function formatParisTime(t: number): string {
 
 function parisMinutesOfDay(t: number): number {
   const [h, m] = formatParisTime(t).split(':').map(Number);
-  return h * 60 + m;
+  return h! * 60 + m!;
 }
 
 const QUARTER_MS = 15 * 60_000;
@@ -385,7 +385,7 @@ export function chartTableRows(points: readonly PricePoint[], markers: readonly 
   const rows: TableRow[] = [
     { label: 'Plus bas', value: usd(Math.min(...prices)) },
     { label: 'Plus haut', value: usd(Math.max(...prices)) },
-    { label: 'Dernier prix', value: usd(prices[prices.length - 1]) },
+    { label: 'Dernier prix', value: usd(prices[prices.length - 1]!) },
   ];
   for (const m of markers) rows.push({ label: `${MARKER_LABEL[m.kind]} à ${formatParisTime(m.t)}`, value: usd(m.price) });
   return rows;
@@ -438,8 +438,8 @@ export function buildChartGeometry(
 ): ChartGeometry | null {
   if (points.length === 0) return null;
   const prices = points.map((p) => p.price);
-  const t0 = points[0].t;
-  const t1 = points[points.length - 1].t;
+  const t0 = points[0]!.t;
+  const t1 = points[points.length - 1]!.t;
   const shown = visibleMarkers(markers, t0, t1);
   const domain = computeYDomain(prices, shown.map((m) => m.price));
   if (!domain) return null;
@@ -454,10 +454,10 @@ export function buildChartGeometry(
   const xy = points.map((p) => ({ x: t1 === t0 ? plotRight - X_INSET_RIGHT : x(p.t), y: y(p.price) }));
   const last = xy[xy.length - 1];
   const slots: (LabelSlot & { text: string; tone: LabelTone })[] = [];
-  slots.push({ id: 'current', text: formatPriceShort(prices[prices.length - 1]), y: last.y, tone: 'current' });
+  slots.push({ id: 'current', text: formatPriceShort(prices[prices.length - 1]), y: last!.y, tone: 'current' });
 
   const placed = placeLabels(slots, LABEL_GAP, plotTop + 4, plotBottom - 2);
-  const labels = slots.map((s, i) => ({ id: s.id, text: s.text, tone: s.tone, y: r1(placed[i].y) }));
+  const labels = slots.map((s, i) => ({ id: s.id, text: s.text, tone: s.tone, y: r1(placed[i]!.y) }));
 
   const ticks = timeTicks(t0, t1)
     .map((tk) => ({ x: r1(x(tk.t)), label: tk.label }))
@@ -476,6 +476,6 @@ export function buildChartGeometry(
     labels,
     ticks,
     markers: shown.map((m) => ({ kind: m.kind, x: r1(x(m.t)), y: r1(clampY(y(m.price))) })),
-    dot: { x: r1(last.x), y: r1(last.y) },
+    dot: { x: r1(last!.x), y: r1(last!.y) },
   };
 }

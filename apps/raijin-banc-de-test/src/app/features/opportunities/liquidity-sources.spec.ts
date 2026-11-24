@@ -57,13 +57,13 @@ describe('liquiditySummary', () => {
 
   it('falls back to liquidity_usd when the generated DexScreener column is absent', () => {
     const s = liquiditySummary({ ...liq({ liquidity_dex_usd: null }), liquidity_usd: 12_000 } as Pick<TokenRow, keyof Liq>);
-    expect(s.sources[0].value).toBe(12_000);
+    expect(s.sources[0]!.value).toBe(12_000);
   });
 
   it('ignores zero / non-finite values (unknown) and keeps DexScreener when it is the only one', () => {
     const s = liquiditySummary(liq({ liquidity_jup_usd: 0, liquidity_gecko_usd: Number.NaN }));
-    expect(s.sources[1].value).toBeNull();
-    expect(s.sources[2].value).toBeNull();
+    expect(s.sources[1]!.value).toBeNull();
+    expect(s.sources[2]!.value).toBeNull();
     expect(s.sources.filter((x) => x.used).map((x) => x.id)).toEqual(['dex']);
     expect(liquidityLabel(s)).toBe('Liquidité');
   });

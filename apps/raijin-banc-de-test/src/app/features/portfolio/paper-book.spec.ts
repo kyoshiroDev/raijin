@@ -40,7 +40,7 @@ describe('paper book view', () => {
     const before = legViews(half('open'));
     expect(before[1]).toMatchObject({ breakevenMoved: false, currentStop: 0.7 });
     const after = legViews(half('tp_hit', { stop_price: 1 }));
-    expect(after[0].state).toBe('tp_hit');
+    expect(after[0]!.state).toBe('tp_hit');
     expect(after[1]).toMatchObject({ state: 'open', breakevenMoved: true, currentStop: 1 });
     const closed = legViews(half('tp_hit', { status: 'breakeven_hit', exit_price: 0.98, stop_price: 1 }));
     expect(closed[1]).toMatchObject({ state: 'breakeven_hit', breakevenMoved: false });

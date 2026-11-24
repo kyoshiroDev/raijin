@@ -46,7 +46,7 @@ export function sparklineGeometry(values: readonly number[] | null | undefined, 
   const area = `M0,${height} L${coords.map(([x, y]) => `${x},${y}`).join(' L')} L${round2(width)},${height} Z`;
   const first = pts[0];
   const last = pts[pts.length - 1];
-  return { points, area, up: last >= first, changePct: (last / first - 1) * 100 };
+  return { points, area, up: last! >= first!, changePct: (last! / first! - 1) * 100 };
 }
 
 // ───────────────────────── Avatar fallback ─────────────────────────

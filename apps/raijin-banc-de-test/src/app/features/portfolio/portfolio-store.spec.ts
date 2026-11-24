@@ -76,7 +76,7 @@ describe('PortfolioStore', () => {
     expect(api.callsTo('GET', BENCH_ROUTES.paperPositions)[0]?.query).toEqual({ books, limit: 500 });
     expect(api.callsTo('GET', BENCH_ROUTES.paperWallets)[0]?.query).toEqual({ books });
     expect(store.view().wallet.balance_sol).toBe(0.8);
-    expect(store.view().active[0].legs[0].state).toBe('open');
+    expect(store.view().active[0]!.legs[0]!.state).toBe('open');
     expect(store.hasParallel()).toBe(false);
   });
 
@@ -89,10 +89,10 @@ describe('PortfolioStore', () => {
     const store = setup();
     await store.load();
     const [a, b] = store.view().active;
-    expect(a.livePrice).toBe(1.5);
-    expect(a.pnl?.pnlSol).toBeCloseTo(0.1 * (1.5 * 0.98 - 1) - 0.0004, 9);
-    expect(b.livePrice).toBe(1);
-    expect(b.pnl?.pnlSol).toBeLessThan(0);
+    expect(a!.livePrice).toBe(1.5);
+    expect(a!.pnl?.pnlSol).toBeCloseTo(0.1 * (1.5 * 0.98 - 1) - 0.0004, 9);
+    expect(b!.livePrice).toBe(1);
+    expect(b!.pnl?.pnlSol).toBeLessThan(0);
     expect(api.callsTo('GET', BENCH_ROUTES.tokenBriefs)[0]?.query).toEqual({ mints: [MINT_A, MINT_B] });
   });
 
@@ -228,9 +228,9 @@ describe('PortfolioStore', () => {
     await store.load();
     const [main, calm, frenzy] = store.stopSlippage();
     expect(main).toMatchObject({ book: 'main', n: 1 });
-    expect(main.avgPct).toBeCloseTo(-10, 9);
+    expect(main!.avgPct).toBeCloseTo(-10, 9);
     expect(calm).toEqual({ book: 'calm_sl30', n: 0, avgPct: null, worstPct: null });
-    expect(frenzy.worstPct).toBeCloseTo(-2, 9);
+    expect(frenzy!.worstPct).toBeCloseTo(-2, 9);
   });
 
   it('offers the test books and compares those that exist once there are at least two', async () => {

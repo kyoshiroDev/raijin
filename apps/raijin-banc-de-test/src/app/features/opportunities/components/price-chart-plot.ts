@@ -117,7 +117,7 @@ export class PriceChartPlot {
     return {
       x,
       y: g.ys[i],
-      left: Math.round(Math.min(Math.max(0, x - TOOLTIP_WIDTH / 2), Math.max(0, g.width - TOOLTIP_WIDTH))),
+      left: Math.round(Math.min(Math.max(0, x! - TOOLTIP_WIDTH / 2), Math.max(0, g.width - TOOLTIP_WIDTH))),
       time: formatParisTime(p.t),
       price: formatPriceFr(p.price),
     };

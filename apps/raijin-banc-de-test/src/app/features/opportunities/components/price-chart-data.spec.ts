@@ -146,9 +146,9 @@ describe('series helpers', () => {
   it('appends the live price only when newer than the last snapshot', () => {
     const pts = series(1);
     const last = pts[pts.length - 1];
-    expect(withLivePoint(pts, 0.0005, new Date(last.t + MIN).toISOString()).at(-1)).toEqual({ t: last.t + MIN, price: 0.0005 });
-    expect(withLivePoint(pts, 0.0005, new Date(last.t).toISOString())).toHaveLength(pts.length);
-    expect(withLivePoint(pts, 0, new Date(last.t + MIN).toISOString())).toHaveLength(pts.length);
+    expect(withLivePoint(pts, 0.0005, new Date(last!.t + MIN).toISOString()).at(-1)).toEqual({ t: last!.t + MIN, price: 0.0005 });
+    expect(withLivePoint(pts, 0.0005, new Date(last!.t).toISOString())).toHaveLength(pts.length);
+    expect(withLivePoint(pts, 0, new Date(last!.t + MIN).toISOString())).toHaveLength(pts.length);
     expect(withLivePoint(pts, 0.0005, null)).toHaveLength(pts.length);
     expect(withLivePoint([], 0.0005, new Date(T0).toISOString())).toEqual([]);
   });
@@ -156,7 +156,7 @@ describe('series helpers', () => {
   it('windows the last 6 h / 24 h relative to the most recent point', () => {
     const pts = series(24);
     const six = windowPoints(pts, '6h');
-    expect(six[0].t).toBe(pts[pts.length - 1].t - RANGE_MS['6h']);
+    expect(six[0]!.t).toBe(pts[pts.length - 1]!.t - RANGE_MS['6h']);
     expect(six.at(-1)).toEqual(pts.at(-1));
     expect(windowPoints(pts, '24h')).toHaveLength(pts.length);
     expect(windowPoints([], '6h')).toEqual([]);
@@ -170,7 +170,7 @@ describe('series helpers', () => {
     expect(out[0]).toEqual(pts[0]);
     expect(out.at(-1)).toEqual(pts.at(-1));
     expect(out.some((p) => p.price === 0.002)).toBe(true);
-    for (let i = 1; i < out.length; i++) expect(out[i].t).toBeGreaterThan(out[i - 1].t);
+    for (let i = 1; i < out.length; i++) expect(out[i]!.t).toBeGreaterThan(out[i - 1]!.t);
   });
 
   it('returns a copy when already small enough and handles tiny targets', () => {
@@ -187,7 +187,7 @@ describe('series helpers', () => {
     const six = chartSeries(pts, '6h');
     expect(six.length).toBeLessThanOrEqual(MAX_POINTS);
     expect(six.at(-1)).toEqual(pts.at(-1));
-    expect(six[0].t).toBeGreaterThanOrEqual(pts[pts.length - 1].t - RANGE_MS['6h']);
+    expect(six[0]!.t).toBeGreaterThanOrEqual(pts[pts.length - 1]!.t - RANGE_MS['6h']);
   });
 });
 
@@ -234,7 +234,7 @@ describe('placeLabels', () => {
     expect(out.map((l) => l.id)).toEqual(['tp1', 'zone', 'current']);
     const sorted = [...out].sort((a, b) => a.y - b.y);
     expect(sorted.map((l) => l.id)).toEqual(['tp1', 'current', 'zone']);
-    for (let i = 1; i < sorted.length; i++) expect(sorted[i].y - sorted[i - 1].y).toBeGreaterThanOrEqual(12);
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i]!.y - sorted[i - 1]!.y).toBeGreaterThanOrEqual(12);
   });
 
   it('pushes labels crowded at the bottom back up inside the bounds', () => {
@@ -333,7 +333,7 @@ describe('summary and hidden table', () => {
     const pts = [0.00041, 0.00048, 0.00044, 0.00042].map((price, i) => ({ t: T0 + i * MIN, price }));
     const rows = chartTableRows(pts, [{ kind: 'alert', t: T0 + 2 * MIN, price: 0.00044 }]);
     expect(rows.map((r) => r.label)).toEqual(['Plus bas', 'Plus haut', 'Dernier prix', 'Alerte reçue à 11:02']);
-    expect(rows[0].value).toBe('0,00041 $');
+    expect(rows[0]!.value).toBe('0,00041 $');
     expect(chartTableRows([])).toEqual([]);
   });
 });
@@ -357,13 +357,13 @@ describe('buildChartGeometry', () => {
     }
     expect(g.plotRight).toBeLessThan(340);
     expect(g.xs).toHaveLength(pts.length);
-    expect(g.dot.x).toBeCloseTo(g.xs[g.xs.length - 1], 1);
+    expect(g.dot.x).toBeCloseTo(g.xs[g.xs.length - 1]!, 1);
     expect(g.line.startsWith('M')).toBe(true);
     expect(g.area.endsWith('Z')).toBe(true);
   });
 
   it('places markers within the time span only, and 3 time ticks inside the plot', () => {
-    const last = pts[pts.length - 1].t;
+    const last = pts[pts.length - 1]!.t;
     const g = buildChartGeometry(
       pts,
       [

@@ -48,10 +48,10 @@ describe('StrategyLabPage', () => {
     ]);
     const robust = el.querySelectorAll('app-variant-card[data-robust]');
     expect(robust).toHaveLength(1);
-    expect(robust[0].querySelector('[data-robust-badge]')?.textContent?.trim()).toBe('Robuste');
-    const net = robust[0].querySelectorAll('[data-metric="net"] td');
+    expect(robust[0]!.querySelector('[data-robust-badge]')?.textContent?.trim()).toBe('Robuste');
+    const net = robust[0]!.querySelectorAll('[data-metric="net"] td');
     expect(Array.from(net).map((td) => td.textContent?.trim())).toEqual(['+9,1 %', '+12,5 %']);
-    expect(robust[0].querySelector('[data-ci]')?.textContent).toContain('[+2,1 % ; +22,4 %]');
+    expect(robust[0]!.querySelector('[data-ci]')?.textContent).toContain('[+2,1 % ; +22,4 %]');
     expect(el.querySelector('[data-no-robust]')).toBeNull();
     expect(el.querySelector<HTMLButtonElement>('[data-request-run]')?.disabled).toBe(false);
   });

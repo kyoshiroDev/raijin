@@ -112,8 +112,8 @@ describe('parseTokenRow', () => {
     expect(dangers).toHaveLength(MAX_DANGERS);
     expect(dangers[0]).toBe('<img src=x onerror=alert(1)>'); // kept as text, rendered by interpolation only
     expect(dangers[1]).toBe('LowLP locked');
-    expect(Array.from(dangers[2])).toHaveLength(MAX_DANGER_LENGTH);
-    expect(dangers[2].endsWith('…')).toBe(true);
+    expect(Array.from(dangers[2]!)).toHaveLength(MAX_DANGER_LENGTH);
+    expect(dangers[2]!.endsWith('…')).toBe(true);
     expect(dangers).toEqual(['<img src=x onerror=alert(1)>', 'LowLP locked', dangers[2], 'Mutable metadata', 'Freeze authority']);
     const unsafe = (c: number) => c < 0x20 || (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069);
     for (const d of dangers) expect(Array.from(d).some((ch) => unsafe(ch.charCodeAt(0)))).toBe(false);

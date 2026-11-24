@@ -213,10 +213,10 @@ describe('PerformancePage', () => {
         ['34', '50', '34 trades sur 50'],
         ['50', '50', '50 trades sur 50'],
       ]);
-      expect(bars[0].getAttribute('aria-valuemin')).toBe('0');
-      const label = el.querySelector(`#${bars[2].getAttribute('aria-labelledby') ?? 'missing'}`);
+      expect(bars[0]!.getAttribute('aria-valuemin')).toBe('0');
+      const label = el.querySelector(`#${bars[2]!.getAttribute('aria-labelledby') ?? 'missing'}`);
       expect(label?.textContent?.trim()).toBe('Frénésie SL −30 % (témoin)');
-      expect((bars[0].firstElementChild as HTMLElement).style.width).toBe('24%');
+      expect((bars[0]!.firstElementChild as HTMLElement).style.width).toBe('24%');
       expect(card.querySelector('[data-progress="frenzy_sl30"] [data-progress-text]')?.textContent).toContain('objectif atteint');
     });
 

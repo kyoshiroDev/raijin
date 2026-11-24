@@ -37,7 +37,7 @@ describe('FlagList', () => {
     const el = render(['LP non verrouillée', 'Top 10 élevé', 'Jeune paire']);
     const items = el.querySelectorAll('li');
     expect(items.length).toBe(3);
-    expect(items[0].classList).toContain('wrap-anywhere');
+    expect(items[0]!.classList).toContain('wrap-anywhere');
     expect(el.querySelector('ul')?.classList).toContain('flex-wrap');
     expect(el.querySelector('[data-more-flags]')).toBeNull();
   });

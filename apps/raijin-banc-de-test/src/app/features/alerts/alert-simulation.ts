@@ -95,7 +95,7 @@ export function simulateAlerts(rows: readonly AlertLogRow[], opts: SimulationOpt
     pnlSol: trades.reduce((sum, t) => sum + t.pnlSol, 0),
     avgNetPct: trades.length ? (trades.reduce((sum, t) => sum + t.netReturn, 0) / trades.length) * 100 : null,
     feesAssumed: trades.some((t) => t.costAssumed),
-    stakeSol: stakes.size === 1 ? [...stakes][0] : null,
+    stakeSol: stakes.size === 1 ? [...stakes][0]! : null,
   };
 }
 

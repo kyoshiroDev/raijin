@@ -64,7 +64,7 @@ describe('backfill progress parsing', () => {
 
   it('caps done at total, ETA 0 when nothing is due, unknown ETA without throughput, null when unusable', () => {
     const p = parseBackfillProgress([{ category: 'event_candles', done: 12, total: 10, due_now: 0, last_24h: 3 }]);
-    expect(p?.categories[0].done).toBe(10);
+    expect(p?.categories[0]!.done).toBe(10);
     expect(p?.etaHours).toBe(0);
     expect(p?.rowsPerHour).toBeNull();
     expect(parseBackfillProgress([{ category: 'scan_labels', done: 1, total: 5, due_now: 4 }])?.etaHours).toBeNull();

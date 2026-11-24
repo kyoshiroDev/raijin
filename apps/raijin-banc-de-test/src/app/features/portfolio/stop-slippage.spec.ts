@@ -34,9 +34,9 @@ describe('stop slippage', () => {
     ];
     const out = stopSlippageByBook(positions, ['main', 'frenzy_sl30']);
     expect(out.map((s) => s.book)).toEqual(['main', 'frenzy_sl30']);
-    expect(out[0].n).toBe(2);
-    expect(out[0].avgPct).toBeCloseTo(-10, 10);
-    expect(out[0].worstPct).toBeCloseTo(-15, 10);
+    expect(out[0]!.n).toBe(2);
+    expect(out[0]!.avgPct).toBeCloseTo(-10, 10);
+    expect(out[0]!.worstPct).toBeCloseTo(-15, 10);
     expect(out[1]).toMatchObject({ n: 1 });
     expect(stopSlippageByBook([], ['main'])).toEqual([{ book: 'main', n: 0, avgPct: null, worstPct: null }]);
   });

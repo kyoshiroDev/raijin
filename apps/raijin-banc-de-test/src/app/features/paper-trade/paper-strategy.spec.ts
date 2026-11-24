@@ -67,9 +67,9 @@ describe('paper sheet summary maths', () => {
       ['tp', 'Objectif ×2 atteint'],
       ['sl', 'Stop touché (−30 %)'],
     ]);
-    expect(s?.scenarios[0].pnlSol).toBeCloseTo(presetLeg(0.1, 2) - 2 * FEE, 8);
-    expect(s?.scenarios[1].pnlSol).toBeCloseTo(presetLeg(0.1, 0.7) - 2 * FEE, 8);
-    expect(s?.scenarios[1].pnlPct).toBeCloseTo(((s?.scenarios[1].pnlSol ?? 0) / 0.1) * 100, 6);
+    expect(s?.scenarios[0]!.pnlSol).toBeCloseTo(presetLeg(0.1, 2) - 2 * FEE, 8);
+    expect(s?.scenarios[1]!.pnlSol).toBeCloseTo(presetLeg(0.1, 0.7) - 2 * FEE, 8);
+    expect(s?.scenarios[1]!.pnlPct).toBeCloseTo(((s?.scenarios[1]!.pnlSol ?? 0) / 0.1) * 100, 6);
   });
 
   it('returns null for an invalid draft', () => {

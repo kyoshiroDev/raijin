@@ -11,7 +11,7 @@ export function base58Decode(input: string): Uint8Array | null {
     if (value === undefined) return null;
     let carry = value;
     for (let j = 0; j < bytes.length; j++) {
-      carry += bytes[j] * 58;
+      carry += bytes[j]! * 58;
       bytes[j] = carry & 0xff;
       carry >>= 8;
     }

@@ -109,7 +109,7 @@ export class PriceChartStore {
     const pts = this.points();
     const all = this.markerSource.hasValue() ? this.markerSource.value() : [];
     if (pts.length === 0) return [];
-    return visibleMarkers(all, pts[0].t, pts[pts.length - 1].t);
+    return visibleMarkers(all, pts[0]!.t, pts[pts.length - 1]!.t);
   });
 
   /** Starts (or switches) the queries; an invalid mint never queries. */

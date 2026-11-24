@@ -56,11 +56,11 @@ describe('AlertsPage', () => {
     expect(briefs()[0]?.query).toEqual({ mints: [B, A] });
     const links = Array.from(el.querySelectorAll<HTMLAnchorElement>('app-alert-row a'));
     expect(links.map((a) => a.getAttribute('href'))).toEqual([`/token/${B}`, `/token/${A}`]);
-    expect(links[0].textContent).toContain('Alerte groupée');
-    expect(links[1].textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(links[0]!.textContent).toContain('Alerte groupée');
+    expect(links[1]!.textContent).toContain('<img src=x onerror=alert(1)>');
     // The token's current score (77) is not shown any more: a row shows the alert outcome.
-    expect(links[1].textContent).not.toContain('77');
-    expect(links[1].querySelector('[aria-label^="Score"]')).toBeNull();
+    expect(links[1]!.textContent).not.toContain('77');
+    expect(links[1]!.querySelector('[aria-label^="Score"]')).toBeNull();
     expect(el.querySelector('img[src="x"]')).toBeNull();
   });
 
@@ -116,14 +116,14 @@ describe('AlertsPage', () => {
       'Suivi terminé',
       null,
     ]);
-    const first = rows[0].textContent ?? '';
+    const first = rows[0]!.textContent ?? '';
     for (const text of ['Prix à l’alerte', '$2.000', 'Plus haut', '+10,0 %', 'Plus bas', '−5,0 %', 'Prix actuel', 'il y a 3 min', 'Objectif', '+20,0 %', 'Stop', '−20,0 %']) {
       expect(first).toContain(text);
     }
-    expect(rows[0].querySelector('[data-outcome]')?.textContent?.trim()).toBe('$2.000 → plus haut $2.200 (×1,10) → actuel $2.100 (×1,05)');
-    expect(rows[4].querySelector('dl')).toBeNull();
-    expect(rows[4].querySelector('[data-outcome], [data-legacy]')).toBeNull();
-    expect(rows[4].textContent).toContain('Alerte groupée');
+    expect(rows[0]!.querySelector('[data-outcome]')?.textContent?.trim()).toBe('$2.000 → plus haut $2.200 (×1,10) → actuel $2.100 (×1,05)');
+    expect(rows[4]!.querySelector('dl')).toBeNull();
+    expect(rows[4]!.querySelector('[data-outcome], [data-legacy]')).toBeNull();
+    expect(rows[4]!.textContent).toContain('Alerte groupée');
   });
 
   it('summarises the last 7 days with the user stake and the disclaimer', async () => {

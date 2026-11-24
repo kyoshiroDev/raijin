@@ -10,6 +10,7 @@ import {
   type StorageLevel,
 } from '@raijin/bench-verdicts';
 import { MarketReader } from './market-reader';
+import { QualityReportService } from './quality-report';
 import { PURGE_STEPS, QualityStore } from './quality-store';
 import { aggregateDaily, buildObservation, buildVerdictRow, dueWindow, UNKNOWN_MARKET } from './verdict-model';
 
@@ -45,7 +46,7 @@ export function verdictsPerRun(config: Pick<BenchConfig, 'solanaEnv'>): number {
  * - `verdict-follow-up` (toutes les 15 min) : verdict du moteur publié sur les nouvelles détections, puis relève des
  *   verdicts dont la fenêtre 24 h / 72 h / 7 j est ouverte (observation hors fenêtre jamais réaffectée) ;
  * - `verdict-aggregate` (03:05) : agrégats quotidiens + rejeu des variantes **activées** (drapeau `enabled`, jamais
- *   remontées dans Raijin sans PR) ;
+ *   remontées dans Raijin sans PR), puis précalcul du rapport de justesse lu par `GET /api/verdicts/quality` ;
  * - `retention-purge` (03:15) : purges de pg_cron dans l'ordre, puis verdicts (365 j) et `job_runs` (30 j) ;
  * - `storage-check` (toutes les heures) : alerte 80 % / 95 % (push + e-mail, seulement à la hausse, coupée en ombre).
  * Le banc mesure le risque pour améliorer les verdicts : aucune stratégie de gain n'est calculée ici.
@@ -63,6 +64,7 @@ export class BenchQualityJobs implements OnModuleInit {
     private readonly market: MarketReader,
     private readonly status: BenchStatusService,
     private readonly notifier: BenchNotifier,
+    private readonly reports: QualityReportService,
   ) {}
 
   onModuleInit(): void {
@@ -122,7 +124,7 @@ export class BenchQualityJobs implements OnModuleInit {
     return out;
   }
 
-  async aggregate(now: Date): Promise<{ records: number; metric_rows: number; variants: number }> {
+  async aggregate(now: Date): Promise<{ records: number; metric_rows: number; variants: number; quality_records: number; quality_ms: number }> {
     const recent = await this.store.loadMeasured(new Date(now.getTime() - AGGREGATE_DAYS * DAY_MS).toISOString(), MEASURED_MAX);
     const metricRows = await this.store.upsertDailyMetrics(aggregateDaily(recent.records, recent.observations));
     const variants = await this.store.enabledVariants();
@@ -147,7 +149,8 @@ export class BenchQualityJobs implements OnModuleInit {
         }
       }
     }
-    return { records: recent.records.length, metric_rows: metricRows, variants: variants.length };
+    const quality = await this.reports.refresh();
+    return { records: recent.records.length, metric_rows: metricRows, variants: variants.length, ...quality };
   }
 
   /** Agrégats d'abord (job `verdict-aggregate` à 03:05), puis purge à étapes ordonnées. Une étape en échec n'arrête pas les suivantes. */

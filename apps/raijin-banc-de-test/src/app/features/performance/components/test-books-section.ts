@@ -23,7 +23,7 @@ import { TestBooksTable } from './test-books-table';
             <p class="text-sm text-muted" data-test-books-empty>Aucun trade simulé dans les portefeuilles de test pour l’instant.</p>
           }
           <div class="space-y-2">
-            <h3 class="text-sm font-bold">Progression vers {{ v.progress[0].target }} trades par portefeuille</h3>
+            <h3 class="text-sm font-bold">Progression vers {{ v.progress[0]!.target }} trades par portefeuille</h3>
             <app-test-books-progress [items]="v.progress" />
           </div>
           <p class="text-label text-muted">

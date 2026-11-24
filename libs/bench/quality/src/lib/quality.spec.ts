@@ -3,6 +3,7 @@ import type { BenchJobHandler } from '@raijin/bench-core';
 import { RISK_ENGINE_VERSION } from '@raijin/shared-risk-engine';
 import {
   FOLLOW_UP_WINDOWS,
+  buildQualityReport,
   simulateHistory,
   type EngineVariant,
   type FollowUpHorizon,
@@ -16,6 +17,15 @@ import { shadowComparisonSchema } from '@raijin/bench-contracts';
 import { readingFromPair, BenchMarketReader, MarketReader } from './market-reader';
 import { BenchQualityJobs, FactsSource, verdictsPerRun } from './quality-jobs';
 import { PURGE_STEPS, PURGE_SQL, QualityStore, type PurgeStep } from './quality-store';
+import {
+  MemoryQualityReportCache,
+  QUALITY_REPORT_KEY,
+  QUALITY_REPORT_MAX_AGE_MS,
+  QualityReportService,
+  RedisQualityReportCache,
+  qualitySignature,
+  type QualityReportRedis,
+} from './quality-report';
 import { shadowDayRow } from './quality.controllers';
 import { aggregateDaily, buildObservation, buildVerdictRow, dueWindow, toVerdictRecord, UNKNOWN_MARKET, type DailyMetricRow, type MarketReading, type VerdictRow } from './verdict-model';
 
@@ -53,7 +63,9 @@ class MemoryQualityStore extends QualityStore {
   async insertObservation(observation: FollowUpObservation, classification: OutcomeClassification | null): Promise<void> {
     this.observations.push({ observation, classification });
   }
+  loads = 0;
   async loadMeasured(): Promise<{ records: VerdictRecord[]; observations: FollowUpObservation[] }> {
+    this.loads++;
     return { records: [...history.records], observations: [...history.observations] };
   }
   async upsertDailyMetrics(rows: readonly DailyMetricRow[]): Promise<number> {
@@ -126,9 +138,11 @@ function setup(options: { mode?: 'shadow' | 'primary'; mail?: boolean; push?: bo
     solanaEnv: {},
     mail: options.mail === false ? { transport: 'none' } : { transport: 'smtp', url: 'smtp://localhost:1026', from: 'Banc <banc@exemple.invalid>', to: 'proprietaire@banc.invalid' },
   } as unknown as BenchConfig;
-  const jobs = new BenchQualityJobs(config, () => NOW, registry, store, new MapFacts(options.facts ?? new Map()), new FixedMarket(options.market ?? UNKNOWN_MARKET), status, notifier);
+  const cache = new MemoryQualityReportCache();
+  const reports = new QualityReportService(store, cache, () => NOW);
+  const jobs = new BenchQualityJobs(config, () => NOW, registry, store, new MapFacts(options.facts ?? new Map()), new FixedMarket(options.market ?? UNKNOWN_MARKET), status, notifier, reports);
   jobs.onModuleInit();
-  return { jobs, store, handlers, notifier, sent };
+  return { jobs, store, handlers, notifier, sent, cache, reports };
 }
 
 describe('enregistrement des verdicts (moteur publié)', () => {
@@ -230,6 +244,80 @@ describe('agrégats et variantes (rejeu derrière le drapeau enabled)', () => {
     await b.handlers.get('verdict-aggregate')!({ runId: 'b', startedAt: NOW, mode: 'shadow', trigger: 'manual' });
     expect(b.store.metrics.length).toBeGreaterThan(0);
     expect(b.store.replays.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('rapport de justesse précalculé (verdict-aggregate)', () => {
+  const ctx = { runId: 'q', startedAt: NOW, mode: 'shadow' as const, trigger: 'manual' as const };
+
+  it('le job précalcule le rapport, l’endpoint le lit sans recharger la base', async () => {
+    const t = setup();
+    const details = await t.handlers.get('verdict-aggregate')!(ctx);
+    expect(details).toMatchObject({ quality_records: history.records.length });
+    const cached = await t.cache.get();
+    expect(cached).toMatchObject({ computedAt: NOW.toISOString(), signature: qualitySignature([]) });
+    const loads = t.store.loads;
+    const report = await t.reports.current();
+    expect(t.store.loads).toBe(loads);
+    expect(report).toBe(cached!.report);
+    expect(report).toMatchObject({ simulated: false, engineVersion: RISK_ENGINE_VERSION, records: history.records.length });
+    expect(report.horizons.map((h) => h.horizon)).toEqual(['24h', '72h', '7d']);
+  });
+
+  it('sans précalcul, ou précalcul périmé / d’un autre moteur / d’autres variantes : recalcul à la demande', async () => {
+    const t = setup();
+    await t.reports.current();
+    expect(t.store.loads).toBe(1);
+    await t.reports.current();
+    expect(t.store.loads).toBe(1);
+    const fresh = (await t.cache.get())!;
+    await t.cache.set({ ...fresh, computedAt: new Date(NOW.getTime() - QUALITY_REPORT_MAX_AGE_MS - 1).toISOString() });
+    await t.reports.current();
+    expect(t.store.loads).toBe(2);
+    await t.cache.set({ ...fresh, signature: qualitySignature([], '0.0.0') });
+    await t.reports.current();
+    expect(t.store.loads).toBe(3);
+    t.store.variants = [{ id: 'top10-40', label: 'Top 10 à 40 %', overrides: { top10WarnPct: 40 } }];
+    const report = await t.reports.current();
+    expect(t.store.loads).toBe(4);
+    expect(report.horizons[0]!.replay.variants.map((v) => v.id)).toEqual(['top10-40']);
+    expect((await t.cache.get())!.signature).toBe(qualitySignature(t.store.variants));
+  });
+
+  it('appels concurrents : un seul calcul', async () => {
+    const t = setup();
+    const [a, b] = await Promise.all([t.reports.current(), t.reports.current()]);
+    expect(a).toBe(b);
+    expect(t.store.loads).toBe(1);
+  });
+
+  it('même rapport que le calcul direct (précalcul = ancien calcul à chaque appel)', async () => {
+    const t = setup();
+    t.store.variants = [{ id: 'liquidite-20k', label: 'Liquidité 20 k', overrides: { liquidityLowUsd: 20_000 } }];
+    const viaCache = await t.reports.current();
+    const direct = buildQualityReport({ simulated: false, records: history.records, observations: history.observations }, t.store.variants);
+    expect(JSON.parse(JSON.stringify(viaCache))).toEqual(JSON.parse(JSON.stringify(direct)));
+  });
+
+  it('Redis : clé raijin-bench:quality:report (préfixe de connexion), 7 j ; erreur Redis → copie en mémoire', async () => {
+    const values = new Map<string, string>();
+    const redis: QualityReportRedis = {
+      get: jest.fn(async (key: string) => values.get(key) ?? null),
+      set: jest.fn(async (key: string, value: string) => values.set(key, value)),
+    };
+    const cache = new RedisQualityReportCache(redis);
+    const entry = { signature: 'abcd1234', computedAt: NOW.toISOString(), report: { records: 1 } as never };
+    await cache.set(entry);
+    expect(redis.set).toHaveBeenCalledWith(QUALITY_REPORT_KEY, JSON.stringify(entry), 'EX', 7 * 86_400);
+    expect(await cache.get()).toEqual(entry);
+    const broken: QualityReportRedis = { get: async () => Promise.reject(new Error('ECONNREFUSED')), set: async () => Promise.reject(new Error('ECONNREFUSED')) };
+    const fallback = new RedisQualityReportCache(broken);
+    expect(await fallback.get()).toBeNull();
+    await fallback.set(entry);
+    expect(await fallback.get()).toEqual(entry);
+    const none = new RedisQualityReportCache(null);
+    await none.set(entry);
+    expect(await none.get()).toEqual(entry);
   });
 });
 

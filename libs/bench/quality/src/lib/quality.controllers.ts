@@ -13,12 +13,10 @@ import {
 import { BenchException, BenchZodPipe } from '@raijin/bench-core';
 import { mintAddressSchema } from '@raijin/shared-contracts';
 import { BenchSqlService, SHADOW_REF_DAY_COLUMNS } from '@raijin/bench-prisma';
-import { buildQualityReport, type QualityReport } from '@raijin/bench-verdicts';
-import { QualityStore } from './quality-store';
+import type { QualityReport } from '@raijin/bench-verdicts';
+import { QualityReportService } from './quality-report';
 
 const DAY_MS = 86_400_000;
-const QUALITY_DAYS = 365;
-const QUALITY_MAX_RECORDS = 20_000;
 
 /** Tables de `shadow_ref` sans colonne `mint` (pas de comparaison des mints). */
 const WITHOUT_MINT: ReadonlySet<ShadowTable> = new Set(['scan_runs']);
@@ -56,18 +54,17 @@ export function shadowDayRow(
 export class BenchQualityController {
   constructor(
     private readonly sql: BenchSqlService,
-    private readonly store: QualityStore,
+    private readonly reports: QualityReportService,
   ) {}
 
   /**
    * Même `QualityReport` que la lib (`simulated: false`) : chaque proportion porte n, la période et l'intervalle de
    * Wilson à 95 % ; « échantillon insuffisant » sous 30 ; découpage chronologique calibration / validation.
+   * Précalculé la nuit (`verdict-aggregate`, voir `quality-report.ts`), recalculé à la demande s'il est périmé.
    */
   @Get(BENCH_ROUTES.verdictQuality)
-  async quality(): Promise<QualityReport> {
-    const since = new Date(Date.now() - QUALITY_DAYS * DAY_MS).toISOString();
-    const [measured, variants] = await Promise.all([this.store.loadMeasured(since, QUALITY_MAX_RECORDS), this.store.enabledVariants()]);
-    return buildQualityReport({ simulated: false, ...measured }, variants);
+  quality(): Promise<QualityReport> {
+    return this.reports.current();
   }
 
   @Get(BENCH_ROUTES.shadowComparison)

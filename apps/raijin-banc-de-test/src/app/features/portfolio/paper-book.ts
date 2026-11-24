@@ -74,7 +74,7 @@ export interface LegView {
 export function legViews(p: PaperPosition): LegView[] {
   const half = p.legs.length > 1;
   const thirds = p.legs.length === 3;
-  const aHit = half && p.legs[0].status === 'tp_hit';
+  const aHit = half && p.legs[0]!.status === 'tp_hit';
   // Preset levels are recomputed from the fill price at fill time.
   const base = p.fill_price ?? p.entry_target_price;
   return p.legs.map((leg, i) => {
@@ -84,7 +84,7 @@ export function legViews(p: PaperPosition): LegView[] {
     const currentStop = leg.stop_price ?? p.sl_price;
     const raised = currentStop !== null && p.sl_price !== null && currentStop > p.sl_price * (1 + 1e-9);
     const moved = leg.status === 'open' && i > 0 && (aHit || raised);
-    const x2 = moved && thirds && i === 2 && p.legs[1].status === 'tp_hit';
+    const x2 = moved && thirds && i === 2 && p.legs[1]!.status === 'tp_hit';
     return { leg, label, state: leg.status, currentStop, breakevenMoved: moved, raisedTo: moved ? (x2 ? 'x2' : 'breakeven') : null };
   });
 }

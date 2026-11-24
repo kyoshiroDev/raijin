@@ -98,10 +98,10 @@ describe('PortfolioPage', () => {
     ]);
     const legs = Array.from(el.querySelectorAll('[data-position="open"] [data-leg]'));
     expect(legs.map((l) => l.querySelector('[data-leg-badge]')?.textContent?.trim())).toEqual(['TP touché', 'ouverte']);
-    expect(legs[0].textContent).toContain('Moitié A · ×2');
-    expect(legs[1].textContent).toContain('Moitié B · ×3');
-    expect(legs[1].querySelector('[data-leg-stop]')?.textContent).toContain('$1.000');
-    expect(legs[1].querySelector('[data-breakeven-moved]')?.textContent).toContain('remonté au prix d’achat');
+    expect(legs[0]!.textContent).toContain('Moitié A · ×2');
+    expect(legs[1]!.textContent).toContain('Moitié B · ×3');
+    expect(legs[1]!.querySelector('[data-leg-stop]')?.textContent).toContain('$1.000');
+    expect(legs[1]!.querySelector('[data-breakeven-moved]')?.textContent).toContain('remonté au prix d’achat');
   });
 
   it('shows the history with SL / breakeven badges and the stats per strategy, grey under 30 trades', async () => {
@@ -116,7 +116,7 @@ describe('PortfolioPage', () => {
     ]);
     expect(Array.from(el.querySelectorAll('[data-history]')).map((li) => li.getAttribute('data-history'))).toEqual(['closed', 'closed', 'closed', 'expired']);
     expect(el.querySelector('[data-history]')?.textContent).toContain('SL');
-    expect(el.querySelectorAll('[data-history]')[2].textContent).toContain('breakeven');
+    expect(el.querySelectorAll('[data-history]')[2]!.textContent).toContain('breakeven');
     expect(el.querySelector('[data-history] [data-history-pnl]')?.textContent?.trim()).toBe('−0,03 SOL');
     const cards = Array.from(el.querySelectorAll('app-strategy-stats-card')).map((c) => c.getAttribute('data-strategy-stats'));
     expect(cards).toEqual(['half_x2_rest_x3', 'all_x2']);
@@ -151,7 +151,7 @@ describe('PortfolioPage', () => {
     expect(svg?.querySelectorAll('path')).toHaveLength(2);
     const rows = el.querySelectorAll('[data-balance-curve] [data-curve-row]');
     expect(rows).toHaveLength(3);
-    expect(rows[2].textContent).toContain('0,9 SOL');
+    expect(rows[2]!.textContent).toContain('0,9 SOL');
   });
 
   it('shows the book selector and the side-by-side comparison when the test books exist', async () => {
@@ -161,8 +161,8 @@ describe('PortfolioPage', () => {
     );
     const buttons = Array.from(el.querySelectorAll<HTMLButtonElement>('app-book-selector button'));
     expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Principal', 'Calme −30 %', 'Calme −40 %', 'Frénésie −30 %']);
-    expect(buttons[0].getAttribute('aria-pressed')).toBe('true');
-    expect(buttons[0].className).toContain('min-h-11');
+    expect(buttons[0]!.getAttribute('aria-pressed')).toBe('true');
+    expect(buttons[0]!.className).toContain('min-h-11');
     await click('[data-book="frenzy_sl30"]');
     expect(el.querySelector('[data-book="frenzy_sl30"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(el.querySelector('[data-wallet="balance"]')?.textContent).toContain('Frénésie SL −30 % (témoin)');

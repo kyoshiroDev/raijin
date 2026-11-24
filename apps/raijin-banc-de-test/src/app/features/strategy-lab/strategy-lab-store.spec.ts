@@ -43,7 +43,7 @@ describe('StrategyLabStore', () => {
     expect(store.state()).toBe('ready');
     const main = calls.filter((c) => !('preset' in c.filters));
     expect(main.map((c) => c.table)).toEqual(['backtest_runs', 'backtest_results']);
-    expect(main[1].filters).toEqual({ run_id: '7', retained: true });
+    expect(main[1]!.filters).toEqual({ run_id: '7', retained: true });
     expect(store.lastDone()?.id).toBe('7');
     expect(store.variants()).toHaveLength(1);
     expect(store.robustCount()).toBe(1);

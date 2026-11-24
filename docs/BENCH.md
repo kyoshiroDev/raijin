@@ -74,6 +74,17 @@ Nouveaux jobs sans équivalent Supabase (§16 ; noms de `BENCH_JOB_NAMES`, `@rai
 en un job `retention-purge` à étapes ordonnées (03:15 → 03:30) ; à défaut, 4 jobs aux mêmes motifs (à trancher en T6, sans effet
 sur les données).
 
+**Rapport de justesse précalculé (phase 9).** Mesure avant décision (Node 24, machine de dev, `buildQualityReport` seul,
+hors lecture SQL) : 10 000 verdicts simulés, 28 876 observations, 3 horizons, 2 variantes → médiane 1,9 s (7 passages,
+max 2,5 s), ≈ 94 Mo de tas ; 20 000 verdicts (plafond de l'endpoint) → médiane 6,2 s, ≈ 120 Mo. Au-delà du seuil fixé
+(300 ms ou 50 Mo) : le rapport (365 j, 20 000 verdicts au plus, même calcul qu'avant) est donc calculé par
+`verdict-aggregate` (03:05, verrou BullMQ, ligne `job_runs` avec `quality_records` et `quality_ms`) et rangé dans Redis
+(`raijin-bench:quality:report`, 7 j, copie en mémoire du processus si Redis est indisponible). `GET /api/verdicts/quality`
+lit ce précalcul ; il recalcule à la demande (un seul calcul pour des appels simultanés) si le précalcul manque, a plus
+de 36 h (job en échec), ou si la version du moteur publié ou la liste des variantes activées a changé (empreinte FNV-1a).
+Conséquence : les chiffres affichés datent au plus de la nuit précédente, ce qui ne change rien à des horizons de 24 h à
+7 j.
+
 ## 4. Tables (31) → `raijin_bench`
 
 RLS activée sur les 31. Policies : lecture `authenticated` (« readable by signed-in users ») sauf mention ; aucune
@@ -187,8 +198,9 @@ Supabase, M4). Cible T8 : `libs/bench/data-access` (HttpClient + cookies httpOnl
 **Fait (T8)** : client `apps/raijin-banc-de-test/src/app/core/api/` (`BenchApi` : `fetch` même origine, cookies
 httpOnly, CSRF double-submit relu sur 403 puis rejoué une fois, 401 → `/login` ; `BenchEvents` : `EventSource` sur
 `/api/events?topics=`, reconnexion avec délai croissant et rechargement des listes), connexion mot de passe + TOTP ou
-code de secours, écran `/comparaison` (mode ombre). `supabase-js`, `write-env` et `environment*.ts` retirés ; M4 reste à
-traiter dans `legacy/vercel.json` (archive, à ne modifier qu'avec la bascule).
+code de secours, écran `/comparaison` (mode ombre). `supabase-js`, `write-env` et `environment*.ts` retirés. M4 soldé
+(phase 9) : l'identifiant du projet Supabase est remplacé par le repère neutre `PROJET-SUPABASE.invalid` dans la copie
+inerte `legacy/vercel.json` (lue par aucun build ; le déploiement Vercel actuel, depuis l'ancien dépôt, n'est pas touché).
 
 | Fichier (`src/app/…`) | Appels | Cible |
 |---|---|---|
@@ -236,7 +248,7 @@ Colonnes archivées le 21/11 (`legacy/docs/ARCHIVE.md`) : selon §9 P3.
 | P8 | Fréquences dépendantes des limites Edge (calcul ≤ 1,2 s, arrêt à 30–44 s, `pg_net` 55 s) | changer ces bornes change les données (débit d'étiquetage, tranches de backtest) | conserver les bornes au portage ; les relâcher ensuite derrière un réglage, mesuré séparément |
 | P9 | `raijin-purge-alert-log` défini mais absent de la liste de contrôle du 21/11 | purge à tort ou absente | l'utilisateur vérifie `select jobname, schedule, active from cron.job` (lecture seule) avant T6 |
 | P10 | Le banc actuel n'enregistre **aucun verdict du moteur Raijin** (il produit des drapeaux `flags.ts`, pas `shared-risk-engine`) | pas d'historique de justesse à migrer | la justesse démarre à la mise en service du VPS (`verdict_records`) ; les issues historiques (`signal_outcomes` : x2, SL30, dd50) ne sont **pas** des issues §16.2 et ne doivent pas être mélangées ; afficher `n` et « échantillon insuffisant » tant que n < 30 |
-| P11 | `noUncheckedIndexedAccess` désactivé dans le banc | portage Deno → Node avec erreurs d'indexation | traitement en T8 seulement si aucun calcul ne change |
+| P11 | `noUncheckedIndexedAccess` désactivé dans le banc | portage Deno → Node avec erreurs d'indexation | **soldé en phase 9** : option réactivée, 196 assertions `!` sans changement de calcul (ARCHITECTURE « Exceptions assumées du banc ») |
 
 ## 10. Contrôle d'exhaustivité (grep, depuis la racine)
 
@@ -279,6 +291,16 @@ vide (`--archive`), plusieurs comptes dans la source sans `--source-user UUID` (
 alors exclues, `backtest_runs.requested_by` mis à null), dump tronqué, serveur source plus récent que `pg_dump` 17.
 `--archive` (facultatif, P3/P4) copie les tables mortes (§8) et les colonnes retirées de `public` (avec la clé primaire,
 tables `archive.<table>_colonnes_archivees`), valeurs au format texte de COPY.
+
+**Colonnes générées dans `shadow_ref` (phase 9, décision : exclues, pas corrigées).** Les tables de `shadow_ref` sont
+créées par `CREATE TABLE … (LIKE public.…)` sans `INCLUDING GENERATED` : les deux colonnes générées de `public`
+(`tokens.liquidity_dex_usd` = `liquidity_usd`, `signal_outcomes.pair_age_h` dérivée de `features->log_age_h`) y sont
+des colonnes ordinaires, et l'instantané ne copie que les colonnes non générées de la source (`bm_cols`) : elles restent
+donc **nulles** dans `shadow_ref`. Elles sont hors de toute comparaison : l'écran `/comparaison` ne lit que la colonne
+de date du jour (`SHADOW_REF_DAY_COLUMNS`, aucune n'est générée) et `mint` ; l'empreinte de contrôle de
+`--shadow-snapshot` porte sur les mêmes colonnes copiées des deux côtés. Pour une requête ponctuelle sur `shadow_ref`,
+recalculer depuis la colonne d'origine (`liquidity_usd`, `features`). Une correction (colonnes recréées en
+`GENERATED ALWAYS … STORED` par une nouvelle migration) n'apporterait rien à la mesure et reste hors v1.
 
 ### Pas à pas (sur le VPS, dans le dossier du dépôt)
 

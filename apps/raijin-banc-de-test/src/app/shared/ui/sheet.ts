@@ -181,10 +181,10 @@ export class Sheet {
     const active = this.document.activeElement;
     if (event.shiftKey && (active === first || active === panel)) {
       event.preventDefault();
-      last.focus();
+      last!.focus();
     } else if (!event.shiftKey && active === last) {
       event.preventDefault();
-      first.focus();
+      first!.focus();
     }
   }
 }

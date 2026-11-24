@@ -32,7 +32,7 @@ let nextId = 0;
         <path [attr.d]="g.line" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
       </svg>
       <div class="flex justify-between text-label text-muted tabular-nums slashed-zero">
-        <span>Départ {{ sol(points()[0].balanceSol) }} SOL</span>
+        <span>Départ {{ sol(points()[0]!.balanceSol) }} SOL</span>
         <span>Plus bas {{ sol(g.min) }} · plus haut {{ sol(g.max) }}</span>
       </div>
     }
@@ -67,7 +67,7 @@ export class BalanceCurveChart {
   protected readonly summary = computed(() => curveSummary(this.points()));
   protected readonly up = computed(() => {
     const p = this.points();
-    return p.length === 0 || p[p.length - 1].balanceSol >= p[0].balanceSol;
+    return p.length === 0 || p[p.length - 1]!.balanceSol >= p[0]!.balanceSol;
   });
   protected readonly sol = formatSolAmount;
   protected readonly signed = formatSignedSol;

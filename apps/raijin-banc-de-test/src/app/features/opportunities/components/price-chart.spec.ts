@@ -178,23 +178,23 @@ describe('PriceChart', () => {
     const last = rows[rows.length - 1];
     expect(el.querySelector('[data-crosshair]')).not.toBeNull();
     expect(el.querySelector('[data-tooltip]')?.textContent).toContain(
-      formatParisTime(Date.parse(last.captured_at)),
+      formatParisTime(Date.parse(last!.captured_at)),
     );
     expect(el.querySelector('[data-scrub-live]')?.textContent).toContain(
-      formatParisTime(Date.parse(last.captured_at)),
+      formatParisTime(Date.parse(last!.captured_at)),
     );
 
     key(el, 'ArrowLeft');
     await refresh(fixture);
     const prev = rows[rows.length - 2];
     expect(el.querySelector('[data-scrub-live]')?.textContent).toContain(
-      formatParisTime(Date.parse(prev.captured_at)),
+      formatParisTime(Date.parse(prev!.captured_at)),
     );
 
     key(el, 'Home');
     await refresh(fixture);
     expect(el.querySelector('[data-scrub-live]')?.textContent).toContain(
-      formatParisTime(Date.parse(rows[0].captured_at)),
+      formatParisTime(Date.parse(rows[0]!.captured_at)),
     );
 
     key(el, 'Escape');
@@ -223,7 +223,7 @@ describe('PriceChart', () => {
     target.dispatchEvent(new Ctor('pointerdown', { clientX: 0, bubbles: true }));
     await refresh(fixture);
     expect(el.querySelector('[data-scrub-live]')?.textContent).toContain(
-      formatParisTime(Date.parse(rows[0].captured_at)),
+      formatParisTime(Date.parse(rows[0]!.captured_at)),
     );
   });
 

@@ -163,8 +163,8 @@ describe('source view', () => {
     const v = sourceView(rows, 'scan');
     expect(v.overall?.n).toBe(40);
     expect(v.dimensions.map((d) => d.id)).toEqual(['dex', 'mc', 'liq']);
-    expect(v.dimensions[1].buckets.map((b) => b.bucket)).toEqual(['<50k', '>1M']);
-    expect(v.dimensions[0].buckets).toEqual([]);
+    expect(v.dimensions[1]!.buckets.map((b) => b.bucket)).toEqual(['<50k', '>1M']);
+    expect(v.dimensions[0]!.buckets).toEqual([]);
   });
 
   it('has no overview without rows', () => {

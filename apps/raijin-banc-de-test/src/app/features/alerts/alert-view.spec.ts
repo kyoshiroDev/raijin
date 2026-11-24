@@ -69,8 +69,8 @@ describe('alertCells', () => {
     const cells = alertCells(row({ max_price: null, min_price: null, last_price: null, last_price_at: null, target_price: null, stop_price: null }), NOW);
     expect(cells[1]).toEqual({ label: 'Plus haut', value: '–', sub: null, tone: null });
     expect(cells[3]).toEqual({ label: 'Prix actuel', value: '–', sub: null, tone: null });
-    expect(cells[4].sub).toBe('+100,0 %');
-    expect(cells[5].sub).toBe('−30,0 %');
+    expect(cells[4]!.sub).toBe('+100,0 %');
+    expect(cells[5]!.sub).toBe('−30,0 %');
   });
 
   it('alertPlan: stored columns first, ×2 / ×0.7 for a missing one, null without an entry price', () => {

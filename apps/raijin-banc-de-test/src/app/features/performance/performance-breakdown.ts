@@ -112,7 +112,7 @@ const AMOUNT_FR = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
 function parseAmount(raw: string): Amount | null {
   const m = /^(\d+(?:[.,]\d+)?)\s*([kKmM])?$/.exec(raw.trim());
   if (!m) return null;
-  const base = Number(m[1].replace(',', '.'));
+  const base = Number(m[1]!.replace(',', '.'));
   const unit = m[2]?.toLowerCase();
   const value = unit === 'k' ? base * 1_000 : unit === 'm' ? base * 1_000_000 : base;
   const text = `${AMOUNT_FR.format(base)}${unit === 'k' ? ' k' : unit === 'm' ? ' M' : ' '}$`;
@@ -132,23 +132,23 @@ export function parseRangeBucket(bucket: string): RangeBucket | null {
   const b = bucket.trim();
   let m = /^(?:<|lt)\s*(.+)$/i.exec(b);
   if (m && !/^(?:<=|lte)/i.test(b)) {
-    const a = parseAmount(m[1]);
+    const a = parseAmount(m[1]!);
     return a ? { value: a.value, rank: 0, label: `< ${a.text}` } : null;
   }
   m = /^(?:>=|≥|gte)\s*(.+)$/i.exec(b) ?? /^(.+?)\s*\+$/.exec(b);
   if (m) {
-    const a = parseAmount(m[1]);
+    const a = parseAmount(m[1]!);
     return a ? { value: a.value, rank: 2, label: `≥ ${a.text}` } : null;
   }
   m = /^(?:>|gt)\s*(.+)$/i.exec(b);
   if (m) {
-    const a = parseAmount(m[1]);
+    const a = parseAmount(m[1]!);
     return a ? { value: a.value, rank: 2, label: `> ${a.text}` } : null;
   }
   m = /^(.+?)\s*[-–]\s*(.+)$/.exec(b);
   if (m) {
-    const lo = parseAmount(m[1]);
-    const hi = parseAmount(m[2]);
+    const lo = parseAmount(m[1]!);
+    const hi = parseAmount(m[2]!);
     return lo && hi ? { value: lo.value, rank: 1, label: `${lo.text}–${hi.text}` } : null;
   }
   return null;
@@ -177,7 +177,7 @@ export function sortBuckets<T extends Pick<BreakdownRow, 'dimension' | 'bucket' 
   return [...rows].sort((a, b) => {
     const ka = key(a);
     const kb = key(b);
-    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i]! - kb[i]!;
     return a.bucket.localeCompare(b.bucket);
   });
 }
