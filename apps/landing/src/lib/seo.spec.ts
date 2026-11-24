@@ -51,9 +51,9 @@ describe('serializeJsonLd', () => {
 describe('données structurées', () => {
   it('Organization et SoftwareApplication portent le nom officiel', () => {
     expect(organizationLd()).toMatchObject({ '@type': 'Organization', name: 'Raijin Shield' });
-    const app = softwareApplicationLd('desc', [{ name: 'Pro', priceCents: 990, currency: 'EUR' }]);
+    const app = softwareApplicationLd('desc', [{ name: 'Pro', priceCents: 1490, currency: 'EUR' }]);
     expect(app).toMatchObject({ '@type': 'SoftwareApplication', name: 'Raijin Shield' });
-    expect(app['offers']).toEqual([expect.objectContaining({ '@type': 'Offer', price: '9.90', priceCurrency: 'EUR' })]);
+    expect(app['offers']).toEqual([expect.objectContaining({ '@type': 'Offer', price: '14.90', priceCurrency: 'EUR' })]);
   });
 
   it('FAQPage, BreadcrumbList et Article', () => {

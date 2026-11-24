@@ -11,7 +11,7 @@ import {
  * aucune valeur en dur, aucun appel à l'API. Changer un prix = modifier le catalogue et reconstruire.
  */
 
-/** Prix au format français (« 9,90 € »), espaces insécables normalisés. */
+/** Prix au format français (« 14,90 € »), espaces insécables normalisés. */
 export function formatPrice(amountCents: number, currency: string): string {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',

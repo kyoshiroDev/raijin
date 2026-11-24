@@ -17,14 +17,15 @@
   transition: filter 250ms var(--ease-raijin);
 }
 .rai-animated:hover > svg > g:last-of-type {
-  filter: drop-shadow(0 0 6px var(--color-thunder)) drop-shadow(0 0 14px var(--color-thunder));
+  filter: drop-shadow(0 0 calc(var(--spacing) * 1.5) var(--color-thunder))
+    drop-shadow(0 0 calc(var(--spacing) * 3.5) var(--color-thunder));
 }
 @keyframes rai-breathe {
   from {
     transform: translateY(0) scale(1);
   }
   to {
-    transform: translateY(-3px) scale(1.025);
+    transform: translateY(calc(var(--spacing) * -0.75)) scale(1.025);
   }
 }
 
@@ -77,6 +78,7 @@ dd {
 [data-demo='idle'] .demo-check .demo-reveal::after {
   content: '';
   position: absolute;
+  /* Relatif à la taille du texte (em) : la barre suit la hauteur de ligne de chaque valeur masquée. */
   inset: 0.2em 0;
   visibility: visible;
   border-radius: var(--radius-sm);
@@ -115,7 +117,7 @@ dd {
 @keyframes demo-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(var(--spacing));
   }
   to {
     opacity: 1;
@@ -138,6 +140,7 @@ dd {
 .prose {
   color: var(--color-ink);
   font-size: var(--text-body);
+  /* Ratio sans unité (pas de longueur) : interligne de lecture éditoriale, proportionnel à --text-body. */
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -162,8 +165,8 @@ dd {
   color: var(--color-ink);
   text-decoration: underline;
   text-decoration-color: var(--color-thunder);
-  text-underline-offset: 4px;
-  text-decoration-thickness: 2px;
+  text-underline-offset: var(--spacing);
+  text-decoration-thickness: calc(var(--spacing) * 0.5);
 }
 .prose a:hover {
   color: var(--color-thunder-ink);
@@ -189,7 +192,7 @@ dd {
   font-size: var(--text-data);
   background: var(--color-surface-raised);
   border-radius: var(--radius-sm);
-  padding: 2px 6px;
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 1.5);
 }
 .prose .table-scroll {
   max-width: 100%;
@@ -203,11 +206,12 @@ dd {
 }
 .prose th,
 .prose td {
+  /* 1px : épaisseur de filet (comme l'utilitaire `border`), pas une mesure d'espacement. */
   border: 1px solid var(--color-line);
   padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
   text-align: left;
   vertical-align: top;
-  min-width: 8rem;
+  min-width: calc(var(--spacing) * 32);
 }
 .prose th {
   background: var(--color-surface);

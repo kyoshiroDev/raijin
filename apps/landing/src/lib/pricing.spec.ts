@@ -4,8 +4,8 @@ import { buildPricingView, entitlementLines, formatPrice, PRICING } from './pric
 
 describe('tarifs affichés', () => {
   it('formate les prix en français', () => {
-    expect(formatPrice(990, 'EUR')).toBe('9,90\u00a0€');
-    expect(formatPrice(9900, 'EUR')).toBe('99\u00a0€');
+    expect(formatPrice(1490, 'EUR')).toBe('14,90\u00a0€');
+    expect(formatPrice(14900, 'EUR')).toBe('149\u00a0€');
   });
 
   it('reprend exactement le catalogue partagé', () => {
