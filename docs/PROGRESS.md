@@ -7,7 +7,7 @@
 
 - ~~`.env.example`~~ : fait (créé par toi, commité `2289dc9`).
 
-## Statut : phase 8 bis — Banc sur le VPS — en cours (phases 1 à 8 terminées ; Lighthouse de l'app sous 95, voir Blocages)
+## Statut : phase 9 — Polish final — en cours (phases 1 à 8 ter terminées ; 8 ter reportée faute de comptes, voir « À brancher »)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -30,6 +30,8 @@
 | Helius | compte (plan Free : 1 M crédits/mois, RPC 10 req/s, DAS 2 req/s, partagés entre les 2 clés) ; clés « raijin-api » et « raijin-banc-de-test » créées | copie des clés dans `.env` par l'utilisateur ; restriction IP du VPS | copier les clés ; phase 8 ter : API Keys → Access control (IP/CIDR du VPS) |
 | Google (GA4, GSC, Cloud) | — | compte dédié | créer le compte ; services désactivés sans variables |
 | Zoho, B2, UptimeRobot, Sentry | — | comptes | avant la mise en ligne (phase 8 ter) |
+| Banc sur le VPS | code complet (API, front, jobs, migrations), infra `deploy.sh --bench`, import `infra/bench-migrate.sh`, procédure BENCH.md §12 | VPS + domaine, `infra/.env.bench-api` (BENCH_HELIUS_API_KEY, secrets générés), mot de passe basicAuth, connexion Supabase en lecture pour l'import | suivre docs/BENCH.md §12 (import, ombre ≥ 3 jours, bascule), puis arrêter l'ancien banc côté Supabase/Vercel toi-même |
+| Phase 8 ter (DNS, Search Console, webhooks Stripe, Zoho, B2, UptimeRobot, Sentry, profils sociaux) | procédures prêtes (DEPLOY.md, COMPTES.md, PROMPT.md §12) | domaine acheté, VPS et son IP, comptes de chaque service | créer les comptes et se connecter dans Chrome, puis dire « reprends la phase 8 ter » : ops-chrome configurera chaque service (aucune clé copiée par Claude) |
 
 ## Journal des phases
 
@@ -283,6 +285,12 @@
   - P7 : mode ombre sans push, sans e-mail, sans ouverture auto-paper.
   - P9 : vérification de `cron.job` à faire par l'utilisateur en lecture (facultatif, noté dans BENCH.md).
   - P10 : aucune donnée de verdict à migrer ; justesse à partir de la mise en service, « échantillon insuffisant » sous n = 30.
+- [x] Contrôle final : CI `0557a36` vert, job images 45315434223 vert (pile complète avec banc, ACL Redis, restauration, bench-migrate), suite e2e 45314136823 verte (5 lots Raijin + e2e-banc).
+- **Phase 8 bis terminée (2026-11-24).**
+
+### Phase 8 ter — Services de production via Chrome — reportée (2026-11-24)
+- Comptes existants : Helius seulement ; ni domaine, ni VPS identifié, ni comptes Stripe/Resend/Google/Zoho/B2/UptimeRobot/Sentry. Rien à configurer dans Chrome aujourd'hui (la restriction IP des clés Helius attend l'IP du VPS).
+- Tout est consigné dans « À brancher » ; reprise par « reprends la phase 8 ter » une fois les comptes créés.
 
 ### Phase 0 — Amorçage — terminée (2026-11-21)
 - Garde-fou dossier : OK (kit seul : CLAUDE.md, PROMPT.md, README.md, .claude/, libs/brand/, docs/). `raijin-old` présent (lecture seule) : phase 1 bis possible.
