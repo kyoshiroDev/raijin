@@ -50,24 +50,24 @@ const h2 = 'font-display text-h2 font-bold text-ink md:text-h1';
             Vérifie avant de signer.
           </h1>
           <p class="mt-4 text-body text-ink-muted md:text-h3">
-            Le bouclier anti-rug des memecoins Solana. Colle l'adresse d'un token : Raijin vérifie 9 points de sécurité
+            Le bouclier anti-rug des memecoins Solana. Colle l'adresse d'un token&nbsp;: Raijin vérifie 9 points de sécurité
             et te donne un verdict clair, avec ses sources.
           </p>
           <div class="mt-6 text-left">
             <AnalyseForm id="hero" anonAnalysesPerDay={PRICING.anonAnalysesPerDay} />
           </div>
-          <p class="mt-2 text-left text-body-sm text-ink">
-            {PRICING.trialOffer}{' '}
+          <div class="mt-2 text-left text-body-sm text-ink">
+            <p>{PRICING.trialOffer}</p>
             <a
               href={appHref(APP_ROUTES.inscription)}
               data-app-link
               data-track="cta_essai_clic"
               data-track-emplacement="hero"
-              class="inline-flex min-h-11 items-center font-semibold underline decoration-thunder decoration-2 underline-offset-4"
+              class="flex min-h-11 w-fit items-center font-semibold underline decoration-thunder decoration-2 underline-offset-4"
             >
               Créer mon compte
             </a>
-          </p>
+          </div>
         </div>
       </div>
     </Container>
