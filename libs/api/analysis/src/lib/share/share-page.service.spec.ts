@@ -245,6 +245,29 @@ describe('injection du verdict statique', () => {
     expect(html).not.toContain('data-rj-static');
   });
 
+  it('ignore un <rj-root> en commentaire ou avant <body>, vise le vrai', () => {
+    const html = `<html><head><!-- <rj-root></rj-root> --></head><body>\n<!-- ancien <rj-root>x</rj-root> -->\n<rj-root ng-version="x"></rj-root></body></html>`;
+    expect(injectStaticVerdict(html, '<main></main>')).toBe(
+      `<html><head><!-- <rj-root></rj-root> --></head><body>\n<!-- ancien <rj-root>x</rj-root> -->\n<rj-root ng-version="x"><main></main></rj-root></body></html>`,
+    );
+    expect(injectStaticVerdict('<body><!-- <rj-root></rj-root> --></body>', '<main></main>')).toBeNull();
+    expect(injectStaticVerdict('<body><rj-root-x></rj-root-x></body>', '<main></main>')).toBeNull();
+  });
+
+  it('forme auto-fermante <rj-root/> : réécrite avec le contenu', () => {
+    expect(injectStaticVerdict('<body><rj-root/></body>', 'V')).toBe('<body><rj-root>V</rj-root></body>');
+    expect(injectStaticVerdict('<body><RJ-ROOT ng-version="x" /></body>', 'V')).toBe('<body><RJ-ROOT ng-version="x">V</RJ-ROOT></body>');
+  });
+
+  it('gabarit avec </HEAD> en majuscules : accepté, balises insérées avant </HEAD>', async () => {
+    const path = indexWith(SHELL_INDEX.replace('</head>', '</HEAD>'));
+    const html = await service(staticResult(), { WEB_INDEX_HTML_PATH: path }).render(FIXTURE_MINTS.safe);
+    expect(html).toContain('main-ABC123.js');
+    expect(html).toContain('data-rj-static');
+    expect(html.indexOf('property="og:title"')).toBeLessThan(html.indexOf('</HEAD>'));
+    expect(html).not.toContain('Ouvrir l’analyse dans Raijin');
+  });
+
   it('contenu avec motifs $& : inséré tel quel', () => {
     expect(injectStaticVerdict('<rj-root></rj-root>', 'a$&b')).toBe('<rj-root>a$&b</rj-root>');
   });

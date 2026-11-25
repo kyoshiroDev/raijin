@@ -25,6 +25,9 @@ const REPLACED_TAGS = [
   /<link\s+[^>]*rel=["']canonical["'][^>]*>\s*/gi,
 ];
 
+/** Fermeture de `<head>`, insensible à la casse (même motif pour la validation du gabarit et `injectMeta`). */
+const HEAD_CLOSE = /<\/head>/i;
+
 export interface SharePageMeta {
   readonly title: string;
   readonly description: string;
@@ -113,7 +116,7 @@ export class SharePageService {
       if (!this.template || this.template.path !== path || this.template.mtimeMs !== mtimeMs) {
         this.template = { path, mtimeMs, html: await readFile(path, 'utf8') };
       }
-      return this.template.html.includes('</head>') ? { html: this.template.html, fromBuild: true } : fallback;
+      return HEAD_CLOSE.test(this.template.html) ? { html: this.template.html, fromBuild: true } : fallback;
     } catch (error) {
       this.template = null;
       this.logger.warn(`index.html du build web illisible, HTML minimal servi (${errorCode(error)})`);
@@ -191,18 +194,38 @@ export function renderStaticVerdict(analysis: AnalysisResult, mint: string): str
   return lines.join('\n');
 }
 
+/** Masque les commentaires HTML (espaces de même longueur) : les index restent ceux du HTML d'origine. */
+function maskComments(html: string): string {
+  return html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => ' '.repeat(comment.length));
+}
+
 /**
- * Remplace le contenu de la première balise `<rj-root>` (insensible à la casse) par `content`.
+ * Remplace le contenu de la première balise `<rj-root>` (insensible à la casse) située après `<body`
+ * (début du document si `<body` est absent), hors commentaires HTML, par `content`. La forme
+ * auto-fermante `<rj-root/>` est réécrite en `<rj-root>content</rj-root>`.
  * `null` si la balise est introuvable : la page est alors servie sans verdict statique.
  */
 export function injectStaticVerdict(html: string, content: string): string | null {
-  const match = /<rj-root\b[^>]*>[\s\S]*?<\/rj-root>/i.exec(html);
-  if (!match) return null;
-  const openEnd = match[0].indexOf('>') + 1;
-  const closeStart = match[0].length - '</rj-root>'.length;
-  const replaced = `${match[0].slice(0, openEnd)}${content}${match[0].slice(closeStart)}`;
+  const masked = maskComments(html);
+  const bodyIndex = masked.search(/<body\b/i);
+  const from = bodyIndex === -1 ? 0 : bodyIndex;
+  const scope = masked.slice(from);
+  const open = /<rj-root(?=[\s/>])([^>]*?)(\/?)>/i.exec(scope);
+  if (!open) return null;
+  const openStart = from + open.index;
+  const openEnd = openStart + open[0].length;
   // Concaténation plutôt que `String.replace` : `content` pourrait contenir des motifs `$&`.
-  return `${html.slice(0, match.index)}${replaced}${html.slice(match.index + match[0].length)}`;
+  if (open[2] === '/') {
+    const nameEnd = openStart + 1 + 'rj-root'.length;
+    const tagName = html.slice(openStart + 1, nameEnd);
+    const attributes = html.slice(nameEnd, openEnd - '/>'.length).replace(/\s+$/, '');
+    const opening = `<${tagName}${attributes}>`;
+    return `${html.slice(0, openStart)}${opening}${content}</${tagName}>${html.slice(openEnd)}`;
+  }
+  const close = /<\/rj-root\s*>/i.exec(masked.slice(openEnd));
+  if (!close) return null;
+  const closeStart = openEnd + close.index;
+  return `${html.slice(0, openEnd)}${content}${html.slice(closeStart)}`;
 }
 
 /** HTML minimal (sans build web) : lien vers l'app. */
@@ -251,6 +274,6 @@ export function injectMeta(html: string, meta: SharePageMeta): string {
     `<meta name="twitter:image:alt" content="${e(meta.imageAlt)}" />`,
   ];
   const block = `    ${tags.join('\n    ')}\n  `;
-  const index = output.search(/<\/head>/i);
+  const index = output.search(HEAD_CLOSE);
   return `${output.slice(0, index)}${block}${output.slice(index)}`;
 }
