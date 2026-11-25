@@ -134,19 +134,26 @@ const STATIC_DATE = new Intl.DateTimeFormat('fr-FR', {
   minute: '2-digit',
 });
 
+const LOGO_SHIELD = 'M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z';
+const LOGO_BOLT = 'M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z';
+
 /**
- * Symbole Raijin en ligne (géométrie de libs/brand/logos/raijin-mark-color.svg, comme `RjLogo`),
- * décoratif : le lien qui le porte est nommé. Couleurs par classes (tokens), aucun attribut `style`.
+ * Logo Raijin Shield en ligne, comme `RjLogo` en mode `auto` (géométrie de libs/brand/logos/raijin-mark-color.svg
+ * et raijin-wordmark-color.svg) : symbole seul sous 360 px, logotype complet « Raijin SHIELD » au-delà (bascule
+ * en CSS, classes `rj-static__logo--mark` / `--wordmark`). Décoratif : le lien qui le porte est nommé.
+ * Couleurs et police par classes (tokens), aucun attribut `style`.
  */
 const STATIC_LOGO =
-  '<svg class="rj-static__logo" viewBox="8 2 48 60" aria-hidden="true" focusable="false">' +
-  '<path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/>' +
-  '<path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/>' +
-  '</svg>';
+  `<svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false">` +
+  `<path class="rj-static__logo-shield" d="${LOGO_SHIELD}"/><path class="rj-static__logo-bolt" d="${LOGO_BOLT}"/></svg>` +
+  `<svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false">` +
+  `<path class="rj-static__logo-shield" d="${LOGO_SHIELD}"/><path class="rj-static__logo-bolt" d="${LOGO_BOLT}"/>` +
+  `<text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text>` +
+  `<text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>`;
 
 /**
  * Verdict statique de `/t/<mint>` (docs/ARCHITECTURE.md §10.7), injecté dans `<rj-root>` : lisible sans
- * Angular, remplacé au démarrage de l'app. En-tête minimal (symbole + « Raijin », lien vers l'accueil) puis
+ * Angular, remplacé au démarrage de l'app. En-tête minimal (logo officiel, lien vers l'accueil) puis
  * `<main data-rj-static="t">`. Toute valeur est échappée ; symbole ou nom (non fiables)
  * nettoyés (contrôles, invisibles, bidi), tronqués à 32 caractères, entre « » et marqués non vérifiés.
  * Aucun attribut `style`, aucun `on*`, aucun script, aucune URL issue des données du token.
@@ -161,7 +168,6 @@ export function renderStaticVerdict(analysis: AnalysisResult, mint: string): str
     `  <div class="rj-static__bar">`,
     `    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">`,
     `      ${STATIC_LOGO}`,
-    `      <span class="rj-static__brand-name" aria-hidden="true">Raijin</span>`,
     `    </a>`,
     `  </div>`,
     `</header>`,

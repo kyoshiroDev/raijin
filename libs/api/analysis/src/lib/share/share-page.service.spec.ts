@@ -191,13 +191,15 @@ describe('renderStaticVerdict', () => {
     expect(decoded).not.toMatch(/[\uD800-\uDBFF]$/);
   });
 
-  it('en-tête minimal : symbole décoratif inline et « Raijin » vers l’accueil, sans style ni ressource externe', () => {
+  it('en-tête minimal : symbole et logotype officiels inline, décoratifs, lien vers l’accueil, sans style ni ressource externe', () => {
     const html = renderStaticVerdict(staticResult(), FIXTURE_MINTS.safe);
     expect(html.indexOf('<header class="rj-static__header">')).toBe(0);
     expect(html.indexOf('</header>')).toBeLessThan(html.indexOf('<main data-rj-static="t"'));
     expect(html).toContain('<a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">');
-    expect(html).toMatch(/<svg class="rj-static__logo" viewBox="8 2 48 60" aria-hidden="true" focusable="false">/);
-    expect(html).toContain('<span class="rj-static__brand-name" aria-hidden="true">Raijin</span>');
+    expect(html).toContain('<svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false">');
+    expect(html).toContain('<svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false">');
+    expect(html).toMatch(/<text class="rj-static__logo-name"[^>]*>Raijin<\/text>/);
+    expect(html).toMatch(/<text class="rj-static__logo-tagline"[^>]*>SHIELD<\/text>/);
     expect(html).not.toMatch(/style=|<img|<use|xlink|https?:\/\/|<script/i);
   });
 

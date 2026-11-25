@@ -877,8 +877,8 @@ celui des visiteurs).
    <header class="rj-static__header">
      <div class="rj-static__bar">
        <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
-         <svg class="rj-static__logo" viewBox="8 2 48 60" aria-hidden="true" focusable="false">…symbole de libs/brand/logos/raijin-mark-color.svg, chemins rj-static__logo-shield / rj-static__logo-bolt…</svg>
-         <span class="rj-static__brand-name" aria-hidden="true">Raijin</span>
+         <svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false">…symbole…</svg>
+         <svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false">…logotype « Raijin SHIELD »…</svg>
        </a>
      </div>
    </header>
@@ -903,8 +903,10 @@ celui des visiteurs).
    libellés de `public-token.page.ts` (aucun texte réécrit à la main) ; liens **relatifs**, mêmes `href` que
    la page Angular. Ni score, ni contrôles, ni image : la version complète arrive avec Angular. L'en-tête
    (avant `<main>`, frère dans `<rj-root>` : le sélecteur `rj-root > [data-rj-static="t"]` reste valable) remplace
-   celui de `RjAppShell` : symbole inline décoratif (couleurs par classes, tokens), « Raijin » (nom court,
-   BRAND.md), lien relatif vers l'accueil ; aucune ressource externe, CSP inchangée.
+   celui de `RjAppShell` : logo officiel inline et décoratif comme `RjLogo` « auto » (géométrie de
+   `libs/brand/logos`, symbole seul sous 360 px, logotype complet au-delà ; couleurs et police par classes,
+   tokens), lien relatif vers l'accueil ; barre `rj-static__bar` alignée sur la colonne de `.rj-static` (même
+   `max-width` et mêmes marges à chaque point de rupture) ; aucune ressource externe, CSP inchangée.
 4. **Échappement** : chaque valeur dynamique passe par `escapeHtml` (déjà exportée, `& < > " '`), y compris
    `mint` (déjà validé base58 en amont) et le libellé du verdict ; symbole et nom du token (non fiables)
    tronqués à 32 caractères (`Array.from`, pas de coupure d'emoji) puis échappés, toujours entre « » et

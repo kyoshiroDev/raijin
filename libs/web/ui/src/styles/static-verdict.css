@@ -21,7 +21,9 @@
     background: var(--color-base);
   }
 
-  /* En-tête minimal à la place de celui de RjAppShell (fixe, h-14) : symbole + « Raijin », lien vers l'accueil. */
+  /* En-tête minimal à la place de celui de RjAppShell (fixe, h-14) : logo officiel (symbole seul sous 360 px,
+     logotype au-delà, comme RjLogo « auto »), lien vers l'accueil. Barre alignée sur la colonne de .rj-static
+     (même max-width et mêmes marges à chaque point de rupture). */
   .rj-static__header {
     position: fixed;
     inset: 0 0 auto;
@@ -37,20 +39,14 @@
     height: calc(var(--spacing) * 14);
     max-width: var(--container-reading);
     margin-inline: auto;
-    padding-inline: calc(var(--spacing) * 4);
+    padding-inline: calc(var(--spacing) * 4 + env(safe-area-inset-left)) calc(var(--spacing) * 4 + env(safe-area-inset-right));
   }
   .rj-static__brand {
     display: inline-flex;
     align-items: center;
-    gap: calc(var(--spacing) * 2);
     min-height: calc(var(--spacing) * 11);
     min-width: calc(var(--spacing) * 11);
     border-radius: var(--radius-md);
-    font-family: var(--font-display);
-    font-size: var(--text-h3);
-    line-height: var(--text-h3--line-height);
-    font-weight: var(--font-weight-bold, 700);
-    color: var(--color-ink);
     text-decoration: none;
   }
   .rj-static__brand:focus-visible {
@@ -60,6 +56,17 @@
   .rj-static__logo {
     width: auto;
     height: calc(var(--spacing) * 8);
+  }
+  .rj-static__logo--wordmark {
+    display: none;
+  }
+  .rj-static__logo-name {
+    font-family: var(--font-display);
+    fill: var(--color-ink);
+  }
+  .rj-static__logo-tagline {
+    font-family: var(--font-display);
+    fill: var(--color-thunder);
   }
   .rj-static__logo-shield {
     fill: var(--color-thunder);
@@ -203,9 +210,18 @@
     border-top: 1px solid var(--color-line);
   }
 
+  @variant xs {
+    .rj-static__logo--mark {
+      display: none;
+    }
+    .rj-static__logo--wordmark {
+      display: block;
+    }
+  }
+
   @variant md {
     .rj-static__bar {
-      padding-inline: calc(var(--spacing) * 6);
+      padding-inline: calc(var(--spacing) * 6 + env(safe-area-inset-left)) calc(var(--spacing) * 6 + env(safe-area-inset-right));
     }
     .rj-static {
       gap: calc(var(--spacing) * 5);
@@ -224,7 +240,8 @@
 
   @variant lg {
     .rj-static__bar {
-      padding-inline: calc(var(--spacing) * 8);
+      max-width: calc(var(--container-reading) / 2);
+      padding-inline: calc(var(--spacing) * 8 + env(safe-area-inset-left)) calc(var(--spacing) * 8 + env(safe-area-inset-right));
     }
     .rj-static {
       max-width: calc(var(--container-reading) / 2);
