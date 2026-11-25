@@ -452,7 +452,7 @@ jobs:
     runs-on: ubuntu-latest
     # 6 pages (3 de l'app, 3 de la landing depuis la phase 7) x LH_RUNS passages, plus le build Astro de mesure.
     timeout-minutes: 30
-    # Mêmes services que e2e : l'API en mode fixtures (serve-api-fixtures) a besoin de Postgres et Redis
+    # Mêmes services que e2e : l'API en mode fixtures (lancée par lighthouse.mjs) a besoin de Postgres et Redis
     # (CSRF, quotas, dernière analyse de /t/<mint>). Identifiants factices, non secrets.
     services:
       postgres:
@@ -550,10 +550,12 @@ jobs:
       - name: Migrations Prisma
         run: pnpm nx run api-prisma:migrate-deploy
 
-      # Build de production web + api (dépendances de serve-prod et serve-api-fixtures) et build statique de la
-      # landing (build-landing-lighthouse : GA4 factice, bannière rendue ; servie compressée sur le port 4332), puis
-      # médiane de LH_RUNS passages par page (app : /analyse, /analyse/<BONK>, /t/<BONK> ; landing : /, /tarifs,
-      # un guide). Le script sort en erreur si une catégorie < 95 : bloquant sur PR, ignoré en lancement manuel
+      # Build de production web + api et build statique de la landing (build-landing-lighthouse : GA4 factice,
+      # bannière rendue), seules dépendances Nx de la cible. lighthouse.mjs démarre lui-même serve-prod.mjs (4310),
+      # l'API en mode fixtures (3100) et la landing (4332), puis les arrête : aucune tâche continue Nx, donc
+      # l'arrêt des serveurs ne fait plus échouer l'étape (run 45649168634). Médiane de LH_RUNS passages par page
+      # (app : /analyse, /analyse/<BONK>, /t/<BONK> ; landing : /, /tarifs, un guide). Code de sortie = celui du
+      # script : 1 si une catégorie < 95 ou en cas d'erreur de mesure, bloquant sur PR, ignoré en lancement manuel
       # (continue-on-error), l'étape suivante vérifiant qu'un résumé existe.
       - name: Lighthouse (app de production + API fixtures + landing statique)
         id: lighthouse

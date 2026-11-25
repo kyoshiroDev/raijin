@@ -1,6 +1,7 @@
 // Lighthouse mobile (émulation mobile et throttling simulé par défaut de Lighthouse) sur l'écran
 // d'analyse (docs/ARCHITECTURE.md §9.10, PROMPT.md §3) : build de production servi par
-// scripts/serve-prod.mjs (port 4310), API réelle en mode fixtures (port 3100, `ANALYSIS_FIXTURES=1`).
+// scripts/serve-prod.mjs (port 4310), API réelle en mode fixtures (port 3100, `ANALYSIS_FIXTURES=1`), tous deux
+// démarrés et arrêtés par ce script (builds fournis par les dépendances Nx de la cible web-e2e:lighthouse).
 // Landing (phase 7, docs/ARCHITECTURE.md §15.7) : accueil, tarifs et un guide, build statique de mesure
 // (identifiant GA4 factice : la bannière de consentement d'une première visite est rendue, aucune requête
 // Google avant l'accord, cible web-e2e:build-landing-lighthouse), servi compressé par scripts/serve-landing.mjs sur le
@@ -28,7 +29,8 @@ const USAGE = `Usage : node apps/web-e2e/scripts/lighthouse.mjs [options]
   --landing-dist <dir>   build servi (défaut : dist/apps/landing-lighthouse, cible web-e2e:build-landing-lighthouse)
   --threshold <n>        seuil par catégorie (défaut : 95)
   --cpu <n>              multiplicateur CPU (diagnostic seulement)
-  --timeout-min <n>      délai global du script en minutes (défaut : 15) ; au-delà, serveurs arrêtés et sortie 124`;
+  --timeout-min <n>      délai global du script en minutes (défaut : 15) ; au-delà, serveurs arrêtés et sortie 124
+  --reuse-api            réutilise une API déjà à l'écoute sur --api (elle doit tourner avec ANALYSIS_FIXTURES=1)`;
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   console.log(USAGE);
   process.exit(0);
@@ -159,68 +161,91 @@ function failingAudits(lhr, category) {
 }
 
 /**
- * Nx lance cette cible dès que les tâches continues (serve-prod, serve-api-fixtures) ont démarré, sans
- * garantir qu'elles écoutent déjà : on attend l'API et le serveur de production (2 min au plus).
+ * Serveurs lancés par ce script (app de production, API en mode fixtures, landing) et arrêtés à sa sortie.
+ * Ils étaient auparavant des tâches continues Nx (serve-prod, serve-api-fixtures) : à la fin de la mesure, Nx les
+ * arrêtait par SIGTERM et comptait cet arrêt comme un échec de tâche (run 45649168634 : « Terminated », tâche
+ * web-e2e:serve-api-fixtures en échec, étape en code 1 malgré des scores ≥ 95). Désormais la cible ne dépend que
+ * des builds : son code de sortie est exactement celui de ce script (0 si tous les scores ≥ seuil, 1 sinon ou en
+ * cas d'erreur de mesure, 124 au délai global).
  */
-async function waitFor(url, label, timeoutMs = 120_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // Pas encore à l'écoute.
-    }
-    await new Promise((r) => setTimeout(r, 500));
+const children = [];
+function stopChildren() {
+  for (const child of children) {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
   }
-  throw new Error(`${label} injoignable après ${timeoutMs / 1000} s (${url})`);
 }
-
-if (PAGES.some((page) => page.site === 'app')) {
-  await waitFor(`${API}/api/v1/health`, 'API');
-  await waitFor(`${BASE}/manifest.webmanifest`, 'Serveur de production');
+process.on('exit', stopChildren);
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    stopChildren();
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  });
 }
-// Le serveur de la landing (tâche continue) démarre après son build (dépendance Nx) : marge de 5 min.
-if (PAGES.some((page) => page.site === 'landing')) await startLanding();
 
 /**
- * Serveur de la landing démarré par ce script (une tâche continue Nx pour ce serveur s'arrêtait aussitôt en CI) :
- * réutilisé s'il répond déjà, sinon `serve-landing.mjs` lancé sur le port de `--landing` avec `LANDING_DIST`,
- * prêt à la ligne « Landing de test sur » ou à un 200 sur /robots.txt, arrêté à la sortie du script.
+ * Démarre `node <script> ...args` sauf si `probe` répond déjà (réutilisation, refusée si `reuse` est faux) et
+ * attend un 200 sur `probe`. Un arrêt prématuré du fils est une erreur (port occupé, build absent, config).
  */
-async function startLanding() {
-  if (await isUp(`${LANDING}/robots.txt`)) {
-    console.log(`Landing déjà servie sur ${LANDING} : réutilisée`);
+async function startServer({ label, probe, script, args = [], env = {}, reuse = true, reuseHint = '', timeoutMs = 120_000 }) {
+  if (await isUp(probe)) {
+    if (!reuse) throw new Error(`${label} répond déjà sur ${new URL(probe).origin} : ${reuseHint}`);
+    console.log(`${label} déjà servi sur ${new URL(probe).origin} : réutilisé`);
     return;
   }
-  const dist = resolve(workspace, arg('landing-dist', join('dist', 'apps', 'landing-lighthouse')));
-  const child = spawn(process.execPath, [join(workspace, 'apps', 'web-e2e', 'scripts', 'serve-landing.mjs'), '--port', new URL(LANDING).port || '80'], {
+  const child = spawn(process.execPath, [script, ...args], {
     cwd: workspace,
-    env: { ...process.env, LANDING_DIST: dist },
-    stdio: ['ignore', 'pipe', 'inherit'],
+    env: { ...process.env, ...env },
+    stdio: ['ignore', 'inherit', 'inherit'],
   });
-  const stop = () => {
-    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
-  };
-  process.on('exit', stop);
-  for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.on(signal, () => {
-      stop();
-      process.exit(130);
-    });
-  }
-  let ready = false;
-  child.stdout.on('data', (chunk) => {
-    process.stdout.write(chunk);
-    if (String(chunk).includes('Landing de test sur')) ready = true;
-  });
-  const deadline = Date.now() + 60_000;
-  while (!ready && !(await isUp(`${LANDING}/robots.txt`))) {
-    if (child.exitCode !== null) throw new Error(`serve-landing.mjs arrêté (code ${child.exitCode}) : build ${dist} absent ? (pnpm nx run web-e2e:build-landing-lighthouse)`);
-    if (Date.now() > deadline) throw new Error(`Landing injoignable après 60 s (${LANDING})`);
+  children.push(child);
+  const deadline = Date.now() + timeoutMs;
+  while (!(await isUp(probe))) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`${label} arrêté au démarrage (code ${child.exitCode ?? child.signalCode}) : ${script}`);
+    }
+    if (Date.now() > deadline) throw new Error(`${label} injoignable après ${timeoutMs / 1000} s (${probe})`);
     await new Promise((r) => setTimeout(r, 300));
   }
-  await waitFor(`${LANDING}/robots.txt`, 'Landing', 30_000);
+}
+
+const scripts = join(workspace, 'apps', 'web-e2e', 'scripts');
+if (PAGES.some((page) => page.site === 'app')) {
+  const apiUrl = new URL(API);
+  // Même environnement que la cible web-e2e:serve-api-fixtures (API réelle, analyses servies par les fixtures).
+  await startServer({
+    label: 'API (fixtures)',
+    probe: `${API}/api/v1/health`,
+    script: join(workspace, 'dist', 'apps', 'api', 'main.js'),
+    env: {
+      NODE_ENV: 'development',
+      ANALYSIS_FIXTURES: '1',
+      TRUST_PROXY: '1',
+      CORS_ORIGINS: `${new URL(BASE).origin},http://localhost:${new URL(BASE).port || '80'}`,
+      WEB_INDEX_HTML_PATH: 'dist/apps/web/browser/index.html',
+      RATE_LIMIT_PER_MINUTE: '10000',
+      ...(apiUrl.port ? { API_PORT: apiUrl.port } : {}),
+    },
+    // Une API de développement sur ce port ne sert pas les fixtures : la mesure serait faussée.
+    reuse: process.argv.includes('--reuse-api'),
+    reuseHint: "arrêter l'API existante (ou passer --reuse-api si elle tourne déjà avec ANALYSIS_FIXTURES=1)",
+  });
+  await startServer({
+    label: 'Serveur de production',
+    probe: `${BASE}/manifest.webmanifest`,
+    script: join(scripts, 'serve-prod.mjs'),
+    args: ['--port', new URL(BASE).port || '80'],
+    env: { API_URL: apiUrl.origin },
+  });
+}
+if (PAGES.some((page) => page.site === 'landing')) {
+  await startServer({
+    label: 'Landing',
+    probe: `${LANDING}/robots.txt`,
+    script: join(scripts, 'serve-landing.mjs'),
+    args: ['--port', new URL(LANDING).port || '80'],
+    env: { LANDING_DIST: resolve(workspace, arg('landing-dist', join('dist', 'apps', 'landing-lighthouse'))) },
+    timeoutMs: 60_000,
+  });
 }
 
 async function isUp(url) {
@@ -324,8 +349,7 @@ if (failed) {
   console.error(`Au moins un score < ${THRESHOLD} (détail : docs/lighthouse/${PHASE}/summary.md)`);
   process.exit(1);
 }
-// Sortie explicite (le gestionnaire `exit` arrête serve-landing.mjs) : sans elle, le serveur fils garde le
-// processus en vie et Nx attend indéfiniment (serve-prod et serve-api-fixtures, tâches continues, ne sont
-// arrêtés par Nx qu'à la fin de cette tâche).
+// Sortie explicite (le gestionnaire `exit` arrête les serveurs fils) : sans elle, ils gardent le processus en vie
+// et Nx attend indéfiniment.
 console.log(`Tous les scores ≥ ${THRESHOLD} (détail : docs/lighthouse/${PHASE}/summary.md)`);
 process.exit(0);
