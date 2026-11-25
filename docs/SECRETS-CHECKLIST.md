@@ -26,6 +26,8 @@ Les noms de variables suivent `docs/ENV.md`.
 | `TOTP_ENCRYPTION_KEY` | `openssl rand -base64 32` | apps/api | [ ] |
 | `VAPID_PRIVATE_KEY` (+ `VAPID_PUBLIC_KEY`) | `npx web-push generate-vapid-keys` | apps/api | [ ] |
 
+> **Clés Helius reportées par décision de l'utilisateur (2026-11-25)** : les variables `HELIUS_API_KEY` et `BENCH_HELIUS_API_KEY` existent (vides) dans `.env.example` et `.env` ; l'utilisateur y collera les clés lui-même plus tard, puis cochera ces deux lignes. Les deux clés sont facultatives au démarrage (`z.string().optional()`, valeur vide ou factice → `null`) : l'API et le banc démarrent sans elles. Suivi dans la section « À brancher » de `docs/PROGRESS.md`.
+
 ## Notes Helius (non secrètes)
 - Plan **Free** : 1 M crédits/mois, RPC 10 req/s, DAS 2 req/s, `getProgramAccounts` 5 req/s, `sendTransaction` 1 req/s (inutile : lecture seule). Pas de crédits additionnels sur ce plan.
 - Les deux clés partagent le même projet, donc **le même quota** (1 M crédits, 10 req/s au total) : prévoir le rate limiting en conséquence.
