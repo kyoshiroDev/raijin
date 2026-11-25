@@ -101,8 +101,8 @@ export function safetyCheck(t: SafetyFields): SafetyCheck {
     if (disabled === null) failures.push(`${label} inconnue`);
     else if (!disabled) failures.push(`${label} active`);
   };
-  authority('Mint authority', t.mint_authority_disabled);
-  authority('Freeze authority', t.freeze_authority_disabled);
+  authority('Autorité de mint', t.mint_authority_disabled);
+  authority('Autorité de gel', t.freeze_authority_disabled);
   const top10 = t.top10_pct;
   if (!finite(top10) || top10 < 0) failures.push('Top 10 holders inconnu');
   else if (top10 >= SAFETY_RULES.maxTop10Pct) failures.push(`Top 10 holders à ${pct(top10)} (max ${SAFETY_RULES.maxTop10Pct} %)`);
@@ -117,7 +117,7 @@ export function safetyCheck(t: SafetyFields): SafetyCheck {
   return { ok: failures.length === 0, failures };
 }
 
-/** « Sécurité KO : Mint authority active ; Top 10 holders à 40 % (max 25 %). » — accessible text of the badge. */
+/** « Sécurité KO : Autorité de mint active ; Top 10 holders à 40 % (max 25 %). » — accessible text of the badge. */
 export function safetyDescription(check: SafetyCheck): string {
   if (check.ok) {
     return 'Sécurité OK : mint et freeze désactivés, top 10 sous 25 %, aucun insider ni rug du créateur, LP verrouillée, aller-retour sous 5 %, structure intacte.';

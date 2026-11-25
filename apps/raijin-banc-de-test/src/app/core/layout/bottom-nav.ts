@@ -8,13 +8,15 @@ export interface NavTab {
   /** Icon of the shared set (shared/ui/icon.ts). */
   icon: IconName;
   exact: boolean;
+  /** Shorter label shown below 360 px, where the full one would be truncated (still a visible text name). */
+  short?: string;
 }
 
 export const NAV_TABS: readonly NavTab[] = [
-  { path: '/', label: 'Opportunités', icon: 'bolt', exact: true },
+  { path: '/', label: 'Opportunités', short: 'Tokens', icon: 'bolt', exact: true },
   { path: '/alerts', label: 'Alertes', icon: 'bell', exact: false },
   { path: '/portfolio', label: 'Portefeuille', icon: 'wallet', exact: false },
-  { path: '/performance', label: 'Performance', icon: 'chart', exact: false },
+  { path: '/performance', label: 'Performance', short: 'Bilan', icon: 'chart', exact: false },
   { path: '/settings', label: 'Réglages', icon: 'settings', exact: false },
 ];
 
@@ -23,7 +25,7 @@ const SUBSET: IsActiveMatchOptions = { paths: 'subset', queryParams: 'ignored', 
 
 /**
  * Fixed tab bar sitting above the iPhone home indicator. 5 tabs (the iOS maximum): at 375 px each column is
- * 75 px wide × 56 px tall (≥ 44 px targets); 10 px labels fit (« Opportunités » ≈ 66 px of 71 px usable) and truncate otherwise.
+ * 75 px wide × 56 px tall (≥ 44 px targets); 10 px labels fit (« Opportunités » ≈ 66 px of 71 px usable) and truncate otherwise; at 320 px (64 px columns) « Opportunités » and « Performance » give way to « Tokens » and « Bilan ».
  */
 @Component({
   selector: 'app-bottom-nav',
@@ -43,7 +45,12 @@ const SUBSET: IsActiveMatchOptions = { paths: 'subset', queryParams: 'ignored', 
               class="flex h-nav min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl text-micro font-semibold tracking-tight text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2 aria-[current=page]:text-accent"
             >
               <app-icon [name]="tab.icon" class="size-6" />
-              <span class="max-w-full truncate px-0.5">{{ tab.label }}</span>
+              @if (tab.short) {
+                <span class="max-w-full truncate px-0.5 min-[360px]:hidden">{{ tab.short }}</span>
+                <span class="hidden max-w-full truncate px-0.5 min-[360px]:inline">{{ tab.label }}</span>
+              } @else {
+                <span class="max-w-full truncate px-0.5">{{ tab.label }}</span>
+              }
             </a>
           </li>
         }

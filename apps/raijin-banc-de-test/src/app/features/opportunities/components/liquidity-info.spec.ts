@@ -47,7 +47,7 @@ const ENRICHED = {
 describe('LiquidityInfo', () => {
   it('shows the effective liquidity and an accessible collapsed disclosure button (≥ 44 px)', () => {
     const { el, button, panel } = setup(token(ENRICHED));
-    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('$80.0 k');
+    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('80,0\u00a0k$');
     expect(button().getAttribute('aria-label')).toBe('Détail des sources de liquidité');
     expect(button().getAttribute('aria-expanded')).toBe('false');
     expect(button().getAttribute('aria-controls')).toMatch(/^liquidity-sources-\d+$/);
@@ -58,9 +58,9 @@ describe('LiquidityInfo', () => {
 
   it('falls back to the median of DexScreener / GeckoTerminal when the effective value is null (Jupiter ignored)', () => {
     const { el } = setup(token({ liquidity_jup_usd: 60_000 }));
-    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('$85.0 k');
+    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('85,0\u00a0k$');
     const both = setup(token({ liquidity_jup_usd: 10_000, liquidity_gecko_usd: 75_000 }));
-    expect(both.el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('$80.0 k');
+    expect(both.el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('80,0\u00a0k$');
   });
 
   it('opens on tap: lists each source, unknown ones as « inconnue », the median method, Jupiter as control, the divergence', () => {
@@ -70,8 +70,8 @@ describe('LiquidityInfo', () => {
     const p = panel();
     expect(p?.id).toBe(button().getAttribute('aria-controls'));
     const row = (id: string) => p?.querySelector(`[data-source="${id}"]`)?.textContent?.replace(/\s+/g, ' ').trim();
-    expect(row('dex')).toBe('DexScreener $85.0 k (utilisée)');
-    expect(row('gecko')).toBe('GeckoTerminal $75.0 k (utilisée)');
+    expect(row('dex')).toBe('DexScreener 85,0 k$ (utilisée)');
+    expect(row('gecko')).toBe('GeckoTerminal 75,0 k$ (utilisée)');
     expect(row('jup')).toBe('Jupiter contrôle (non utilisé dans les calculs) inconnue');
     expect(p?.textContent).toContain('Valeur retenue : médiane de DexScreener et GeckoTerminal.');
     expect(p?.textContent).not.toContain('la plus basse');
@@ -83,7 +83,7 @@ describe('LiquidityInfo', () => {
     const { panel, click } = setup(token(ENRICHED));
     click();
     const jup = panel()?.querySelector('[data-source="jup"]')?.textContent?.replace(/\s+/g, ' ').trim();
-    expect(jup).toBe('Jupiter contrôle (non utilisé dans les calculs) $60.0 k');
+    expect(jup).toBe('Jupiter contrôle (non utilisé dans les calculs) 60,0 k$');
   });
 
   it('says which single source is used before enrichment', () => {

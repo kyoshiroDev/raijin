@@ -1,5 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { formatCount, formatEur, formatPercentFr, formatSignedPercentFr, formatSignedSol, formatSolAmount, formatSolEur, formatUpdatedAgo } from './format';
+import {
+  formatCount,
+  formatEur,
+  formatPct,
+  formatPercentFr,
+  formatPrice,
+  formatSignedPercentFr,
+  formatSignedSol,
+  formatSolAmount,
+  formatSolEur,
+  formatUpdatedAgo,
+  formatUsd,
+} from './format';
+
+/** Grouping in fr-FR uses U+202F; the unit is preceded by U+00A0. */
+const spaces = (s: string) => s.replace(/[\u00a0\u202f]/g, ' ');
+
+describe('formatUsd (fr-FR, compact)', () => {
+  it('uses a decimal comma, a non-breaking space and k$ / M$ / Md$', () => {
+    expect(formatUsd(85_000)).toBe('85,0\u00a0k$');
+    expect(formatUsd(1_234_567)).toBe('1,23\u00a0M$');
+    expect(formatUsd(2_500_000_000)).toBe('2,50\u00a0Md$');
+    expect(formatUsd(420)).toBe('420\u00a0$');
+    expect(spaces(formatUsd(999.6))).toBe('1 000 $');
+  });
+  it('returns – when unknown or not positive', () => {
+    for (const v of [null, undefined, 0, -5, Number.NaN, Infinity]) expect(formatUsd(v)).toBe('–');
+  });
+});
+
+describe('formatPrice (fr-FR)', () => {
+  it('keeps 4 significant digits under 1 $ and 3 decimals above', () => {
+    expect(formatPrice(0.00042)).toBe('0,0004200\u00a0$');
+    expect(formatPrice(2)).toBe('2,000\u00a0$');
+    expect(spaces(formatPrice(1234.5))).toBe('1 234,500 $');
+    expect(formatPrice(0)).toBe('–');
+  });
+});
+
+describe('formatPct', () => {
+  it('signs with + / U+2212 and a decimal comma', () => {
+    expect(formatPct(4.2)).toBe('+4,2 %');
+    expect(formatPct(-3.14)).toBe('−3,1 %');
+    expect(formatPct(0)).toBe('0,0 %');
+    expect(formatPct(null)).toBe('–');
+  });
+});
 
 describe('formatUpdatedAgo', () => {
   const now = Date.parse('2026-11-16T12:00:00Z');

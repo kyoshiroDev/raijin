@@ -105,16 +105,16 @@ describe('TokenDetail', () => {
     const text = render(token()).textContent ?? '';
     for (const label of ['Prix', 'Market cap', 'Liquidité', 'Volume 24 h']) expect(text).toContain(label);
     for (const gone of ['Zone basse', 'Invalidation', 'TP1', 'Plan de sortie', '/100', 'Modèle ×3', 'R/R']) expect(text).not.toContain(gone);
-    expect(text).toContain('Mint authority');
+    expect(text).toContain('Autorité de mint');
     expect(text).toContain('Active'); // freeze authority still active
-    expect(text).toContain('22.4 %');
+    expect(text).toContain('22,4 %');
     expect(text).toContain('64 / 100');
-    expect(text).toContain('+4.2 %');
+    expect(text).toContain('+4,2 %');
   });
 
   it('ignores a lower Jupiter liquidity (control value, v5) and keeps the DexScreener value', () => {
     const text = render(token({ liquidity_usd: 15_600, liquidity_jup_usd: 6_900 })).textContent ?? '';
-    expect(text).toContain('$15.6 k');
+    expect(text).toContain('15,6\u00a0k$');
     expect(text).not.toContain('Jupiter)');
     expect(text).not.toContain('prudente');
   });
@@ -122,7 +122,7 @@ describe('TokenDetail', () => {
   it('shows the DexScreener liquidity without hint when Jupiter is higher or unknown', () => {
     for (const jup of [null, 120_000]) {
       const text = render(token({ liquidity_usd: 85_000, liquidity_jup_usd: jup })).textContent ?? '';
-      expect(text).toContain('$85.0 k');
+      expect(text).toContain('85,0\u00a0k$');
       expect(text).not.toContain('prudente');
       expect(text).not.toContain('médiane');
     }
@@ -130,7 +130,7 @@ describe('TokenDetail', () => {
 
   it('shows the effective liquidity when the backend provides it, labelled as a 2-source median', () => {
     const el = render(token({ liquidity_usd: 85_000, liquidity_gecko_usd: 40_000, liquidity_effective_usd: 62_500 }));
-    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('$62.5 k');
+    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('62,5\u00a0k$');
     expect(el.textContent).toContain('Liquidité (médiane 2 sources)');
   });
 
@@ -292,7 +292,7 @@ describe('TokenDetail', () => {
     const el = render(token({ top10_pct: 30, roundtrip_cost_pct: 2.4, flags: ['Structure cassée'], narrative: HOSTILE, narrative_rank: 2 }));
     expect(el.querySelector('[data-badge="safety-ko"]')?.getAttribute('aria-describedby')).toBeTruthy();
     const failures = Array.from(el.querySelectorAll('[data-safety-failures] li')).map((li) => li.textContent?.trim());
-    expect(failures).toEqual(['Freeze authority active', 'Top 10 holders à 30,0 % (max 25 %)', 'Structure cassée']);
+    expect(failures).toEqual(['Autorité de gel active', 'Top 10 holders à 30,0 % (max 25 %)', 'Structure cassée']);
     expect(el.querySelector('[data-narrative]')?.textContent?.trim()).toBe(`Narratif ${HOSTILE} · n°2`);
     expect(el.querySelector('img[src="x"]')).toBeNull();
   });

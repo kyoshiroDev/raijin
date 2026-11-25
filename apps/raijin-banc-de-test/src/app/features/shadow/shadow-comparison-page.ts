@@ -45,7 +45,7 @@ const STATUS_CLASS: Readonly<Record<ShadowTableStatus, string>> = {
           @for (w of windows; track w) {
             <button
               type="button"
-              class="press min-h-11 rounded-lg text-sm font-semibold"
+              class="press min-h-11 min-w-0 rounded-lg px-1 text-xs font-semibold sm:text-sm"
               [class]="store.window() === w ? 'seg-active' : 'text-muted hover:text-fg'"
               [attr.aria-pressed]="store.window() === w"
               [attr.data-window]="w"

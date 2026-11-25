@@ -32,7 +32,12 @@ describe('BottomNav', () => {
   it('renders the 5 tabs with labels and links, inside a labelled nav', async () => {
     const { fixture, links } = await renderAt('/');
     expect((fixture.nativeElement as HTMLElement).querySelector('nav')?.getAttribute('aria-label')).toBe('Navigation principale');
-    expect(links.map((a) => a.textContent?.trim())).toEqual(['Opportunités', 'Alertes', 'Portefeuille', 'Performance', 'Réglages']);
+    const label = (a: HTMLAnchorElement) => Array.from(a.querySelectorAll('span')).at(-1)?.textContent?.trim();
+    expect(links.map(label)).toEqual(['Opportunités', 'Alertes', 'Portefeuille', 'Performance', 'Réglages']);
+    // below 360 px the first tab reads « Tokens » (still a visible text name, never an unnamed icon)
+    const short = links[0]!.querySelector('span');
+    expect(short?.textContent?.trim()).toBe('Tokens');
+    expect(short?.classList).toContain('min-[360px]:hidden');
     expect(links.map((a) => a.getAttribute('href'))).toEqual(['/', '/alerts', '/portfolio', '/performance', '/settings']);
     for (const a of links) expect(a.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   });

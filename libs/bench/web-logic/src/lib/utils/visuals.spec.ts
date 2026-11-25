@@ -70,17 +70,18 @@ describe('avatar fallback', () => {
 
 describe('formatPriceCompact', () => {
   it('folds the leading zeros of tiny prices into a subscript count (4 significant digits)', () => {
-    expect(formatPriceCompact(0.000000001234)).toBe('$0.0₈1234');
-    expect(formatPriceCompact(0.0000000016)).toBe('$0.0₈16');
-    expect(formatPriceCompact(0.00001)).toBe('$0.0₄1');
-    expect(formatPriceCompact(0.000099999)).toBe('$0.0₃1'); // rounding carries over to 0.0001
-    expect(formatPriceCompact(1.5e-14)).toBe('$0.0₁₃15');
+    expect(formatPriceCompact(0.000000001234)).toBe('0,0₈1234\u00a0$');
+    expect(formatPriceCompact(0.0000000016)).toBe('0,0₈16\u00a0$');
+    expect(formatPriceCompact(0.00001)).toBe('0,0₄1\u00a0$');
+    expect(formatPriceCompact(0.000099999)).toBe('0,0₃1\u00a0$'); // rounding carries over to 0.0001
+    expect(formatPriceCompact(1.5e-14)).toBe('0,0₁₃15\u00a0$');
   });
 
   it('keeps regular prices as formatPrice and unknown as « – »', () => {
-    expect(formatPriceCompact(0.0234)).toBe('$0.02340');
-    expect(formatPriceCompact(0.0001)).toBe('$0.0001000');
-    expect(formatPriceCompact(12.3456)).toBe('$12.346');
+    expect(formatPriceCompact(0.0234)).toBe('0,0234\u00a0$');
+    expect(formatPriceCompact(0.0001)).toBe('0,0001\u00a0$');
+    expect(formatPriceCompact(0.00042)).toBe('0,00042\u00a0$');
+    expect(formatPriceCompact(12.3456)).toBe('12,346\u00a0$');
     expect(formatPriceCompact(0)).toBe('–');
     expect(formatPriceCompact(null)).toBe('–');
     expect(formatPriceCompact(Number.NaN)).toBe('–');

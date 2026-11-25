@@ -54,7 +54,7 @@ describe('PaperTradeLauncher', () => {
     expect(el.querySelector('[data-balance]')?.textContent).toContain('1 SOL');
     expect(el.querySelector('[data-strategy="all_x2"]')).not.toBeNull();
     expect(el.querySelector<HTMLInputElement>('[data-field="slPct"]')?.value).toBe('25');
-    expect(el.querySelector('[data-entry]')?.textContent).toContain('Entrée au prix actuel ($0.0002000)');
+    expect(el.querySelector('[data-entry]')?.textContent).toContain('Entrée au prix actuel (0,0002000\u00a0$)');
     expect(el.querySelector<HTMLInputElement>('[data-field="stake"]')?.value).toBe('0,05');
   });
 

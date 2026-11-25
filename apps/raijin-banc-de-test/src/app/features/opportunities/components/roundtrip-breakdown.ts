@@ -21,27 +21,27 @@ const UNKNOWN = 'inconnu';
       <dl class="space-y-1.5 text-xs tabular-nums slashed-zero">
         <div class="flex items-baseline justify-between gap-3" data-cost-slippage>
           <dt class="text-muted">Slippage et frais de pool</dt>
-          <dd class="text-right">{{ amount(v.cost.slippageAndPoolFeesSol) }}</dd>
+          <dd class="shrink-0 whitespace-nowrap text-right">{{ amount(v.cost.slippageAndPoolFeesSol) }}</dd>
         </div>
         <div class="flex items-baseline justify-between gap-3" data-cost-network>
           <dt class="text-muted">Frais réseau ({{ txCount }} × {{ perTx }} SOL)</dt>
-          <dd class="text-right">{{ amount(v.cost.networkFeesSol) }}</dd>
+          <dd class="shrink-0 whitespace-nowrap text-right">{{ amount(v.cost.networkFeesSol) }}</dd>
         </div>
         <div class="flex flex-wrap items-baseline justify-between gap-x-3" data-cost-rent>
           <dt class="text-muted">Rent du compte token</dt>
-          <dd class="text-right">{{ amount(v.cost.rentSol) }}</dd>
+          <dd class="shrink-0 whitespace-nowrap text-right">{{ amount(v.cost.rentSol) }}</dd>
           <dd class="mt-0.5 basis-full text-label text-muted">
             Récupérable en fermant le compte du token après la vente (Phantom / Solflare : Burn / Close token account).
           </dd>
         </div>
         <div class="flex items-baseline justify-between gap-3 border-t border-line pt-1.5" data-cost-paid>
           <dt class="text-muted">Total payé</dt>
-          <dd class="text-right">{{ amount(v.cost.totalPaidSol) }}</dd>
+          <dd class="shrink-0 whitespace-nowrap text-right">{{ amount(v.cost.totalPaidSol) }}</dd>
         </div>
         <div class="flex items-baseline justify-between gap-3 font-semibold" data-cost-net>
           <dt>Total net (après récupération du rent)</dt>
           <dd
-            class="text-right"
+            class="shrink-0 whitespace-nowrap text-right"
             [class.text-bull]="v.tone === 'bull'"
             [class.text-warn]="v.tone === 'warn'"
             [class.text-bear]="v.tone === 'bear'"

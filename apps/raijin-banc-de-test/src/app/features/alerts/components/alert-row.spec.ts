@@ -66,7 +66,7 @@ describe('AlertRow (alert outcome)', () => {
 
   it('writes entry → high (×) → current (×) with French 2-decimal multiples', () => {
     const el = render(item());
-    expect(el.querySelector('[data-outcome]')?.textContent?.trim()).toBe('$2.000 → plus haut $2.500 (×1,25) → actuel $2.200 (×1,10)');
+    expect(el.querySelector('[data-outcome]')?.textContent?.trim()).toBe('2,000\u00a0$ → plus haut 2,500\u00a0$ (×1,25) → actuel 2,200\u00a0$ (×1,10)');
   });
 
   it('shows no score at all (archived), neither at alert time nor current', () => {

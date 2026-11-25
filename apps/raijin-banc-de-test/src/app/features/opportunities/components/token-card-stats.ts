@@ -4,7 +4,7 @@ import { Sparkline } from '../../../shared/ui/sparkline';
 import { LiquidityInfo } from './liquidity-info';
 
 /**
- * Key numbers of the card (tiny prices in subscript-zero notation on one line, full price as screen-reader
+ * Key numbers of the card (tiny prices in subscript-zero notation on one line, 12 px under 360 px, full price as screen-reader
  * text): muted labels, prominent tabular values. Price · MC · effective liquidity on the
  * first row, 1 h · 24 h · 6 h sparkline on the second (fixed row heights, « – » when the sparkline is unknown).
  */
@@ -18,7 +18,7 @@ import { LiquidityInfo } from './liquidity-info';
     <dl class="grid grid-cols-[minmax(0,3fr)_minmax(0,3fr)_minmax(0,4fr)] gap-x-3 gap-y-2 tabular-nums slashed-zero" data-stats>
       <div class="min-w-0">
         <dt class="text-label text-muted">Prix</dt>
-        <dd class="truncate font-mono text-sm font-semibold" data-price>
+        <dd class="truncate font-mono text-xs font-semibold min-[360px]:text-sm" data-price>
           <span aria-hidden="true">{{ compactPrice(t.price_usd) }}</span><span class="sr-only">{{ fmtPrice(t.price_usd) }}</span>
         </dd>
       </div>

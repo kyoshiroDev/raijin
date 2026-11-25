@@ -1,5 +1,6 @@
 // Pure geometry / formatting helpers for the visual primitives (sparkline, avatar, compact price).
 // No Angular here: everything is unit-tested in visuals.spec.ts.
+import { NBSP, fixedFr, formatPrice, priceDecimals } from './format';
 
 const positive = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
@@ -87,13 +88,14 @@ const SUBSCRIPT_DIGITS = '₀₁₂₃₄₅₆₇₈₉';
 
 /**
  * Card price on one line at 375 px: below $0.0001 the run of leading zeros becomes a subscript count
- * (« $0.0₈1234 » = $0.000000001234, 4 significant digits, as on DexScreener); otherwise formatPrice-like.
+ * (« 0,0₈1234 $ » = 0,000000001234 $, 4 significant digits, as on DexScreener); from 0,0001 to 1 $ formatPrice()
+ * without its trailing zeros (« 0,00042 $ », fits at 320 px); from 1 $ formatPrice().
  * Visual only: pair it with the full price as screen-reader text. '–' when unknown.
  */
 export function formatPriceCompact(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return '–';
-  if (value >= 1) return `$${value.toFixed(3)}`;
-  if (value >= 0.0001) return `$${value.toFixed(Math.min(12, Math.max(2, -Math.floor(Math.log10(value)) + 3)))}`;
+  if (value >= 1) return formatPrice(value);
+  if (value >= 0.0001) return `${fixedFr(value, priceDecimals(value)).replace(/0+$/, '')}${NBSP}$`;
   let zeros = -Math.floor(Math.log10(value)) - 1;
   let digits = Math.round(value * 10 ** (zeros + 4));
   if (digits >= 10_000) {
@@ -103,5 +105,5 @@ export function formatPriceCompact(value: number | null | undefined): string {
   }
   const sub = Array.from(String(zeros), (d) => SUBSCRIPT_DIGITS[Number(d)]).join('');
   const sig = String(digits).replace(/0+$/, '');
-  return `$0.0${sub}${sig === '' ? '0' : sig}`;
+  return `0,0${sub}${sig === '' ? '0' : sig}${NBSP}$`;
 }

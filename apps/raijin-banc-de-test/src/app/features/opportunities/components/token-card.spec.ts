@@ -30,7 +30,7 @@ const line = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-roundtrip
 describe('TokenCard', () => {
   it('shows the effective liquidity with the sources button', () => {
     const el = render(token({ liquidity_effective_usd: 42_000 }));
-    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('$42.0 k');
+    expect(el.querySelector('[data-liquidity-value]')?.textContent?.trim()).toBe('42,0\u00a0k$');
     expect(el.querySelector('button[aria-label="Détail des sources de liquidité"]')).not.toBeNull();
   });
 
@@ -120,12 +120,12 @@ describe('TokenCard', () => {
     expect(labels).toEqual(['Prix', 'MC', 'Liquidité', '1 h', '24 h', '6 h']);
     for (const dt of el.querySelectorAll('[data-stats] dt')) expect(dt.classList).toContain('text-muted');
     expect(el.querySelector('[data-stats]')?.classList).toContain('tabular-nums');
-    expect(el.querySelector('[data-stats]')?.textContent).toContain('$1.23 M');
+    expect(el.querySelector('[data-stats]')?.textContent).toContain('1,23\u00a0M$');
     expect(el.querySelector('[data-spark-cell] svg[aria-hidden="true"]')).not.toBeNull();
     expect(el.querySelector('[data-spark-cell] .sr-only')?.textContent?.trim()).toBe('Variation 6 h : +10 %');
     const tiny = render(token({ price_usd: 0.000000001234 })).querySelector('[data-price]');
-    expect(tiny?.querySelector('[aria-hidden="true"]')?.textContent).toBe('$0.0₈1234');
-    expect(tiny?.querySelector('.sr-only')?.textContent).toBe('$0.000000001234');
+    expect(tiny?.querySelector('[aria-hidden="true"]')?.textContent).toBe('0,0₈1234\u00a0$');
+    expect(tiny?.querySelector('.sr-only')?.textContent).toBe('0,000000001234\u00a0$');
     const none = render(token()).querySelector('[data-spark-cell]');
     expect(none?.querySelector('svg')).toBeNull();
     expect(none?.querySelector('dd')?.textContent?.trim()).toBe('–');
@@ -203,7 +203,7 @@ describe('TokenCard', () => {
     expect(ko?.classList).toContain('text-fg');
     expect(ko?.classList).toContain('ring-bear/50');
     expect(ko?.querySelector('app-icon')?.classList).toContain('text-bear');
-    expect(ko?.querySelector('.sr-only')?.textContent).toContain('Mint authority active ; Top 10 holders à 40,0 % (max 25 %) ; Coût aller-retour inconnu ; Structure cassée');
+    expect(ko?.querySelector('.sr-only')?.textContent).toContain('Autorité de mint active ; Top 10 holders à 40,0 % (max 25 %) ; Coût aller-retour inconnu ; Structure cassée');
   });
 
   it('shows no momentum badge on an old pair or when neither calm nor frenzy', () => {

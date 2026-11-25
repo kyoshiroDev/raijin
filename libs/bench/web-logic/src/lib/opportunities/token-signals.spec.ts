@@ -120,8 +120,8 @@ describe('safetyCheck', () => {
     });
     expect(check.ok).toBe(false);
     expect(check.failures).toEqual([
-      'Mint authority active',
-      'Freeze authority inconnue',
+      'Autorité de mint active',
+      'Autorité de gel inconnue',
       'Top 10 holders à 40,0 % (max 25 %)',
       'Insiders détectés (RugCheck)',
       'Créateur avec des rugs passés (RugCheck)',
@@ -142,7 +142,7 @@ describe('safetyDescription', () => {
   it('reads the reasons as text (never colour only)', () => {
     expect(safetyDescription(safetyCheck(safe))).toMatch(/^Sécurité OK : /);
     expect(safetyDescription(safetyCheck({ ...safe, mint_authority_disabled: false, flags: [FLAG_BROKEN_STRUCTURE] }))).toBe(
-      'Sécurité KO : Mint authority active ; Structure cassée.',
+      'Sécurité KO : Autorité de mint active ; Structure cassée.',
     );
   });
 });

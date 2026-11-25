@@ -117,10 +117,10 @@ describe('AlertsPage', () => {
       null,
     ]);
     const first = rows[0]!.textContent ?? '';
-    for (const text of ['Prix à l’alerte', '$2.000', 'Plus haut', '+10,0 %', 'Plus bas', '−5,0 %', 'Prix actuel', 'il y a 3 min', 'Objectif', '+20,0 %', 'Stop', '−20,0 %']) {
+    for (const text of ['Prix à l’alerte', '2,000\u00a0$', 'Plus haut', '+10,0 %', 'Plus bas', '−5,0 %', 'Prix actuel', 'il y a 3 min', 'Objectif', '+20,0 %', 'Stop', '−20,0 %']) {
       expect(first).toContain(text);
     }
-    expect(rows[0]!.querySelector('[data-outcome]')?.textContent?.trim()).toBe('$2.000 → plus haut $2.200 (×1,10) → actuel $2.100 (×1,05)');
+    expect(rows[0]!.querySelector('[data-outcome]')?.textContent?.trim()).toBe('2,000\u00a0$ → plus haut 2,200\u00a0$ (×1,10) → actuel 2,100\u00a0$ (×1,05)');
     expect(rows[4]!.querySelector('dl')).toBeNull();
     expect(rows[4]!.querySelector('[data-outcome], [data-legacy]')).toBeNull();
     expect(rows[4]!.textContent).toContain('Alerte groupée');

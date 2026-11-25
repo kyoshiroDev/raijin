@@ -1,21 +1,41 @@
+/** Non-breaking space placed before a unit (« 85,0 k$ », « 0,0004200 $ ») so the number never wraps away from it. */
+export const NBSP = '\u00a0';
+
+const FIXED_FR = new Map<number, Intl.NumberFormat>();
+
+/** fr-FR number with exactly `decimals` decimals (decimal comma, fr grouping). */
+export function fixedFr(value: number, decimals: number): string {
+  let f = FIXED_FR.get(decimals);
+  if (!f) {
+    f = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    FIXED_FR.set(decimals, f);
+  }
+  return f.format(value);
+}
+
+/** USD amount, fr-FR compact: « 1,23 Md$ », « 1,23 M$ », « 85,0 k$ », « 420 $ » (non-breaking space); '–' when unknown. */
 export function formatUsd(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return '–';
-  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)} Md`;
-  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)} M`;
-  if (value >= 1e3) return `$${(value / 1e3).toFixed(1)} k`;
-  return `$${value.toFixed(0)}`;
+  if (value >= 1e9) return `${fixedFr(value / 1e9, 2)}${NBSP}Md$`;
+  if (value >= 1e6) return `${fixedFr(value / 1e6, 2)}${NBSP}M$`;
+  if (value >= 1e3) return `${fixedFr(value / 1e3, 1)}${NBSP}k$`;
+  return `${fixedFr(value, 0)}${NBSP}$`;
 }
 
+/** Decimals of a sub-dollar price: 4 significant digits (« 0,0004200 »), between 2 and 12. */
+export function priceDecimals(value: number): number {
+  return Math.min(12, Math.max(2, -Math.floor(Math.log10(value)) + 3));
+}
+
+/** USD price, fr-FR: « 2,000 $ », « 0,0004200 $ » (non-breaking space); '–' when unknown. */
 export function formatPrice(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return '–';
-  if (value >= 1) return `$${value.toFixed(3)}`;
-  const decimals = Math.min(12, Math.max(2, -Math.floor(Math.log10(value)) + 3));
-  return `$${value.toFixed(decimals)}`;
+  return `${fixedFr(value, value >= 1 ? 3 : priceDecimals(value))}${NBSP}$`;
 }
 
+/** « +4,2 % » / « −3,1 % » (U+2212 minus) / « 0,0 % »; '–' when unknown. */
 export function formatPct(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '–';
-  return `${value > 0 ? '+' : ''}${value.toFixed(1)} %`;
+  return formatSignedPercentFr(value);
 }
 
 export function formatAge(isoDate: string | null | undefined, now = Date.now()): string {

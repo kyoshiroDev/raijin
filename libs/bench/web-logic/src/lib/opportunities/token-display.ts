@@ -66,9 +66,9 @@ export function securityStats(t: TokenRow): Stat[] {
   const top10 = t.top10_pct;
   const organic = t.organic_score;
   return [
-    authorityStat('Mint authority', t.mint_authority_disabled),
-    authorityStat('Freeze authority', t.freeze_authority_disabled),
-    { label: 'Top 10 holders', value: top10 != null && Number.isFinite(top10) ? `${top10.toFixed(1)} %` : '–' },
+    authorityStat('Autorité de mint', t.mint_authority_disabled),
+    authorityStat('Autorité de gel', t.freeze_authority_disabled),
+    { label: 'Top 10 holders', value: formatPercentFr(top10) },
     { label: 'Holders', value: formatCount(t.holder_count) },
     { label: 'Score organique', value: organic != null && Number.isFinite(organic) ? `${Math.round(organic)} / 100` : '–' },
   ];

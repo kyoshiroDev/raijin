@@ -100,7 +100,7 @@ describe('PortfolioPage', () => {
     expect(legs.map((l) => l.querySelector('[data-leg-badge]')?.textContent?.trim())).toEqual(['TP touché', 'ouverte']);
     expect(legs[0]!.textContent).toContain('Moitié A · ×2');
     expect(legs[1]!.textContent).toContain('Moitié B · ×3');
-    expect(legs[1]!.querySelector('[data-leg-stop]')?.textContent).toContain('$1.000');
+    expect(legs[1]!.querySelector('[data-leg-stop]')?.textContent).toContain('1,000\u00a0$');
     expect(legs[1]!.querySelector('[data-breakeven-moved]')?.textContent).toContain('remonté au prix d’achat');
   });
 

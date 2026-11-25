@@ -56,12 +56,12 @@ describe('alertStatus (follow-up badge)', () => {
 describe('alertCells', () => {
   it('shows prices with the % from entry and the age of the current price', () => {
     expect(alertCells(row(), NOW)).toEqual([
-      { label: 'Prix à l’alerte', value: '$2.000', sub: null, tone: null },
-      { label: 'Plus haut', value: '$2.200', sub: '+10,0 %', tone: null },
-      { label: 'Plus bas', value: '$1.900', sub: '−5,0 %', tone: null },
-      { label: 'Prix actuel', value: '$2.100', sub: '+5,0 % · il y a 3 min', tone: null },
-      { label: 'Objectif', value: '$2.400', sub: '+20,0 %', tone: 'bull' },
-      { label: 'Stop', value: '$1.600', sub: '−20,0 %', tone: 'bear' },
+      { label: 'Prix à l’alerte', value: '2,000\u00a0$', sub: null, tone: null },
+      { label: 'Plus haut', value: '2,200\u00a0$', sub: '+10,0 %', tone: null },
+      { label: 'Plus bas', value: '1,900\u00a0$', sub: '−5,0 %', tone: null },
+      { label: 'Prix actuel', value: '2,100\u00a0$', sub: '+5,0 % · il y a 3 min', tone: null },
+      { label: 'Objectif', value: '2,400\u00a0$', sub: '+20,0 %', tone: 'bull' },
+      { label: 'Stop', value: '1,600\u00a0$', sub: '−20,0 %', tone: 'bear' },
     ]);
   });
 
@@ -96,12 +96,12 @@ describe('alert outcome line', () => {
   });
 
   it('reads « entry → plus haut max (×) → actuel last (×) » from the alert columns', () => {
-    expect(alertOutcomeLine(row())).toBe('$2.000 → plus haut $2.200 (×1,10) → actuel $2.100 (×1,05)');
-    expect(alertOutcomeLine(row({ last_price: 1.5 }))).toBe('$2.000 → plus haut $2.200 (×1,10) → actuel $1.500 (×0,75)');
+    expect(alertOutcomeLine(row())).toBe('2,000\u00a0$ → plus haut 2,200\u00a0$ (×1,10) → actuel 2,100\u00a0$ (×1,05)');
+    expect(alertOutcomeLine(row({ last_price: 1.5 }))).toBe('2,000\u00a0$ → plus haut 2,200\u00a0$ (×1,10) → actuel 1,500\u00a0$ (×0,75)');
   });
 
   it('shows « – » without a multiple for unknown prices, and nothing for a legacy row', () => {
-    expect(alertOutcomeLine(row({ max_price: null, last_price: null }))).toBe('$2.000 → plus haut – → actuel –');
+    expect(alertOutcomeLine(row({ max_price: null, last_price: null }))).toBe('2,000\u00a0$ → plus haut – → actuel –');
     expect(alertOutcomeLine(row({ entry_price: null }))).toBeNull();
   });
 });
