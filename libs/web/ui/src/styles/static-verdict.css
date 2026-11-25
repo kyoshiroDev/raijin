@@ -21,6 +21,53 @@
     background: var(--color-base);
   }
 
+  /* En-tête minimal à la place de celui de RjAppShell (fixe, h-14) : symbole + « Raijin », lien vers l'accueil. */
+  .rj-static__header {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 20;
+    padding-top: env(safe-area-inset-top);
+    border-bottom: 1px solid var(--color-line);
+    background: var(--color-base);
+  }
+  .rj-static__bar {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    height: calc(var(--spacing) * 14);
+    max-width: var(--container-reading);
+    margin-inline: auto;
+    padding-inline: calc(var(--spacing) * 4);
+  }
+  .rj-static__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    min-height: calc(var(--spacing) * 11);
+    min-width: calc(var(--spacing) * 11);
+    border-radius: var(--radius-md);
+    font-family: var(--font-display);
+    font-size: var(--text-h3);
+    line-height: var(--text-h3--line-height);
+    font-weight: var(--font-weight-bold, 700);
+    color: var(--color-ink);
+    text-decoration: none;
+  }
+  .rj-static__brand:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .rj-static__logo {
+    width: auto;
+    height: calc(var(--spacing) * 8);
+  }
+  .rj-static__logo-shield {
+    fill: var(--color-thunder);
+  }
+  .rj-static__logo-bolt {
+    fill: var(--color-base);
+  }
+
   .rj-static__eyebrow {
     margin: 0;
     font-size: var(--text-label);
@@ -157,6 +204,9 @@
   }
 
   @variant md {
+    .rj-static__bar {
+      padding-inline: calc(var(--spacing) * 6);
+    }
     .rj-static {
       gap: calc(var(--spacing) * 5);
       padding-top: calc(var(--spacing) * 20 + env(safe-area-inset-top));
@@ -173,6 +223,9 @@
   }
 
   @variant lg {
+    .rj-static__bar {
+      padding-inline: calc(var(--spacing) * 8);
+    }
     .rj-static {
       max-width: calc(var(--container-reading) / 2);
       padding-top: calc(var(--spacing) * 22 + env(safe-area-inset-top));

@@ -135,8 +135,19 @@ const STATIC_DATE = new Intl.DateTimeFormat('fr-FR', {
 });
 
 /**
+ * Symbole Raijin en ligne (géométrie de libs/brand/logos/raijin-mark-color.svg, comme `RjLogo`),
+ * décoratif : le lien qui le porte est nommé. Couleurs par classes (tokens), aucun attribut `style`.
+ */
+const STATIC_LOGO =
+  '<svg class="rj-static__logo" viewBox="8 2 48 60" aria-hidden="true" focusable="false">' +
+  '<path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/>' +
+  '<path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/>' +
+  '</svg>';
+
+/**
  * Verdict statique de `/t/<mint>` (docs/ARCHITECTURE.md §10.7), injecté dans `<rj-root>` : lisible sans
- * Angular, remplacé au démarrage de l'app. Toute valeur est échappée ; symbole ou nom (non fiables)
+ * Angular, remplacé au démarrage de l'app. En-tête minimal (symbole + « Raijin », lien vers l'accueil) puis
+ * `<main data-rj-static="t">`. Toute valeur est échappée ; symbole ou nom (non fiables)
  * nettoyés (contrôles, invisibles, bidi), tronqués à 32 caractères, entre « » et marqués non vérifiés.
  * Aucun attribut `style`, aucun `on*`, aucun script, aucune URL issue des données du token.
  */
@@ -146,6 +157,14 @@ export function renderStaticVerdict(analysis: AnalysisResult, mint: string): str
   const date = new Date(analysis.analyzedAt);
   const valid = !Number.isNaN(date.getTime());
   const lines = [
+    `<header class="rj-static__header">`,
+    `  <div class="rj-static__bar">`,
+    `    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">`,
+    `      ${STATIC_LOGO}`,
+    `      <span class="rj-static__brand-name" aria-hidden="true">Raijin</span>`,
+    `    </a>`,
+    `  </div>`,
+    `</header>`,
     `<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">`,
     `  <p class="rj-static__eyebrow">Analyse partagée</p>`,
     `  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>`,

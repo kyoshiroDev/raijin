@@ -78,7 +78,7 @@ describe('SharePageService', () => {
     expect(html).toContain(`<meta property="og:image" content="https://api.raijinshield.com/api/v1/og/${FIXTURE_MINTS.hostile}.png" />`);
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
     expect(html).toContain('pas un conseil en investissement');
-    expect(html).toContain('<rj-root><main data-rj-static="t"');
+    expect(html).toContain('<rj-root><header class="rj-static__header">');
     expect(html).toContain('<base href="/" />');
   });
 
@@ -191,6 +191,16 @@ describe('renderStaticVerdict', () => {
     expect(decoded).not.toMatch(/[\uD800-\uDBFF]$/);
   });
 
+  it('en-tête minimal : symbole décoratif inline et « Raijin » vers l’accueil, sans style ni ressource externe', () => {
+    const html = renderStaticVerdict(staticResult(), FIXTURE_MINTS.safe);
+    expect(html.indexOf('<header class="rj-static__header">')).toBe(0);
+    expect(html.indexOf('</header>')).toBeLessThan(html.indexOf('<main data-rj-static="t"'));
+    expect(html).toContain('<a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">');
+    expect(html).toMatch(/<svg class="rj-static__logo" viewBox="8 2 48 60" aria-hidden="true" focusable="false">/);
+    expect(html).toContain('<span class="rj-static__brand-name" aria-hidden="true">Raijin</span>');
+    expect(html).not.toMatch(/style=|<img|<use|xlink|https?:\/\/|<script/i);
+  });
+
   it('symbole contenant & et apostrophe : échappés', () => {
     const html = renderStaticVerdict(staticResult({}, { symbol: `A&B'"` }), FIXTURE_MINTS.safe);
     expect(html).toContain('« A&amp;B&#39;&quot; »');
@@ -200,7 +210,7 @@ describe('renderStaticVerdict', () => {
 describe('injection du verdict statique', () => {
   it('dans <rj-root> du build web, head, main-*.js et analyse-prefetch.js intacts', async () => {
     const html = await service(staticResult({ verdict: 'warn' }), { WEB_INDEX_HTML_PATH: indexWith(SHELL_INDEX) }).render(FIXTURE_MINTS.safe);
-    expect(html).toMatch(/<RJ-ROOT ng-version="x"><main data-rj-static="t"[\s\S]*<\/main><\/RJ-ROOT>/);
+    expect(html).toMatch(/<RJ-ROOT ng-version="x"><header class="rj-static__header">[\s\S]*<\/header>\n<main data-rj-static="t"[\s\S]*<\/main><\/RJ-ROOT>/);
     expect(html.match(/data-rj-static/g)).toHaveLength(1);
     expect(html).toContain('<p class="rj-static__verdict" data-verdict="warn" role="status" aria-label="Verdict : Prudence">Prudence</p>');
     expect(html).toContain('<script src="main-ABC123.js" type="module"></script>');

@@ -874,6 +874,14 @@ celui des visiteurs).
 3. **Format exact** (fonction pure `renderStaticVerdict(analysis, mint): string` exportée à côté de
    `injectMeta`, testée par instantané) :
    ```html
+   <header class="rj-static__header">
+     <div class="rj-static__bar">
+       <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
+         <svg class="rj-static__logo" viewBox="8 2 48 60" aria-hidden="true" focusable="false">…symbole de libs/brand/logos/raijin-mark-color.svg, chemins rj-static__logo-shield / rj-static__logo-bolt…</svg>
+         <span class="rj-static__brand-name" aria-hidden="true">Raijin</span>
+       </a>
+     </div>
+   </header>
    <main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
      <p class="rj-static__eyebrow">Analyse partagée</p>
      <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
@@ -893,7 +901,10 @@ celui des visiteurs).
    ```
    Textes repris des constantes de `@raijin/shared-contracts` (`VERDICT_LABELS`, `ANALYSIS_DISCLAIMER`) et des
    libellés de `public-token.page.ts` (aucun texte réécrit à la main) ; liens **relatifs**, mêmes `href` que
-   la page Angular. Ni score, ni contrôles, ni image : la version complète arrive avec Angular.
+   la page Angular. Ni score, ni contrôles, ni image : la version complète arrive avec Angular. L'en-tête
+   (avant `<main>`, frère dans `<rj-root>` : le sélecteur `rj-root > [data-rj-static="t"]` reste valable) remplace
+   celui de `RjAppShell` : symbole inline décoratif (couleurs par classes, tokens), « Raijin » (nom court,
+   BRAND.md), lien relatif vers l'accueil ; aucune ressource externe, CSP inchangée.
 4. **Échappement** : chaque valeur dynamique passe par `escapeHtml` (déjà exportée, `& < > " '`), y compris
    `mint` (déjà validé base58 en amont) et le libellé du verdict ; symbole et nom du token (non fiables)
    tronqués à 32 caractères (`Array.from`, pas de coupure d'emoji) puis échappés, toujours entre « » et
