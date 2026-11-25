@@ -149,7 +149,7 @@ export function renderStaticVerdict(analysis: AnalysisResult, mint: string): str
     `<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">`,
     `  <p class="rj-static__eyebrow">Analyse partagée</p>`,
     `  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>`,
-    `  <p class="rj-static__verdict" data-verdict="${e(analysis.verdict)}">${e(VERDICT_LABELS[analysis.verdict])}</p>`,
+    `  <p class="rj-static__verdict" data-verdict="${e(analysis.verdict)}" role="status" aria-label="Verdict : ${e(VERDICT_LABELS[analysis.verdict])}">${e(VERDICT_LABELS[analysis.verdict])}</p>`,
     ...(declared ? [`  <p class="rj-static__token">Symbole déclaré « ${e(declared)} » (non vérifié)</p>`] : []),
     `  <p class="rj-static__explanation">${e(analysis.explanation)}</p>`,
     ...(valid

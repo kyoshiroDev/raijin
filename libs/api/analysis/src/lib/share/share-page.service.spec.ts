@@ -202,7 +202,7 @@ describe('injection du verdict statique', () => {
     const html = await service(staticResult({ verdict: 'warn' }), { WEB_INDEX_HTML_PATH: indexWith(SHELL_INDEX) }).render(FIXTURE_MINTS.safe);
     expect(html).toMatch(/<RJ-ROOT ng-version="x"><main data-rj-static="t"[\s\S]*<\/main><\/RJ-ROOT>/);
     expect(html.match(/data-rj-static/g)).toHaveLength(1);
-    expect(html).toContain('<p class="rj-static__verdict" data-verdict="warn">Prudence</p>');
+    expect(html).toContain('<p class="rj-static__verdict" data-verdict="warn" role="status" aria-label="Verdict : Prudence">Prudence</p>');
     expect(html).toContain('<script src="main-ABC123.js" type="module"></script>');
     expect(html).toContain('<script src="analyse-prefetch.js"></script>');
     expect(html).toContain('<link rel="modulepreload" href="chunk-ABC.js" />');

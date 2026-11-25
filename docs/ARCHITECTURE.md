@@ -877,7 +877,7 @@ celui des visiteurs).
    <main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
      <p class="rj-static__eyebrow">Analyse partagée</p>
      <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
-     <p class="rj-static__verdict" data-verdict="safe|warn|danger">{VERDICT_LABELS[verdict]}</p>
+     <p class="rj-static__verdict" data-verdict="safe|warn|danger" role="status" aria-label="Verdict : {VERDICT_LABELS[verdict]}">{VERDICT_LABELS[verdict]}</p>
      <!-- seulement si symbol ?? name : -->
      <p class="rj-static__token">Symbole déclaré « {symbole} » (non vérifié)</p>
      <p class="rj-static__explanation">{explanation}</p>

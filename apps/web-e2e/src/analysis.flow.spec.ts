@@ -340,6 +340,17 @@ test.describe('page publique /t/<mint>', () => {
       if (msg.type() === 'error' && /Content Security Policy/i.test(msg.text())) violations.push(msg.text());
     });
     await page.goto(`${PROD_ORIGIN}/t/${MINTS.bonk}`);
+    // Verdict statique injecté par l'API (§10.7) : lisible et accessible sans interaction, Angular pas encore démarré.
+    const staticVerdict = page.locator('rj-root > main[data-rj-static="t"]');
+    await expect(staticVerdict).toBeVisible();
+    await expect(page.locator('main h1')).toHaveText('Verdict Raijin');
+    await expectVerdict(page, 'Prudence');
+    await expect(staticVerdict.locator('[data-disclaimer]')).toBeVisible();
+    await expect(page.locator('rj-app-shell')).toHaveCount(0);
+    // Première interaction : Angular démarre, remplace le rendu statique par la coquille et la page complète.
+    await page.locator('main h1').click();
+    await expect(page.locator('rj-app-shell')).toBeAttached();
+    await expect(staticVerdict).toHaveCount(0);
     await expect(page.locator('main h1')).toHaveText('Verdict Raijin');
     await expectVerdict(page, 'Prudence');
     // Feuille de style complète appliquée (Beasties la charge en media="print" puis la bascule par un script inline).

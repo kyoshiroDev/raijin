@@ -4,7 +4,7 @@ exports[`renderStaticVerdict résultat partiel (degraded) 1`] = `
 "<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
   <p class="rj-static__eyebrow">Analyse partagée</p>
   <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
-  <p class="rj-static__verdict" data-verdict="warn">Prudence</p>
+  <p class="rj-static__verdict" data-verdict="warn" role="status" aria-label="Verdict : Prudence">Prudence</p>
   <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
@@ -21,7 +21,7 @@ exports[`renderStaticVerdict sans symbole : repli sur le nom, puis aucune ligne 
 "<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
   <p class="rj-static__eyebrow">Analyse partagée</p>
   <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
-  <p class="rj-static__verdict" data-verdict="safe">Sain</p>
+  <p class="rj-static__verdict" data-verdict="safe" role="status" aria-label="Verdict : Sain">Sain</p>
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
   <nav class="rj-static__actions" aria-label="Actions">
@@ -36,7 +36,7 @@ exports[`renderStaticVerdict verdict danger 1`] = `
 "<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
   <p class="rj-static__eyebrow">Analyse partagée</p>
   <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
-  <p class="rj-static__verdict" data-verdict="danger">Danger</p>
+  <p class="rj-static__verdict" data-verdict="danger" role="status" aria-label="Verdict : Danger">Danger</p>
   <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
@@ -52,7 +52,7 @@ exports[`renderStaticVerdict verdict safe 1`] = `
 "<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
   <p class="rj-static__eyebrow">Analyse partagée</p>
   <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
-  <p class="rj-static__verdict" data-verdict="safe">Sain</p>
+  <p class="rj-static__verdict" data-verdict="safe" role="status" aria-label="Verdict : Sain">Sain</p>
   <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
@@ -68,7 +68,7 @@ exports[`renderStaticVerdict verdict warn 1`] = `
 "<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
   <p class="rj-static__eyebrow">Analyse partagée</p>
   <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
-  <p class="rj-static__verdict" data-verdict="warn">Prudence</p>
+  <p class="rj-static__verdict" data-verdict="warn" role="status" aria-label="Verdict : Prudence">Prudence</p>
   <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
   <p class="rj-static__explanation">Aucun signal critique détecté.</p>
   <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>

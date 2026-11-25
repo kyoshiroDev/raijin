@@ -54,23 +54,23 @@ test('visiteur : prix fr-FR venus de l’API, bascule Mensuel / Annuel, offre d�
 
   await expect(page.getByText('Mode simulation : aucun paiement réel')).toBeVisible();
   await expect(page.locator('[data-trial-offer]')).toHaveText(`Essaie Pro gratuitement pendant ${plans.trial.days} jours. Sans carte bancaire.`);
-  expect(plain(await freeCard(page).locator('.text-metric').textContent())).toBe(plain(formatPrice(0, monthly.currency)));
+  await expect.poll(async () => plain(await freeCard(page).locator('.text-metric').textContent())).toBe(plain(formatPrice(0, monthly.currency)));
 
   // Mensuel par défaut.
   await expect(interval(page, 'Mensuel')).toBeChecked();
-  expect(plain(await proCard(page).locator('[data-price]').textContent())).toBe(plain(formatPrice(monthly.amountCents, monthly.currency)));
+  await expect.poll(async () => plain(await proCard(page).locator('[data-price]').textContent())).toBe(plain(formatPrice(monthly.amountCents, monthly.currency)));
   await expect(proCard(page)).toContainText('/ mois');
   await expect(proCard(page).locator('[data-price-detail]')).toHaveText('Payé chaque mois, sans engagement.');
 
   // Annuel : prix annuel, équivalent mensuel et économie calculés depuis les centimes de l'API.
   const savings = savingsPercent(monthly.amountCents, yearly.amountCents);
   expect(savings).toBeGreaterThan(0);
-  expect(plain(await interval(page, 'Annuel').locator('xpath=..').textContent())).toContain(`−${savings} %`);
+  await expect.poll(async () => plain(await interval(page, 'Annuel').locator('xpath=..').textContent())).toContain(`−${savings} %`);
   await chooseInterval(page, 'Annuel');
   await expect(interval(page, 'Annuel')).toBeChecked();
-  expect(plain(await proCard(page).locator('[data-price]').textContent())).toBe(plain(formatPrice(yearly.amountCents, yearly.currency)));
+  await expect.poll(async () => plain(await proCard(page).locator('[data-price]').textContent())).toBe(plain(formatPrice(yearly.amountCents, yearly.currency)));
   await expect(proCard(page)).toContainText('/ an');
-  expect(plain(await proCard(page).locator('[data-price-detail]').textContent())).toBe(
+  await expect.poll(async () => plain(await proCard(page).locator('[data-price-detail]').textContent())).toBe(
     plain(`Soit ${formatPrice(Math.round(yearly.amountCents / 12), yearly.currency)} par mois, payé une fois par an.`),
   );
 
@@ -88,7 +88,7 @@ test('visiteur : prix fr-FR venus de l’API, bascule Mensuel / Annuel, offre d�
     await route.fulfill({ response, json: { ...body, pro: { ...body.pro, monthly: { ...body.pro.monthly, amountCents: 1290 } } } });
   });
   await openSubscription(page);
-  expect(plain(await proCard(page).locator('[data-price]').textContent())).toBe(plain(formatPrice(1290, monthly.currency)));
+  await expect.poll(async () => plain(await proCard(page).locator('[data-price]').textContent())).toBe(plain(formatPrice(1290, monthly.currency)));
 });
 
 test('Gratuit (adresse jetable, sans essai) : plan Gratuit, message neutre, pas d’offre d’essai, « Passer à Pro » disponible', async ({ page }) => {
