@@ -188,6 +188,22 @@ describe('Écrans statistiques de l’admin', () => {
 });
 
 describe('Utilisateurs', () => {
+  it('320 px : statut, plan et indication du champ visibles en entier (aucune troncature hors tableau ≥ 768 px)', async () => {
+    const kit = await open('/admin/utilisateurs');
+    kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);
+    await flush(kit.harness);
+    const page = root(kit);
+    // L'indication est un texte d'aide (renvoyé à la ligne), pas un placeholder rogné dans le champ.
+    const search = page.querySelector('input[type="search"]') as HTMLInputElement;
+    expect(search.getAttribute('placeholder')).toBeNull();
+    const hint = page.querySelector(`#${search.getAttribute('aria-describedby')}`);
+    expect(hint?.textContent?.trim()).toBe('3 caractères au moins');
+    const cut = /\b(truncate|line-clamp-\d|text-ellipsis)\b/;
+    // Les libellés courts des boutons (« Chercher », « Filtres ») tiennent à 320 px : seul le contenu est vérifié.
+    const mobile = Array.from(page.querySelectorAll<HTMLElement>('*')).filter((element) => !element.closest('.md\\:block, button'));
+    expect(mobile.filter((element) => cut.test(element.className)).map((element) => element.textContent?.trim())).toEqual([]);
+  });
+
   it('liste, fiche en panneau, action destructive confirmée par l’e-mail recopié', async () => {
     const kit = await open('/admin/utilisateurs');
     kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);

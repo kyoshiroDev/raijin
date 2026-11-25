@@ -93,7 +93,7 @@ interface LegendItem {
               } @else {
                 <span aria-hidden="true" [class]="'size-2.5 shrink-0 rounded-sm ' + swatch(item.tone)"></span>
               }
-              <span class="truncate">{{ item.label }}</span>
+              <span class="min-w-0 wrap-break-word">{{ item.label }}</span>
               @if (item.value) {
                 <span class="tabular text-ink-muted">{{ item.value }}</span>
               }

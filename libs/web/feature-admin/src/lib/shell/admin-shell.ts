@@ -46,7 +46,7 @@ const CHIP_ACTIVE = '!border-line-strong !bg-surface-raised !text-ink';
                   [class]="navLink + (rla.isActive ? ' ' + navActive : '')"
                 >
                   <rj-icon [name]="screen.icon" [size]="20" [class.text-thunder-ink]="rla.isActive" />
-                  <span class="truncate">{{ screen.label }}</span>
+                  <span class="min-w-0">{{ screen.label }}</span>
                 </a>
               </li>
             }
@@ -66,7 +66,7 @@ const CHIP_ACTIVE = '!border-line-strong !bg-surface-raised !text-ink';
             [class]="navLink + (sec.isActive ? ' ' + navActive : '')"
           >
             <rj-icon [name]="icons.shield" [size]="20" />
-            <span class="truncate">Double authentification</span>
+            <span class="min-w-0">Double authentification</span>
           </a>
           <button type="button" [class]="navLink + ' w-full'" [disabled]="leaving()" (click)="leave()">
             <rj-icon name="logout" [size]="20" />

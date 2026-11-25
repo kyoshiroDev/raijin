@@ -65,9 +65,9 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
     <div class="flex flex-col gap-4 md:gap-6">
       <rj-admin-page-header [title]="screen.title" [description]="screen.description" />
       <div class="flex min-w-0 flex-wrap items-end gap-3">
-        <form class="flex w-full min-w-0 items-end gap-2 lg:w-96" role="search" (submit)="search($event)">
-          <rj-input-field class="min-w-0 flex-1" label="Recherche par e-mail" type="search" inputmode="email" enterkeyhint="search" [(value)]="searchText" [error]="searchError()" placeholder="3 caractères au moins" />
-          <button type="submit" rjButton="secondary" icon="filter" class="shrink-0">Chercher</button>
+        <form class="flex w-full min-w-0 items-start gap-2 lg:w-96" role="search" (submit)="search($event)">
+          <rj-input-field class="min-w-0 flex-1" label="Recherche par e-mail" type="search" inputmode="email" enterkeyhint="search" [(value)]="searchText" [error]="searchError()" hint="3 caractères au moins" />
+          <button type="submit" rjButton="secondary" icon="filter" class="mt-7 shrink-0">Chercher</button>
         </form>
         <rj-admin-filters title="Filtrer les comptes" [activeCount]="activeFilters()">
           <label class="flex min-w-0 flex-col gap-1 lg:w-44">
@@ -164,7 +164,7 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
             <h3 class="font-display text-body font-semibold text-ink">Attribution</h3>
             <dl class="grid grid-cols-1 gap-1 text-body-sm sm:grid-cols-2">
               @for (item of attribution(user); track item.label) {
-                <div class="flex min-w-0 gap-2"><dt class="shrink-0 text-ink-muted">{{ item.label }}</dt><dd class="min-w-0 truncate text-ink" [attr.title]="item.value">{{ item.value }}</dd></div>
+                <div class="flex min-w-0 gap-2"><dt class="shrink-0 text-ink-muted">{{ item.label }}</dt><dd class="min-w-0 text-ink wrap-anywhere">{{ item.value }}</dd></div>
               }
             </dl>
           </section>

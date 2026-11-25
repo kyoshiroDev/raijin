@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { type AdminKpi } from '@raijin/shared-contracts';
 import { RjChart } from './chart/chart';
-import { buildChartConfig, readChartTheme, summarizeChart, timeSeriesToChart, type RjChartDataset, type RjChartTheme } from './chart/chart-config';
+import { buildChartConfig, horizontalLabelChars, readChartTheme, wrapCategoryLabel, summarizeChart, timeSeriesToChart, type RjChartDataset, type RjChartTheme } from './chart/chart-config';
 import { RJ_CHART_LOADER } from './chart/chart-loader';
 import { RjDataTable, resolveRowLink, type RjTableColumn } from './data-table';
 import { provideRouter } from '@angular/router';
@@ -284,5 +284,52 @@ describe('rj-data-table : lignes cliquables', () => {
     expect(resolveRowLink('/admin/utilisateurs?fiche=u2')).toEqual({ path: '/admin/utilisateurs', queryParams: { fiche: 'u2' } });
     expect(resolveRowLink('/admin/sante')).toEqual({ path: '/admin/sante', queryParams: null });
     expect(resolveRowLink(null)).toBeNull();
+  });
+});
+
+describe('lisibilité à 320 px (aucune troncature)', () => {
+  const CUT = /\b(truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/;
+
+  it('cartes mobiles de rj-data-table : titre et valeurs complets, renvoyés à la ligne, sans survol', async () => {
+    interface Row { email: string; plan: string; status: string }
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(RjDataTable<Row>);
+    fixture.componentRef.setInput('caption', 'Comptes');
+    fixture.componentRef.setInput('columns', [
+      { key: 'email', label: 'E-mail', value: (row: Row) => row.email, primary: true },
+      { key: 'plan', label: 'Plan', value: (row: Row) => row.plan },
+      { key: 'status', label: 'Statut', value: (row: Row) => row.status },
+    ]);
+    fixture.componentRef.setInput('rows', [
+      { email: 'e2e-responsive-mwvcin0123456789@exemple-tres-long.fr', plan: 'Pro · Abonnement', status: 'E-mail non vérifié' },
+    ]);
+    fixture.componentRef.setInput('rowLink', () => '/admin/utilisateurs');
+    await fixture.whenStable();
+    const cards = (fixture.nativeElement as HTMLElement).querySelector('ul.md\\:hidden') as HTMLElement;
+    const title = cards.querySelector('[data-rj-card-title]') as HTMLElement;
+    expect(title.textContent?.trim()).toBe('e2e-responsive-mwvcin0123456789@exemple-tres-long.fr');
+    expect(title.className).toContain('wrap-anywhere');
+    const values = Array.from(cards.querySelectorAll<HTMLElement>('[data-rj-card-value]'));
+    expect(values.map((value) => value.textContent?.trim())).toEqual(['Pro · Abonnement', 'E-mail non vérifié']);
+    for (const element of [title, ...values]) {
+      expect(element.className).not.toMatch(CUT);
+      expect(element.hasAttribute('title')).toBe(false);
+    }
+    expect(Array.from(cards.querySelectorAll<HTMLElement>('*')).some((element) => CUT.test(element.className))).toBe(false);
+  });
+
+  it('barres horizontales : libellés découpés en lignes, aucun caractère perdu, titre d’infobulle complet', () => {
+    expect(wrapCategoryLabel('(direct ou inconnu)', 12)).toEqual(['(direct ou', 'inconnu)']);
+    expect(wrapCategoryLabel('e2e-src-8b1b4267abcd', 12)).toEqual(['e2e-src-8b1b', '4267abcd']);
+    expect(wrapCategoryLabel('google', 12)).toEqual(['google']);
+    expect(horizontalLabelChars(288)).toBe(12);
+    const config = buildChartConfig(
+      { type: 'bar', horizontal: true, width: 288, unit: 'count', labels: ['(direct ou inconnu)', 'google'], datasets: [{ label: 'Inscrits', data: [3, 1], tone: 'primary' }] },
+      THEME,
+      true,
+    );
+    expect(config.data.labels).toEqual([['(direct ou', 'inconnu)'], ['google']]);
+    const title = (config.options?.plugins?.tooltip?.callbacks as { title: (items: { dataIndex: number; label: string }[]) => string }).title;
+    expect(title([{ dataIndex: 0, label: '(direct ou,inconnu)' }])).toBe('(direct ou inconnu)');
   });
 });

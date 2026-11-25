@@ -123,8 +123,8 @@ const QUOTA_TEXT: Readonly<Record<AdminQuotaUsage['level'], { icon: RjIconName; 
                 @for (service of services(); track service.key) {
                   <li class="flex min-h-11 items-center gap-2 rounded-md border border-line px-3 py-2">
                     <rj-icon [name]="service.configured ? 'circleCheck' : 'unavailable'" [size]="16" [class]="service.configured ? 'text-safe' : 'text-ink-muted'" />
-                    <span class="min-w-0 flex-1 truncate text-body-sm text-ink" [attr.title]="service.label">{{ service.label }}</span>
-                    <span class="text-label text-ink-muted">{{ service.configured ? 'Configuré' : 'Non configuré' }}</span>
+                    <span class="min-w-0 flex-1 text-body-sm text-ink wrap-break-word">{{ service.label }}</span>
+                    <span class="shrink-0 text-label text-ink-muted">{{ service.configured ? 'Configuré' : 'Non configuré' }}</span>
                   </li>
                 }
               </ul>

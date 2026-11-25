@@ -55,7 +55,7 @@ const REFUSAL_LABELS: Readonly<Record<TrialRefusalReason, string>> = {
                 <ul class="flex flex-col divide-y divide-line">
                   @for (item of trials.nonConversionReasons; track item.reason) {
                     <li class="flex min-h-11 items-center justify-between gap-3 py-2">
-                      <span class="min-w-0 truncate text-body text-ink" [attr.title]="item.reason">{{ item.reason }}</span>
+                      <span class="min-w-0 text-body text-ink wrap-break-word">{{ item.reason }}</span>
                       <span class="tabular font-semibold text-ink">{{ count(item.count) }}</span>
                     </li>
                   }

@@ -107,6 +107,35 @@ export function categoryTickLimit(width: number | undefined): number {
   return 10;
 }
 
+/**
+ * Libellé de catégorie d'un graphique à barres horizontales découpé en lignes d'au plus `maxChars` caractères
+ * (coupure aux espaces, puis en morceaux pour un mot trop long) : Chart.js ne renvoie pas à la ligne et
+ * rognerait le libellé au bord du canevas à 320 px (« irect ou inconnu) »). Aucun caractère n'est perdu.
+ */
+export function wrapCategoryLabel(label: string, maxChars: number): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const word of label.split(/\s+/).filter(Boolean)) {
+    const chunks = word.match(new RegExp(`.{1,${maxChars}}`, 'gu')) ?? [word];
+    for (const chunk of chunks) {
+      if (current && current.length + 1 + chunk.length <= maxChars) current += ` ${chunk}`;
+      else {
+        if (current) lines.push(current);
+        current = chunk;
+      }
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [label];
+}
+
+/** Longueur de ligne des libellés de barres horizontales selon la largeur (≈ 40 % du canevas en police mono). */
+export function horizontalLabelChars(width: number | undefined): number {
+  if (width === undefined || width < 400) return 12;
+  if (width < 640) return 18;
+  return 28;
+}
+
 /** Configuration Chart.js complète, thémée par les tokens. Pure : testée sans canvas. */
 export function buildChartConfig(input: RjChartInput, theme: RjChartTheme, reducedMotion: boolean): ChartConfiguration {
   const format = (value: number | null) => formatMetric(value, input.unit, { currency: input.currency });
@@ -129,6 +158,11 @@ export function buildChartConfig(input: RjChartInput, theme: RjChartTheme, reduc
     boxPadding: 4,
     usePointStyle: true,
     callbacks: {
+      // Titre complet d'origine (les libellés de barres horizontales sont découpés en lignes sur l'axe).
+      title: (items: TooltipItem<RjChartType>[]) => {
+        const first = items[0];
+        return first ? (input.labels[first.dataIndex] ?? first.label) : '';
+      },
       label: (item: TooltipItem<RjChartType>) => {
         const raw = item.raw;
         const value = typeof raw === 'number' ? format(raw) : NO_VALUE;
@@ -228,7 +262,7 @@ export function buildChartConfig(input: RjChartInput, theme: RjChartTheme, reduc
 
   return {
     type: input.type,
-    data: { labels, datasets },
+    data: { labels: horizontal ? labels.map((label) => wrapCategoryLabel(label, horizontalLabelChars(input.width))) : labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,

@@ -66,7 +66,8 @@ interface Row {
 
 /**
  * Tableau générique de l'admin : tableau dense dès 768 px (en-tête collant, chiffres alignés à droite),
- * cartes empilées en dessous (colonne `primary` en titre, autres colonnes en paires libellé / valeur).
+ * cartes empilées en dessous (colonne `primary` en titre, autres colonnes en paires libellé / valeur ; textes
+ * renvoyés à la ligne, jamais tronqués : lisibles à 320 px sans survol).
  * `rowLink` rend la ligne cliquable (lien sur la cellule titre, cible ≥ 44 px) : `'/admin/x'` ou
  * `{ path: '/admin/utilisateurs', queryParams: { fiche: id } }`.
  *
@@ -141,11 +142,11 @@ interface Row {
                 [queryParams]="row.link.queryParams"
                 class="flex min-h-11 items-center gap-2 border-b border-line px-3 py-2.5 font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
               >
-                <span class="min-w-0 flex-1 truncate" [class.tabular]="row.primary.mono" [attr.title]="row.primary.title">{{ row.primary.text }}</span>
+                <span class="min-w-0 flex-1 wrap-anywhere" data-rj-card-title [class.tabular]="row.primary.mono">{{ row.primary.text }}</span>
                 <rj-icon [name]="chevron" [size]="16" class="text-ink-muted" />
               </a>
             } @else {
-              <p class="truncate border-b border-line px-3 py-2.5 font-medium text-ink" [class.tabular]="row.primary.mono" [attr.title]="row.primary.title">
+              <p class="border-b border-line px-3 py-2.5 font-medium text-ink wrap-anywhere" data-rj-card-title [class.tabular]="row.primary.mono">
                 {{ row.primary.text }}
               </p>
             }
@@ -154,7 +155,7 @@ interface Row {
                 @if (cell.mobile && cell.key !== row.primary.key) {
                   <div class="flex min-w-0 flex-col">
                     <dt class="text-label text-ink-muted">{{ cell.label }}</dt>
-                    <dd class="text-body-sm text-ink" [class.truncate]="!cell.mono" [class.tabular]="cell.mono" [class.wrap-break-word]="cell.mono" [attr.title]="cell.title">{{ cell.text }}</dd>
+                    <dd class="text-body-sm text-ink wrap-break-word" data-rj-card-value [class.tabular]="cell.mono">{{ cell.text }}</dd>
                   </div>
                 }
               }
