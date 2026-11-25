@@ -29,7 +29,7 @@ const LAYOUT_CLASS: Record<SheetLayout, string> = {
   bottom: 'max-w-lg',
   // Mobile: definite height (a content-sized column flex panel can collapse on iOS Safari); md: side panel.
   responsive:
-    'h-[88dvh] md:h-auto md:inset-y-0 md:right-0 md:left-auto md:mx-0 md:max-h-none md:w-[26rem] md:animate-panel-in md:rounded-none md:border-y-0 md:border-r-0 md:safe-top md:motion-reduce:animate-none',
+    'h-[88dvh] md:h-auto md:inset-y-0 md:right-0 md:left-auto md:mx-0 md:max-h-none md:w-104 md:animate-panel-in md:rounded-none md:border-y-0 md:border-r-0 md:safe-top md:motion-reduce:animate-none',
 };
 
 /**
@@ -55,7 +55,7 @@ const LAYOUT_CLASS: Record<SheetLayout, string> = {
       (cancel)="onCancel($event)"
       (scroll)="onDialogScroll()"
     >
-      <div data-sheet-backdrop class="absolute inset-0 animate-fade-in bg-base/70 backdrop-blur-[2px] motion-reduce:animate-none"></div>
+      <div data-sheet-backdrop class="absolute inset-0 animate-fade-in bg-base/70 backdrop-blur-2xs motion-reduce:animate-none"></div>
       <div
         #panel
         tabindex="-1"

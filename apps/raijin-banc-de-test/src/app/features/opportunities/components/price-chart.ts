@@ -24,7 +24,7 @@ let nextId = 0;
           @for (r of ranges; track r) {
             <button
               type="button"
-              class="press min-h-11 min-w-12 rounded-[10px] px-3 text-xs font-semibold tabular-nums slashed-zero"
+              class="press min-h-11 min-w-12 rounded-control px-3 text-xs font-semibold tabular-nums slashed-zero"
               [class.seg-active]="store.range() === r"
               [class.text-muted]="store.range() !== r"
               [attr.aria-pressed]="store.range() === r"
@@ -38,15 +38,15 @@ let nextId = 0;
       </div>
 
       @if (store.loading()) {
-        <div data-chart-skeleton role="status" class="skeleton h-[200px] rounded-lg">
+        <div data-chart-skeleton role="status" class="skeleton h-50 rounded-lg">
           <span class="sr-only">Chargement du graphique…</span>
         </div>
       } @else if (store.failed()) {
-        <div data-chart-error role="status" class="flex h-[200px] items-center justify-center rounded-lg border border-dashed border-line px-4 text-center text-sm text-muted">
+        <div data-chart-error role="status" class="flex h-50 items-center justify-center rounded-lg border border-dashed border-line px-4 text-center text-sm text-muted">
           Historique indisponible pour l’instant.
         </div>
       } @else if (store.points().length < minPoints) {
-        <div data-chart-empty class="flex h-[200px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line px-4 text-center">
+        <div data-chart-empty class="flex h-50 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line px-4 text-center">
           <p class="text-sm font-semibold">Pas assez d’historique</p>
           <p class="text-xs text-muted">Le graphique se remplit à chaque scan (toutes les 2 min).</p>
         </div>

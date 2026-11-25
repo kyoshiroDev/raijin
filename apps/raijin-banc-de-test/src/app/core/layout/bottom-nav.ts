@@ -46,8 +46,8 @@ const SUBSET: IsActiveMatchOptions = { paths: 'subset', queryParams: 'ignored', 
             >
               <app-icon [name]="tab.icon" class="size-6" />
               @if (tab.short) {
-                <span class="max-w-full truncate px-0.5 min-[360px]:hidden">{{ tab.short }}</span>
-                <span class="hidden max-w-full truncate px-0.5 min-[360px]:inline">{{ tab.label }}</span>
+                <span class="max-w-full truncate px-0.5 xs:hidden">{{ tab.short }}</span>
+                <span class="hidden max-w-full truncate px-0.5 xs:inline">{{ tab.label }}</span>
               } @else {
                 <span class="max-w-full truncate px-0.5">{{ tab.label }}</span>
               }

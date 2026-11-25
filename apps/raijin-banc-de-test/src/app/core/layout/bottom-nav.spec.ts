@@ -37,7 +37,7 @@ describe('BottomNav', () => {
     // below 360 px the first tab reads « Tokens » (still a visible text name, never an unnamed icon)
     const short = links[0]!.querySelector('span');
     expect(short?.textContent?.trim()).toBe('Tokens');
-    expect(short?.classList).toContain('min-[360px]:hidden');
+    expect(short?.classList).toContain('xs:hidden');
     expect(links.map((a) => a.getAttribute('href'))).toEqual(['/', '/alerts', '/portfolio', '/performance', '/settings']);
     for (const a of links) expect(a.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   });

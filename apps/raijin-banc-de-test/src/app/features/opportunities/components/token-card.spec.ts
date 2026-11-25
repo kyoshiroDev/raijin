@@ -78,12 +78,13 @@ describe('TokenCard', () => {
     expect(el.querySelector('[data-roundtrip-rent]')?.textContent?.trim()).toBe('· +0,002 SOL de rent récupérable');
   });
 
-  it('keeps the round-trip line on one line: cost never shrinks, rent truncates', () => {
+  it('never cuts the round-trip line: cost stays whole, rent wraps instead of truncating', () => {
     const el = render(token({ roundtrip_cost_pct: 2.4 }));
-    expect(line(el)?.classList).toContain('whitespace-nowrap');
-    expect(line(el)?.classList).not.toContain('flex-wrap');
+    expect(line(el)?.classList).toContain('flex-wrap');
+    expect(line(el)?.classList).not.toContain('whitespace-nowrap');
     expect(el.querySelector('[data-roundtrip-cost]')?.classList).toContain('shrink-0');
-    expect(el.querySelector('[data-roundtrip-rent]')?.classList).toContain('truncate');
+    expect(el.querySelector('[data-roundtrip-cost]')?.classList).toContain('whitespace-nowrap');
+    expect(el.querySelector('[data-roundtrip-rent]')?.classList).not.toContain('truncate');
   });
 
   it('shows the data-confidence badge as text, nothing when unknown', () => {

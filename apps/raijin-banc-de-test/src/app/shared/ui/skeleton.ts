@@ -60,7 +60,7 @@ export type SkeletonVariant = 'token-card' | 'candidate-card' | 'wallet' | 'rows
                 <div class="skeleton size-12 rounded-full"></div>
                 <div class="flex-1 space-y-1.5"><div class="skeleton h-5 w-28"></div><div class="skeleton h-3 w-40"></div></div>
               </div>
-              <div class="skeleton h-[200px] w-full rounded-lg"></div>
+              <div class="skeleton h-50 w-full rounded-lg"></div>
               <div class="grid grid-cols-2 gap-3">
                 @for (c of six; track c) {
                   <div class="space-y-1"><div class="skeleton h-2.5 w-16"></div><div class="skeleton h-4 w-24"></div></div>

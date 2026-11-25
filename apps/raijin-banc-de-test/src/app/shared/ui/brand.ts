@@ -7,6 +7,6 @@ import { BoltMark } from './bolt-mark';
   imports: [BoltMark],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'inline-flex items-center gap-1' },
-  template: `<span>RAI<span class="text-accent">JIN</span></span><app-bolt-mark class="size-[0.9em]" tone="brand" />`,
+  template: `<span>RAI<span class="text-accent">JIN</span></span><app-bolt-mark class="size-glyph" tone="brand" />`,
 })
 export class Brand {}

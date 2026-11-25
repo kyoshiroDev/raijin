@@ -9,7 +9,7 @@ import { Icon } from '../../../shared/ui/icon';
   template: `
     <button type="button" class="btn-ghost px-3 text-xs" [disabled]="loading()" [attr.aria-busy]="loading()" (click)="refresh.emit()">
       <app-icon name="refresh" class="size-4 motion-reduce:animate-none" [class.animate-spin]="loading()" />
-      <span class="max-[359px]:sr-only">{{ loading() ? 'Chargement…' : 'Actualiser' }}</span>
+      <span class="max-xs:sr-only">{{ loading() ? 'Chargement…' : 'Actualiser' }}</span>
     </button>
   `,
 })

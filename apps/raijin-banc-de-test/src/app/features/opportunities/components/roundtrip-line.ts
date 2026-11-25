@@ -6,8 +6,8 @@ export const ROUNDTRIP_TONE_TEXT: Record<RoundtripTone, string> = { bull: 'coût
 
 /**
  * Card line: « Coût aller-retour : 0,0013 SOL (2,6 %) · +0,002 SOL de rent récupérable », the cost
- * coloured by net cost / stake. Always ONE line (equal-height cards): the cost part never shrinks,
- * the rent part is truncated with an ellipsis on narrow screens (full breakdown in the detail).
+ * coloured by net cost / stake. Nothing is ever cut: the cost part stays on one line and the rent
+ * part wraps to the next line when the card is too narrow (full breakdown in the detail).
  */
 @Component({
   selector: 'app-roundtrip-line',
@@ -15,9 +15,9 @@ export const ROUNDTRIP_TONE_TEXT: Record<RoundtripTone, string> = { bull: 'coût
   host: { class: 'block min-w-0' },
   template: `
     @let v = view();
-    <p class="flex min-w-0 gap-1 whitespace-nowrap slashed-zero" data-roundtrip>
+    <p class="flex min-w-0 flex-wrap gap-x-1 slashed-zero" data-roundtrip>
       <span
-        class="shrink-0"
+        class="shrink-0 whitespace-nowrap"
         data-roundtrip-cost
         [class.text-bull]="v.tone === 'bull'"
         [class.text-warn]="v.tone === 'warn'"
@@ -25,7 +25,7 @@ export const ROUNDTRIP_TONE_TEXT: Record<RoundtripTone, string> = { bull: 'coût
         [class.text-muted]="v.tone === null"
         >{{ v.costText }}@if (v.tone; as tone) {<span class="sr-only"> ({{ toneText[tone] }})</span>}</span
       >
-      <span class="min-w-0 truncate text-muted" data-roundtrip-rent>{{ v.rentText }}</span>
+      <span class="min-w-0 text-muted" data-roundtrip-rent>{{ v.rentText }}</span>
     </p>
   `,
 })

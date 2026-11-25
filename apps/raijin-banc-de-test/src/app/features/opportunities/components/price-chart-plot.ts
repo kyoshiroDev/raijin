@@ -43,7 +43,7 @@ const LABEL_CLASS: Record<LabelTone, string> = {
         (pointerleave)="onPointerLeave($event)"
         (pointercancel)="clearScrub()"
       >
-        <svg aria-hidden="true" focusable="false" class="block h-[200px] w-full" [attr.viewBox]="'0 0 ' + g.width + ' ' + g.height">
+        <svg aria-hidden="true" focusable="false" class="block h-50 w-full" [attr.viewBox]="'0 0 ' + g.width + ' ' + g.height">
           <line x1="0" [attr.x2]="g.plotRight" [attr.y1]="g.plotBottom" [attr.y2]="g.plotBottom" class="stroke-line" stroke-width="1" />
           <path [attr.d]="g.area" class="fill-fg/5" />
           <path data-price-line [attr.d]="g.line" class="fill-none stroke-fg" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
