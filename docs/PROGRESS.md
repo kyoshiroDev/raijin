@@ -8,7 +8,7 @@
 
 - ~~`.env.example`~~ : fait (créé par toi, commité `2289dc9`).
 
-## Statut : phase 10 — Relecture finale et livraison — **arrêtée : 3e refus, pas de PR** (CLAUDE.md §5) (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
+## Statut : phase 10 — Relecture finale et livraison — corrections après le 3e refus (exception accordée par l'utilisateur) — en cours (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -407,6 +407,8 @@
   5. Tailles en dur dans le front du banc (`h-[200px]` ×5, `rounded-[10px]`, `w-[26rem]`, `backdrop-blur-[2px]`) → bench-quant.
   Mineurs non bloquants : admin Essais « 48 / h » à 320, « Comptes bloqués (anti-… » coupé, aide « Source UTM » coupée à 1440, « Coût aller-retour » coupé dans le banc à 1440, pas de passage security-reviewer noté pour le verdict statique de /t (relu par final-reviewer : OK).
   Suite : décision de l'utilisateur (nouveau cycle de corrections et de relecture, ou non).
+- **Décision de l'utilisateur (2026-11-25, « vas-y »)** : exception à la limite de 3 tours ; correction des points 1, 2, 3, 5 et des mineurs, nouveaux tests, puis relecture (tour 4) une fois les clés Helius collées par l'utilisateur.
+- Corrections du tour 3 (faites) : (1) Rai retiré du résumé hebdo `e1ea8da` ; (2) étape Lighthouse en code 0 `ba027df` (serveurs gérés par le script ; run 45669098178 : /analyse 100, /analyse/<mint> 97, /t 100, landing 100 ×3, NX « Successfully ran target lighthouse ») ; (3) hero de la landing à 320 px `723c90d` ; (5) tailles en dur du banc `5c77290` (+ « Coût aller-retour » lisible) ; mineurs admin `6ba2281` ; audit security-reviewer du verdict statique de /t : aucun critique/important, 2 mineurs corrigés `fbf7a93`. Captures refaites : résumé hebdo (phase-10), admin 60 (phase-9), landing accueil (phase-7), banc (phase-8bis, + 375/1280 du spec responsive du banc). Reste (4) clés Helius (utilisateur), puis tour 4.
 
 ## Après la v1 (décisions de l'utilisateur, 2026-11-24)
 - **v1.1 — Radar des nouveaux tokens Solana** (après l'ouverture de la PR v1, sur une branche dédiée) : liste purement informative des tokens récents, triée par date (jamais par potentiel de gain), avec verdict Raijin et contrôles clés ; aucun « opportunité / top / à acheter » ; réservé au Pro ; budget Helius dédié.
