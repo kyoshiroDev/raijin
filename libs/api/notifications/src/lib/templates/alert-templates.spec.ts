@@ -1,5 +1,5 @@
 import { ALERT_TYPES } from '@raijin/shared-contracts';
-import { alertDigestTemplate, RAI_ALERT_ALT, weeklyDigestTemplate } from './alert-templates';
+import { alertDigestTemplate, digestIntro, RAI_ALERT_ALT, weeklyDigestTemplate } from './alert-templates';
 import { describeAlert, type AlertMessage } from './alert-text';
 import { LEGAL_NOTICE } from './layout';
 
@@ -67,5 +67,29 @@ describe('résumé hebdomadaire', () => {
     expect(mail.html).toContain('en attente');
     expect(mail.html).toContain('Ne plus recevoir le résumé hebdomadaire');
     expect(weeklyDigestTemplate(ctx, []).subject).toContain('aucune alerte');
+  });
+
+  it('accorde la phrase au singulier avec 1 token suivi', () => {
+    const mail = weeklyDigestTemplate(ctx, [{ mint: MINT, token: null, lastVerdict: 'warn', alertsThisWeek: 1 }]);
+    expect(mail.subject).toBe('Ton résumé Raijin de la semaine : 1 alerte');
+    expect(mail.html).toContain('Voici l’état de ton token suivi cette semaine.');
+    expect(mail.text).toContain('Voici l’état de ton token suivi cette semaine.');
+    expect(mail.text).toContain('1 alerte\n');
+    expect(mail.html).not.toContain('tes 1 token');
+    expect(mail.text).not.toContain('alerte(s)');
+  });
+
+  it('accorde la phrase au pluriel avec plusieurs tokens suivis', () => {
+    const watch = { mint: MINT, token: null, lastVerdict: null, alertsThisWeek: 0 } as const;
+    const mail = weeklyDigestTemplate(ctx, [watch, watch, { ...watch, alertsThisWeek: 3 }]);
+    expect(mail.subject).toBe('Ton résumé Raijin de la semaine : 3 alertes');
+    expect(mail.html).toContain('Voici l’état de tes 3 tokens suivis cette semaine.');
+    expect(mail.text).toContain('Voici l’état de tes 3 tokens suivis cette semaine.');
+    expect(mail.text).toContain('3 alertes');
+    expect(mail.text).toContain('0 alerte\n');
+  });
+
+  it('phrase d’introduction sans suivi', () => {
+    expect(digestIntro(0)).toBe('Tu ne suis aucun token pour le moment.');
   });
 });

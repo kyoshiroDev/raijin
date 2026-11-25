@@ -94,6 +94,13 @@ export interface DigestWatch {
   readonly alertsThisWeek: number;
 }
 
+/** Phrase d'introduction du résumé, accordée au nombre de suivis. */
+export function digestIntro(count: number): string {
+  if (count === 0) return 'Tu ne suis aucun token pour le moment.';
+  if (count === 1) return 'Voici l’état de ton token suivi cette semaine.';
+  return `Voici l’état de tes ${count} tokens suivis cette semaine.`;
+}
+
 /** Résumé hebdomadaire (optionnel, désactivable) : verdict actuel et alertes de la semaine par suivi. */
 export function weeklyDigestTemplate(ctx: WatchMailContext, watches: readonly DigestWatch[]): RenderedMail {
   const t = EMAIL_THEME;
@@ -101,6 +108,7 @@ export function weeklyDigestTemplate(ctx: WatchMailContext, watches: readonly Di
   const subject = total === 0 ? 'Ton résumé Raijin de la semaine : aucune alerte' : `Ton résumé Raijin de la semaine : ${total} alerte${total > 1 ? 's' : ''}`;
   const preferences = url(ctx, PREFERENCES_PATH);
   const verdict = (value: Verdict | null) => (value ? VERDICT_LABELS[value] : 'en attente');
+  const intro = digestIntro(watches.length);
   const rows = watches
     .map(
       (watch) => `<tr><td style="padding:10px 0;border-top:1px solid ${t.line};font-family:${FONT};font-size:14px;line-height:21px;color:${t.ink};">
@@ -110,13 +118,13 @@ export function weeklyDigestTemplate(ctx: WatchMailContext, watches: readonly Di
     )
     .join('');
   const body = `${rai(ctx, 'rai-bravo@2x.png', RAI_BRAVO_ALT)}
-${paragraph(`Voici l’état de tes ${watches.length} token${watches.length > 1 ? 's' : ''} suivi${watches.length > 1 ? 's' : ''} cette semaine.`)}
+${paragraph(intro)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>
 ${button('Voir mes suivis', url(ctx, WATCHES_PATH))}
 <p style="margin:0;font-family:${FONT};font-size:13px;line-height:20px;"><a href="${escapeHtml(preferences)}" style="color:${t['thunder-ink']};">Ne plus recevoir le résumé hebdomadaire</a></p>`;
   const text = renderText([
-    `Voici l’état de tes ${watches.length} tokens suivis cette semaine.`,
-    ...watches.map((watch) => `${tokenLabel(watch.mint, watch.token)} (non vérifié) : verdict ${verdict(watch.lastVerdict)}, ${watch.alertsThisWeek} alerte(s)`),
+    intro,
+    ...watches.map((watch) => `${tokenLabel(watch.mint, watch.token)} (non vérifié) : verdict ${verdict(watch.lastVerdict)}, ${watch.alertsThisWeek} alerte${watch.alertsThisWeek > 1 ? 's' : ''}`),
     `Voir mes suivis : ${url(ctx, WATCHES_PATH)}`,
     `Ne plus recevoir le résumé : ${preferences}`,
   ]);

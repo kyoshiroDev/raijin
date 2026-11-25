@@ -103,7 +103,7 @@ export function welcomeTemplate(ctx: TemplateContext & { readonly assetsBaseUrl?
   const lines = [
     'Ton adresse est confirmée. Colle l’adresse d’un token Solana et Raijin vérifie pour toi les points qui comptent : mint et freeze authority, liquidité verrouillée, concentration des holders, possibilité de revente.',
     trial
-      ? `Ton essai Pro de ${trial.days} jours est actif jusqu’au ${trial.endsAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}, sans carte bancaire : analyses étendues, suivis de tokens, alertes push et scan de wallet. À la fin, ton compte repasse en Gratuit tout seul, sans rien payer.`
+      ? `Ton essai Pro de ${trial.days} jour${trial.days > 1 ? 's' : ''} est actif jusqu’au ${trial.endsAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}, sans carte bancaire : analyses étendues, suivis de tokens, alertes push et scan de wallet. À la fin, ton compte repasse en Gratuit tout seul, sans rien payer.`
       : 'Ton compte Gratuit est prêt : analyses quotidiennes et suivi de tes premiers tokens.',
     'Le risque zéro n’existe pas : Raijin te donne des faits, à toi de décider.',
   ];

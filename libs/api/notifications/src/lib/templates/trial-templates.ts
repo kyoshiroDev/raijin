@@ -63,7 +63,7 @@ export function freePlanLines(free: Entitlements): string[] {
   return [
     `${free.analysesPerDay === null ? 'Analyses illimitées' : plural(free.analysesPerDay, 'analyse par jour', 'analyses par jour')}`,
     `${plural(free.maxActiveWatches, 'token suivi', 'tokens suivis')} avec alertes par e-mail`,
-    `Historique des alertes sur ${free.alertHistoryDays} jours`,
+    `Historique des alertes sur ${plural(free.alertHistoryDays, 'jour')}`,
     free.pushAlerts ? 'Notifications push' : 'Pas de notifications push',
     free.walletScansPerDay > 0 ? plural(free.walletScansPerDay, 'scan de wallet par jour', 'scans de wallet par jour') : 'Pas de scan de wallet',
   ];
