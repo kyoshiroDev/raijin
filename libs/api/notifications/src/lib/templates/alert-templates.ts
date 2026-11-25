@@ -7,12 +7,11 @@ const FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto
 
 /** Contexte des e-mails de suivi : liens absolus construits avec APP_URL, jamais avec l'en-tête Host. */
 export interface WatchMailContext extends TemplateContext {
-  /** URL de base des images (Rai en PNG 2x), sans `/` final. */
+  /** URL de base des images (Rai en PNG 2x, e-mail d'alerte uniquement), sans `/` final. */
   readonly assetsBaseUrl: string;
 }
 
 export const RAI_ALERT_ALT = 'Rai, la mascotte de Raijin, en alerte';
-export const RAI_BRAVO_ALT = 'Rai, la mascotte de Raijin';
 /** Chemins des préférences et des écrans liés (front). */
 export const ALERTS_PATH = '/alertes';
 export const WATCHES_PATH = '/suivis';
@@ -101,7 +100,10 @@ export function digestIntro(count: number): string {
   return `Voici l’état de tes ${count} tokens suivis cette semaine.`;
 }
 
-/** Résumé hebdomadaire (optionnel, désactivable) : verdict actuel et alertes de la semaine par suivi. */
+/**
+ * Résumé hebdomadaire (optionnel, désactivable) : verdict actuel et alertes de la semaine par suivi.
+ * Sans Rai : la mascotte est réservée aux e-mails d'accueil, de fin d'essai et d'alerte (PROMPT.md §4.4).
+ */
 export function weeklyDigestTemplate(ctx: WatchMailContext, watches: readonly DigestWatch[]): RenderedMail {
   const t = EMAIL_THEME;
   const total = watches.reduce((sum, watch) => sum + watch.alertsThisWeek, 0);
@@ -117,8 +119,7 @@ export function weeklyDigestTemplate(ctx: WatchMailContext, watches: readonly Di
 </td></tr>`,
     )
     .join('');
-  const body = `${rai(ctx, 'rai-bravo@2x.png', RAI_BRAVO_ALT)}
-${paragraph(intro)}
+  const body = `${paragraph(intro)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>
 ${button('Voir mes suivis', url(ctx, WATCHES_PATH))}
 <p style="margin:0;font-family:${FONT};font-size:13px;line-height:20px;"><a href="${escapeHtml(preferences)}" style="color:${t['thunder-ink']};">Ne plus recevoir le résumé hebdomadaire</a></p>`;

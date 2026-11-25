@@ -89,6 +89,16 @@ describe('résumé hebdomadaire', () => {
     expect(mail.text).toContain('0 alerte\n');
   });
 
+  it('n’affiche jamais Rai (réservé à l’accueil, la fin d’essai et l’alerte)', () => {
+    for (const watches of [[], [{ mint: MINT, token: null, lastVerdict: 'warn' as const, alertsThisWeek: 2 }]]) {
+      const mail = weeklyDigestTemplate(ctx, watches);
+      expect(mail.html).not.toMatch(/rai-[a-z]+@2x\.png/);
+      expect(mail.html).not.toContain(ctx.assetsBaseUrl);
+      expect(mail.html).not.toContain('la mascotte de Raijin');
+      expect(mail.html).not.toContain('width="120" height="140"');
+    }
+  });
+
   it('phrase d’introduction sans suivi', () => {
     expect(digestIntro(0)).toBe('Tu ne suis aucun token pour le moment.');
   });
