@@ -8,7 +8,7 @@
 
 - ~~`.env.example`~~ : fait (créé par toi, commité `2289dc9`).
 
-## Statut : phase 10 — Relecture finale et livraison — en cours (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
+## Statut : phase 10 — Relecture finale et livraison — **arrêtée : 3e refus, pas de PR** (CLAUDE.md §5) (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -398,6 +398,15 @@
 - Tour 2 (final-reviewer) : **REFUSÉ** (docs/REVIEW.md). 6 points du tour 1 corrigés ; bloquants restants : (1) clés Helius non cochées (utilisateur) ; (2) anciens prix dans docs/COMPTES.md:12 (corrigé par l'orchestrateur) ; (3) captures : /t statique aux 5 largeurs, e-mails au nouveau prix et e-mails manquants (vérification, réinitialisation, lien magique, bienvenue, résumé hebdo) ; (4) en-tête du /t statique : logotype complet ≥ 360 px et alignement à 1440 ; (5) admin Utilisateurs tronqué à 320 px ; (6) Lighthouse à remesurer sur le code livré.
 - Corrections du tour 2 (faites, sauf action utilisateur) : (2) COMPTES.md corrigé ; (4) en-tête /t statique `2c1d547` (logotype complet ≥ 360 px, barre alignée sur le contenu ; api-analysis 108 tests, web-ui 50) ; (5) admin 320 px `9dcd8df`. (3) captures `10c26cc` + `82c53b4` (/t statique et 11 e-mails aux 5 largeurs, aucun 9,90/99 €, admin 320 refait) et accords des e-mails `bad1a5e` ; (6) Lighthouse run 45649168634 (`82c53b4`) : /analyse 99, /analyse/<mint> 97, /t 100, landing 100 ×3, Access./BP/SEO 100 ; CI push 45647425280 verte. (1) clés Helius : **décision de l'utilisateur (2026-11-25)** : clés ajoutées plus tard par lui ; variables présentes et vides dans `.env.example`/`.env`, clés facultatives au démarrage ; passées dans « À brancher » (note dans SECRETS-CHECKLIST.md). **Décision de l'utilisateur (2026-11-25)** : prix du Pro tranché à 14,90 € TTC/mois et 149 € TTC/an, PROMPT.md:207 conservé tel quel (le kit portait encore 9,90/99).
 - **Mise à jour du kit (2026-11-25)** depuis `_maj/raijin/` : ajout de l'agent `telegram-bot` (.claude/agents), de `docs/prompts/telegram-bot.md` et `docs/prompts/zoho-mail.md` ; CLAUDE.md : ligne de routage « Bot Telegram » et 13 agents ; COMPTES.md : section « Ordre de création », alias admin@raijinshield.com, lignes Zoho (organisation séparée de MTC, inscription avec l'e-mail perso pour rester cohérent avec l'ordre de création) et Google (créé avec admin@, sans Gmail) ; ligne Stripe du projet conservée (prix 14,90/149, le kit portait encore 9,90/99). settings.json et libs/brand identiques au kit ; PROMPT.md : seule différence = ancien prix dans le kit, rien appliqué (accord de l'utilisateur attendu) ; README du kit (démarrage) laissé de côté. `_maj/` ajouté au .gitignore.
+
+- Tour 3 (final-reviewer, 2026-11-25) : **REFUSÉ** (docs/REVIEW.md) → **arrêt sans PR** (limite de 3 tours). Vert : run-many 44 projets/170 tâches sans cache, e2e 45651478372 (web 1 210, API 71, banc 79), Lighthouse 45649168634 (99/97/100/100, A/BP/SEO 100), images, bench-migrate, secrets ; défauts du tour 2 corrigés. **Points bloquants restants** :
+  1. Rai présent dans l'e-mail de résumé hebdomadaire (`alert-templates.ts:120`), réservé par PROMPT.md §4.4 aux e-mails d'accueil, de fin d'essai et d'alerte → nestjs-api puis captures `email-resume-hebdo-*`.
+  2. Étape Lighthouse de la CI : scores ≥ 95 mais sortie en code 1 (arrêt de `serve-prod.mjs` / `serve-api-fixtures`), masquée par `continue-on-error`, rouge sur une PR vers main → architect/test-e2e (`ci.yml`).
+  3. Landing, hero à 320 px : interligne irrégulier sur « Essaie Pro gratuitement… Créer mon compte » (`index.astro`) → seo-astro, captures `phase-7/landing-accueil-*`.
+  4. Clés Helius non cochées dans SECRETS-CHECKLIST.md (compte existant : pas un « compte manquant ») → utilisateur.
+  5. Tailles en dur dans le front du banc (`h-[200px]` ×5, `rounded-[10px]`, `w-[26rem]`, `backdrop-blur-[2px]`) → bench-quant.
+  Mineurs non bloquants : admin Essais « 48 / h » à 320, « Comptes bloqués (anti-… » coupé, aide « Source UTM » coupée à 1440, « Coût aller-retour » coupé dans le banc à 1440, pas de passage security-reviewer noté pour le verdict statique de /t (relu par final-reviewer : OK).
+  Suite : décision de l'utilisateur (nouveau cycle de corrections et de relecture, ou non).
 
 ## Après la v1 (décisions de l'utilisateur, 2026-11-24)
 - **v1.1 — Radar des nouveaux tokens Solana** (après l'ouverture de la PR v1, sur une branche dédiée) : liste purement informative des tokens récents, triée par date (jamais par potentiel de gain), avec verdict Raijin et contrôles clés ; aucun « opportunité / top / à acheter » ; réservé au Pro ; budget Helius dédié.
