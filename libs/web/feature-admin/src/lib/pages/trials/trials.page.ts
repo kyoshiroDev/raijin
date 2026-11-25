@@ -27,9 +27,9 @@ const REFUSAL_LABELS: Readonly<Record<TrialRefusalReason, string>> = {
         @if (report.data(); as trials) {
           <rj-kpi-grid>
             <rj-kpi-card label="Essais en cours" [value]="trials.activeTrials" />
-            <rj-kpi-card label="Fin dans les 48 h" [value]="trials.endingWithin48h" />
+            <rj-kpi-card label="Fin dans les 48&nbsp;h" [value]="trials.endingWithin48h" />
             <rj-kpi-card label="Conversion (26 semaines)" unit="ratio" [value]="trials.conversion.totals.conversionRate" [status]="trials.conversion.totals.conversionRate === null ? 'unavailable' : 'ok'" />
-            <rj-kpi-card label="Comptes bloqués (anti-abus)" [value]="refusalTotal()" />
+            <rj-kpi-card label="Refus anti-abus" [value]="refusalTotal()" />
           </rj-kpi-grid>
 
           <rj-admin-panel title="Conversion par cohorte" description="Semaine de début d’essai (lundi, UTC) ; taux = convertis / essais terminés">

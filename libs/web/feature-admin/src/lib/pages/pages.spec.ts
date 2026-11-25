@@ -134,6 +134,19 @@ describe('Écrans statistiques de l’admin', () => {
     expect(page).toContain('Aucune raison collectée');
   });
 
+  it('essais : libellés des KPI entiers à toute largeur (unité collée à sa valeur, aucune troncature)', async () => {
+    const kit = await open('/admin/essais');
+    kit.ctrl.expectOne(`${API}/admin/trials`).flush(ADMIN_TRIALS_FIXTURE);
+    await flush(kit.harness);
+    const labels = Array.from(root(kit).querySelectorAll<HTMLElement>('[data-kpi-label]'));
+    expect(labels.map((label) => label.textContent?.trim())).toEqual(['Essais en cours', 'Fin dans les 48\u00a0h', 'Conversion (26 semaines)', 'Refus anti-abus']);
+    for (const label of labels) {
+      expect(label.className).not.toMatch(/\b(truncate|line-clamp-\d|text-ellipsis)\b/);
+      expect(label.className).toContain('wrap-break-word');
+      expect(label.hasAttribute('title')).toBe(false);
+    }
+  });
+
   it('produit : verdicts nommés et sources', async () => {
     const kit = await open('/admin/produit');
     kit.ctrl.expectOne(`${API}/admin/product?period=30d`).flush(ADMIN_PRODUCT_FIXTURE);
@@ -202,6 +215,20 @@ describe('Utilisateurs', () => {
     // Les libellés courts des boutons (« Chercher », « Filtres ») tiennent à 320 px : seul le contenu est vérifié.
     const mobile = Array.from(page.querySelectorAll<HTMLElement>('*')).filter((element) => !element.closest('.md\\:block, button'));
     expect(mobile.filter((element) => cut.test(element.className)).map((element) => element.textContent?.trim())).toEqual([]);
+  });
+
+  it('filtre « Source UTM » : indication en texte d’aide lisible en entier, pas en placeholder rogné', async () => {
+    const kit = await open('/admin/utilisateurs');
+    kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);
+    await flush(kit.harness);
+    // Sous 1024 px, les filtres sont dans un bottom sheet.
+    [...root(kit).querySelectorAll('button')].find((button) => button.textContent?.includes('Filtres'))?.click();
+    await flush(kit.harness);
+    const source = document.querySelector('input[maxlength="100"]') as HTMLInputElement;
+    expect(source.getAttribute('placeholder')).toBeNull();
+    const hint = source.closest('label')?.querySelector('[data-filter-hint]') as HTMLElement;
+    expect(hint.textContent?.trim()).toBe('« (direct) » pour les comptes sans source');
+    expect(hint.className).not.toMatch(/\b(truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
   });
 
   it('liste, fiche en panneau, action destructive confirmée par l’e-mail recopié', async () => {

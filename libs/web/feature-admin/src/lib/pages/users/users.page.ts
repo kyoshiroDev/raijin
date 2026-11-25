@@ -99,7 +99,9 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
           </label>
           <label class="flex min-w-0 flex-col gap-1 lg:w-44">
             <span class="text-label font-semibold text-ink-muted">Source UTM</span>
-            <input [class]="selectClass" type="text" maxlength="100" placeholder="(direct) pour sans source" [value]="filters().source ?? ''" (change)="setFilter('source', $event)" />
+            <input [class]="selectClass" type="text" maxlength="100" [value]="filters().source ?? ''" (change)="setFilter('source', $event)" />
+            <!-- Indication dans le libellé (pas d'id : le contenu des filtres est rendu deux fois, bureau et bottom sheet). -->
+            <span class="text-label text-ink-muted wrap-break-word" data-filter-hint>« (direct) » pour les comptes sans source</span>
           </label>
           <label class="flex min-w-0 flex-col gap-1 lg:w-44">
             <span class="text-label font-semibold text-ink-muted">Inscrit depuis</span>
