@@ -9,7 +9,7 @@ Les noms de variables suivent `docs/ENV.md`.
 | Variable | Service | Page exacte où la trouver | Utilisé par | Copié par l'utilisateur |
 |---|---|---|---|---|
 | `HELIUS_API_KEY` | Helius | https://dashboard.helius.dev → API Keys → ligne **« raijin-api »** → bouton copier de la colonne « API Key » | apps/api (serveur uniquement) | [x] |
-| `BENCH_HELIUS_API_KEY` (nom proposé, à ajouter à `docs/ENV.md`) | Helius | https://dashboard.helius.dev → API Keys → ligne **« raijin-banc-de-test »** → bouton copier de la colonne « API Key » | apps/raijin-banc-de-test-api (serveur uniquement) | [ ] |
+| `BENCH_HELIUS_API_KEY` (nom proposé, à ajouter à `docs/ENV.md`) | Helius | https://dashboard.helius.dev → API Keys → ligne **« raijin-banc-de-test »** → bouton copier de la colonne « API Key » | apps/raijin-banc-de-test-api (serveur uniquement) | [x] |
 | `RESEND_API_KEY` | Resend | https://resend.com/api-keys — service pas encore créé | apps/api | [ ] |
 | `STRIPE_SECRET_KEY` | Stripe (test) | https://dashboard.stripe.com/test/apikeys (« sk_test_… ») — service pas encore créé | apps/api | [ ] |
 | `STRIPE_WEBHOOK_SECRET` | Stripe (test) | https://dashboard.stripe.com/test/webhooks → endpoint → secret de signature — service pas encore créé | apps/api | [ ] |
@@ -26,7 +26,7 @@ Les noms de variables suivent `docs/ENV.md`.
 | `TOTP_ENCRYPTION_KEY` | `openssl rand -base64 32` | apps/api | [ ] |
 | `VAPID_PRIVATE_KEY` (+ `VAPID_PUBLIC_KEY`) | `npx web-push generate-vapid-keys` | apps/api | [ ] |
 
-> **2026-11-26** : `HELIUS_API_KEY` copiée par l'utilisateur ; `BENCH_HELIUS_API_KEY` reste à copier (clé « raijin-banc-de-test »).
+> **2026-11-26** : `HELIUS_API_KEY` copiée par l'utilisateur ; `BENCH_HELIUS_API_KEY` copiée (clé « raijin-banc-de-test »).
 
 ## Notes Helius (non secrètes)
 - Plan **Free** : 1 M crédits/mois, RPC 10 req/s, DAS 2 req/s, `getProgramAccounts` 5 req/s, `sendTransaction` 1 req/s (inutile : lecture seule). Pas de crédits additionnels sur ce plan.
