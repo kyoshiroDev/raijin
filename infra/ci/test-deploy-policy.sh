@@ -207,7 +207,8 @@ echo "== Images (docker save : étiquettes, structure, configuration)"
 python3 - "$work/b" "$sha" <<'PY'
 import gzip, hashlib, io, json, os, sys, tarfile
 d, sha = sys.argv[1], sys.argv[2]
-def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=None, cfg_size=None, manifest_size=None, skip_cfg=False):
+def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=None, cfg_size=None, manifest_size=None, skip_cfg=False,
+         oci_type='application/vnd.oci.image.config.v1+json', attestation=False):
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w') as t:
         def add(n, obj=None, raw=None):
@@ -224,10 +225,23 @@ def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=Non
             ocfg = json.dumps({'config': {'Labels': oci, 'User': 'node'}}).encode()
             odig = hashlib.sha256(ocfg).hexdigest()
             add(f'blobs/sha256/{odig}', raw=ocfg)
-            man = json.dumps({'schemaVersion': 2, 'config': {'digest': f'sha256:{odig}'}, 'layers': []}).encode()
+            man = json.dumps({'schemaVersion': 2, 'config': {'mediaType': oci_type, 'digest': f'sha256:{odig}'}, 'layers': []}).encode()
             mdig = hashlib.sha256(man).hexdigest()
             add(f'blobs/sha256/{mdig}', raw=man)
-            add('index.json', {'schemaVersion': 2, 'manifests': [{'digest': f'sha256:{mdig}', 'annotations': {'io.containerd.image.name': f'docker.io/{tags[0]}'}}]})
+            descs = [{'digest': f'sha256:{mdig}'}]
+            if attestation:
+                # Comme BuildKit : index d'image = manifeste d'image + manifeste d'attestation (config in-toto, sans USER).
+                att = json.dumps({'_type': 'https://in-toto.io/Statement/v0.1'}).encode()
+                adig = hashlib.sha256(att).hexdigest()
+                add(f'blobs/sha256/{adig}', raw=att)
+                aman = json.dumps({'schemaVersion': 2, 'config': {'mediaType': 'application/vnd.in-toto+json', 'digest': f'sha256:{adig}'}, 'layers': []}).encode()
+                amdig = hashlib.sha256(aman).hexdigest()
+                add(f'blobs/sha256/{amdig}', raw=aman)
+                descs.append({'digest': f'sha256:{amdig}', 'annotations': {'vnd.docker.reference.type': 'attestation-manifest'}})
+            sub = json.dumps({'schemaVersion': 2, 'manifests': descs}).encode()
+            sdig = hashlib.sha256(sub).hexdigest()
+            add(f'blobs/sha256/{sdig}', raw=sub)
+            add('index.json', {'schemaVersion': 2, 'manifests': [{'digest': f'sha256:{sdig}', 'annotations': {'io.containerd.image.name': f'docker.io/{tags[0]}'}}]})
         for e in (extra or []):
             e(t, add)
         m = [{'Config': f'blobs/sha256/{cdig}', 'RepoTags': tags, 'Layers': []}]
@@ -247,6 +261,8 @@ save('img-label-case.tar.gz', ok, labels={'Traefik.Enable': 'true'})
 save('img-volume.tar.gz', ok, volumes={'/data': {}})
 save('img-root.tar.gz', ok, user='')
 save('img-oci-label.tar.gz', ok, oci={'traefik.enable': 'true'})
+save('img-attestation.tar.gz', ok, oci={}, attestation=True)
+save('img-oci-docker-type.tar.gz', ok, oci={'traefik.enable': 'true'}, oci_type='application/vnd.docker.container.image.v1+json')
 save('img-big-config.tar.gz', ok, cfg_size=3 * 1024 * 1024)   # > 2 Mio : lue quand même (plus de budget)
 save('img-huge-manifest.tar.gz', ok, manifest_size=5 * 1024 * 1024)
 save('img-no-config.tar.gz', ok, skip_cfg=True)
@@ -276,6 +292,8 @@ image_case refus img-label-case.tar.gz "avec LABEL Traefik.* (casse)"
 image_case refus img-volume.tar.gz "avec VOLUME"
 image_case refus img-root.tar.gz "sans USER (root)"
 image_case refus img-oci-label.tar.gz "config de l'index OCI avec label traefik.*"
+image_case ok img-attestation.tar.gz "index BuildKit avec manifeste d'attestation (in-toto, sans USER)"
+image_case refus img-oci-docker-type.tar.gz "config de type Docker via l'index avec label traefik.*"
 image_case ok img-big-config.tar.gz "config de 3 Mio lue en entier"
 image_case refus img-huge-manifest.tar.gz "manifest.json au-delà du plafond"
 image_case refus img-no-config.tar.gz "Config référencée absente"

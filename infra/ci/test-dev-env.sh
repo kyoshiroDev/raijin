@@ -54,6 +54,23 @@ mkdir -p "$work/v1"
 git archive --format=tar HEAD infra | tar -x -C "$work/v1"
 bundle "$sha1" "$work/v1/infra" "$work/v1.tar"
 
+echo "== Archive d'images réelle (docker save des images construites par la CI)"
+mkdir -p "$work/real"
+tar -xf "$work/v1.tar" -C "$work/real" images.tar.gz
+if python3 infra/lib/deploy_policy.py images "$work/real/images.tar.gz" raijin-dev "$sha1" "$work/real/expected" >"$work/out" 2>&1; then
+  ok "images réelles acceptées ($(tr '\n' ' ' <"$work/real/expected"))"
+else
+  ko "images réelles refusées : $(tr '\n' ' ' <"$work/out" | head -c 400)"
+fi
+# Contre-épreuve sur une vraie image : la même, reconstruite avec USER root, est refusée.
+printf 'FROM raijin/web:latest\nUSER root\n' | docker build -q -t "raijin-dev/web:$sha1-root" - >/dev/null
+docker image tag "raijin-dev/web:$sha1-root" "raijin-dev/web:$sha1"
+docker save "raijin-dev/web:$sha1" | gzip -1 >"$work/real/root.tar.gz"
+docker image tag "raijin/web:latest" "raijin-dev/web:$sha1"
+docker image rm "raijin-dev/web:$sha1-root" >/dev/null
+python3 infra/lib/deploy_policy.py images "$work/real/root.tar.gz" raijin-dev "$sha1" >"$work/out" 2>&1 \
+  && ko "image réelle avec USER root acceptée" || ok "image réelle avec USER root refusée"
+
 echo "== Refus de la porte"
 expect_refused "clé dev, environnement prod" "deploy prod $sha1"
 expect_refused "commande arbitraire" "sh -c id"

@@ -195,6 +195,8 @@ def check_image_config(ref, cfg):
 
 
 MAX_META = 4 * 1024 ** 2
+# Seules ces configs décrivent une image exécutable (toutes contrôlées : USER non root, aucun label traefik, aucun VOLUME).
+IMAGE_CONFIG_TYPES = ('application/vnd.oci.image.config.v1+json', 'application/vnd.docker.container.image.v1+json')
 META_FILES = ('manifest.json', 'index.json', 'repositories', 'oci-layout')
 
 
@@ -308,10 +310,14 @@ def cmd_images(archive, name, sha, expected_out=None):
                     pending.add(nb)
             if doc.get('config'):
                 cb = _blob(doc['config'].get('digest'))
-                if cb:
-                    configs.add(cb)
-                else:
+                if not cb:
                     fail('config OCI sans empreinte sha256')
+                elif str(doc['config'].get('mediaType', '')) in IMAGE_CONFIG_TYPES:
+                    configs.add(cb)
+                # Sinon : config qui n'est pas une image exécutable (attestation in-toto de BuildKit, signature…) :
+                # Docker ne peut pas en créer de conteneur ; rien à contrôler côté USER / labels.
+                elif not str(doc['config'].get('mediaType', '')):
+                    fail('config OCI sans type (mediaType)')
     if pending and not errors:
         fail('index OCI trop imbriqué')
     if not errors:
