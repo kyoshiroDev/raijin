@@ -107,8 +107,13 @@ sed 's/^/    /' "$work/out2" | tail -n 25
 grep -q "dernière version réussie remise en service" "$work/out2" && ok "retour automatique effectué" || ko "pas de retour automatique"
 current="$(readlink -f "$RAIJIN_DEPLOY_BASE/dev/current" || true)"
 [[ "$(basename "$current")" == "$sha1"-* ]] && ok "version 1 toujours en service" || ko "current a changé ($current)"
-code="$(curl -sk -o /dev/null -w '%{http_code}' --resolve "api-dev.raijinshield.com:${TRAEFIK_CI_PORT:-8443}:127.0.0.1" \
-  "https://api-dev.raijinshield.com:${TRAEFIK_CI_PORT:-8443}/api/v1/health" || echo 000)"
+# Traefik prend en compte le conteneur recréé en quelques secondes : jusqu'à 30 s d'attente.
+for _ in $(seq 1 15); do
+  code="$(curl -sk -o /dev/null -w '%{http_code}' --resolve "api-dev.raijinshield.com:${TRAEFIK_CI_PORT:-8443}:127.0.0.1" \
+    "https://api-dev.raijinshield.com:${TRAEFIK_CI_PORT:-8443}/api/v1/health" || echo 000)"
+  [[ "$code" == 200 ]] && break
+  sleep 2
+done
 [[ "$code" == 200 ]] && ok "api-dev /api/v1/health → 200 après retour" || ko "api-dev /api/v1/health → $code après retour"
 want="$(docker image inspect -f '{{.Id}}' "raijin-dev/api:$sha1")"
 got="$(docker inspect -f '{{.Image}}' raijin-dev-api)"

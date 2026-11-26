@@ -80,9 +80,40 @@ done
 profiles=(--profile tools)
 [[ "$bench" == 1 ]] && profiles+=(--profile bench)
 
+# Contrôle de routage par le Traefik local (RAIJIN_TRAEFIK_ADDR, 127.0.0.1:443 par défaut), avec attente : Traefik
+# met quelques secondes à prendre en compte un conteneur recréé. Utilisé après un déploiement ET après un retour.
+traefik_addr="${RAIJIN_TRAEFIK_ADDR:-127.0.0.1:443}"
+expect_route() {
+  local host="$1" path="$2" want="$3" code=000
+  for _ in $(seq 1 12); do
+    code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$host:${traefik_addr##*:}:${traefik_addr%:*}" \
+      "https://$host:${traefik_addr##*:}$path" 2>/dev/null || echo 000)"
+    [[ "$code" == "$want" ]] && break
+    sleep 5
+  done
+  if [[ "$code" == "$want" ]]; then log "OK   routage $host$path → $code"; return 0; fi
+  warn "routage $host$path : $code ($want attendu)"
+  return 1
+}
+check_routes() {
+  local failed=0
+  expect_route "$API_DOMAIN" /api/v1/health 200 || failed=1
+  if [[ "$env" == dev ]]; then
+    expect_route "$APP_DOMAIN" / 401 || failed=1
+    expect_route "$APP_DOMAIN" /robots.txt 200 || failed=1
+    expect_route "$LANDING_DOMAIN" / 401 || failed=1
+  else
+    expect_route "$APP_DOMAIN" / 200 || failed=1
+    expect_route "$APP_DOMAIN" /api/v1/health 200 || failed=1
+    expect_route "$LANDING_DOMAIN" / 200 || failed=1
+  fi
+  return "$failed"
+}
+
 if [[ "$mode" == recover ]]; then
   log "retour à la version ${tag:0:12} ($env)…"
   rc "${profiles[@]}" up -d --wait --wait-timeout 240 --pull never --no-build "${services[@]}"
+  check_routes || die "version ${tag:0:12} redémarrée mais routage Traefik incomplet (docs/DEPLOY.md C2, C7)."
   log "version ${tag:0:12} remise en service. Les migrations déjà appliquées restent en place (docs/DEPLOY.md A12)."
   exit 0
 fi
@@ -112,29 +143,7 @@ log "démarrage de ${services[*]}…"
 rc "${profiles[@]}" up -d --wait --wait-timeout 240 --pull never --no-build "${services[@]}"
 
 # --- Contrôle de routage par le Traefik local (bloquant) --------------------------------------------------
-traefik_addr="${RAIJIN_TRAEFIK_ADDR:-127.0.0.1:443}"
-failed=0
-expect_route() {
-  local host="$1" path="$2" want="$3" code=000
-  for _ in $(seq 1 12); do
-    code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$host:${traefik_addr##*:}:${traefik_addr%:*}" \
-      "https://$host:${traefik_addr##*:}$path" 2>/dev/null || echo 000)"
-    [[ "$code" == "$want" ]] && break
-    sleep 5
-  done
-  if [[ "$code" == "$want" ]]; then log "OK   routage $host$path → $code"; else warn "routage $host$path : $code ($want attendu)"; failed=1; fi
-}
-expect_route "$API_DOMAIN" /api/v1/health 200
-if [[ "$env" == dev ]]; then
-  expect_route "$APP_DOMAIN" / 401
-  expect_route "$APP_DOMAIN" /robots.txt 200
-  expect_route "$LANDING_DOMAIN" / 401
-else
-  expect_route "$APP_DOMAIN" / 200
-  expect_route "$APP_DOMAIN" /api/v1/health 200
-  expect_route "$LANDING_DOMAIN" / 200
-fi
-[[ "$failed" == 0 ]] || die "contrôle de routage en échec : version refusée."
+check_routes || die "contrôle de routage en échec : version refusée."
 
 # Succès : étiquettes de secours (compatibles avec infra/deploy.sh --rollback) et historique.
 for img in "${images[@]}"; do
