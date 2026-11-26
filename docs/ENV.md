@@ -450,6 +450,13 @@ API_DOMAIN=api.raijinshield.com
 BENCH_DOMAIN=banc.raijinshield.com
 
 # ---------------------------------------------------------------------
+# Déploiement continu (fichier /srv/raijin/prod/env/.env seulement, docs/DEPLOY.md C3 et C5) : activation de la prod
+# (vérification du jeton OIDC des dépôts et de la tête de main). Valeurs publiques.
+# ---------------------------------------------------------------------
+DEPLOY_GITHUB_REPOSITORY=compte-factice/raijin
+DEPLOY_GIT_REMOTE=git@github.com:compte-factice/raijin.git
+
+# ---------------------------------------------------------------------
 # Postgres et Redis (réseau interne, jamais exposés). À générer : openssl rand -hex 32 (une valeur par variable)
 # Hexadécimal uniquement (insérés tels quels dans DATABASE_URL / REDIS_URL).
 # Changer RAIJIN_DB_PASSWORD / BENCH_DB_PASSWORD : appliqué au déploiement suivant (ALTER ROLE).
@@ -519,11 +526,12 @@ Modèle de `/srv/raijin/dev/env/.env` (valeurs **factices**) :
 ```dotenv
 # Préfixe de tous les noms Docker du dev (conteneurs, images, routeurs Traefik, réseau, volumes) : ne pas changer
 RAIJIN_NAME=raijin-dev
-# Traefik existant : les MÊMES valeurs que la production (docs/DEPLOY.md A2)
-TRAEFIK_NETWORK=traefik_factice
+# Réseau d'entrée PROPRE au dev, rejoint par Traefik (docs/DEPLOY.md C2) ; jamais celui de la production
+TRAEFIK_NETWORK=raijin-dev-edge
+# Entrypoint et certresolver : les MÊMES valeurs que la production (docs/DEPLOY.md A2)
 TRAEFIK_ENTRYPOINT=websecure
 TRAEFIK_CERTRESOLVER=letsencrypt
-# Domaines du dev (enregistrements A : docs/DEPLOY.md A3)
+# Domaines du dev (enregistrements A : docs/DEPLOY.md A3) : chacun commence par « dev. » ou « …-dev. » (contrôlé)
 LANDING_DOMAIN=landing-dev.raijinshield.com
 APP_DOMAIN=dev.raijinshield.com
 API_DOMAIN=api-dev.raijinshield.com

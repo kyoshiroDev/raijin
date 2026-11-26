@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =====================================================================================================
 # Déploiement de Raijin sur le VPS (PROMPT.md §7) — lancé par l'utilisateur depuis le dépôt cloné sur le VPS
-# (docs/DEPLOY.md, partie A), ou par infra/deploy-gate.sh lors du déploiement continu (partie C). Jamais par un agent.
+# (docs/DEPLOY.md, partie A). Jamais par un agent.
 #
 #   infra/deploy.sh                 prod : build + migrations + démarrage + contrôles
 #   infra/deploy.sh --env dev       idem pour l'environnement dev (projet raijin-dev, infra/.env.dev, .env.dev.api)
@@ -10,11 +10,7 @@
 #   infra/deploy.sh --bench         prod seulement : inclut le banc (profil « bench ») : images, migrations
 #                                   raijin_bench, démarrage (infra/.env.bench-api et REDIS_BENCH_PASSWORD requis, A14)
 #   Options : --yes (pas de question), --no-external-check (pas de contrôle HTTPS depuis l'extérieur)
-#   Déploiement continu (deploy-gate.sh) :
-#     --release <dossier> --sha <commit>   images <nom>/<image>:<commit> déjà chargées (construites par GitHub
-#                                          Actions), fichiers Compose de ce dossier ; contrôle de routage bloquant
-#     --recover                            après un échec : remet en service les images « deployed » (dernière
-#                                          version réussie) avec les fichiers Compose de RAIJIN_COMPOSE_DIR
+#   Déploiement continu : ce script n'y sert pas (infra/deploy-gate.sh et infra/release.sh, docs/DEPLOY.md partie C).
 #
 # Garanties : aucun `docker compose down`, aucune suppression de volume, d'image ou de réseau, aucune
 # commande sur un conteneur qui n'est pas « raijin-… ». Le réseau Traefik existant est seulement lu.
@@ -26,19 +22,17 @@ RAIJIN_SCRIPT=deploy
 external=1
 # Tests (infra/ci/test-dev-env.sh) : pas de contrôle par le DNS public (le contrôle de routage local reste fait).
 [[ "${RAIJIN_NO_EXTERNAL_CHECK:-0}" == 1 ]] && external=0
-skip_build=0 rollback=0 recover=0 bench=0 assume_yes=0 env=prod release='' sha='' bad_arg=''
+skip_build=0 rollback=0 bench=0 assume_yes=0 env=prod bad_arg=''
 while (( $# > 0 )); do
   case "$1" in
     --skip-build) skip_build=1 ;;
     --rollback) rollback=1 ;;
-    --recover) recover=1 ;;
     --bench) bench=1 ;;
     --yes) assume_yes=1 ;;
     --no-external-check) external=0 ;;
-    --env|--release|--sha)
-      (( $# >= 2 )) || { echo "deploy.sh : $1 attend une valeur." >&2; exit 1; }
-      case "$1" in --env) env="$2" ;; --release) release="$2" ;; --sha) sha="$2" ;; esac
-      shift ;;
+    --env)
+      (( $# >= 2 )) || { echo "deploy.sh : --env attend une valeur." >&2; exit 1; }
+      env="$2"; shift ;;
     -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) bad_arg="$1" ;;
   esac
@@ -47,21 +41,11 @@ done
 
 [[ "$env" == prod || "$env" == dev ]] || { echo "deploy.sh : --env prod ou --env dev (reçu : « $env »)." >&2; exit 1; }
 RAIJIN_ENV="$env"
-if [[ -n "$release" ]]; then
-  [[ -d "$release" && -f "$release/docker-compose.yml" ]] || { echo "deploy.sh : --release $release : docker-compose.yml absent." >&2; exit 1; }
-  RAIJIN_COMPOSE_DIR="$(cd "$release" && pwd)"
-  export RAIJIN_COMPOSE_DIR
-fi
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 [[ -z "$bad_arg" ]] || die "option inconnue : $bad_arg"
-if [[ -n "$release" ]]; then
-  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "--release exige --sha <commit complet, 40 caractères hexadécimaux>."
-  skip_build=1
-fi
 [[ "$env" == dev && "$bench" == 1 ]] && die "--bench : le banc n'existe qu'en production."
-(( rollback + recover <= 1 )) || die "--rollback et --recover sont exclusifs."
 
 trap "warn \"déploiement interrompu (ligne \$LINENO). Rien n'a été supprimé ; voir docs/DEPLOY.md A12 (retour arrière).\"" ERR
 
@@ -74,7 +58,7 @@ confirm() {
 
 cd "$RAIJIN_ROOT"
 require_cmd docker curl awk grep
-[[ -n "$release" ]] || require_cmd git
+require_cmd git
 log "environnement $RAIJIN_ENV (projet Compose $RAIJIN_PROJECT, fichiers Compose : $RAIJIN_COMPOSE_DIR)."
 
 # --- 1. Prérequis ---------------------------------------------------------------------------------------
@@ -115,9 +99,13 @@ if [[ "$RAIJIN_ENV" == dev ]]; then
   stripe_key="$(env_get "$RAIJIN_API_ENV_FILE" STRIPE_SECRET_KEY)"
   [[ "$stripe_key" != sk_live_* && "$stripe_key" != rk_live_* ]] || die "STRIPE_SECRET_KEY : clé live interdite en dev (mode test uniquement)."
   unset stripe_key
-  case "$(env_get "$RAIJIN_ENV_FILE" APP_DOMAIN)" in
-    app.raijinshield.com|raijinshield.com|www.raijinshield.com|api.raijinshield.com) die "APP_DOMAIN : nom de production interdit en dev." ;;
-  esac
+  # Chaque nom du dev commence par « dev. » ou « <nom>-dev. » (jamais un nom de la production).
+  for key in APP_DOMAIN API_DOMAIN LANDING_DOMAIN; do
+    host="$(env_get "$RAIJIN_ENV_FILE" "$key" | tr '[:upper:]' '[:lower:]')"
+    [[ "$host" =~ ^(dev|[a-z0-9-]+-dev)\.[a-z0-9.-]+$ ]] || die "$key : nom du dev attendu (dev.… ou …-dev.…)."
+  done
+  [[ "$(env_get "$RAIJIN_ENV_FILE" TRAEFIK_NETWORK)" == raijin-dev-* ]] \
+    || die "TRAEFIK_NETWORK : réseau d'entrée propre au dev attendu (raijin-dev-edge, docs/DEPLOY.md C2)."
 fi
 
 TRAEFIK_NETWORK="$(env_get "$RAIJIN_ENV_FILE" TRAEFIK_NETWORK)"
@@ -125,7 +113,7 @@ docker network inspect "$TRAEFIK_NETWORK" >/dev/null 2>&1 \
   || die "réseau Traefik « $TRAEFIK_NETWORK » introuvable : vérifie le nom avec « docker network ls » (docs/DEPLOY.md A2)."
 
 if [[ "$bench" == 1 ]]; then
-  [[ -n "$release" || -d apps/raijin-banc-de-test-api ]] || die "--bench : apps/raijin-banc-de-test-api introuvable dans ce dépôt."
+  [[ -d apps/raijin-banc-de-test-api ]] || die "--bench : apps/raijin-banc-de-test-api introuvable dans ce dépôt."
   [[ -n "$(env_get "$RAIJIN_ENV_FILE" BENCH_BASIC_AUTH_USERS)" ]] || die "--bench : BENCH_BASIC_AUTH_USERS est vide (docs/DEPLOY.md A14)."
   [[ -r "$RAIJIN_BENCH_API_ENV_FILE" ]] || die "--bench : fichier $RAIJIN_BENCH_API_ENV_FILE absent (modèle : docs/ENV.md, bloc « Banc »)."
   perms="$(stat -L -c '%a' "$RAIJIN_BENCH_API_ENV_FILE")"
@@ -143,7 +131,7 @@ if [[ "$bench" == 1 ]]; then
 fi
 
 avail_mb="$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo)"
-need_mb=$(( skip_build == 1 || rollback == 1 || recover == 1 ? 1400 : 2600 ))
+need_mb=$(( skip_build == 1 || rollback == 1 ? 1400 : 2600 ))
 log "RAM disponible : ${avail_mb} Mo (conseillé pour cette opération : ${need_mb} Mo)."
 if (( avail_mb < need_mb )); then
   warn "RAM disponible insuffisante : le build ou le démarrage pourrait ralentir les autres sites du VPS."
@@ -174,24 +162,6 @@ images=(api web landing migrate)
 # Étiquettes : « deployed » = dernier déploiement RÉUSSI, « previous » = celui d'avant. Elles ne bougent qu'après
 # un déploiement réussi : un déploiement raté ne remplace jamais la version de secours.
 image_id() { docker image inspect -f '{{.Id}}' "$1" 2>/dev/null || true; }
-if [[ "$recover" == 1 ]]; then
-  # Après un échec (deploy-gate.sh) : seulement « deployed » → « latest », jamais plus loin en arrière.
-  if [[ -z "$(image_id "$RAIJIN_NAME/api:deployed")" ]]; then
-    warn "aucune version déployée avec succès : rien à remettre en service (premier déploiement)."
-    exit 0
-  fi
-  for img in "${images[@]}"; do
-    deployed="$(image_id "$RAIJIN_NAME/$img:deployed")"
-    if [[ -n "$deployed" && "$(image_id "$RAIJIN_NAME/$img:latest")" != "$deployed" ]]; then
-      docker image tag "$RAIJIN_NAME/$img:deployed" "$RAIJIN_NAME/$img:latest"
-      log "$RAIJIN_NAME/$img : dernière version réussie remise en service."
-    fi
-  done
-  warn "les migrations de base déjà appliquées NE sont PAS annulées (docs/DEPLOY.md A12)."
-  compose up -d --wait --wait-timeout 240 --no-build "${services[@]}"
-  log "retour à la dernière version réussie terminé."
-  exit 0
-fi
 if [[ "$rollback" == 1 ]]; then
   for img in "${images[@]}"; do
     latest="$(image_id "$RAIJIN_NAME/$img:latest")" deployed="$(image_id "$RAIJIN_NAME/$img:deployed")"
@@ -212,19 +182,10 @@ if [[ "$rollback" == 1 ]]; then
 fi
 
 # --- 2. Build (ou images livrées) ----------------------------------------------------------------------
-if [[ -n "$release" ]]; then
-  commit="${sha:0:12}" branch="livraison"
-  for img in "${images[@]}"; do
-    [[ -n "$(image_id "$RAIJIN_NAME/$img:$sha")" ]] || die "image $RAIJIN_NAME/$img:$sha absente (livraison incomplète)."
-    docker image tag "$RAIJIN_NAME/$img:$sha" "$RAIJIN_NAME/$img:latest"
-  done
-  log "déploiement de la version livrée $sha"
-else
-  commit="$(git rev-parse --short HEAD)"
-  branch="$(git rev-parse --abbrev-ref HEAD)"
-  [[ -z "$(git status --porcelain --untracked-files=no)" ]] || warn "le dépôt a des modifications locales non commitées."
-  log "déploiement de $branch @ $commit"
-fi
+commit="$(git rev-parse --short HEAD)"
+branch="$(git rev-parse --abbrev-ref HEAD)"
+[[ -z "$(git status --porcelain --untracked-files=no)" ]] || warn "le dépôt a des modifications locales non commitées."
+log "déploiement de $branch @ $commit"
 log "landing : APP_URL=$APP_URL, GA4 $([[ -n "$GA4_MEASUREMENT_ID" ]] && echo activé || echo désactivé)."
 
 if [[ "$skip_build" == 0 ]]; then
@@ -282,8 +243,7 @@ LANDING_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" LANDING_DOMAIN)"
 
 # --- 5. Contrôle de routage par Traefik (sans DNS ni certificat) ------------------------------------------
 # Requêtes envoyées au Traefik local (RAIJIN_TRAEFIK_ADDR, 127.0.0.1:443 par défaut) avec le bon nom d'hôte : prouve
-# que les routeurs et l'API répondent, même avant la propagation DNS ou l'émission du certificat. BLOQUANT pour une
-# version livrée (--release) : un échec déclenche le retour à la dernière version réussie (deploy-gate.sh).
+# que les routeurs et l'API répondent, même avant la propagation DNS ou l'émission du certificat (informatif ici).
 traefik_addr="${RAIJIN_TRAEFIK_ADDR:-127.0.0.1:443}"
 route_code() {
   curl -sk -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$1:${traefik_addr##*:}:${traefik_addr%:*}" \
@@ -299,7 +259,7 @@ expect_route() {
   done
   if [[ "$code" == "$want" ]]; then log "OK   routage $host$path → $code"; else warn "routage $host$path : $code ($want attendu)"; route_failed=1; fi
 }
-if [[ "$external" == 1 || -n "$release" ]]; then
+if [[ "$external" == 1 ]]; then
   expect_route "$API_DOMAIN" /api/v1/health 200
   if [[ "$RAIJIN_ENV" == dev ]]; then
     # Dev : tout est derrière la basicAuth (401 sans mot de passe), sauf robots.txt et la santé de l'API.
@@ -312,7 +272,6 @@ if [[ "$external" == 1 || -n "$release" ]]; then
     expect_route "$LANDING_DOMAIN" / 200
   fi
   if [[ "$route_failed" == 1 ]]; then
-    if [[ -n "$release" ]]; then die "contrôle de routage en échec : version refusée."; fi
     warn "routage incomplet par le Traefik local ($traefik_addr) : vérifie TRAEFIK_NETWORK et les routeurs (A11)."
   fi
 fi
@@ -369,9 +328,5 @@ for img in "${images[@]}"; do
 done
 history_dir="${XDG_STATE_HOME:-$HOME/.local/state}/raijin"
 mkdir -p "$history_dir"
-printf '%s %s %s@%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RAIJIN_ENV" "$branch" "${sha:-$commit}" >>"$history_dir/deploy-history"
-if [[ -n "$release" ]]; then
-  log "déploiement terminé ($RAIJIN_ENV, $sha)."
-else
-  log "déploiement terminé ($RAIJIN_ENV, $commit). Retour arrière : infra/deploy.sh --env $RAIJIN_ENV --rollback"
-fi
+printf '%s %s %s@%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RAIJIN_ENV" "$branch" "$commit" >>"$history_dir/deploy-history"
+log "déploiement terminé ($RAIJIN_ENV, $commit). Retour arrière : infra/deploy.sh --env $RAIJIN_ENV --rollback"

@@ -19,7 +19,7 @@ done < <(grep -E '^[A-Z_][A-Z0-9_]*=' infra/.env)
 
 export RAIJIN_DEPLOY_BASE="$RUNNER_TEMP/raijin-deploy"
 export RAIJIN_TRAEFIK_ADDR="127.0.0.1:${TRAEFIK_CI_PORT:-8443}"
-export RAIJIN_MIN_FREE_GB=3 RAIJIN_NO_EXTERNAL_CHECK=1
+export RAIJIN_MIN_FREE_GB=3
 work="$(mktemp -d)"
 failures=0
 ok() { printf '  ok   %s\n' "$*"; }
@@ -43,6 +43,10 @@ bundle() {
   rm -r -- "$d"
 }
 
+# Réseau d'entrée du dev, rejoint par Traefik (sur le VPS : docs/DEPLOY.md C2) ; la prod reste sur traefik-ci.
+docker network inspect raijin-dev-edge >/dev/null 2>&1 || docker network create raijin-dev-edge >/dev/null
+docker network connect raijin-dev-edge traefik-ci 2>/dev/null || true
+
 sha1="$(git rev-parse HEAD)"
 mkdir -p "$work/v1"
 git archive --format=tar HEAD infra | tar -x -C "$work/v1"
@@ -53,6 +57,18 @@ expect_refused "clé dev, environnement prod" "deploy prod $sha1"
 expect_refused "commande arbitraire" "sh -c id"
 expect_refused "commit invalide" "deploy dev abc"
 expect_refused "argument en trop" "deploy dev $sha1 --bench"
+expect_refused "dépôt prod avec la clé dev" "depose prod $sha1"
+# Clé « prod-depot » : jeton OIDC forgé → archive refusée, rien de déposé ni de démarré.
+mkdir -p "$RAIJIN_DEPLOY_BASE/prod/env"
+printf 'DEPLOY_GITHUB_REPOSITORY=ci/raijin\n' >"$RAIJIN_DEPLOY_BASE/prod/env/.env"
+fake_jwt="$(printf '{"alg":"RS256","kid":"ci"}' | base64 -w0 | tr '+/' '-_' | tr -d '=').$(printf '{"sha":"%s"}' "$sha1" | base64 -w0 | tr '+/' '-_' | tr -d '=').c2lnbmF0dXJl"
+code=0
+{ printf '%s\n' "$fake_jwt"; cat "$work/v1.tar"; } | SSH_ORIGINAL_COMMAND="depose prod $sha1" infra/deploy-gate.sh prod-depot >"$work/out" 2>&1 || code=$?
+if [[ "$code" != 0 ]]; then ok "refusé : dépôt prod avec jeton OIDC forgé ($(tail -n 1 "$work/out"))"; else ko "dépôt prod accepté avec un jeton forgé"; fi
+[[ ! -e "$RAIJIN_DEPLOY_BASE/incoming/prod/$sha1.tar" ]] && ok "aucun dépôt conservé" || ko "dépôt conservé malgré le refus"
+SSH_ORIGINAL_COMMAND="deploy prod $sha1" infra/deploy-gate.sh prod-depot </dev/null >"$work/out" 2>&1 && ko "clé prod-depot : deploy accepté" || ok "refusé : clé prod-depot ne déploie pas"
+SSH_ORIGINAL_COMMAND="x" infra/deploy-gate.sh --approve "$sha1" >"$work/out" 2>&1 && ko "activation acceptée depuis SSH" || ok "refusé : activation depuis une session SSH"
+infra/deploy-gate.sh --approve "$sha1" >"$work/out" 2>&1 && ko "activation sans dépôt acceptée" || ok "refusé : activation sans dépôt vérifié"
 # Étiquette étrangère (ici une image « traefik ») : refusée avant tout docker load.
 d="$(mktemp -d)"
 docker image tag "raijin/web:latest" "traefik:ci-pirate"
@@ -74,14 +90,14 @@ echo "== Déploiement dev n° 2 cassé → retour automatique"
 sha2="$(printf '%040d' 2 | tr 0 e)"
 mkdir -p "$work/v2"
 git archive --format=tar HEAD infra | tar -x -C "$work/v2"
-# Santé de l'API retirée du routeur public d'api-dev : le contrôle de routage (200 attendu, 401 obtenu) échoue.
+# Routeur public de la santé retiré d'api-dev : le contrôle de routage (200 attendu, 401 obtenu) échoue.
 python3 - "$work/v2/infra/docker-compose.env-dev.yml" <<'PY'
 import sys
 p = sys.argv[1]
-s = open(p).read()
-old = "Path(`/api/v1/health`) || PathPrefix(`/api/v1/health/`) || "
-assert old in s
-open(p, 'w').write(s.replace(old, ''))
+lines = open(p).read().split('\n')
+kept = [l for l in lines if '-api-public-health.' not in l]
+assert len(kept) < len(lines)
+open(p, 'w').write('\n'.join(kept))
 PY
 bundle "$sha2" "$work/v2/infra" "$work/v2.tar"
 code=0

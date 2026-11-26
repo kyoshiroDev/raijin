@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # GitHub Actions uniquement (workflow « Déploiement ») : écrit la clé SSH de déploiement de l'environnement visé et
 # l'empreinte épinglée du VPS dans $RUNNER_TEMP/ssh (droits 600), sans jamais les afficher. Variables : KEY (secret
-# DEPLOY_SSH_KEY_DEV ou DEPLOY_SSH_KEY_PROD), KNOWN_HOSTS (secret DEPLOY_KNOWN_HOSTS). docs/DEPLOY.md C5.
+# DEPLOY_SSH_KEY_DEV ou DEPOT_SSH_KEY_PROD, nom dans KEY_NAME), KNOWN_HOSTS (secret DEPLOY_KNOWN_HOSTS). docs/DEPLOY.md C5.
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == "true" ]] || { echo "ssh-setup.sh : réservé à GitHub Actions." >&2; exit 1; }
-[[ -n "${KEY:-}" ]] || { echo "::error::secret DEPLOY_SSH_KEY_${DEPLOY_ENV^^} absent (Settings → Secrets and variables → Actions, docs/DEPLOY.md C5)."; exit 1; }
+[[ -n "${KEY:-}" ]] || { echo "::error::secret ${KEY_NAME:-de clé SSH} absent (Settings → Secrets and variables → Actions, docs/DEPLOY.md C5)."; exit 1; }
 [[ -n "${KNOWN_HOSTS:-}" ]] || { echo "::error::secret DEPLOY_KNOWN_HOSTS absent (docs/DEPLOY.md C5)."; exit 1; }
 dir="$RUNNER_TEMP/ssh"
 umask 077

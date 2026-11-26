@@ -47,8 +47,21 @@ published="$(docker ps --filter name=raijin- --format '{{.Names}} {{.Ports}}' | 
 [[ -z "$published" ]] && ok "aucun port publié (prod et dev)" || ko "ports publiés : $published"
 
 echo "== Cloisonnement"
-nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' raijin-dev-api)"
-[[ "$nets" == *raijin-dev-internal* && "$nets" != *"raijin-internal "* ]] && ok "raijin-dev-api : réseaux $nets" || ko "raijin-dev-api : réseaux inattendus ($nets)"
+for c in raijin-dev-api raijin-dev-web raijin-dev-landing raijin-dev-mailpit; do
+  nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c")"
+  if [[ "$nets" != *traefik-ci* && "$nets" != *"raijin-internal "* && "$nets" == *raijin-dev-edge* ]]; then
+    ok "$c : réseaux $nets (ni Traefik de la prod, ni réseau interne de la prod)"
+  else
+    ko "$c : réseaux inattendus ($nets)"
+  fi
+done
+# L'API dev ne joint pas l'API de la prod (aucun réseau commun).
+prod_api_ip="$(docker inspect -f '{{with index .NetworkSettings.Networks "traefik-ci"}}{{.IPAddress}}{{end}}' raijin-api)"
+if docker exec raijin-dev-api node -e "fetch('http://$prod_api_ip:3000/api/v1/health',{signal:AbortSignal.timeout(4000)}).then(()=>process.exit(0),()=>process.exit(1))"; then
+  ko "l'API dev joint l'API de la prod ($prod_api_ip)"
+else
+  ok "l'API dev ne joint pas l'API de la prod"
+fi
 nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' raijin-dev-postgres)"
 [[ "$nets" == "raijin-dev-internal " ]] && ok "raijin-dev-postgres : réseau interne dev seul" || ko "raijin-dev-postgres : réseaux $nets"
 [[ "$(docker network inspect -f '{{.Internal}}' raijin-dev-internal)" == true ]] && ok "raijin-dev-internal sans accès extérieur" || ko "raijin-dev-internal n'est pas interne"

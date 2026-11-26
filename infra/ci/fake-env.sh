@@ -104,7 +104,8 @@ dev_pass="$(rand_hex)" dev_redis="$(rand_hex)" dev_pg="$(rand_hex)" dev_db="$(ra
 for v in "$dev_pass" "$dev_redis" "$dev_pg" "$dev_db" "$dev_bench_db"; do echo "::add-mask::$v"; done
 {
   echo "RAIJIN_NAME=raijin-dev"
-  echo "TRAEFIK_NETWORK=traefik-ci"
+  # Réseau d'entrée propre au dev (rejoint par le Traefik factice dans test-dev-env.sh), jamais celui de la prod.
+  echo "TRAEFIK_NETWORK=raijin-dev-edge"
   echo "TRAEFIK_ENTRYPOINT=websecure"
   echo "TRAEFIK_CERTRESOLVER=ci"
   echo "LANDING_DOMAIN=landing-dev.raijinshield.com"
