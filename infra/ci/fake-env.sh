@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# CI uniquement (job « images » de .github/workflows/ci.yml) : génère infra/.env, infra/.env.api et
-# infra/.env.bench-api avec des
+# CI uniquement (job « images » de .github/workflows/ci.yml) : génère infra/.env, infra/.env.api,
+# infra/.env.bench-api et l'environnement dev ($RUNNER_TEMP/raijin-deploy/dev/env/.env et .env.api) avec des
 # valeurs FACTICES tirées au hasard (jamais de vrai secret, aucun service externe). Les valeurs aléatoires sont
 # masquées dans les journaux GitHub ; les variables d'interpolation de Compose sont exportées dans $GITHUB_ENV
 # pour docker buildx bake. Ne jamais lancer sur le VPS.
@@ -93,3 +93,43 @@ BENCH_SMTP_URL=
 BENCH
 chmod 600 infra/.env infra/.env.api infra/.env.bench-api
 echo "infra/.env, infra/.env.api et infra/.env.bench-api factices générés."
+
+# Environnement dev (infra/ci/test-dev-env.sh) : disposition du déploiement continu, /srv/raijin/dev/env/ simulé
+# sous $RUNNER_TEMP/raijin-deploy. Mots de passe propres au dev (jamais ceux de la prod). Ces variables ne vont PAS
+# dans $GITHUB_ENV (elles écraseraient celles de la prod pour Compose) ; seuls l'identifiant basicAuth et le mot de
+# passe Redis du dev y sont exportés (contrôles de check-stack-dev.sh).
+dev_env_dir="$RUNNER_TEMP/raijin-deploy/dev/env"
+mkdir -p "$dev_env_dir"
+dev_pass="$(rand_hex)" dev_redis="$(rand_hex)" dev_pg="$(rand_hex)" dev_db="$(rand_hex)" dev_bench_db="$(rand_hex)"
+for v in "$dev_pass" "$dev_redis" "$dev_pg" "$dev_db" "$dev_bench_db"; do echo "::add-mask::$v"; done
+{
+  echo "RAIJIN_NAME=raijin-dev"
+  echo "TRAEFIK_NETWORK=traefik-ci"
+  echo "TRAEFIK_ENTRYPOINT=websecure"
+  echo "TRAEFIK_CERTRESOLVER=ci"
+  echo "LANDING_DOMAIN=landing-dev.raijinshield.com"
+  echo "APP_DOMAIN=dev.raijinshield.com"
+  echo "API_DOMAIN=api-dev.raijinshield.com"
+  echo "POSTGRES_SUPERUSER_PASSWORD=$dev_pg"
+  echo "RAIJIN_DB_PASSWORD=$dev_db"
+  echo "BENCH_DB_PASSWORD=$dev_bench_db"
+  echo "REDIS_PASSWORD=$dev_redis"
+  printf "DEV_BASIC_AUTH_USERS='%s'\n" "ci:$(openssl passwd -apr1 "$dev_pass")"
+} >"$dev_env_dir/.env"
+printf 'DEV_CI_BASIC_AUTH=%s\n' "ci:$dev_pass" >>"$GITHUB_ENV"
+printf 'REDIS_DEV_PASSWORD=%s\n' "$dev_redis" >>"$GITHUB_ENV"
+djwt="$(rand_b64 48)" dcookie="$(rand_b64 32)" diphash="$(rand_b64 48)" dtotp="$(rand_b64 32)"
+for v in "$djwt" "$dcookie" "$diphash" "$dtotp"; do echo "::add-mask::$v"; done
+cat >"$dev_env_dir/.env.api" <<DEVAPI
+JWT_ACCESS_SECRET=$djwt
+COOKIE_SECRET=$dcookie
+IP_HASH_SECRET=$diphash
+TOTP_ENCRYPTION_KEY=$dtotp
+BILLING_PROVIDER=stripe
+STRIPE_SECRET_KEY=
+PUSH_PROVIDER=webpush
+JOBS_ENABLED=false
+HELIUS_API_KEY=
+DEVAPI
+chmod 600 "$dev_env_dir/.env" "$dev_env_dir/.env.api"
+echo "environnement dev factice généré ($dev_env_dir)."

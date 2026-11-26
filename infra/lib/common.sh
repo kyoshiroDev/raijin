@@ -1,16 +1,34 @@
 #!/usr/bin/env bash
 # Fonctions communes des scripts d'infra Raijin (deploy, backup, restore, watchdog). Sourcé, jamais exécuté.
 # Règles : aucun secret affiché ni journalisé ; aucune commande sur des conteneurs, volumes ou réseaux qui
-# ne sont pas à Raijin (tout est filtré par le projet Compose « raijin » ou par un nom « raijin-… »).
+# ne sont pas à Raijin (tout est filtré par le projet Compose « raijin » / « raijin-dev » ou par un nom « raijin-… »).
 
-# Racine du dépôt (dossier parent de infra/).
+# Racine du dépôt (dossier parent de infra/) : celle des SCRIPTS. En déploiement continu, ce sont les copies figées
+# de /opt/raijin-deploy (root), et les fichiers Compose viennent de la version livrée (RAIJIN_COMPOSE_DIR).
 RAIJIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RAIJIN_INFRA="$RAIJIN_ROOT/infra"
-RAIJIN_ENV_FILE="${RAIJIN_ENV_FILE:-$RAIJIN_INFRA/.env}"
-RAIJIN_API_ENV_FILE="${RAIJIN_API_ENV_FILE:-$RAIJIN_INFRA/.env.api}"
-RAIJIN_COMPOSE_FILE="$RAIJIN_INFRA/docker-compose.yml"
-RAIJIN_PROJECT=raijin
-RAIJIN_PG_CONTAINER="${RAIJIN_PG_CONTAINER:-raijin-postgres}"
+
+# Environnement (docs/DEPLOY.md, partie C) : « prod » (projet Compose raijin, défaut) ou « dev » (projet raijin-dev,
+# surcouche docker-compose.env-dev.yml). Aucun nom commun entre les deux : RAIJIN_NAME préfixe conteneurs, images,
+# routeurs Traefik, réseau interne et volumes.
+RAIJIN_ENV="${RAIJIN_ENV:-prod}"
+case "$RAIJIN_ENV" in
+  prod) RAIJIN_PROJECT=raijin; raijin_env_suffix='' ;;
+  dev) RAIJIN_PROJECT=raijin-dev; raijin_env_suffix='.dev' ;;
+  *) printf 'RAIJIN_ENV invalide : « %s » (prod ou dev)\n' "$RAIJIN_ENV" >&2; exit 1 ;;
+esac
+RAIJIN_NAME="$RAIJIN_PROJECT"
+RAIJIN_COMPOSE_DIR="${RAIJIN_COMPOSE_DIR:-$RAIJIN_INFRA}"
+RAIJIN_COMPOSE_FILE="$RAIJIN_COMPOSE_DIR/docker-compose.yml"
+RAIJIN_COMPOSE_DEV_FILE="$RAIJIN_COMPOSE_DIR/docker-compose.env-dev.yml"
+# Fichiers de variables : infra/.env et infra/.env.api (prod), infra/.env.dev et infra/.env.dev.api (dev) dans un
+# dépôt cloné ; chemins imposés par deploy-gate.sh en déploiement continu (/srv/raijin/<env>/env/).
+RAIJIN_ENV_FILE="${RAIJIN_ENV_FILE:-$RAIJIN_INFRA/.env$raijin_env_suffix}"
+RAIJIN_API_ENV_FILE="${RAIJIN_API_ENV_FILE:-$RAIJIN_INFRA/.env$raijin_env_suffix.api}"
+RAIJIN_BENCH_API_ENV_FILE="${RAIJIN_BENCH_API_ENV_FILE:-$RAIJIN_INFRA/.env.bench-api}"
+RAIJIN_PG_CONTAINER="${RAIJIN_PG_CONTAINER:-$RAIJIN_NAME-postgres}"
+# Lus par l'interpolation de Compose (l'environnement l'emporte sur --env-file) et par les scripts appelés.
+export RAIJIN_ENV RAIJIN_NAME RAIJIN_ENV_FILE RAIJIN_API_ENV_FILE RAIJIN_BENCH_API_ENV_FILE
 
 log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${RAIJIN_SCRIPT:-raijin}" "$*"; }
 warn() { log "ATTENTION : $*" >&2; }
@@ -36,9 +54,11 @@ env_get() {
   printf '%s' "$value"
 }
 
-# docker compose du projet raijin (jamais un autre projet).
+# docker compose du projet de l'environnement (raijin ou raijin-dev, jamais un autre projet).
 compose() {
-  docker compose --project-name "$RAIJIN_PROJECT" --env-file "$RAIJIN_ENV_FILE" -f "$RAIJIN_COMPOSE_FILE" "$@"
+  local files=(-f "$RAIJIN_COMPOSE_FILE")
+  [[ "$RAIJIN_ENV" == dev ]] && files+=(-f "$RAIJIN_COMPOSE_DEV_FILE")
+  docker compose --project-name "$RAIJIN_PROJECT" --env-file "$RAIJIN_ENV_FILE" "${files[@]}" "$@"
 }
 
 require_cmd() {

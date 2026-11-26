@@ -6,6 +6,8 @@ fois, en lisant ce qu'elle affiche avant de passer à la suivante.
 - **Partie A** : mise en ligne sur le VPS (Docker Compose derrière le Traefik déjà en place, DNS, variables, clés
   VAPID, webhook Stripe, sauvegardes, surveillance, mises à jour, retour arrière).
 - **Partie B** : espace admin, Google (GA4, Search Console, compte de service) et landing.
+- **Partie C** : environnements dev/prod et déploiement continu (push sur `dev` → dev.raijinshield.com, fusion dans
+  `main` → production), à mettre en place une fois la partie A comprise.
 
 Rappels :
 - les secrets ne vont **que** dans `infra/.env` et `infra/.env.api` sur le serveur (jamais dans Git, jamais dans un
@@ -104,16 +106,25 @@ Raijin se branche sur le Traefik de MTC **sans le modifier**. Il te faut 3 noms,
 ## A3. DNS chez OVH
 
 Dans l'espace client OVH : **Web Cloud → Noms de domaine → raijinshield.com → Zone DNS → Ajouter une entrée**.
-Adresse IPv4 du VPS : `curl -4 ifconfig.me` sur le VPS (et `curl -6 ifconfig.me` pour l'IPv6, s'il en a une).
+Adresse IPv4 du VPS : `<IP du VPS>` (variable GitHub `DEPLOY_HOST` ; à lire avec `curl -4 ifconfig.me` sur le VPS ; `curl -6 ifconfig.me`
+pour l'IPv6, s'il en a une).
 
-| Type | Sous-domaine | Cible | Rôle |
-|---|---|---|---|
-| A | *(vide)* | IPv4 du VPS | landing `raijinshield.com` |
-| A | `www` | IPv4 du VPS | redirection 301 vers `raijinshield.com` |
-| A | `app` | IPv4 du VPS | application |
-| A | `api` | IPv4 du VPS | API (webhook Stripe, images OG) |
-| A | `banc` | IPv4 du VPS | banc de test (phase 8 bis) |
-| AAAA | les mêmes 5 | IPv6 du VPS | **seulement** si le VPS a une IPv6 et que Traefik écoute en IPv6 |
+| Type | Sous-domaine | Cible | Environnement | Rôle |
+|---|---|---|---|---|
+| A | *(vide)* | `<IP du VPS>` | prod | landing `raijinshield.com` |
+| A | `www` | `<IP du VPS>` | prod | redirection 301 vers `raijinshield.com` |
+| A | `app` | `<IP du VPS>` | prod | application |
+| A | `api` | `<IP du VPS>` | prod | API (webhook Stripe, images OG) |
+| A | `banc` | `<IP du VPS>` | prod | banc de test (phase 8 bis) |
+| A | `dev` | `<IP du VPS>` | dev | application dev `dev.raijinshield.com` (mot de passe, partie C) |
+| A | `api-dev` | `<IP du VPS>` | dev | API dev (webhook Stripe **test**, santé, images OG) |
+| A | `landing-dev` | `<IP du VPS>` | dev | landing dev (mot de passe) |
+| AAAA | les mêmes 8 | IPv6 du VPS | | **seulement** si le VPS a une IPv6 et que Traefik écoute en IPv6 |
+
+Pas de `www` pour le dev, ni d'enregistrement générique (`*`) : chaque nom a son certificat Let's Encrypt, demandé
+par Traefik à la première visite. Les noms du dev sont « à plat » (`api-dev`, pas `api.dev`) : ni certificat
+générique, ni cookie partagé ; les cookies de l'API sont liés à leur hôte (`COOKIE_DOMAIN` vide) et le front appelle
+l'API en même origine (`https://dev.raijinshield.com/api/v1`), donc aucun cookie ni CORS commun entre dev et prod.
 
 - TTL : 3600 (par défaut). Un éventuel enregistrement A « parking » d'OVH sur la racine ou `www` doit être remplacé
   (note sa valeur dans `docs/OPS-LOG.md` avant). **Ne touche pas** aux enregistrements MX, TXT (SPF, DKIM de Resend,
@@ -121,7 +132,7 @@ Adresse IPv4 du VPS : `curl -4 ifconfig.me` sur le VPS (et `curl -6 ifconfig.me`
 - Optionnel, recommandé : un enregistrement **CAA** sur la racine, `0 issue "letsencrypt.org"` (seul Let's Encrypt
   peut alors émettre un certificat pour le domaine).
 - Vérifie la propagation (quelques minutes à quelques heures) : `dig +short A app.raijinshield.com` doit afficher
-  l'IP du VPS ; fais de même pour `raijinshield.com`, `www`, `api` (et `banc`).
+  l'IP du VPS ; fais de même pour `raijinshield.com`, `www`, `api`, `banc`, `dev`, `api-dev` et `landing-dev`.
 - Le certificat HTTPS de chaque nom est demandé par Traefik **à la première visite**, une fois le DNS propagé.
 
 ## A4. Récupérer le code sur le VPS
@@ -347,6 +358,9 @@ Dépannage rapide :
 ```bash
 cd /opt/raijin && git pull --ff-only && infra/deploy.sh
 ```
+
+Une fois le déploiement continu en place (partie C), la fusion dans `main` déploie la production toute seule : ces
+commandes ne servent plus qu'au dépannage.
 
 Chaque build étiquette les images `:<commit>`. Seul un déploiement **réussi** déplace les étiquettes de secours :
 la nouvelle version devient `:deployed` et l'ancienne `:previous` (un déploiement raté ne les touche jamais).
@@ -684,3 +698,252 @@ tests (`apps/web-e2e/scripts/serve-landing.mjs`) applique la même règle.
   exécutable (le JSON-LD est de type `application/ld+json`, non exécuté) ; `style-src 'self'` suffit si Astro ne met
   pas de CSS en ligne (vérifier `inlineStylesheets` au moment de poser la CSP) ; `font-src 'self'` ; `img-src 'self'
   data:` + domaines GA4 ; `connect-src 'self'` + domaines GA4.
+
+---
+
+# Partie C — Environnements dev/prod et déploiement continu
+
+## C0. Vue d'ensemble
+
+| | dev | prod |
+|---|---|---|
+| Déclencheur | push sur `dev`, **après CI verte** | push sur `main` (fusion de la PR `dev → main`, faite par toi), **après CI verte** |
+| Noms | `dev.raijinshield.com` (app), `api-dev.raijinshield.com`, `landing-dev.raijinshield.com` | `app.`, `api.`, `raijinshield.com` + `www`, `banc.` |
+| Projet Compose | `raijin-dev` (conteneurs, images, routeurs, réseau, volumes `raijin-dev-…`) | `raijin` (inchangé) |
+| Postgres / Redis | propres au dev (`raijin-dev-postgres`, `raijin-dev-redis`, volumes `raijin-dev-pgdata` / `-redisdata`) | ceux de la partie A |
+| Accès | mot de passe Traefik (basicAuth) partout, sauf `robots.txt`, la santé, le webhook Stripe et les images OG d'`api-dev` | public |
+| Indexation | `X-Robots-Tag: noindex, nofollow` et `robots.txt` `Disallow: /` partout | normale |
+| Stripe | **mode test** obligatoire (clé live refusée) | test puis réel (A7) |
+| E-mails | jamais envoyés : capturés par Mailpit, `https://dev.raijinshield.com/_mailpit/` | Resend |
+| GA4 / Search Console | désactivés | activés |
+| Mémoire max | ≈ 0,9 Go (Postgres 256 Mo, Redis 96 Mo, API 384 Mo, statiques 2 × 48 Mo, Mailpit 64 Mo) | ≈ 1,4 Go (A13) |
+| Sauvegarde avant migration | non (données de test) | oui (`backup.sh --no-offsite`) |
+
+Chaîne de déploiement (`.github/workflows/deploy.yml`) :
+
+```
+push dev / fusion main ─► CI verte ─► GitHub Actions : build des images (runner 16 Go, rien sur le VPS)
+   ─► archive (docker save + infra/ du même commit) ─► ssh deploy@<IP du VPS> « deploy <env> <commit> »
+   ─► VPS, commande forcée /opt/raijin-deploy/infra/deploy-gate.sh (copie figée, root) :
+        verrou (un déploiement à la fois) → contrôles de l'archive, des étiquettes d'images et de la configuration
+        Compose → docker load → deploy.sh --release : migrations Prisma (migrate deploy), démarrage, santé,
+        contrôle de routage par Traefik → succès : version en service
+                                         → échec : retour automatique à la dernière version réussie
+```
+
+Choix et raisons :
+- **Build dans GitHub Actions, pas sur le VPS** : un build prend 2 à 2,5 Go de RAM pendant 10 à 20 min (A13) ; à chaque
+  push sur `dev`, il ralentirait MTC et XMR Trader. Les images voyagent par la connexion SSH elle-même : **aucun registre**
+  (GHCR privé a des quotas sur l'offre gratuite) et **aucun identifiant GitHub sur le VPS**.
+- **Commande forcée et copie figée** : la clé de GitHub ne peut lancer que `deploy <env> <commit>` ou `status <env>`.
+  Les scripts qui contrôlent et déploient (`deploy-gate.sh`, `deploy.sh`, `lib/`) ne viennent **pas** de la livraison :
+  ce sont les copies installées par toi dans `/opt/raijin-deploy` (propriété de root). Une livraison ne peut donc ni
+  changer ses propres contrôles, ni lancer un conteneur privilégié, publier un port, monter un dossier du VPS, rejoindre
+  un réseau ou un volume d'un autre projet, ni déclarer un routeur Traefik pour un autre nom de domaine
+  (`infra/lib/deploy_policy.py`, testé en CI).
+- **Une clé par environnement** : la clé « dev » ne peut déployer que le dev.
+- **Retour automatique** : si les conteneurs ne deviennent pas `healthy` ou si le contrôle de routage échoue, les images
+  `:deployed` (dernière version réussie) et les fichiers Compose de cette version sont remis en service. Les migrations
+  déjà appliquées **ne sont pas annulées** (Prisma ne migre que vers l'avant) : en prod, la sauvegarde faite juste
+  avant est dans `/var/backups/raijin` (A10). Règle pour les migrations : d'abord ajouter (colonne facultative, table),
+  supprimer seulement dans une version suivante.
+- **Rien de destructif** : ni `docker compose down`, ni suppression de volume ou de réseau, ni `prisma migrate reset`.
+  Seules sont retirées les étiquettes `raijin(-dev)/<image>:<commit>` des livraisons de plus de 5 versions.
+
+> Limite à connaître : l'accès à Docker équivaut à un accès root sur le VPS. Les contrôles ci-dessus réduisent ce
+> qu'une livraison peut faire, mais **quiconque peut pousser sur `dev` déploie sur le VPS** : garde les droits d'écriture
+> du dépôt pour toi seul.
+
+## C1. Prérequis sur le VPS
+
+En plus de A1 (Docker 24+, Compose 2.24+) :
+
+```bash
+python3 --version     # 3.8 ou plus (contrôles de la porte de déploiement) ; sinon : sudo apt install python3
+flock --version       # paquet util-linux (présent par défaut)
+free -h               # le dev ajoute ≈ 0,9 Go au maximum (≈ 300 Mo habituels)
+```
+
+## C2. Utilisateur `deploy` (sans mot de passe, sans sudo)
+
+```bash
+sudo adduser --disabled-password --gecos "Raijin deploy" deploy
+sudo usermod -aG docker deploy                 # nécessaire pour lancer les conteneurs (aucun sudo)
+sudo install -d -o deploy -g deploy -m 750 /srv/raijin /srv/raijin/prod /srv/raijin/dev
+sudo install -d -o deploy -g deploy -m 700 /srv/raijin/prod/env /srv/raijin/dev/env
+sudo install -d -o deploy -g deploy -m 700 ~deploy/.ssh
+```
+
+Si `/etc/ssh/sshd_config` contient une ligne `AllowUsers` (ou `AllowGroups`), ajoute-y `deploy`, puis
+`sudo sshd -t && sudo systemctl reload ssh`. Laisse `PermitUserEnvironment` à `no` (valeur par défaut).
+
+## C3. Fichiers de variables
+
+Un dossier par environnement, lisible par `deploy` seul. Les **secrets d'application ne quittent jamais le VPS** :
+
+```bash
+# Production : reprends les fichiers de la partie A s'ils existent déjà
+sudo install -o deploy -g deploy -m 600 /opt/raijin/infra/.env          /srv/raijin/prod/env/.env
+sudo install -o deploy -g deploy -m 600 /opt/raijin/infra/.env.api      /srv/raijin/prod/env/.env.api
+sudo install -o deploy -g deploy -m 600 /opt/raijin/infra/.env.bench-api /srv/raijin/prod/env/.env.bench-api   # si le banc tourne
+# (sinon : crée-les avec « sudo -u deploy nano /srv/raijin/prod/env/.env », modèle docs/ENV.md « Production (VPS) »)
+
+# Dev : nouveaux fichiers, valeurs propres au dev (modèle docs/ENV.md « Dev (VPS) »)
+sudo -u deploy nano /srv/raijin/dev/env/.env
+sudo -u deploy nano /srv/raijin/dev/env/.env.api
+sudo chmod 600 /srv/raijin/*/env/.env*
+```
+
+- Le banc n'est déployé automatiquement que si `/srv/raijin/prod/env/.env.bench-api` existe.
+- Sauvegardes en prod : `deploy` doit pouvoir écrire dans `BACKUP_DIR` :
+  `sudo chown deploy: /var/backups/raijin`. Si les unités systemd de A9 et A11 tournent, fais-les pointer vers les
+  copies figées et les nouveaux fichiers (sinon elles lisent toujours `/opt/raijin/infra/.env`) :
+  ```bash
+  sudo systemctl edit raijin-backup.service      # puis colle :
+  # [Service]
+  # User=deploy
+  # WorkingDirectory=/opt/raijin-deploy
+  # Environment=RAIJIN_ENV_FILE=/srv/raijin/prod/env/.env RAIJIN_API_ENV_FILE=/srv/raijin/prod/env/.env.api
+  # ExecStart=
+  # ExecStart=/opt/raijin-deploy/infra/backup.sh
+  ```
+  Même chose pour `raijin-watchdog.service` (avec `ExecStart=/opt/raijin-deploy/infra/watchdog.sh`). La configuration
+  rclone (A9) doit alors être celle de `deploy` : `sudo -u deploy rclone config` (ou copie
+  `~/.config/rclone/rclone.conf` vers `~deploy/.config/rclone/`, droits 600).
+- Restauration (A10) : toujours depuis le dépôt cloné (`/opt/raijin`, à jour sur `main`), en `deploy` et avec les
+  fichiers de C3 : `sudo -u deploy env RAIJIN_ENV_FILE=/srv/raijin/prod/env/.env RAIJIN_API_ENV_FILE=/srv/raijin/prod/env/.env.api infra/restore.sh …`.
+
+### Mot de passe du dev (basicAuth)
+
+```bash
+htpasswd -nBC 12 kyoshiro        # paquet apache2-utils ; tape un mot de passe DIFFÉRENT de celui du banc
+```
+
+Copie la ligne obtenue **entre apostrophes** dans `DEV_BASIC_AUTH_USERS` de `/srv/raijin/dev/env/.env`. Le navigateur
+le demande une fois par nom (`dev.`, `landing-dev.`, `api-dev.`) ; l'app l'envoie ensuite seule (même origine).
+
+### Stripe en mode test pour le dev
+
+Stripe → mode **test** → Développeurs → Webhooks → **Ajouter un endpoint** :
+`https://api-dev.raijinshield.com/api/v1/billing/webhook`, mêmes événements que A7. Son secret `whsec_…` va dans
+`STRIPE_WEBHOOK_SECRET` de `/srv/raijin/dev/env/.env.api` (distinct de celui de la prod).
+
+## C4. Installer la porte de déploiement (copie figée)
+
+Depuis le dépôt cloné de la partie A (à jour sur `main`) :
+
+```bash
+cd /opt/raijin && git pull --ff-only
+sudo install -d -o root -g root -m 755 /opt/raijin-deploy/infra/lib
+for f in deploy-gate.sh deploy.sh backup.sh watchdog.sh; do
+  sudo install -o root -g root -m 755 "infra/$f" "/opt/raijin-deploy/infra/$f"
+done
+sudo install -o root -g root -m 644 infra/lib/common.sh infra/lib/deploy_policy.py /opt/raijin-deploy/infra/lib/
+ls -l /opt/raijin-deploy/infra /opt/raijin-deploy/infra/lib     # tout appartient à root, rien d'inscriptible par deploy
+```
+
+## C5. Clés SSH et secrets GitHub
+
+1. **Sur ton PC**, deux clés dédiées, sans phrase de passe (elles ne servent qu'à GitHub Actions) :
+   ```bash
+   ssh-keygen -t ed25519 -N '' -C github-raijin-deploy-dev  -f ~/raijin-deploy-dev
+   ssh-keygen -t ed25519 -N '' -C github-raijin-deploy-prod -f ~/raijin-deploy-prod
+   ```
+2. **Sur le VPS**, `sudo -u deploy nano ~deploy/.ssh/authorized_keys`, deux lignes (contenu des fichiers `.pub`) :
+   ```
+   restrict,command="/opt/raijin-deploy/infra/deploy-gate.sh dev" ssh-ed25519 AAAA…(raijin-deploy-dev.pub) github-raijin-deploy-dev
+   restrict,command="/opt/raijin-deploy/infra/deploy-gate.sh prod" ssh-ed25519 AAAA…(raijin-deploy-prod.pub) github-raijin-deploy-prod
+   ```
+   puis `sudo chmod 600 ~deploy/.ssh/authorized_keys`. `restrict` coupe terminal, redirections de ports et agent ;
+   `command=` impose la porte, quelle que soit la commande demandée.
+3. **Empreinte du VPS** (épinglée : GitHub refusera un autre serveur) :
+   ```bash
+   ssh-keyscan -t ed25519 <IP du VPS> > ~/raijin-known-hosts       # sur ton PC
+   ssh-keygen -lf ~/raijin-known-hosts                                 # compare avec, sur le VPS :
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub                    # les deux empreintes SHA256 doivent être identiques
+   ```
+4. **GitHub** → dépôt `raijin` → **Settings → Secrets and variables → Actions** :
+   - onglet **Secrets** → **New repository secret** :
+
+     | Nom | Valeur |
+     |---|---|
+     | `DEPLOY_SSH_KEY_DEV` | contenu de `~/raijin-deploy-dev` (clé **privée**, lignes `-----BEGIN…` comprises) |
+     | `DEPLOY_SSH_KEY_PROD` | contenu de `~/raijin-deploy-prod` |
+     | `DEPLOY_KNOWN_HOSTS` | contenu de `~/raijin-known-hosts` |
+
+   - onglet **Variables** (facultatif, valeurs publiques) : `GA4_MEASUREMENT_ID` et `GOOGLE_SITE_VERIFICATION` de la
+     landing de **production** (mêmes valeurs que dans `/srv/raijin/prod/env/.env`) ; **`DEPLOY_HOST` (obligatoire : IPv4
+     du VPS)**, `DEPLOY_USER` (défaut `deploy`), `DEPLOY_PORT` (défaut `22`) seulement s'ils changent.
+5. Supprime ensuite les clés privées de ton PC (`shred -u ~/raijin-deploy-dev ~/raijin-deploy-prod`) : en cas de besoin,
+   on en régénère. Les fichiers `.pub` peuvent rester.
+
+Le dépôt est privé sur GitHub Free : les règles de protection d'environnement (validation manuelle, branches
+autorisées) ne sont pas disponibles, et le workflow n'en utilise pas. Conséquence : un workflow ajouté sur une branche
+pourrait lire ces secrets ; la protection repose sur le fait que toi seul as les droits d'écriture du dépôt, sur la
+commande forcée (une clé ne peut que livrer) et sur les contrôles de la porte.
+
+Ce qui est où :
+
+| Élément | Emplacement |
+|---|---|
+| Secrets d'application (Postgres, Redis, JWT, Stripe, Resend, Helius, VAPID, Google, basicAuth) | VPS seulement : `/srv/raijin/<env>/env/` (600, `deploy`) |
+| Clés SSH de déploiement (privées), empreinte du VPS | GitHub : secrets `DEPLOY_SSH_KEY_DEV`, `DEPLOY_SSH_KEY_PROD`, `DEPLOY_KNOWN_HOSTS` |
+| Clés SSH de déploiement (publiques) | VPS : `~deploy/.ssh/authorized_keys` (commande forcée) |
+| GA4, Search Console (publics), hôte / utilisateur / port SSH | GitHub : variables (facultatives) |
+| Scripts de déploiement | VPS : `/opt/raijin-deploy` (root, copie figée, C4) |
+
+## C6. Premier déploiement
+
+Le workflow `Déploiement` est déclenché par `workflow_run` : GitHub ne le lit que **sur la branche par défaut (`main`)**.
+Il devient donc actif après la fusion de la PR qui l'apporte ; ensuite, chaque modification de `deploy.yml` ne compte
+qu'une fois fusionnée dans `main` (personne ne peut changer la chaîne de déploiement depuis `dev` seul).
+
+1. DNS du dev créés (A3) et propagés : `dig +short A dev.raijinshield.com api-dev.raijinshield.com landing-dev.raijinshield.com`.
+2. Fusionne la PR `dev → main` (toi) : la CI de `main` puis le **déploiement de la production** démarrent.
+3. Pour le dev : GitHub → **Actions → Déploiement → Run workflow** → branche `dev`, environnement `dev`. Ensuite,
+   chaque push sur `dev` déploie le dev automatiquement.
+4. Suivi : la page du run affiche le journal du VPS en direct. Sur le VPS :
+   ```bash
+   sudo -u deploy ls -t /srv/raijin/dev/logs | head -3       # journaux des derniers déploiements
+   readlink /srv/raijin/dev/current                          # version en service
+   docker ps --filter name=raijin-dev-                       # conteneurs du dev
+   ```
+5. Vérifications du dev : `https://dev.raijinshield.com` demande le mot de passe, puis inscription → e-mail visible
+   dans `https://dev.raijinshield.com/_mailpit/` ; `curl -s https://api-dev.raijinshield.com/api/v1/health` répond
+   sans mot de passe ; `curl -s https://dev.raijinshield.com/robots.txt` affiche `Disallow: /`.
+
+Déploiement manuel sans GitHub (dépannage) : depuis le dépôt cloné, `infra/deploy.sh --env dev` (fichiers
+`infra/.env.dev` et `infra/.env.dev.api`, build sur le VPS : voir la RAM en A1) ; alias pratique :
+`alias rjd='docker compose --project-name raijin-dev --env-file /srv/raijin/dev/env/.env -f /srv/raijin/dev/current/infra/docker-compose.yml -f /srv/raijin/dev/current/infra/docker-compose.env-dev.yml'`
+(à lancer en `deploy` : `sudo -u deploy …`).
+
+## C7. Échecs et retour arrière
+
+- **Échec pendant le déploiement** : le run GitHub est rouge, le journal montre la cause ; le VPS a déjà remis en service
+  la dernière version réussie (ligne « dernière version réussie remise en service »). Corrige, pousse : le déploiement
+  suivant repart normalement.
+- **Le retour automatique a échoué** (rare : base indisponible…) : sur le VPS,
+  ```bash
+  sudo -u deploy env RAIJIN_ENV_FILE=/srv/raijin/dev/env/.env RAIJIN_API_ENV_FILE=/srv/raijin/dev/env/.env.api \
+    RAIJIN_COMPOSE_DIR=/srv/raijin/dev/current/infra /opt/raijin-deploy/infra/deploy.sh --env dev --recover --yes
+  ```
+  (remplace `dev` par `prod` partout pour la production ; ajoute `--bench` si le banc tourne).
+- **Revenir à la version d'avant une version réussie** : même commande avec `--rollback` au lieu de `--recover`, en
+  pointant `RAIJIN_COMPOSE_DIR` vers l'avant-dernier dossier de `/srv/raijin/<env>/releases/`.
+- **Le run GitHub a expiré** (60 min) : le déploiement continue sur le VPS jusqu'au bout. État :
+  `ssh` n'est pas possible avec la clé de GitHub depuis ton PC, mais `sudo -u deploy tail -n 50 /srv/raijin/<env>/logs/<dernier>.log`
+  et `readlink /srv/raijin/<env>/current` suffisent.
+- **Migration à défaire** (prod) : restaure la sauvegarde prise juste avant (A10), puis `--recover` ou `--rollback`.
+
+## C8. Mettre à jour les scripts figés
+
+Quand une livraison contient un `deploy-gate.sh`, `deploy.sh`, `backup.sh`, `lib/common.sh` ou `lib/deploy_policy.py`
+différent de la copie du VPS, le run GitHub affiche l'avertissement « Scripts de déploiement à mettre à jour ». Après
+avoir relu le changement sur GitHub, refais C4 (le déploiement en cours a utilisé les anciens scripts).
+
+## C9. Ressources du VPS
+
+`docker stats --no-stream $(docker ps -q --filter name=raijin-)` : prod et dev. Si la mémoire manque, arrête le dev sans
+rien supprimer : `docker stop raijin-dev-api raijin-dev-web raijin-dev-landing raijin-dev-mailpit` (il redémarre au
+prochain déploiement ou avec `docker start …`). Ne lance jamais `docker compose down`, `docker system prune` ni
+`docker volume prune`.

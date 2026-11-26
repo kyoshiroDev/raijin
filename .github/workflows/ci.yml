@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # main : le push n'arrive que par la fusion de la PR dev → main (utilisateur) ; CI verte → déploiement de la
+  # production (workflow « Déploiement », deploy.yml). dev : CI verte → déploiement de l'environnement dev.
   push:
-    branches: [dev]
+    branches: [dev, main]
   pull_request:
     branches: [main]
   # Lancement manuel (bouton « Run workflow » ou `gh workflow run ci.yml --ref dev -f suite=e2e|lighthouse|images`) :
@@ -105,6 +107,32 @@ jobs:
             ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             git /repo --config /repo/.gitleaks.toml --gitleaks-ignore-path /repo/.gitleaksignore \
             --redact=100 --no-banner --exit-code 1 "${range[@]}"
+
+  # Scripts d'infra et workflows : shellcheck, actionlint, contrôles de la porte de déploiement (deploy_policy.py :
+  # archive, étiquettes d'images, configuration Compose prod et dev, cas refusés). Rapide (≈ 1 min), sans Docker build.
+  infra:
+    name: infra (shellcheck · actionlint · politique de déploiement)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: shellcheck
+        run: |
+          shellcheck --version | head -2
+          git ls-files -z 'infra/*.sh' 'infra/**/*.sh' | xargs -0 shellcheck -x -S warning
+
+      # Rapport seul pour l'instant (les workflows existants n'ont jamais été passés à actionlint) : à rendre bloquant
+      # (retirer continue-on-error) dès que le premier rapport est vide.
+      - name: actionlint (avec shellcheck sur les blocs run, rapport)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint:1.7.8@sha256:96d4a8c87dbbfb3bdd324f8fdc285fc3df5261e2decc619a4dd7e8ee52bbfd46 -color
+
+      - name: Politique de déploiement (cas acceptés et refusés)
+        run: infra/ci/test-deploy-policy.sh
 
   e2e:
     name: e2e ${{ matrix.id }} (PR vers main ou lancement manuel)
@@ -599,8 +627,9 @@ jobs:
     # restauration (infra/ci/test-restore.sh), démarre la pile par infra/deploy.sh --skip-build derrière un Traefik factice (réseau traefik-ci,
     # certificat par défaut, certresolver inexistant), puis vérifie healthchecks, routage, règles nginx et en-têtes
     # (infra/ci/check-stack.sh, ACL Redis comprise). Avec le banc (apps/raijin-banc-de-test-api présent) : images
-    # bench-api, bench-web et bench-migrate, démarrage par deploy.sh --bench et contrôles du banc. Trivy en rapport
-    # seul (non bloquant). Coût : ARCHITECTURE.md §6.
+    # bench-api, bench-web et bench-migrate, démarrage par deploy.sh --bench et contrôles du banc. Puis environnement
+    # dev côte à côte, livré par infra/deploy-gate.sh (infra/ci/test-dev-env.sh, check-stack-dev.sh). Trivy en
+    # rapport seul (non bloquant). Coût : ARCHITECTURE.md §6.
     if: >-
       !cancelled() && (
         (github.event_name == 'workflow_dispatch' && inputs.suite == 'images') ||
@@ -608,13 +637,13 @@ jobs:
       )
     needs: verifier
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     env:
       TRAEFIK_CI_PORT: '8443'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Variables factices (infra/.env, infra/.env.api)
+      - name: Variables factices (infra/.env, infra/.env.api, environnement dev sous RUNNER_TEMP)
         run: infra/ci/fake-env.sh
 
       - name: Services à construire
@@ -674,6 +703,19 @@ jobs:
           sleep 5
           infra/ci/check-stack.sh
 
+      # Environnement dev À CÔTÉ de la prod (même Traefik, même Docker) : livré comme en déploiement continu, par la
+      # porte infra/deploy-gate.sh (archive images + infra/ sur l'entrée standard, contrôles, docker load,
+      # deploy.sh --release), images = celles de la prod réétiquetées raijin-dev/*. Puis contrôles : aucun nom
+      # commun (conteneurs, réseaux, volumes), basicAuth, noindex, robots.txt, Mailpit, prod intacte.
+      - name: Environnement dev côte à côte (porte de déploiement, comme sur le VPS)
+        run: infra/ci/test-dev-env.sh
+
+      - name: Contrôles dev et prod (cloisonnement, basicAuth, noindex, Mailpit)
+        run: |
+          sleep 5
+          infra/ci/check-stack-dev.sh
+          infra/ci/check-stack.sh
+
       - name: Trivy (vulnérabilités HIGH/CRITICAL corrigeables, rapport seul)
         if: ${{ !cancelled() }}
         continue-on-error: true
@@ -697,6 +739,9 @@ jobs:
         if: failure()
         run: |
           docker compose --project-name raijin --env-file infra/.env -f infra/docker-compose.yml --profile bench ps -a || true
-          for c in raijin-api raijin-web raijin-landing raijin-bench-api raijin-bench-web raijin-postgres raijin-redis traefik-ci; do
+          docker ps -a --filter name=raijin-dev- || true
+          cat "$RUNNER_TEMP"/raijin-deploy/dev/logs/*.log 2>/dev/null | tail -n 200 || true
+          for c in raijin-api raijin-web raijin-landing raijin-bench-api raijin-bench-web raijin-postgres raijin-redis \
+                   raijin-dev-api raijin-dev-web raijin-dev-landing raijin-dev-mailpit raijin-dev-postgres raijin-dev-redis traefik-ci; do
             echo "::group::$c"; docker logs --tail 150 "$c" 2>&1 || true; echo "::endgroup::"
           done

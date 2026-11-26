@@ -412,7 +412,8 @@ SENTRY_ENVIRONMENT=development
 ## Production (VPS) — phase 8
 
 Sur le VPS, **deux** fichiers (trois avec le banc), dans `infra/` du dépôt cloné (ignorés par Git, droits `chmod 600`) ; procédure
-complète dans `docs/DEPLOY.md`, partie A :
+complète dans `docs/DEPLOY.md`, partie A. En déploiement continu (partie C), les mêmes fichiers sont dans
+`/srv/raijin/prod/env/` (`.env`, `.env.api`, `.env.bench-api`) :
 
 | Fichier | Lu par | Contenu |
 |---|---|---|
@@ -505,6 +506,54 @@ Valeurs de `infra/.env.api` propres à la production (le reste : blocs ci-dessus
 `VAPID_PRIVATE_KEY` (paire **de production**, distincte de celle de dev), `TOTP_ENCRYPTION_KEY`, `IP_HASH_SECRET`,
 `JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `SENTRY_ENVIRONMENT=production`. Les blocs « Seed de développement » et les
 variables `SMTP_*` sont inutiles en production.
+
+## Dev (VPS) — environnement dev.raijinshield.com
+
+Projet Compose `raijin-dev` à côté de la production (docs/DEPLOY.md, partie C). Mêmes noms de variables que le bloc
+« Production (VPS) », avec des **valeurs propres au dev** (aucun mot de passe, clé ou secret commun avec la prod).
+En déploiement continu, les fichiers sont dans `/srv/raijin/dev/env/` (`.env`, `.env.api`, droits 600) ; dans un
+dépôt cloné, `infra/.env.dev` et `infra/.env.dev.api` (`infra/deploy.sh --env dev`).
+
+Modèle de `/srv/raijin/dev/env/.env` (valeurs **factices**) :
+
+```dotenv
+# Préfixe de tous les noms Docker du dev (conteneurs, images, routeurs Traefik, réseau, volumes) : ne pas changer
+RAIJIN_NAME=raijin-dev
+# Traefik existant : les MÊMES valeurs que la production (docs/DEPLOY.md A2)
+TRAEFIK_NETWORK=traefik_factice
+TRAEFIK_ENTRYPOINT=websecure
+TRAEFIK_CERTRESOLVER=letsencrypt
+# Domaines du dev (enregistrements A : docs/DEPLOY.md A3)
+LANDING_DOMAIN=landing-dev.raijinshield.com
+APP_DOMAIN=dev.raijinshield.com
+API_DOMAIN=api-dev.raijinshield.com
+# Postgres et Redis DU DEV : openssl rand -hex 32, une valeur par variable, différentes de la prod
+POSTGRES_SUPERUSER_PASSWORD=changeme-factice-hex
+RAIJIN_DB_PASSWORD=changeme-factice-hex
+# Base raijin_bench créée par le script d'init commun (inutilisée en dev) : une valeur quand même
+BENCH_DB_PASSWORD=changeme-factice-hex
+REDIS_PASSWORD=changeme-factice-hex
+# basicAuth Traefik devant tout le dev (app, landing, API, Mailpit) : htpasswd -nBC 12 <utilisateur>
+# ENTRE APOSTROPHES (le hash contient des $). Mot de passe distinct de celui du banc.
+DEV_BASIC_AUTH_USERS='kyoshiro:$2y$12$hash-bcrypt-factice'
+# GA4 et Search Console : jamais en dev (forcés à vide par deploy.sh et par le workflow de déploiement)
+```
+
+`/srv/raijin/dev/env/.env.api` : même bloc que la production, avec :
+- secrets **régénérés** pour le dev (`JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `IP_HASH_SECRET`, `TOTP_ENCRYPTION_KEY`) ;
+- Stripe **en mode test seulement** (`sk_test_…`, prix de test, `STRIPE_WEBHOOK_SECRET` de l'endpoint
+  `https://api-dev.raijinshield.com/api/v1/billing/webhook`) : une clé `sk_live_` / `rk_live_` est refusée par
+  `infra/deploy.sh --env dev` ;
+- e-mails : rien à configurer, ils sont **toujours** capturés par Mailpit (`MAIL_PROVIDER=smtp`, `SMTP_HOST`,
+  `RESEND_API_KEY` vide : imposés par `infra/docker-compose.env-dev.yml`) ; à lire sur `https://dev.raijinshield.com/_mailpit/` ;
+- paire VAPID **propre au dev** ; `SENTRY_ENVIRONMENT=dev` ;
+- Helius : de préférence une clé distincte (offre gratuite) et des budgets bas (`HELIUS_DAILY_CREDIT_BUDGET`,
+  `WATCH_DAILY_CREDIT_BUDGET`, `WALLET_DAILY_CREDIT_BUDGET`) ; `JOBS_ENABLED=false` tant que tu ne testes pas les alertes ;
+- Google (GA4 Data API, Search Console, compte de service) : à laisser vide.
+
+Imposées en plus par la surcouche dev : limites mémoire réduites (Postgres 256 Mo, Redis 96 Mo avec
+`REDIS_MAXMEMORY=48mb`, API 384 Mo, Mailpit 64 Mo), `X-Robots-Tag: noindex, nofollow` et `robots.txt`
+`Disallow: /` sur tous les noms du dev.
 
 ## Banc (`infra/.env.bench-api`) — phase 8 bis
 

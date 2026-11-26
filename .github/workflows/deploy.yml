@@ -1,0 +1,179 @@
+name: Déploiement
+
+# Déploiement continu sur le VPS (docs/DEPLOY.md, partie C) :
+#   push sur dev  → CI verte → environnement dev  (dev.raijinshield.com, api-dev…, landing-dev…)
+#   push sur main → CI verte → production         (app., api., raijinshield.com, www, banc.) ; le push sur main
+#                   n'arrive que par la fusion de la PR dev → main, faite par l'utilisateur (jamais par un agent).
+# Images construites ICI (runner de 16 Go : aucun build sur le VPS partagé), envoyées par SSH avec les fichiers Compose
+# du même commit (archive sur l'entrée standard), puis déployées par la commande forcée du VPS
+# (infra/deploy-gate.sh, copie figée) : contrôles, migrations Prisma (migrate deploy), santé, retour automatique à la
+# dernière version réussie en cas d'échec. Aucun registre d'images, aucun identifiant GitHub sur le VPS.
+#
+# workflow_run : GitHub lit CE fichier sur la branche par défaut (main). Il ne s'active donc qu'une fois présent sur
+# main (après la fusion de la PR), et une modification poussée sur dev n'a d'effet qu'après fusion : la chaîne de
+# déploiement (qui manipule les clés SSH) n'est jamais modifiable depuis dev seul.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [dev, main]
+  # Redéploiement manuel : « Run workflow » sur la branche dev (env dev) ou main (env prod).
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environnement (dev depuis la branche dev, prod depuis main)
+        type: choice
+        options: ['dev', 'prod']
+        default: 'dev'
+
+permissions:
+  contents: read
+
+# Un déploiement à la fois par environnement, jamais annulé en cours (migrations) ; un seul en attente (le plus
+# récent). Le VPS a en plus son propre verrou global (dev et prod ne se chevauchent jamais).
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.env || (github.event.workflow_run.head_branch == 'main' && 'prod' || 'dev') }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: déploiement ${{ github.event_name == 'workflow_dispatch' && inputs.env || (github.event.workflow_run.head_branch == 'main' && 'prod' || 'dev') }}
+    if: >-
+      (github.event_name == 'workflow_dispatch' && (
+        (inputs.env == 'prod' && github.ref == 'refs/heads/main') ||
+        (inputs.env == 'dev' && github.ref == 'refs/heads/dev')
+      )) || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        (github.event.workflow_run.head_branch == 'dev' || github.event.workflow_run.head_branch == 'main')
+      )
+    runs-on: ubuntu-latest
+    # Si le job dépasse ce délai pendant le déploiement, le VPS termine quand même (exécution détachée) ; voir
+    # « status » dans docs/DEPLOY.md C7.
+    timeout-minutes: 60
+    env:
+      DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.env || (github.event.workflow_run.head_branch == 'main' && 'prod' || 'dev') }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+
+      # Valeurs PUBLIQUES seulement (domaines, identifiants GA4 / Search Console de la landing) : le build n'a besoin
+      # d'aucun secret. Les mots de passe exigés par l'interpolation de Compose sont des valeurs de remplissage, jamais
+      # utilisées (les vrais restent sur le VPS, /srv/raijin/<env>/env/).
+      - name: Variables de build (${{ env.DEPLOY_ENV }})
+        id: cfg
+        env:
+          GA4_ID: ${{ vars.GA4_MEASUREMENT_ID }}
+          SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::commit invalide"; exit 1; }
+          if [ "$DEPLOY_ENV" = prod ]; then
+            name=raijin landing=raijinshield.com app=app.raijinshield.com api=api.raijinshield.com
+            ga4="$GA4_ID" verification="$SITE_VERIFICATION"
+          else
+            # Dev : jamais de mesure d'audience ni de vérification Search Console.
+            name=raijin-dev landing=landing-dev.raijinshield.com app=dev.raijinshield.com api=api-dev.raijinshield.com
+            ga4='' verification=''
+          fi
+          placeholder="remplissage-build-$(openssl rand -hex 16)"
+          {
+            echo "TRAEFIK_NETWORK=build"
+            echo "TRAEFIK_CERTRESOLVER=build"
+            echo "LANDING_DOMAIN=$landing"
+            echo "APP_DOMAIN=$app"
+            echo "API_DOMAIN=$api"
+            for v in POSTGRES_SUPERUSER_PASSWORD RAIJIN_DB_PASSWORD BENCH_DB_PASSWORD REDIS_PASSWORD; do echo "$v=$placeholder"; done
+            echo "GA4_MEASUREMENT_ID=$ga4"
+            echo "GOOGLE_SITE_VERIFICATION=$verification"
+          } > "$RUNNER_TEMP/build.env"
+          list="raijin-api raijin-web raijin-landing raijin-migrate"
+          images="api web landing migrate"
+          # Banc : production seulement, dès que son API existe.
+          if [ "$DEPLOY_ENV" = prod ] && [ -d apps/raijin-banc-de-test-api ]; then
+            list="$list raijin-bench-api raijin-bench-web raijin-bench-migrate"
+            images="$images bench-api bench-web bench-migrate"
+          fi
+          {
+            echo "name=$name"
+            echo "list=$list"
+            echo "images=$images"
+          } >> "$GITHUB_OUTPUT"
+          echo "Environnement $DEPLOY_ENV, commit $SHA, images : $images"
+
+      - name: Build des images (${{ steps.cfg.outputs.name }}/*:${{ env.SHA }})
+        env:
+          DOCKER_BUILDKIT: '1'
+          RAIJIN_NAME: ${{ steps.cfg.outputs.name }}
+          RAIJIN_TAG: ${{ env.SHA }}
+          TARGETS: ${{ steps.cfg.outputs.list }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2086
+          docker compose --project-name "$RAIJIN_NAME" --env-file "$RUNNER_TEMP/build.env" -f infra/docker-compose.yml \
+            --profile tools --profile bench build $TARGETS
+          docker images "$RAIJIN_NAME/*"
+
+      # Archive livrée : images.tar.gz (docker save) + infra/ du même commit (fichiers Compose, init Postgres, scripts
+      # comparés aux copies figées du VPS). Fichiers ordinaires seulement (contrôlé par le VPS).
+      - name: Archive de livraison
+        env:
+          NAME: ${{ steps.cfg.outputs.name }}
+          IMAGES: ${{ steps.cfg.outputs.images }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/livraison"
+          mkdir -p "$dir"
+          refs=()
+          for img in $IMAGES; do refs+=("$NAME/$img:$SHA"); done
+          docker save "${refs[@]}" | gzip -1 > "$dir/images.tar.gz"
+          git archive --format=tar -o "$dir/bundle.tar" "$SHA" infra
+          tar --append -f "$dir/bundle.tar" -C "$dir" images.tar.gz
+          rm "$dir/images.tar.gz"
+          ls -lh "$dir/bundle.tar"
+
+      # Une clé par environnement (commande forcée côté VPS) : seule la clé de l'environnement visé est lue.
+      - name: Clé SSH (dev)
+        if: env.DEPLOY_ENV == 'dev'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY_DEV }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: infra/ci/ssh-setup.sh
+
+      - name: Clé SSH (prod)
+        if: env.DEPLOY_ENV == 'prod'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY_PROD }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: infra/ci/ssh-setup.sh
+
+      - name: Livraison et déploiement sur le VPS (${{ env.DEPLOY_ENV }})
+        run: |
+          set -euo pipefail
+          ssh -F none -p "$DEPLOY_PORT" -i "$RUNNER_TEMP/ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o ConnectTimeout=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $DEPLOY_ENV $SHA" < "$RUNNER_TEMP/livraison/bundle.tar"
+
+      - name: Résumé
+        if: always()
+        run: |
+          {
+            echo "### Déploiement $DEPLOY_ENV"
+            echo ""
+            echo "- commit : \`$SHA\`"
+            echo "- résultat : ${{ job.status }}"
+            echo "- en cas d'échec : le VPS remet en service la dernière version réussie (docs/DEPLOY.md C7)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"
