@@ -7,6 +7,7 @@ import { RJ_CHART_LOADER } from './chart/chart-loader';
 import { RjDataTable, resolveRowLink, type RjTableColumn } from './data-table';
 import { provideRouter } from '@angular/router';
 import { describeChange, formatChange, formatMetric } from './format';
+import { RjAdminFilters } from './filters';
 import { RjKpiCard } from './kpi-card';
 import { RjServiceState } from './service-state';
 import { FakeCharts, settle } from '../testing/harness';
@@ -258,7 +259,7 @@ describe('rj-service-state et rj-data-table', () => {
     expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(root.querySelector('td')?.textContent?.trim()).toMatch(/^12\s345$/);
     // Région défilante nommée et atteignable au clavier (axe scrollable-region-focusable).
-    const region = root.querySelector('.overflow-auto');
+    const region = root.querySelector('[data-rj-table-region]');
     expect(region?.getAttribute('role')).toBe('region');
     expect(region?.getAttribute('tabindex')).toBe('0');
     expect(region?.getAttribute('aria-label')).toBe('Pages');
@@ -305,7 +306,7 @@ describe('lisibilité à 320 px (aucune troncature)', () => {
     ]);
     fixture.componentRef.setInput('rowLink', () => '/admin/utilisateurs');
     await fixture.whenStable();
-    const cards = (fixture.nativeElement as HTMLElement).querySelector('ul.md\\:hidden') as HTMLElement;
+    const cards = (fixture.nativeElement as HTMLElement).querySelector('[data-rj-cards]') as HTMLElement;
     const title = cards.querySelector('[data-rj-card-title]') as HTMLElement;
     expect(title.textContent?.trim()).toBe('e2e-responsive-mwvcin0123456789@exemple-tres-long.fr');
     expect(title.className).toContain('wrap-anywhere');
@@ -316,6 +317,63 @@ describe('lisibilité à 320 px (aucune troncature)', () => {
       expect(element.hasAttribute('title')).toBe(false);
     }
     expect(Array.from(cards.querySelectorAll<HTMLElement>('*')).some((element) => CUT.test(element.className))).toBe(false);
+  });
+
+  it('rj-data-table : cartes < md, grille 2 colonnes md–xl, tableau ≥ xl, sans hauteur max ni troncature', async () => {
+    interface Row { email: string; plan: string; trial: string; source: string; created: string }
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(RjDataTable<Row>);
+    fixture.componentRef.setInput('caption', 'Comptes');
+    fixture.componentRef.setInput('columns', [
+      { key: 'email', label: 'E-mail', value: (row: Row) => row.email, primary: true },
+      { key: 'plan', label: 'Plan', value: (row: Row) => row.plan },
+      { key: 'trial', label: 'Essai', value: (row: Row) => row.trial, hideOnMobile: true },
+      { key: 'source', label: 'Source', value: (row: Row) => row.source, hideOnMobile: true },
+      { key: 'created', label: 'Inscription', value: (row: Row) => row.created, mono: true },
+    ]);
+    fixture.componentRef.setInput('rows', [
+      { email: 'compte-au-nom-tres-long@exemple-tres-long.fr', plan: 'Pro · Abonnement', trial: 'Non éligible', source: 'newsletter-novembre', created: '27/11/2026 10:00' },
+      { email: 'b@exemple.fr', plan: 'Gratuit', trial: 'En cours', source: '(direct)', created: '26/11/2026 09:00' },
+    ]);
+    fixture.componentRef.setInput('rowLink', () => '/admin/utilisateurs');
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const classes = (element: Element | null) => (element?.getAttribute('class') ?? '').split(/\s+/);
+
+    // Disposition par largeur : cartes en colonne, grille 2 colonnes dès md, tableau seulement dès xl.
+    const cards = root.querySelector('[data-rj-cards]');
+    expect(classes(cards)).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:hidden']));
+    const region = root.querySelector('[data-rj-table-region]');
+    expect(classes(region)).toEqual(expect.arrayContaining(['hidden', 'xl:block']));
+    expect(classes(region).some((name) => /^md:/.test(name))).toBe(false);
+
+    // Aucune hauteur maximale (pas de dernière ligne tranchée), aucune troncature dans le tableau.
+    const all = Array.from(root.querySelectorAll<HTMLElement>('*'));
+    expect(all.some((element) => classes(element).some((name) => /^max-h-|^max-w-/.test(name)))).toBe(false);
+    expect(all.some((element) => CUT.test(element.getAttribute('class') ?? ''))).toBe(false);
+    const table = root.querySelector('table') as HTMLElement;
+    expect(Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent?.trim())).toEqual(['E-mail', 'Plan', 'Essai', 'Source', 'Inscription']);
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(table.textContent).toContain('Non éligible');
+
+    // Colonnes secondaires : visibles sur la grille md–xl, repliées (jamais perdues) sous md.
+    const firstCard = cards?.querySelector('li') as HTMLElement;
+    const secondary = Array.from(firstCard.querySelectorAll('[data-rj-secondary]'));
+    expect(secondary.map((element) => element.querySelector('dt')?.textContent?.trim())).toEqual(['Essai', 'Source']);
+    for (const element of secondary) expect(classes(element)).toEqual(expect.arrayContaining(['hidden', 'md:flex']));
+    const more = firstCard.querySelector('details[data-rj-card-more]') as HTMLElement;
+    expect(classes(more)).toContain('md:hidden');
+    expect(more.querySelector('summary')?.textContent?.trim()).toBe('Plus de détails');
+    expect(Array.from(more.querySelectorAll('[data-rj-card-value]')).map((dd) => dd.textContent?.trim())).toEqual(['Non éligible', 'newsletter-novembre']);
+  });
+
+  it('rj-admin-filters : rangée alignée en haut (une aide sous un champ ne décale pas les autres)', async () => {
+    const fixture = TestBed.createComponent(RjAdminFilters);
+    await fixture.whenStable();
+    const row = (fixture.nativeElement as HTMLElement).querySelector('[data-rj-filters-row]');
+    expect(row).not.toBeNull();
+    expect(row?.className).toContain('items-start');
+    expect(row?.className).not.toContain('items-end');
   });
 
   it('barres horizontales : libellés découpés en lignes, aucun caractère perdu, titre d’infobulle complet', () => {

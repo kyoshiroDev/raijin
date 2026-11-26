@@ -3,7 +3,8 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 import { RjBottomSheet, RjButton, desktopViewport } from '@raijin/web-ui';
 
 /**
- * Filtres d'un écran admin (dimension, fenêtre, recherche…) : en ligne dès 1024 px ; en dessous, un bouton
+ * Filtres d’un écran admin (dimension, fenêtre, recherche…) : en ligne dès 1024 px, alignés en haut (une aide
+ * sous un champ ne décale pas les autres) ; en dessous, un bouton
  * « Filtres » ouvre un bottom sheet avec le même contenu (appliqué en direct, bouton « Voir les résultats »
  * pour refermer). Le sélecteur de période reste hors des filtres, toujours visible.
  *
@@ -15,7 +16,7 @@ import { RjBottomSheet, RjButton, desktopViewport } from '@raijin/web-ui';
   template: `
     <ng-template #content><ng-content /></ng-template>
     @if (desktop() !== false) {
-      <div class="hidden flex-wrap items-end gap-3 lg:flex">
+      <div class="hidden flex-wrap items-start gap-3 lg:flex" data-rj-filters-row>
         <ng-container *ngTemplateOutlet="content" />
       </div>
     }
