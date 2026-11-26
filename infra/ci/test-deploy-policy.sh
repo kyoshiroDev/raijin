@@ -65,6 +65,14 @@ judge() {
   local env="$1"
   shift
   rm -f "$work/raw.json" "$work/res.json"
+  # Pré-contrôle des YAML livrés (comme la porte) : fichiers réels, puis chaque surcouche à la place du fichier dev.
+  python3 "$policy" yamlcheck "$infra" >"$work/out" 2>&1 || return 1
+  local o yd
+  for o in "$@"; do
+    yd="$(mktemp -d -p "$work")"
+    cp "$o" "$yd/docker-compose.env-dev.yml"
+    python3 "$policy" yamlcheck "$yd" >"$work/out" 2>&1 || return 1
+  done
   render "$env" --no-interpolate "$@" 2>/dev/null | python3 "$policy" envfiles "$infra" >"$work/out" 2>&1 || return 1
   render "$env" "$@" >"$work/raw.json" 2>"$work/out" || return 1
   python3 "$policy" resolve "$work/raw.json" "$work/res.json" >/dev/null
@@ -129,6 +137,16 @@ reject "journalisation syslog" dev "$(overlay logdrv 'services: {raijin-web: {lo
 reject "journaux sans plafond" dev "$(overlay logsize 'services: {raijin-web: {logging: {driver: json-file, options: {max-size: 2g}}}}')"
 reject "env_file de la prod depuis le dev" dev "$(overlay envf "services: {raijin-web: {env_file: [\"$work/envdir/prod/.env.api\"]}}")"
 reject "env_file relatif hors modèle" dev "$(overlay envrel "services: {raijin-web: {env_file: [{path: ../../prod/env/.env.api, required: false}]}}")"
+reject "extends vers la config résolue de la prod" dev "$(overlay ext 'services: {raijin-web: {extends: {file: /srv/raijin/prod/current/compose.resolved.json, service: raijin-api}}}')"
+reject "include avec env_file de la prod" dev "$(overlay inc 'include: [{path: ./x.yml, env_file: /srv/raijin/prod/env/.env.api}]')"
+reject "label_file" dev "$(overlay lf 'services: {raijin-web: {label_file: /srv/raijin/prod/env/.env}}')"
+reject "clé extends échappée (\\u0065)" dev "$(overlay extesc 'services:
+  raijin-web:
+    "ext\u0065nds": {file: /srv/raijin/prod/env/x.yml, service: raijin-api}')"
+reject "sans cpus" dev "$(overlay cpus 'services: {raijin-web: {cpus: !reset null}}')"
+reject "cpus 4" dev "$(overlay cpus4 'services: {raijin-web: {cpus: 4}}')"
+reject "shm_size 2 Go" dev "$(overlay shm 'services: {raijin-postgres: {shm_size: 2g}}')"
+reject "regex de redirection modifiée" dev "$(overlay rx 'services: {raijin-landing: {labels: ["traefik.http.middlewares.raijin-dev-www-redirect.redirectregex.regex=^https?://(.*)$"]}}')"
 reject "secret lu sur le VPS" dev "$(overlay sec "services: {raijin-web: {secrets: [s]}}
 secrets: {s: {file: /etc/hostname}}")"
 

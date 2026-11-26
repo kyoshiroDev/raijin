@@ -3,9 +3,10 @@
 # Porte d'entrée du déploiement continu (docs/DEPLOY.md, partie C). Installée FIGÉE (root) dans
 # /opt/raijin-deploy/infra/ avec release.sh, backup.sh, watchdog.sh, lib/common.sh et lib/deploy_policy.py.
 #
-# Commandes forcées des clés de GitHub Actions (~deploy/.ssh/authorized_keys) :
-#   restrict,command="/opt/raijin-deploy/infra/deploy-gate.sh dev"        … github-raijin-deploy-dev
-#   restrict,command="/opt/raijin-deploy/infra/deploy-gate.sh prod-depot" … github-raijin-depot-prod
+# Commandes forcées des clés de GitHub Actions, un utilisateur Unix par environnement (docs/DEPLOY.md C2) :
+#   ~deploy-dev/.ssh/authorized_keys  : restrict,command="/opt/raijin-deploy/infra/deploy-gate.sh dev"        … github-raijin-deploy-dev
+#   ~deploy-prod/.ssh/authorized_keys : restrict,command="/opt/raijin-deploy/infra/deploy-gate.sh prod-depot" … github-raijin-depot-prod
+# deploy-dev ne peut rien lire de /srv/raijin/prod (vérifié avant chaque déploiement du dev).
 #
 #   clé dev          deploy dev <commit>   (archive sur l'entrée standard) → contrôles → déploiement du dev
 #                    status dev
@@ -14,7 +15,7 @@
 #                    .github/workflows/deploy.yml sur main, à ce commit, avec cette empreinte. Rien n'est démarré.
 #                    status prod
 # Activation de la production, sur le VPS, par l'utilisateur (jamais par GitHub) :
-#   sudo -u deploy /opt/raijin-deploy/infra/deploy-gate.sh --approve <commit>
+#   sudo -u deploy-prod /opt/raijin-deploy/infra/deploy-gate.sh --approve <commit>
 #     → le commit doit être la tête de main (git ls-remote, clé de lecture seule), puis mêmes contrôles et déploiement.
 #
 # Contrôles d'une livraison : archive (fichiers ordinaires), étiquettes et configuration des images, env_file, puis
@@ -25,12 +26,21 @@
 # =====================================================================================================
 set -Eeuo pipefail
 umask 027
-RAIJIN_SCRIPT=deploy-gate
 
 GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY="$GATE_DIR/lib/deploy_policy.py"
+# Session SSH (commande forcée) : aucune variable RAIJIN_* n'est prise en compte, valeurs figées. Seule exception, les
+# tests de la CI (infra/ci/test-dev-env.sh : GitHub Actions, hors session SSH réelle, RAIJIN_GATE_TEST=1).
+if [[ -n "${SSH_ORIGINAL_COMMAND+x}" && "${1:-}" != --run ]] \
+   && ! [[ "${GITHUB_ACTIONS:-}" == true && "${RAIJIN_GATE_TEST:-}" == 1 && -z "${SSH_CONNECTION:-}" ]]; then
+  while read -r v; do unset "$v"; done < <(compgen -v RAIJIN_)
+fi
+RAIJIN_SCRIPT=deploy-gate
 DEPLOY_BASE="${RAIJIN_DEPLOY_BASE:-/srv/raijin}"
+export RAIJIN_DEPLOY_BASE="$DEPLOY_BASE"
 MAX_BUNDLE_BYTES="${RAIJIN_MAX_BUNDLE_BYTES:-4294967296}"
+# Dépôt de la production : plafond plus bas (images de prod + banc ≈ 1 Go).
+MAX_DEPOT_BYTES="${RAIJIN_MAX_DEPOT_BYTES:-2147483648}"
 MAX_DEPOSITS=2
 KEEP_RELEASES=5
 JWKS_URL="${RAIJIN_JWKS_URL:-https://token.actions.githubusercontent.com/.well-known/jwks}"
@@ -122,6 +132,8 @@ deliver() {
       docker compose --project-name "$name" --env-file "$env_file" --project-directory "$stable" "${files[@]}" \
       "${profiles[@]}" config --format json "$@"
   }
+  # Avant TOUT rendu : Compose suivrait include / extends / env_file / label_file vers d'autres fichiers.
+  python3 "$POLICY" yamlcheck "$rel/infra" || { rm -r -- "$rel"; refuse "fichiers Compose refusés (include, extends, env_file, label_file)."; }
   render --no-interpolate 2>/dev/null | python3 "$POLICY" envfiles "$stable" || { rm -r -- "$rel"; refuse "env_file refusé."; }
   ( umask 077; render 2>/dev/null >"$rel/compose.raw.json" ) || { rm -r -- "$rel"; refuse "configuration Compose invalide avec $env_file."; }
   python3 "$POLICY" resolve "$rel/compose.raw.json" "$rel/compose.resolved.json" >/dev/null
@@ -162,8 +174,12 @@ deliver() {
   return "$code"
 }
 
+# Verrou global dev + prod, partagé par deploy-dev et deploy-prod (dossier lock/ du groupe raijin-deploy, C2) :
+# ouvert en lecture (flock n'exige pas l'écriture), créé s'il manque.
 take_lock() {
-  exec 9>"$DEPLOY_BASE/.deploy.lock"
+  local lock="$DEPLOY_BASE/lock/deploy.lock"
+  [[ -e "$lock" ]] || { mkdir -p "$DEPLOY_BASE/lock"; ( umask 002; : >>"$lock" ); }
+  exec 9<"$lock"
   if ! flock -n 9; then
     say "un autre déploiement est en cours : attente (40 min au plus)…"
     flock -w 2400 9 || refuse "verrou toujours pris après 40 min."
@@ -176,10 +192,10 @@ check_disk() {
 }
 # receive <fichier> : entrée standard bornée.
 receive() {
-  head -c "$MAX_BUNDLE_BYTES" >"$1"
-  local size
+  local max="${2:-$MAX_BUNDLE_BYTES}" size
+  head -c "$max" >"$1"
   size="$(stat -c '%s' "$1")"
-  (( size < MAX_BUNDLE_BYTES )) || { rm -f -- "$1"; refuse "livraison trop grosse."; }
+  (( size < max )) || { rm -f -- "$1"; refuse "livraison trop grosse."; }
   say "livraison reçue ($(( size / 1024 / 1024 )) Mo)."
 }
 
@@ -195,6 +211,10 @@ if [[ "${1:-}" == --approve ]]; then
   # shellcheck source=infra/lib/common.sh
   source "$GATE_DIR/lib/common.sh"
   depot="$DEPLOY_BASE/incoming/prod"
+  # Même verrou que « depose » (et son ménage) : l'archive ne peut pas être remplacée ou retirée pendant l'activation.
+  [[ -e "$depot/.lock" ]] || refuse "aucun dépôt dans $depot."
+  exec 8<"$depot/.lock"
+  flock -w 600 8 || refuse "dépôt en cours de réception, réessaie dans quelques minutes."
   [[ -f "$depot/$sha.tar" && -f "$depot/$sha.json" ]] || refuse "aucun dépôt vérifié pour $sha dans $depot (status prod)."
   want="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$depot/$sha.json")"
   [[ "$(sha256sum "$depot/$sha.tar" | awk '{print $1}')" == "$want" ]] || refuse "le dépôt a changé depuis sa vérification."
@@ -241,6 +261,10 @@ case "$gate_key:$verb" in
     ;;
   dev:deploy)
     (( ${#request[@]} == 3 )) || refuse "usage : deploy dev <commit>"
+    # Isolation : l'utilisateur du dev (deploy-dev) ne doit RIEN pouvoir lire de la production (docs/DEPLOY.md C2).
+    for p in "$DEPLOY_BASE/prod" "$DEPLOY_BASE/prod/env/.env" "$DEPLOY_BASE/prod/env/.env.api" "$DEPLOY_BASE/incoming/prod"; do
+      if [[ -e "$p" && ( -r "$p" || -x "$p" ) ]]; then refuse "isolation dev/prod absente : $p est accessible à $(id -un) (C2)."; fi
+    done
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || refuse "commit invalide (40 caractères hexadécimaux attendus)."
     take_lock
     check_disk "$base"
@@ -260,17 +284,22 @@ case "$gate_key:$verb" in
     [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || refuse "DEPLOY_GITHUB_REPOSITORY absent de $base/env/.env (C5)."
     depot="$DEPLOY_BASE/incoming/prod"
     mkdir -p "$depot"
-    exec 8>"$depot/.lock"
+    [[ -e "$depot/.lock" ]] || : >>"$depot/.lock"
+    exec 8<"$depot/.lock"
     flock -w 600 8 || refuse "dépôt déjà en cours."
     check_disk "$depot"
     IFS= read -r -n 8192 jwt || true
     [[ "$jwt" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]] || refuse "jeton OIDC absent ou illisible (1re ligne)."
+    jwks="$depot/.jwks-$$.json"
+    curl -fsS --max-time 20 --proto '=https' -o "$jwks" "$JWKS_URL" || { rm -f -- "$jwks"; refuse "clés publiques de GitHub injoignables."; }
+    # Pré-contrôle AVANT de recevoir quoi que ce soit : signature, émetteur, dépôt, branche main, workflow, commit,
+    # expiration (l'audience, empreinte de l'archive, est vérifiée après réception).
+    python3 "$POLICY" oidc "$jwt" --jwks "$jwks" --repo "$repo" --sha "$sha" >/dev/null \
+      || { rm -f -- "$jwks"; refuse "jeton OIDC refusé (émetteur, branche, workflow, commit ou expiration)."; }
     tmp="$depot/.recu-$sha-$$.tar"
     say "réception de l'archive de production $sha (dépôt seulement)…"
-    receive "$tmp"
+    receive "$tmp" "$MAX_DEPOT_BYTES"
     hash="$(sha256sum "$tmp" | awk '{print $1}')"
-    jwks="$depot/.jwks-$$.json"
-    curl -fsS --max-time 20 --proto '=https' -o "$jwks" "$JWKS_URL" || { rm -f -- "$tmp" "$jwks"; refuse "clés publiques de GitHub injoignables."; }
     if ! claims="$(python3 "$POLICY" oidc "$jwt" --jwks "$jwks" --aud "raijin-depot-prod:$hash" --repo "$repo" --sha "$sha" | sed -n 1p)"; then
       rm -f -- "$tmp" "$jwks"
       refuse "jeton OIDC refusé : l'archive ne vient pas de deploy.yml sur main à ce commit."
@@ -283,7 +312,7 @@ case "$gate_key:$verb" in
     mapfile -t extra < <(find "$depot" -maxdepth 1 -name '*.json' -printf '%T@ %f\n' | sort -rn | awk -v k="$MAX_DEPOSITS" 'NR>k {print $2}')
     for j in "${extra[@]}"; do rm -f -- "$depot/$j" "$depot/${j%.json}.tar"; done
     say "archive $sha DÉPOSÉE (empreinte vérifiée par OIDC). Rien n'est démarré."
-    echo "::notice title=Production en attente d'activation::sur le VPS : sudo -u deploy /opt/raijin-deploy/infra/deploy-gate.sh --approve $sha"
+    echo "::notice title=Production en attente d'activation::sur le VPS : sudo -u deploy-prod /opt/raijin-deploy/infra/deploy-gate.sh --approve $sha"
     exit 0
     ;;
   *) refuse "commande non autorisée pour cette clé." ;;

@@ -18,6 +18,10 @@ mode="${1:-}" env="${2:-}" rel="${3:-}"
 [[ "$env" == dev || "$env" == prod ]] || { echo "release.sh : environnement dev ou prod." >&2; exit 2; }
 rel="$(cd "$rel" && pwd)"
 RAIJIN_ENV="$env"
+# Lancé depuis une session SSH (par la porte) : seules les valeurs figées comptent, sauf tests de la CI (comme la porte).
+if [[ -n "${SSH_ORIGINAL_COMMAND+x}" ]] && ! [[ "${GITHUB_ACTIONS:-}" == true && "${RAIJIN_GATE_TEST:-}" == 1 && -z "${SSH_CONNECTION:-}" ]]; then
+  unset RAIJIN_DEPLOY_BASE RAIJIN_TRAEFIK_ADDR RAIJIN_ENV_FILE RAIJIN_API_ENV_FILE RAIJIN_BENCH_API_ENV_FILE RAIJIN_PG_CONTAINER RAIJIN_COMPOSE_DIR
+fi
 DEPLOY_BASE="${RAIJIN_DEPLOY_BASE:-/srv/raijin}"
 base="$DEPLOY_BASE/$env"
 RAIJIN_ENV_FILE="$base/env/.env" RAIJIN_API_ENV_FILE="$base/env/.env.api" RAIJIN_BENCH_API_ENV_FILE="$base/env/.env.bench-api"

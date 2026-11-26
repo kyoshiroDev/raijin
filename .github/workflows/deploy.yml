@@ -56,7 +56,7 @@ jobs:
       DEPLOY_ENV: dev
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER_DEV || 'deploy-dev' }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -110,7 +110,7 @@ jobs:
       DEPLOY_ENV: prod
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER_PROD || 'deploy-prod' }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -150,7 +150,7 @@ jobs:
             echo ""
             echo "Commit \`$SHA\` déposé sur le VPS. Pour le mettre en service, sur le VPS :"
             echo ""
-            echo "\`sudo -u deploy /opt/raijin-deploy/infra/deploy-gate.sh --approve $SHA\`"
+            echo "\`sudo -u deploy-prod /opt/raijin-deploy/infra/deploy-gate.sh --approve $SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Nettoyage de la clé

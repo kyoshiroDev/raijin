@@ -12,6 +12,8 @@
 #   images   <images.tar.gz> <nom> <sha>  sortie de `docker save` : étiquettes <nom>/<image>:<sha> uniquement ;
 #                                         configuration de chaque image : aucun label traefik.*,
 #                                         aucun VOLUME, utilisateur non root
+#   yamlcheck <dossier infra>             AVANT tout rendu : aucun include / extends / label_file, env_file limités
+#                                         aux deux modèles (Compose lirait sinon des fichiers d'un autre environnement)
 #   envfiles <dossier>                    (JSON `docker compose config --no-interpolate` sur l'entrée) : env_file
 #                                         limités aux deux modèles du dépôt
 #   resolve  <brut.json> <résolu.json>    retire build et x-* du rendu (la config livrée ne construit jamais rien)
@@ -77,6 +79,13 @@ MIDDLEWARE_OPTIONS = {
 SERVICE_OPTIONS = {'loadbalancer.server.port', 'loadbalancer.healthcheck.path', 'loadbalancer.healthcheck.interval'}
 # Seule redirection autorisée : www.<landing> → https://<landing>/… (même nom, sans www).
 WWW_REDIRECT_REPLACEMENT = 'https://${1}/${2}'
+WWW_REDIRECT_REGEX = r'^https?://www\.([^/:]+)(?::\d+)?/(.*)$'
+MAX_CPUS = 1.0
+MAX_SHM = 256 * 1024 ** 2
+# Fichiers Compose livrés lus par la porte, et clés qui y feraient lire d'AUTRES fichiers (secrets d'un autre
+# environnement) : refusées avant tout rendu.
+COMPOSE_FILES = ('docker-compose.yml', 'docker-compose.env-dev.yml')
+FILE_KEYS = ('include', 'extends', 'label_file', 'env_file')
 RULE_RE = re.compile(r'^Host\(`([a-z0-9.-]+)`\)((?:\s*&&\s*(?:Path|PathPrefix)\(`/[A-Za-z0-9_./-]*`\))*)$')
 DEV_HOST_RE = re.compile(r'^(dev|[a-z0-9-]+-dev)\.[a-z0-9.-]+$')
 
@@ -253,6 +262,70 @@ def cmd_envfiles(root):
     finish('env_file')
 
 
+# --- yamlcheck ----------------------------------------------------------------------------------------
+# AVANT tout rendu : `docker compose config` suit include / extends / env_file / label_file et lirait d'autres
+# fichiers (ceux d'un autre environnement) sans laisser de trace dans la configuration résolue. Refusés, sauf les deux
+# env_file modèles du dépôt. Double contrôle : lecture YAML exacte (PyYAML, obligatoire : clés échappées ou entre
+# guillemets comprises) et recherche textuelle des clés.
+def _walk(node, path, where):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            key = str(k)
+            if key in ('include', 'extends', 'label_file'):
+                fail(f'{where} : clé « {key} » refusée ({path or "racine"})')
+            if key == 'env_file':
+                items = v if isinstance(v, list) else [v]
+                for it in items:
+                    pth = it.get('path') if isinstance(it, dict) else it
+                    if str(pth) not in ALLOWED_ENV_FILES:
+                        fail(f'{where} : env_file hors des deux modèles du dépôt ({path})')
+            _walk(v, f'{path}.{key}' if path else key, where)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            _walk(v, f'{path}[{i}]', where)
+
+
+def cmd_yamlcheck(directory):
+    names = sorted(os.listdir(directory))
+    for n in names:
+        if re.search(r'\.(ya?ml|json)$', n) and n.startswith(('docker-compose', 'compose')) and n not in COMPOSE_FILES:
+            fail(f'fichier Compose inattendu : {n[:60]}')
+    for n in COMPOSE_FILES:
+        path = os.path.join(directory, n)
+        if not os.path.isfile(path):
+            continue
+        text = open(path, encoding='utf-8').read()
+        for no, line in enumerate(text.split('\n'), 1):
+            code = line.split(' #', 1)[0] if not line.lstrip().startswith('#') else ''
+            if re.search(r'(^|[\s{,\[])["\']?(include|extends|label_file)["\']?\s*:', code):
+                fail(f'{n}:{no} : clé include / extends / label_file refusée')
+            if re.search(r'["\']?env_file["\']?\s*:', code) and n != 'docker-compose.yml':
+                fail(f'{n}:{no} : env_file refusé hors du fichier principal')
+        try:
+            import yaml  # noqa: PLC0415 (paquet python3-yaml, obligatoire : docs/DEPLOY.md C1)
+        except ImportError:
+            fail('PyYAML absent (sudo apt install python3-yaml) : lecture exacte des fichiers Compose impossible')
+            break
+
+        class Loader(yaml.SafeLoader):
+            pass
+
+        def any_tag(loader, suffix, node):
+            if isinstance(node, yaml.MappingNode):
+                return loader.construct_mapping(node, deep=True)
+            if isinstance(node, yaml.SequenceNode):
+                return loader.construct_sequence(node, deep=True)
+            return loader.construct_scalar(node)
+
+        Loader.add_multi_constructor('!', any_tag)
+        try:
+            for doc in yaml.load_all(text, Loader=Loader):
+                _walk(doc, '', n)
+        except yaml.YAMLError:
+            fail(f'{n} : YAML illisible')
+    finish('yaml')
+
+
 # --- resolve ------------------------------------------------------------------------------------------
 def cmd_resolve(src, dst):
     cfg = json.load(open(src))
@@ -312,7 +385,7 @@ def check_labels(svc, labels, a):
             if rest not in ROUTER_OPTIONS:
                 fail(f'{svc} : option de routeur refusée ({k[:120]})')
             elif rest == 'rule':
-                rm = RULE_RE.match(v)
+                rm = RULE_RE.fullmatch(v)
                 if not rm:
                     fail(f'{svc} : règle du routeur {obj} refusée (forme stricte Host(`nom`) [&& Path|PathPrefix(`/…`)]…, sans || ni !)')
                 elif rm.group(1) not in a.hosts:
@@ -346,6 +419,8 @@ def check_labels(svc, labels, a):
                 continue
             if opt not in allowed:
                 fail(f'{svc} : middleware {obj} : option {rest[:80]} refusée')
+            elif mtype == 'redirectregex' and opt == 'regex' and v != WWW_REDIRECT_REGEX:
+                fail(f'{svc} : middleware {obj} : expression de redirection différente de celle de www refusée')
             elif mtype == 'redirectregex' and opt == 'replacement' and v != WWW_REDIRECT_REPLACEMENT:
                 fail(f'{svc} : middleware {obj} : redirection vers un autre nom refusée')
             elif mtype == 'replacepathregex' and opt == 'replacement' and not v.startswith('/'):
@@ -441,6 +516,17 @@ def cmd_compose(argv):
         swap = s.get('memswap_limit')
         if swap is not None and size_bytes(swap) != mem:
             fail(f'{svc} : memswap_limit doit égaler mem_limit (pas de swap)')
+        cpus = s.get('cpus')
+        try:
+            cpus_ok = cpus is not None and 0 < float(cpus) <= MAX_CPUS
+        except (TypeError, ValueError):
+            cpus_ok = False
+        if not cpus_ok:
+            fail(f'{svc} : cpus obligatoire (≤ {MAX_CPUS:g})')
+        if 'shm_size' in s:
+            shm = size_bytes(s.get('shm_size'))
+            if shm is None or shm > MAX_SHM:
+                fail(f'{svc} : shm_size ≤ 256 Mo')
         pids = s.get('pids_limit')
         if not isinstance(pids, int) or pids <= 0 or pids > MAX_PIDS:
             fail(f'{svc} : pids_limit obligatoire (≤ {MAX_PIDS})')
@@ -495,8 +581,11 @@ def b64u(s):
 def cmd_oidc(argv):
     p = argparse.ArgumentParser(prog='deploy_policy.py oidc')
     p.add_argument('token')
-    for opt in ('--jwks', '--aud', '--repo', '--sha'):
+    for opt in ('--jwks', '--repo', '--sha'):
         p.add_argument(opt, required=True)
+    # --aud absent : pré-contrôle AVANT réception de l'archive (signature, émetteur, branche, commit, expiration) ;
+    # l'audience (empreinte de l'archive) est vérifiée ensuite.
+    p.add_argument('--aud')
     a = p.parse_args(argv)
     try:
         h64, p64, s64 = a.token.split('.')
@@ -533,6 +622,10 @@ def cmd_oidc(argv):
         'workflow_ref': f'{a.repo}/.github/workflows/deploy.yml@refs/heads/main',
         'sha': a.sha,
     }
+    if a.aud is None:
+        want.pop('aud')
+    elif not str(claims.get('aud', '')).startswith('raijin-depot-prod:'):
+        fail('audience inattendue')
     for key, value in want.items():
         got = claims.get(key)
         if (got if isinstance(got, str) else json.dumps(got)) != value:
@@ -552,6 +645,8 @@ def main(argv):
         return cmd_bundle(argv[1], argv[2])
     if len(argv) == 4 and argv[0] == 'images':
         return cmd_images(argv[1], argv[2], argv[3])
+    if len(argv) == 2 and argv[0] == 'yamlcheck':
+        return cmd_yamlcheck(argv[1])
     if len(argv) == 2 and argv[0] == 'envfiles':
         return cmd_envfiles(argv[1])
     if len(argv) == 3 and argv[0] == 'resolve':

@@ -19,7 +19,7 @@ done < <(grep -E '^[A-Z_][A-Z0-9_]*=' infra/.env)
 
 export RAIJIN_DEPLOY_BASE="$RUNNER_TEMP/raijin-deploy"
 export RAIJIN_TRAEFIK_ADDR="127.0.0.1:${TRAEFIK_CI_PORT:-8443}"
-export RAIJIN_MIN_FREE_GB=3
+export RAIJIN_MIN_FREE_GB=3 RAIJIN_GATE_TEST=1
 work="$(mktemp -d)"
 failures=0
 ok() { printf '  ok   %s\n' "$*"; }
@@ -69,6 +69,12 @@ if [[ "$code" != 0 ]]; then ok "refusé : dépôt prod avec jeton OIDC forgé ($
 SSH_ORIGINAL_COMMAND="deploy prod $sha1" infra/deploy-gate.sh prod-depot </dev/null >"$work/out" 2>&1 && ko "clé prod-depot : deploy accepté" || ok "refusé : clé prod-depot ne déploie pas"
 SSH_ORIGINAL_COMMAND="x" infra/deploy-gate.sh --approve "$sha1" >"$work/out" 2>&1 && ko "activation acceptée depuis SSH" || ok "refusé : activation depuis une session SSH"
 infra/deploy-gate.sh --approve "$sha1" >"$work/out" 2>&1 && ko "activation sans dépôt acceptée" || ok "refusé : activation sans dépôt vérifié"
+# Isolation dev/prod (sur le VPS : utilisateurs deploy-dev et deploy-prod distincts, C2) : tant que la prod est
+# lisible par l'utilisateur qui déploie le dev, la porte refuse. Ici, un seul utilisateur : on retire l'accès.
+expect_refused "dev déployé par un utilisateur qui lit la prod" "deploy dev $sha1" "$work/v1.tar"
+chmod 000 "$RAIJIN_DEPLOY_BASE/prod"
+[[ -d "$RAIJIN_DEPLOY_BASE/incoming/prod" ]] && chmod 000 "$RAIJIN_DEPLOY_BASE/incoming/prod"
+
 # Étiquette étrangère (ici une image « traefik ») : refusée avant tout docker load.
 d="$(mktemp -d)"
 docker image tag "raijin/web:latest" "traefik:ci-pirate"
@@ -80,7 +86,7 @@ rm -r -- "$d"
 expect_refused "image d'un autre projet (traefik:…)" "deploy dev $sha1" "$work/pirate.tar"
 if docker image inspect traefik:ci-pirate >/dev/null 2>&1; then ko "image étrangère chargée malgré le refus"; else ok "image étrangère jamais chargée"; fi
 
-echo "== Déploiement dev n° 1 (porte → deploy.sh --release)"
+echo "== Déploiement dev n° 1 (porte → release.sh)"
 if gate "deploy dev $sha1" <"$work/v1.tar"; then ok "dev $sha1 déployé"; else ko "premier déploiement dev en échec"; fi
 current="$(readlink -f "$RAIJIN_DEPLOY_BASE/dev/current" || true)"
 [[ "$(basename "$current")" == "$sha1"-* ]] && ok "version en service : $(basename "$current")" || ko "current ne pointe pas vers $sha1 ($current)"
@@ -119,6 +125,8 @@ want="$(docker image inspect -f '{{.Id}}' "raijin-dev/api:$sha1")"
 got="$(docker inspect -f '{{.Image}}' raijin-dev-api)"
 [[ "$want" == "$got" ]] && ok "raijin-dev-api tourne sur l'image de la version 1" || ko "raijin-dev-api : image inattendue"
 
+chmod 750 "$RAIJIN_DEPLOY_BASE/prod"
+[[ -d "$RAIJIN_DEPLOY_BASE/incoming/prod" ]] && chmod 750 "$RAIJIN_DEPLOY_BASE/incoming/prod"
 rm -r -- "$work"
 if (( failures > 0 )); then echo "$failures contrôle(s) en échec."; exit 1; fi
 echo "Environnement dev livré par la porte : tous les contrôles sont verts."
