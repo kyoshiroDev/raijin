@@ -50,45 +50,20 @@ say() { printf '%s [deploy-gate] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 refuse() { say "REFUS : $*" >&2; exit 2; }
 name_of() { if [[ "$1" == dev ]]; then echo raijin-dev; else echo raijin; fi; }
 
+# Accès à Docker : UNIQUEMENT par docker-priv.sh en root (sudo, environnement fixé par sudoers, C2) ; deploy-dev et
+# deploy-prod ne sont pas dans le groupe docker. RAIJIN_PRIV_CMD : tests de la CI seulement (effacé sous SSH).
+priv() { ${RAIJIN_PRIV_CMD:-sudo -n /opt/raijin-deploy/infra/docker-priv.sh} "$@"; }
+
 # --- Mode interne : mise en service détachée de la session SSH (appelé par ce script seulement) -------------
 if [[ "${1:-}" == --run ]]; then
-  env="$2" sha="$3" rel="$4" status_file="$5"
+  env="$2" rel_name="$3" status_file="$4"
   trap '' HUP PIPE
-  base="$DEPLOY_BASE/$env" name="$(name_of "$env")"
-  previous=''
-  [[ -L "$base/current" ]] && previous="$(readlink -f "$base/current")"
   code=0
-  "$GATE_DIR/release.sh" deploy "$env" "$rel" || code=$?
-  if [[ "$code" == 0 ]]; then
-    ln -sfn "$rel" "$base/current.tmp" && mv -Tf "$base/current.tmp" "$base/current"
-    say "version $sha en service ($env)."
-  else
-    say "ÉCHEC du déploiement de $sha ($env, code $code)."
-    if [[ -n "$previous" && -f "$previous/compose.resolved.json" ]]; then
-      say "retour automatique à la dernière version réussie ($(basename "$previous"))…"
-      if "$GATE_DIR/release.sh" recover "$env" "$previous"; then
-        say "dernière version réussie remise en service."
-      else
-        say "le retour automatique a échoué : intervention manuelle (docs/DEPLOY.md C7)."
-      fi
-    else
-      say "aucune version précédente à remettre en service (premier déploiement)."
-    fi
-  fi
-  # Ménage : les KEEP_RELEASES dernières versions (et celle en service) ; étiquettes <nom>/<image>:<commit> des
-  # versions retirées (jamais deployed ni previous ; une image utilisée n'est jamais supprimée).
-  current="$(readlink -f "$base/current" 2>/dev/null || true)"
+  priv "$env" deploy "$rel_name" || code=$?
+  # Ménage de la zone de l'utilisateur (sans Docker) : les KEEP_RELEASES dernières versions.
+  base="$DEPLOY_BASE/$env"
   mapfile -t old < <(find "$base/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | awk -v k="$KEEP_RELEASES" 'NR>k {print $2}')
-  for dir in "${old[@]}"; do
-    [[ "$dir" == "$current" || "$dir" == "$rel" ]] && continue
-    old_sha="$(cat "$dir/SHA" 2>/dev/null || true)"
-    if [[ "$old_sha" =~ ^[0-9a-f]{40}$ && "$old_sha" != "$sha" && "$current" != *"/$old_sha-"* ]]; then
-      for img in api web landing migrate bench-api bench-web bench-migrate; do
-        docker image rm "$name/$img:$old_sha" >/dev/null 2>&1 || true
-      done
-    fi
-    rm -r -- "$dir"
-  done
+  for dir in "${old[@]}"; do rm -r -- "$dir"; done
   printf '%s\n' "$code" >"$status_file"
   exit "$code"
 fi
@@ -107,19 +82,15 @@ deliver() {
   rel="$base/releases/$sha-$stamp"
   mkdir -m 750 "$incoming" "$incoming/x"
   python3 "$POLICY" bundle "$bundle" "$incoming/x" || { rm -r -- "$incoming"; refuse "archive refusée."; }
-  python3 "$POLICY" images "$incoming/x/images.tar.gz" "$name" "$sha" || { rm -r -- "$incoming"; refuse "images refusées."; }
   mv -T "$incoming/x" "$rel"
   rmdir "$incoming"
   printf '%s\n' "$sha" >"$rel/SHA"
 
-  # Dossier de projet STABLE par environnement : seuls les scripts d'init de Postgres y sont copiés (lisibles par le
-  # conteneur, 755/644). Le montage ./postgres/init garde le même chemin d'une version à l'autre : Postgres n'est pas
-  # recréé à chaque livraison.
-  local stable="$base/infra-stable"
-  mkdir -p "$stable/postgres/init"
-  chmod 755 "$stable" "$stable/postgres" "$stable/postgres/init"
-  find "$stable/postgres/init" -mindepth 1 -maxdepth 1 -type f -delete
-  find "$rel/infra/postgres/init" -mindepth 1 -maxdepth 1 -type f -exec install -m 644 {} "$stable/postgres/init/" \;
+  # Dossier de projet STABLE et RACINE par environnement (/var/lib/raijin-deploy/<env>/infra-stable) : docker-priv.sh
+  # y copie les scripts d'init de Postgres (montés en lecture seule) ; l'utilisateur ne peut pas les remplacer, et
+  # le chemin du montage ne change pas d'une version à l'autre (Postgres n'est pas recréé à chaque livraison).
+  local stable="${RAIJIN_PRIV_BASE:-/var/lib/raijin-deploy}/$env/infra-stable"
+  priv "$env" sync-init "$rel" || { rm -r -- "$rel"; refuse "scripts d'init refusés."; }
 
   # UNE configuration résolue, sous un environnement vidé et une liste blanche identique pour toute la suite.
   local files=(-f "$rel/infra/docker-compose.yml")
@@ -152,20 +123,20 @@ deliver() {
 
   # Scripts figés : signale (sans bloquer) une livraison dont les scripts diffèrent de ceux installés.
   local f
-  for f in deploy-gate.sh release.sh backup.sh watchdog.sh lib/common.sh lib/deploy_policy.py; do
+  for f in deploy-gate.sh docker-priv.sh release.sh backup.sh watchdog.sh lib/common.sh lib/deploy_policy.py; do
     if [[ -f "$rel/infra/$f" ]] && ! cmp -s "$rel/infra/$f" "$GATE_DIR/$f"; then
       echo "::warning title=Scripts de déploiement à mettre à jour::infra/$f diffère de la copie figée du VPS (/opt/raijin-deploy) : applique docs/DEPLOY.md C8."
     fi
   done
 
-  say "chargement des images…"
-  docker load -i "$rel/images.tar.gz" | sed 's/^/  /'
+  # Contrôle des images, docker load et comparaison de sa sortie : en root, sur une copie hors de portée de l'utilisateur.
+  priv "$env" import "$rel" || { rm -r -- "$rel"; refuse "import refusé."; }
   rm -- "$rel/images.tar.gz"
 
   local log_file="$base/logs/$sha-$stamp.log" status_file="$base/logs/$sha-$stamp.status" run_pid code=0
   say "déploiement (journal : $log_file)…"
   : >"$log_file"
-  nohup "$GATE_DIR/deploy-gate.sh" --run "$env" "$sha" "$rel" "$status_file" >"$log_file" 2>&1 </dev/null &
+  nohup "$GATE_DIR/deploy-gate.sh" --run "$env" "$(basename "$rel")" "$status_file" >"$log_file" 2>&1 </dev/null &
   run_pid=$!
   tail -n +1 -f --pid="$run_pid" "$log_file" || true
   wait "$run_pid" || code=$?
@@ -174,11 +145,15 @@ deliver() {
   return "$code"
 }
 
-# Verrou global dev + prod, partagé par deploy-dev et deploy-prod (dossier lock/ du groupe raijin-deploy, C2) :
-# ouvert en lecture (flock n'exige pas l'écriture), créé s'il manque.
+# Verrou global dev + prod : /srv/raijin/lock/deploy.lock, créé par root en 0644 (C2), ouvert en LECTURE par
+# deploy-dev et deploy-prod (flock n'exige pas l'écriture ; personne ne peut le remplacer).
 take_lock() {
   local lock="$DEPLOY_BASE/lock/deploy.lock"
-  [[ -e "$lock" ]] || { mkdir -p "$DEPLOY_BASE/lock"; ( umask 002; : >>"$lock" ); }
+  if [[ ! -e "$lock" ]]; then
+    [[ "${RAIJIN_GATE_TEST:-}" == 1 ]] || refuse "$lock absent (docs/DEPLOY.md C2)."
+    mkdir -p "$DEPLOY_BASE/lock"; : >>"$lock"
+  fi
+  [[ -f "$lock" && ! -L "$lock" ]] || refuse "$lock invalide."
   exec 9<"$lock"
   if ! flock -n 9; then
     say "un autre déploiement est en cours : attente (40 min au plus)…"
@@ -252,11 +227,10 @@ source "$GATE_DIR/lib/common.sh"
 case "$gate_key:$verb" in
   *:status)
     (( ${#request[@]} == 2 )) || refuse "usage : status <env>"
-    say "en service : $(basename "$(readlink -f "$base/current" 2>/dev/null || echo aucune)")"
+    priv "$env" status || true
     if [[ "$env" == prod ]]; then
       say "dépôts en attente d'activation : $(find "$DEPLOY_BASE/incoming/prod" -maxdepth 1 -name '*.json' -printf '%f ' 2>/dev/null || true)"
     fi
-    tail -n 10 "$base/state/raijin/deploy-history" 2>/dev/null || say "aucun déploiement enregistré."
     exit 0
     ;;
   dev:deploy)

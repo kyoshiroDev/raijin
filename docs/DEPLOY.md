@@ -746,8 +746,12 @@ Choix et raisons :
 - **Commande forcée et scripts figés** : chaque clé de GitHub ne peut lancer que sa commande (`deploy dev …`,
   `depose prod …`, `status …`). Les scripts qui contrôlent et déploient (`deploy-gate.sh`, `release.sh`, `lib/`) sont
   les copies installées par toi dans `/opt/raijin-deploy` (propriété de root), jamais ceux de la livraison.
-- **Un utilisateur Unix par environnement** : `deploy-dev` (clé du dev) n'a **aucun** accès à `/srv/raijin/prod`
-  ni à `/srv/raijin/incoming/prod` ; `deploy-prod` (clé de dépôt, activation, sauvegardes) n'a rien à faire du dev.
+- **Un utilisateur Unix par environnement, sans accès direct à Docker** : `deploy-dev` (clé du dev) n'a aucun droit
+  de lecture sur `/srv/raijin/prod` ni `/srv/raijin/incoming/prod` ; `deploy-prod` (clé de dépôt, activation) n'a rien
+  à faire du dev. Aucun des deux n'est dans le groupe `docker` : leur seul accès à Docker est
+  `/opt/raijin-deploy/infra/docker-priv.sh` (root, par sudo, environnement fixé par sudoers), qui ne sait que charger
+  des images vérifiées, démarrer la configuration résolue du projet de l'environnement, étiqueter / retirer ses images
+  et lancer l'init de son Postgres. Ni `docker inspect` ni `docker exec` sur la prod depuis `deploy-dev`.
   `docker compose config` lit les fichiers avec les droits de l'utilisateur qui le lance : une livraison du dev ne
   peut donc pas faire lire un secret de la prod (la porte vérifie cet isolement avant chaque déploiement du dev, et
   refuse en plus `include`, `extends`, `label_file` et tout `env_file` autre que les deux modèles du dépôt, avant
@@ -787,18 +791,18 @@ git --version         # activation de la prod (git ls-remote)
 free -h               # le dev ajoute ≈ 0,9 Go au maximum (≈ 300 Mo habituels)
 ```
 
-## C2. Utilisateurs `deploy-dev` et `deploy-prod`, réseau d'entrée du dev
+## C2. Utilisateurs `deploy-dev` et `deploy-prod`, accès à Docker, réseau d'entrée du dev
 
-Deux utilisateurs sans mot de passe ni sudo, un par environnement, qui ne partagent que le verrou de déploiement :
+Deux utilisateurs sans mot de passe, **hors du groupe `docker`**, un par environnement :
 
 ```bash
-sudo groupadd raijin-deploy
 sudo adduser --disabled-password --gecos "Raijin deploy dev" deploy-dev
 sudo adduser --disabled-password --gecos "Raijin deploy prod" deploy-prod
-sudo usermod -aG docker,raijin-deploy deploy-dev       # docker : lancer les conteneurs (aucun sudo)
-sudo usermod -aG docker,raijin-deploy deploy-prod
+groups deploy-dev deploy-prod                  # ni « docker » ni « sudo » ne doivent apparaître
 sudo install -d -o root -g root -m 755 /srv/raijin /srv/raijin/incoming
-sudo install -d -o root -g raijin-deploy -m 2770 /srv/raijin/lock                 # verrou commun (dev + prod)
+sudo install -d -o root -g root -m 3770 /srv/raijin/lock                         # dossier du verrou (sticky)
+sudo install -o root -g root -m 0644 /dev/null /srv/raijin/lock/deploy.lock       # verrou dev + prod, lu par les deux
+sudo install -d -o root -g root -m 711 /var/lib/raijin-deploy                     # zone racine (versions importées)
 sudo install -d -o deploy-dev  -g deploy-dev  -m 750 /srv/raijin/dev
 sudo install -d -o deploy-dev  -g deploy-dev  -m 700 /srv/raijin/dev/env ~deploy-dev/.ssh
 sudo install -d -o deploy-prod -g deploy-prod -m 750 /srv/raijin/prod
@@ -806,10 +810,19 @@ sudo install -d -o deploy-prod -g deploy-prod -m 700 /srv/raijin/prod/env /srv/r
 sudo -u deploy-dev ls /srv/raijin/prod        # doit afficher « Permission denied » (sinon la porte refuse le dev)
 ```
 
-Les deux utilisateurs sont dans le groupe `docker` (équivalent root) : la séparation protège contre la **lecture de
-fichiers** par Compose lors du rendu d'une livraison (seule action possible avec la clé du dev, par commande forcée).
-N'ajoute jamais `deploy-dev` au groupe `deploy-prod` ni l'inverse, et ne mets aucun fichier de la prod ailleurs que
-sous `/srv/raijin/prod` et `/srv/raijin/incoming/prod`.
+Accès à Docker par sudo, **uniquement** ce script et avec l'environnement imposé (`sudo visudo -f /etc/sudoers.d/raijin-deploy`) :
+
+```
+Defaults!/opt/raijin-deploy/infra/docker-priv.sh env_reset, !requiretty
+deploy-dev  ALL=(root) NOPASSWD: /opt/raijin-deploy/infra/docker-priv.sh dev *
+deploy-prod ALL=(root) NOPASSWD: /opt/raijin-deploy/infra/docker-priv.sh prod *
+```
+
+`docker-priv.sh` vérifie en plus que l'appelant est bien `deploy-<env>`, n'accepte que ses sous-commandes
+(`sync-init`, `import`, `deploy`, `recover`, `status`), ne lit dans la zone de l'utilisateur que des fichiers
+ordinaires sans lien et à son propriétaire (copiés dans `/var/lib/raijin-deploy/<env>/`), contrôle à nouveau les
+images (structure de l'archive, étiquettes, configuration) puis compare la sortie de `docker load` à la liste attendue.
+Contrôle : `sudo -u deploy-dev docker ps` doit être refusé (« permission denied … docker.sock »).
 
 Vérifications SSH (à faire une fois) :
 
@@ -859,21 +872,22 @@ DEPLOY_GIT_REMOTE=git@github.com:<ton-compte>/raijin.git
 ```
 
 - Le banc n'est déployé que si `/srv/raijin/prod/env/.env.bench-api` existe.
-- Sauvegardes en prod : `deploy-prod` doit pouvoir écrire dans `BACKUP_DIR` : `sudo chown deploy-prod: /var/backups/raijin`.
-  Si les unités systemd de A9 et A11 tournent, fais-les pointer vers les copies figées et les nouveaux fichiers :
+- Sauvegardes en prod : elles tournent en **root** (accès à Docker), `BACKUP_DIR` reste à root
+  (`sudo chown root: /var/backups/raijin`). Si les unités systemd de A9 et A11 tournent, fais-les pointer vers les
+  copies figées et les nouveaux fichiers :
   ```bash
   sudo systemctl edit raijin-backup.service      # puis colle :
   # [Service]
-  # User=deploy-prod
+  # User=root
   # WorkingDirectory=/opt/raijin-deploy
   # Environment=RAIJIN_ENV_FILE=/srv/raijin/prod/env/.env RAIJIN_API_ENV_FILE=/srv/raijin/prod/env/.env.api
   # ExecStart=
   # ExecStart=/opt/raijin-deploy/infra/backup.sh
   ```
   Même chose pour `raijin-watchdog.service` (avec `ExecStart=/opt/raijin-deploy/infra/watchdog.sh`). La configuration
-  rclone (A9) doit alors être celle de `deploy-prod` : `sudo -u deploy-prod rclone config`.
-- Restauration (A10) : depuis le dépôt cloné (`/opt/raijin`, à jour sur `main`), en `deploy-prod` et avec les fichiers de C3 :
-  `sudo -u deploy-prod env RAIJIN_ENV_FILE=/srv/raijin/prod/env/.env RAIJIN_API_ENV_FILE=/srv/raijin/prod/env/.env.api infra/restore.sh …`.
+  rclone (A9) doit alors être celle de root : `sudo rclone config`.
+- Restauration (A10) : depuis le dépôt cloné (`/opt/raijin`, à jour sur `main`), en root et avec les fichiers de C3 :
+  `sudo env RAIJIN_ENV_FILE=/srv/raijin/prod/env/.env RAIJIN_API_ENV_FILE=/srv/raijin/prod/env/.env.api infra/restore.sh …`.
 
 ### Mot de passe du dev (basicAuth)
 
@@ -896,7 +910,7 @@ Depuis le dépôt cloné de la partie A (à jour sur `main`, après avoir relu l
 ```bash
 cd /opt/raijin && git pull --ff-only
 sudo install -d -o root -g root -m 755 /opt/raijin-deploy/infra/lib
-for f in deploy-gate.sh release.sh backup.sh watchdog.sh; do
+for f in deploy-gate.sh docker-priv.sh release.sh backup.sh watchdog.sh; do
   sudo install -o root -g root -m 755 "infra/$f" "/opt/raijin-deploy/infra/$f"
 done
 sudo install -o root -g root -m 644 infra/lib/common.sh infra/lib/deploy_policy.py /opt/raijin-deploy/infra/lib/
@@ -987,7 +1001,7 @@ clé de production dans GitHub, jeton OIDC d'une autre branche refusé).
 5. Suivi sur le VPS :
    ```bash
    sudo -u deploy-dev ls -t /srv/raijin/dev/logs | head -3       # journaux des derniers déploiements
-   sudo -u deploy-dev readlink /srv/raijin/dev/current                          # version en service
+   sudo readlink /var/lib/raijin-deploy/dev/current                          # version en service
    sudo -u deploy-prod ls /srv/raijin/incoming/prod                              # archives de prod en attente d'activation (2 au plus)
    ```
 6. Vérifications du dev : `https://dev.raijinshield.com` demande le mot de passe, puis inscription → e-mail visible
@@ -1004,18 +1018,18 @@ Déploiement manuel sans GitHub (dépannage) : depuis le dépôt cloné, `infra/
 - **Le retour automatique a échoué** (rare : base indisponible…) : remets en service une version précise (son dossier
   contient sa configuration résolue) :
   ```bash
-  sudo -u deploy-dev /opt/raijin-deploy/infra/release.sh recover dev /srv/raijin/dev/current
-  sudo -u deploy-prod /opt/raijin-deploy/infra/release.sh recover prod /srv/raijin/prod/releases/<commit>-<date>   # version d'avant
+  sudo ls /var/lib/raijin-deploy/dev/releases                     # versions importées (5 dernières)
+  sudo -u deploy-dev sudo -n /opt/raijin-deploy/infra/docker-priv.sh dev recover <commit>-<date>
+  sudo -u deploy-prod sudo -n /opt/raijin-deploy/infra/docker-priv.sh prod recover <commit>-<date>
   ```
-  Après un `recover` vers une version plus ancienne, fais pointer `current` dessus :
-  `sudo -u deploy-<env> ln -sfn /srv/raijin/<env>/releases/<dossier> /srv/raijin/<env>/current`.
+  (`current` est alors déplacé sur cette version.)
 - **Le run GitHub a expiré** (60 min) : le déploiement du dev continue sur le VPS jusqu'au bout ;
   `sudo -u deploy-dev tail -n 50 /srv/raijin/dev/logs/<dernier>.log`.
 - **Migration à défaire** (prod) : restaure la sauvegarde prise juste avant (A10), puis `release.sh recover`.
 
 ## C8. Mettre à jour les scripts figés
 
-Quand une livraison contient un `deploy-gate.sh`, `release.sh`, `backup.sh`, `watchdog.sh`, `lib/common.sh` ou
+Quand une livraison contient un `deploy-gate.sh`, `docker-priv.sh`, `release.sh`, `backup.sh`, `watchdog.sh`, `lib/common.sh` ou
 `lib/deploy_policy.py` différent de la copie du VPS, le déploiement affiche « Scripts de déploiement à mettre à jour ».
 Après avoir relu le changement sur GitHub, refais C4 (le déploiement en cours a utilisé les anciens scripts).
 

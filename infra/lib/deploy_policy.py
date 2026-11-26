@@ -9,7 +9,10 @@
 #
 #   bundle   <archive> <dossier>          archive livrée : fichiers ordinaires seulement, aucun chemin absolu, « .. »,
 #                                         lien ni fichier .env ; taille bornée ; extraction dans <dossier> (vide)
-#   images   <images.tar.gz> <nom> <sha>  sortie de `docker save` : étiquettes <nom>/<image>:<sha> uniquement ;
+#   images   <images.tar.gz> <nom> <sha> [attendues]
+#                                         sortie de `docker save` : noms uniques, fichiers et dossiers seulement (aucun
+#                                         lien), métadonnées et Config référencées lues en entier (plusieurs passes) ;
+#                                         étiquettes <nom>/<image>:<sha> uniquement (liste écrite dans [attendues]) ;
 #                                         configuration de chaque image : aucun label traefik.*,
 #                                         aucun VOLUME, utilisateur non root
 #   yamlcheck <dossier infra>             AVANT tout rendu : aucun include / extends / label_file, env_file limités
@@ -19,6 +22,8 @@
 #   resolve  <brut.json> <résolu.json>    retire build et x-* du rendu (la config livrée ne construit jamais rien)
 #   compose  <résolu.json> --name … --root … --network … --entrypoint … --certresolver … --tag … --hosts a,b
 #                                         politique complète de la configuration résolue
+#   loaded   <attendues>                  (sortie de `docker load` sur l'entrée) : exactement les étiquettes attendues
+#   copyin   <source> <dest> <max> <uid>  copie racine sûre d'un fichier de l'utilisateur (sans lien, propriétaire)
 #   thirdparty <résolu.json>              images tierces (épinglées par empreinte) à télécharger avant `--pull never`
 #   oidc     <jeton> --jwks f --aud a --repo r --sha s
 #                                         jeton OIDC GitHub Actions (RS256) : émis pour .github/workflows/deploy.yml
@@ -189,61 +194,193 @@ def check_image_config(ref, cfg):
         fail(f'{ref} : l\'image doit tourner avec un utilisateur non root (USER)')
 
 
-def cmd_images(archive, name, sha):
+MAX_META = 4 * 1024 ** 2
+META_FILES = ('manifest.json', 'index.json', 'repositories', 'oci-layout')
+
+
+def _scan(archive, wanted):
+    """Une passe sur l'archive : contrôle de structure (noms uniques, fichiers et dossiers seulement) et lecture
+    complète des membres de `wanted` (plafond MAX_META chacun). Renvoie ({nom: octets}, {noms vus})."""
+    seen, data = set(), {}
+    with tarfile.open(archive, 'r|*') as tar:
+        for m in tar:
+            name = safe_name(m.name)
+            if name is None:
+                fail('chemin refusé dans l\'archive d\'images')
+                break
+            if name in seen:
+                # docker load lirait la DERNIÈRE copie : aucun doublon.
+                fail('nom en double dans l\'archive d\'images')
+                break
+            seen.add(name)
+            if not (m.isfile() or m.isdir()):
+                fail('membre ni fichier ni dossier dans l\'archive d\'images (lien, périphérique…)')
+                break
+            if name in wanted and m.isfile():
+                if m.size > MAX_META:
+                    fail(f'{name[:80]} trop gros')
+                    break
+                data[name] = tar.extractfile(m).read()
+    return data, seen
+
+
+def _json(raw, what):
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        fail(f'{what} illisible')
+        return None
+
+
+def _blob(digest):
+    m = re.fullmatch(r'sha256:([0-9a-f]{64})', str(digest or ''))
+    return f'blobs/sha256/{m.group(1)}' if m else None
+
+
+def cmd_images(archive, name, sha, expected_out=None):
     if not re.fullmatch(r'[0-9a-f]{40}', sha) or not re.fullmatch(r'raijin(-dev)?', name):
         fail('nom ou commit invalide')
         return finish('images')
     ref = re.compile(r'^(?:docker\.io/)?' + re.escape(name) + r'/(' + '|'.join(PROJECT_IMAGES) + r'):' + sha + r'$')
-    small = {}
-    budget = 64 * 1024 ** 2
-    with tarfile.open(archive, 'r|*') as tar:
-        for m in tar:
-            if not m.isfile() or m.size > MAX_INFRA_FILE or budget - m.size < 0:
-                continue
-            data = tar.extractfile(m).read()
-            budget -= len(data)
-            small[safe_name(m.name) or m.name] = data
-
-    def load(path):
-        try:
-            return json.loads(small[path])
-        except (KeyError, ValueError):
-            return None
-
-    tags = []
-    manifest = load('manifest.json')
+    data, seen = _scan(archive, set(META_FILES))
+    if errors:
+        return finish('images')
+    manifest = _json(data.get('manifest.json'), 'manifest.json') if 'manifest.json' in data else None
     if not isinstance(manifest, list) or not manifest:
         fail('manifest.json absent ou vide (archive docker save attendue)')
-    else:
-        for entry in manifest:
-            repo_tags = entry.get('RepoTags') or []
-            if not repo_tags:
-                fail('image sans étiquette')
-            tags += repo_tags
-            cfg = load(safe_name(str(entry.get('Config', ''))) or '')
-            if cfg is None:
-                fail('configuration d\'image illisible')
-            else:
-                check_image_config(','.join(str(t) for t in repo_tags) or '?', cfg)
-    index = load('index.json')
-    if isinstance(index, dict):
-        for desc in index.get('manifests') or []:
-            ann = desc.get('annotations') or {}
-            image_name = ann.get('io.containerd.image.name')
-            if image_name is not None:
-                tags.append(image_name)
-            ref_name = ann.get('org.opencontainers.image.ref.name')
-            if ref_name is not None and ref_name != sha:
-                tags.append(ref_name)
-    repositories = load('repositories')
-    if isinstance(repositories, dict):
-        for repo, tag_map in repositories.items():
-            for tag in (tag_map or {}):
-                tags.append(f'{repo}:{tag}')
+        return finish('images')
+    tags, configs, pending, manifest_tags = [], set(), set(), set()
+    for entry in manifest:
+        repo_tags = entry.get('RepoTags') or []
+        if not repo_tags:
+            fail('image sans étiquette')
+        tags += [str(t) for t in repo_tags]
+        manifest_tags.update(re.sub(r'^docker\.io/', '', str(t)) for t in repo_tags)
+        cfg = safe_name(str(entry.get('Config', '')))
+        if not cfg:
+            fail('Config absente de manifest.json')
+        else:
+            configs.add(cfg)
+    index = _json(data['index.json'], 'index.json') if 'index.json' in data else None
+    if index is not None:
+        if not isinstance(index, dict):
+            fail('index.json invalide')
+        else:
+            for desc in index.get('manifests') or []:
+                ann = desc.get('annotations') or {}
+                if ann.get('io.containerd.image.name') is not None:
+                    tags.append(str(ann['io.containerd.image.name']))
+                rn = ann.get('org.opencontainers.image.ref.name')
+                if rn is not None and rn != sha:
+                    tags.append(str(rn))
+                b = _blob(desc.get('digest'))
+                if not b:
+                    fail('descripteur d\'index sans empreinte sha256')
+                else:
+                    pending.add(b)
+    if 'repositories' in data:
+        repositories = _json(data['repositories'], 'repositories')
+        if isinstance(repositories, dict):
+            for repo, tag_map in repositories.items():
+                for tag in (tag_map or {}):
+                    tags.append(f'{repo}:{tag}')
+        else:
+            fail('repositories invalide')
+    # Suivi des index et manifestes OCI référencés (passes supplémentaires, sans budget) jusqu'aux Config.
+    blobs, depth = {}, 0
+    while pending and not errors and depth < 4:
+        depth += 1
+        want = pending - set(blobs)
+        missing = want - seen
+        if missing:
+            fail('blob référencé absent de l\'archive')
+            break
+        got, _ = _scan(archive, want)
+        blobs.update(got)
+        pending = set()
+        for b in want:
+            doc = _json(blobs.get(b), 'manifeste OCI')
+            if not isinstance(doc, dict):
+                continue
+            for desc in doc.get('manifests') or []:
+                nb = _blob(desc.get('digest'))
+                if nb:
+                    pending.add(nb)
+            if doc.get('config'):
+                cb = _blob(doc['config'].get('digest'))
+                if cb:
+                    configs.add(cb)
+                else:
+                    fail('config OCI sans empreinte sha256')
+    if pending and not errors:
+        fail('index OCI trop imbriqué')
+    if not errors:
+        missing = configs - seen
+        if missing:
+            fail('configuration d\'image référencée absente')
+        else:
+            got, _ = _scan(archive, configs)
+            for c in configs:
+                cfg = _json(got.get(c), 'configuration d\'image')
+                if cfg is None or c not in got:
+                    fail('configuration d\'image illisible')
+                else:
+                    check_image_config(c[-12:], cfg)
     for tag in tags:
-        if not isinstance(tag, str) or not ref.match(tag):
+        if not ref.match(tag):
             fail(f'étiquette refusée (attendu {name}/<image>:<commit livré>)')
+    if not errors and expected_out:
+        with open(expected_out, 'w') as out:
+            for t in sorted(manifest_tags):
+                out.write(t + '\n')
     finish('images')
+
+
+def cmd_loaded(expected_file):
+    """Sortie de `docker load` sur l'entrée : exactement les étiquettes attendues, rien d'autre (ni ID seul)."""
+    expected = {line.strip() for line in open(expected_file) if line.strip()}
+    loaded = set()
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        m = re.fullmatch(r'Loaded image: (\S+)', line)
+        if not m:
+            fail('ligne inattendue dans la sortie de docker load')
+            continue
+        loaded.add(re.sub(r'^docker\.io/', '', m.group(1)))
+    if loaded != expected:
+        fail('images chargées différentes de la liste attendue')
+    finish('loaded')
+
+
+def cmd_copyin(src, dst, max_bytes, uid):
+    """Copie sûre (racine) d'un fichier de la zone de l'utilisateur : fichier ordinaire, sans lien, au propriétaire
+    attendu, taille bornée ; destination créée exclusivement."""
+    try:
+        fd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        fail('source absente ou lien symbolique')
+        return finish('copie')
+    st = os.fstat(fd)
+    import stat as st_mod
+    if not st_mod.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_uid != int(uid) or st.st_size > int(max_bytes):
+        os.close(fd)
+        fail('source refusée (pas un fichier ordinaire unique, autre propriétaire ou trop gros)')
+        return finish('copie')
+    out = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    total = 0
+    with os.fdopen(fd, 'rb') as i, os.fdopen(out, 'wb') as o:
+        while True:
+            chunk = i.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > int(max_bytes):
+                fail('source grossie pendant la copie')
+                break
+            o.write(chunk)
+    finish('copie')
 
 
 # --- envfiles -----------------------------------------------------------------------------------------
@@ -643,8 +780,12 @@ def cmd_oidc(argv):
 def main(argv):
     if len(argv) == 3 and argv[0] == 'bundle':
         return cmd_bundle(argv[1], argv[2])
-    if len(argv) == 4 and argv[0] == 'images':
-        return cmd_images(argv[1], argv[2], argv[3])
+    if len(argv) in (4, 5) and argv[0] == 'images':
+        return cmd_images(argv[1], argv[2], argv[3], argv[4] if len(argv) == 5 else None)
+    if len(argv) == 2 and argv[0] == 'loaded':
+        return cmd_loaded(argv[1])
+    if len(argv) == 5 and argv[0] == 'copyin':
+        return cmd_copyin(argv[1], argv[2], argv[3], argv[4])
     if len(argv) == 2 and argv[0] == 'yamlcheck':
         return cmd_yamlcheck(argv[1])
     if len(argv) == 2 and argv[0] == 'envfiles':

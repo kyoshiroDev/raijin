@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =====================================================================================================
 # Mise en service d'une version livrée (déploiement continu, docs/DEPLOY.md partie C). Copie FIGÉE dans
-# /opt/raijin-deploy/infra/ (root), lancée par infra/deploy-gate.sh en utilisateur deploy, ou à la main pour un
-# dépannage (C7). N'utilise QUE la configuration résolue de la version (<version>/compose.resolved.json, produite et
+# /opt/raijin-deploy/infra/ (root), lancée EN ROOT par infra/docker-priv.sh (sudo depuis deploy-dev / deploy-prod),
+# sur une version importée dans /var/lib/raijin-deploy/<env>/releases/ (copie racine, hors de portée de l'utilisateur). N'utilise QUE la configuration résolue de la version (<version>/compose.resolved.json, produite et
 # contrôlée par la porte) : aucune interpolation, environnement vidé (env -i), politique rejouée avant chaque up / run,
 # `--pull never` et `--no-build` partout.
 #
@@ -20,10 +20,15 @@ rel="$(cd "$rel" && pwd)"
 RAIJIN_ENV="$env"
 # Lancé depuis une session SSH (par la porte) : seules les valeurs figées comptent, sauf tests de la CI (comme la porte).
 if [[ -n "${SSH_ORIGINAL_COMMAND+x}" ]] && ! [[ "${GITHUB_ACTIONS:-}" == true && "${RAIJIN_GATE_TEST:-}" == 1 && -z "${SSH_CONNECTION:-}" ]]; then
-  unset RAIJIN_DEPLOY_BASE RAIJIN_TRAEFIK_ADDR RAIJIN_ENV_FILE RAIJIN_API_ENV_FILE RAIJIN_BENCH_API_ENV_FILE RAIJIN_PG_CONTAINER RAIJIN_COMPOSE_DIR
+  unset RAIJIN_DEPLOY_BASE RAIJIN_PRIV_BASE RAIJIN_TRAEFIK_ADDR RAIJIN_ENV_FILE RAIJIN_API_ENV_FILE RAIJIN_BENCH_API_ENV_FILE RAIJIN_PG_CONTAINER RAIJIN_COMPOSE_DIR
 fi
 DEPLOY_BASE="${RAIJIN_DEPLOY_BASE:-/srv/raijin}"
 base="$DEPLOY_BASE/$env"
+# Zone racine (versions importées, scripts d'init, historique) : /var/lib/raijin-deploy/<env> (docker-priv.sh).
+pbase="${RAIJIN_PRIV_BASE:-/var/lib/raijin-deploy}/$env"
+for f in "$base/env/.env" "$base/env/.env.api" "$base/env/.env.bench-api"; do
+  [[ ! -L "$f" ]] || { echo "release.sh : $f est un lien symbolique : refusé." >&2; exit 2; }
+done
 RAIJIN_ENV_FILE="$base/env/.env" RAIJIN_API_ENV_FILE="$base/env/.env.api" RAIJIN_BENCH_API_ENV_FILE="$base/env/.env.bench-api"
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -50,14 +55,14 @@ CLEAN_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Politique complète sur la configuration résolue (rejouée avant chaque up / run).
 check() {
-  python3 "$POLICY" compose "$resolved" --name "$RAIJIN_NAME" --root "$base/infra-stable" --network "$TRAEFIK_NETWORK" \
+  python3 "$POLICY" compose "$resolved" --name "$RAIJIN_NAME" --root "$pbase/infra-stable" --network "$TRAEFIK_NETWORK" \
     --entrypoint "$ENTRYPOINT" --certresolver "$CERTRESOLVER" --tag "$tag" --hosts "$hosts" >/dev/null \
     || die "configuration résolue refusée par la politique : arrêt sans démarrer."
 }
 # docker compose sur la SEULE configuration résolue, environnement vidé, sans fichier .env.
 rc() {
   env -i PATH="$CLEAN_PATH" HOME="$HOME" docker compose --project-name "$RAIJIN_PROJECT" --env-file /dev/null \
-    --project-directory "$base/infra-stable" -f "$resolved" "$@"
+    --project-directory "$pbase/infra-stable" -f "$resolved" "$@"
 }
 
 docker compose run --help 2>/dev/null | grep -q -- '--pull' || die "docker compose run --pull absent : mets Docker Compose à jour (2.24 minimum, A1)."
@@ -156,6 +161,6 @@ for img in "${images[@]}"; do
   fi
   docker image tag "$RAIJIN_NAME/$img:$tag" "$RAIJIN_NAME/$img:deployed"
 done
-mkdir -p "$base/state/raijin"
-printf '%s %s livraison@%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$env" "$tag" >>"$base/state/raijin/deploy-history"
+mkdir -p "$pbase/state/raijin"
+printf '%s %s livraison@%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$env" "$tag" >>"$pbase/state/raijin/deploy-history"
 log "version ${tag:0:12} en service ($env)."

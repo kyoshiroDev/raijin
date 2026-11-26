@@ -20,6 +20,8 @@ done < <(grep -E '^[A-Z_][A-Z0-9_]*=' infra/.env)
 export RAIJIN_DEPLOY_BASE="$RUNNER_TEMP/raijin-deploy"
 export RAIJIN_TRAEFIK_ADDR="127.0.0.1:${TRAEFIK_CI_PORT:-8443}"
 export RAIJIN_MIN_FREE_GB=3 RAIJIN_GATE_TEST=1
+# Partie privilégiée (docker-priv.sh) : sur le VPS, root par sudo ; ici, appel direct (l'utilisateur du runner a Docker).
+export RAIJIN_PRIV_CMD="$PWD/infra/docker-priv.sh" RAIJIN_PRIV_BASE="$RUNNER_TEMP/raijin-priv"
 work="$(mktemp -d)"
 failures=0
 ok() { printf '  ok   %s\n' "$*"; }
@@ -86,9 +88,20 @@ rm -r -- "$d"
 expect_refused "image d'un autre projet (traefik:…)" "deploy dev $sha1" "$work/pirate.tar"
 if docker image inspect traefik:ci-pirate >/dev/null 2>&1; then ko "image étrangère chargée malgré le refus"; else ok "image étrangère jamais chargée"; fi
 
-echo "== Déploiement dev n° 1 (porte → release.sh)"
+echo "== Partie privilégiée (docker-priv.sh)"
+"$RAIJIN_PRIV_CMD" dev load x >"$work/out" 2>&1 && ko "docker-priv : commande inconnue acceptée" || ok "docker-priv : commande inconnue refusée"
+"$RAIJIN_PRIV_CMD" autre status >"$work/out" 2>&1 && ko "docker-priv : environnement inconnu accepté" || ok "docker-priv : environnement inconnu refusé"
+"$RAIJIN_PRIV_CMD" dev import /etc >"$work/out" 2>&1 && ko "docker-priv : import hors zone accepté" || ok "docker-priv : import hors de /srv/raijin/dev/releases refusé"
+fake_rel="$RAIJIN_DEPLOY_BASE/dev/releases/$sha1-20260101T000000Z"
+mkdir -p "$fake_rel"
+printf '%s\n' "$sha1" >"$fake_rel/SHA"
+ln -s /etc/hostname "$fake_rel/compose.resolved.json"
+"$RAIJIN_PRIV_CMD" dev import "$fake_rel" >"$work/out" 2>&1 && ko "docker-priv : lien symbolique copié" || ok "docker-priv : lien symbolique dans la version refusé"
+rm -r -- "$fake_rel" "$RAIJIN_PRIV_BASE/dev/releases/$sha1-20260101T000000Z" 2>/dev/null || true
+
+echo "== Déploiement dev n° 1 (porte → docker-priv.sh → release.sh)"
 if gate "deploy dev $sha1" <"$work/v1.tar"; then ok "dev $sha1 déployé"; else ko "premier déploiement dev en échec"; fi
-current="$(readlink -f "$RAIJIN_DEPLOY_BASE/dev/current" || true)"
+current="$(readlink -f "$RAIJIN_PRIV_BASE/dev/current" || true)"
 [[ "$(basename "$current")" == "$sha1"-* ]] && ok "version en service : $(basename "$current")" || ko "current ne pointe pas vers $sha1 ($current)"
 gate "status dev" | sed 's/^/    /'
 
@@ -111,7 +124,7 @@ gate "deploy dev $sha2" <"$work/v2.tar" >"$work/out2" 2>&1 || code=$?
 sed 's/^/    /' "$work/out2" | tail -n 25
 [[ "$code" != 0 ]] && ok "livraison cassée refusée (code $code)" || ko "livraison cassée acceptée"
 grep -q "dernière version réussie remise en service" "$work/out2" && ok "retour automatique effectué" || ko "pas de retour automatique"
-current="$(readlink -f "$RAIJIN_DEPLOY_BASE/dev/current" || true)"
+current="$(readlink -f "$RAIJIN_PRIV_BASE/dev/current" || true)"
 [[ "$(basename "$current")" == "$sha1"-* ]] && ok "version 1 toujours en service" || ko "current a changé ($current)"
 # Traefik prend en compte le conteneur recréé en quelques secondes : jusqu'à 30 s d'attente.
 for _ in $(seq 1 15); do

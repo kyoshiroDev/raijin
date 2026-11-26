@@ -203,46 +203,92 @@ bundle_case refus extra.tar "avec fichier hors infra/"
 bundle_case refus hardlink.tar "avec lien physique"
 bundle_case refus dotenv.tar "avec fichier .env"
 
-echo "== Images (docker save : étiquettes et configuration)"
+echo "== Images (docker save : étiquettes, structure, configuration)"
 python3 - "$work/b" "$sha" <<'PY'
-import gzip, io, json, os, sys, tarfile
+import gzip, hashlib, io, json, os, sys, tarfile
 d, sha = sys.argv[1], sys.argv[2]
-def save(name, tags, annotation=None, labels=None, volumes=None, user='node'):
+def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=None, cfg_size=None, manifest_size=None, skip_cfg=False):
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w') as t:
-        def add(n, obj):
-            data = json.dumps(obj).encode(); ti = tarfile.TarInfo(n); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
-        add('blobs/sha256/cfg', {'config': {'Labels': labels or {}, 'Volumes': volumes, 'User': user}})
-        add('manifest.json', [{'Config': 'blobs/sha256/cfg', 'RepoTags': tags, 'Layers': []}])
-        if annotation:
-            add('index.json', {'schemaVersion': 2, 'manifests': [{'annotations': {'io.containerd.image.name': annotation}}]})
+        def add(n, obj=None, raw=None):
+            data = raw if raw is not None else json.dumps(obj).encode()
+            ti = tarfile.TarInfo(n); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
+        cfg = json.dumps({'config': {'Labels': labels or {}, 'Volumes': volumes, 'User': user}}).encode()
+        if cfg_size:
+            cfg += b' ' * cfg_size
+        cdig = hashlib.sha256(cfg).hexdigest()
+        if not skip_cfg:
+            add(f'blobs/sha256/{cdig}', raw=cfg)
+        if oci is not None:
+            # index.json → manifeste OCI → config (éventuellement une AUTRE config que celle de manifest.json)
+            ocfg = json.dumps({'config': {'Labels': oci, 'User': 'node'}}).encode()
+            odig = hashlib.sha256(ocfg).hexdigest()
+            add(f'blobs/sha256/{odig}', raw=ocfg)
+            man = json.dumps({'schemaVersion': 2, 'config': {'digest': f'sha256:{odig}'}, 'layers': []}).encode()
+            mdig = hashlib.sha256(man).hexdigest()
+            add(f'blobs/sha256/{mdig}', raw=man)
+            add('index.json', {'schemaVersion': 2, 'manifests': [{'digest': f'sha256:{mdig}', 'annotations': {'io.containerd.image.name': f'docker.io/{tags[0]}'}}]})
+        for e in (extra or []):
+            e(t, add)
+        m = [{'Config': f'blobs/sha256/{cdig}', 'RepoTags': tags, 'Layers': []}]
+        if manifest_size:
+            add('manifest.json', raw=json.dumps(m).encode() + b' ' * manifest_size)
+        else:
+            add('manifest.json', m)
     with gzip.open(os.path.join(d, name), 'wb') as g:
         g.write(buf.getvalue())
 ok = [f'raijin-dev/api:{sha}', f'raijin-dev/web:{sha}']
-save('img-ok.tar.gz', ok, f'docker.io/raijin-dev/api:{sha}', labels={'org.opencontainers.image.title': 'x'})
+save('img-ok.tar.gz', ok, labels={'org.opencontainers.image.title': 'x', 'com.docker.compose.project': 'raijin-dev'}, oci={})
 save('img-traefik.tar.gz', [f'raijin-dev/api:{sha}', 'traefik:v3.6'])
 save('img-prod.tar.gz', [f'raijin/api:{sha}'])
 save('img-latest.tar.gz', ['raijin-dev/api:latest'])
-save('img-annot.tar.gz', [f'raijin-dev/api:{sha}'], 'docker.io/library/postgres:17')
 save('img-label.tar.gz', ok, labels={'traefik.http.routers.raijin-dev-x.rule': 'Host(`app.raijinshield.com`)'})
 save('img-label-case.tar.gz', ok, labels={'Traefik.Enable': 'true'})
 save('img-volume.tar.gz', ok, volumes={'/data': {}})
 save('img-root.tar.gz', ok, user='')
+save('img-oci-label.tar.gz', ok, oci={'traefik.enable': 'true'})
+save('img-big-config.tar.gz', ok, cfg_size=3 * 1024 * 1024)   # > 2 Mio : lue quand même (plus de budget)
+save('img-huge-manifest.tar.gz', ok, manifest_size=5 * 1024 * 1024)
+save('img-no-config.tar.gz', ok, skip_cfg=True)
+def pad_then_second_manifest(t, add):
+    for i in range(40):
+        add(f'blobs/sha256/{i:064x}', raw=b'x' * (2 * 1024 * 1024 + 1))
+    add('manifest.json', [{'Config': 'blobs/sha256/x', 'RepoTags': ['traefik:v3.6'], 'Layers': []}])
+save('img-dup-manifest.tar.gz', ok, extra=[pad_then_second_manifest])
+def hardlink(t, add):
+    ti = tarfile.TarInfo('repositories'); ti.type = tarfile.LNKTYPE; ti.linkname = 'manifest.json'; t.addfile(ti)
+save('img-hardlink.tar.gz', ok, extra=[hardlink])
+def symlink(t, add):
+    ti = tarfile.TarInfo('blobs/sha256/lien'); ti.type = tarfile.SYMTYPE; ti.linkname = '/etc/shadow'; t.addfile(ti)
+save('img-symlink.tar.gz', ok, extra=[symlink])
 PY
 image_case() {
   local want="$1" file="$2" label="$3" got
-  if python3 "$policy" images "$work/b/$file" raijin-dev "$sha" >"$work/out" 2>&1; then got=ok; else got=refus; fi
+  if python3 "$policy" images "$work/b/$file" raijin-dev "$sha" "$work/expected" >"$work/out" 2>&1; then got=ok; else got=refus; fi
   if [[ "$got" == "$want" ]]; then ok "images $label : $got"; else ko "images $label : $got au lieu de $want ($(head -n 1 "$work/out"))"; fi
 }
-image_case ok img-ok.tar.gz "raijin-dev/*:<commit>"
+image_case ok img-ok.tar.gz "raijin-dev/*:<commit> (index OCI suivi)"
 image_case refus img-traefik.tar.gz "avec traefik:v3.6"
 image_case refus img-prod.tar.gz "de la prod (raijin/*)"
 image_case refus img-latest.tar.gz "« latest » au lieu du commit"
-image_case refus img-annot.tar.gz "annotation containerd étrangère"
 image_case refus img-label.tar.gz "avec LABEL traefik.* (routeur caché dans l'image)"
 image_case refus img-label-case.tar.gz "avec LABEL Traefik.* (casse)"
 image_case refus img-volume.tar.gz "avec VOLUME"
 image_case refus img-root.tar.gz "sans USER (root)"
+image_case refus img-oci-label.tar.gz "config de l'index OCI avec label traefik.*"
+image_case ok img-big-config.tar.gz "config de 3 Mio lue en entier"
+image_case refus img-huge-manifest.tar.gz "manifest.json au-delà du plafond"
+image_case refus img-no-config.tar.gz "Config référencée absente"
+image_case refus img-dup-manifest.tar.gz "2e manifest.json après 80 Mio de remplissage"
+image_case refus img-hardlink.tar.gz "lien physique dans l'archive"
+image_case refus img-symlink.tar.gz "lien symbolique dans l'archive"
+python3 "$policy" images "$work/b/img-ok.tar.gz" raijin-dev "$sha" "$work/expected" >/dev/null
+printf 'Loaded image: raijin-dev/api:%s\nLoaded image: raijin-dev/web:%s\n' "$sha" "$sha" | python3 "$policy" loaded "$work/expected" >/dev/null \
+  && ok "docker load : sortie conforme acceptée" || ko "docker load : sortie conforme refusée"
+printf 'Loaded image: raijin-dev/api:%s\nLoaded image: traefik:v3.6\n' "$sha" | python3 "$policy" loaded "$work/expected" >/dev/null 2>&1 \
+  && ko "docker load : étiquette en trop acceptée" || ok "docker load : étiquette en trop refusée"
+printf 'Loaded image ID: sha256:%064d\n' 0 | python3 "$policy" loaded "$work/expected" >/dev/null 2>&1 \
+  && ko "docker load : image sans étiquette acceptée" || ok "docker load : image sans étiquette refusée"
 
 echo "== Jeton OIDC (clé RSA de test, jamais celle de GitHub)"
 openssl genrsa -out "$work/k.pem" 2048 2>/dev/null
