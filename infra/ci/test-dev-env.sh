@@ -19,7 +19,7 @@ done < <(grep -E '^[A-Z_][A-Z0-9_]*=' infra/.env)
 
 export RAIJIN_DEPLOY_BASE="$RUNNER_TEMP/raijin-deploy"
 export RAIJIN_TRAEFIK_ADDR="127.0.0.1:${TRAEFIK_CI_PORT:-8443}"
-export RAIJIN_MIN_FREE_GB=3 RAIJIN_GATE_TEST=1
+export RAIJIN_MIN_FREE_GB=3 RAIJIN_GATE_TEST=1 RAIJIN_POLICY_DIAG=1
 # Partie privilégiée (docker-priv.sh) : sur le VPS, root par sudo ; ici, appel direct (l'utilisateur du runner a Docker).
 export RAIJIN_PRIV_CMD="$PWD/infra/docker-priv.sh" RAIJIN_PRIV_BASE="$RUNNER_TEMP/raijin-priv"
 work="$(mktemp -d)"
@@ -57,7 +57,11 @@ bundle "$sha1" "$work/v1/infra" "$work/v1.tar"
 echo "== Archive d'images réelle (docker save des images construites par la CI)"
 mkdir -p "$work/real"
 tar -xf "$work/v1.tar" -C "$work/real" images.tar.gz
-if python3 infra/lib/deploy_policy.py images "$work/real/images.tar.gz" raijin-dev "$sha1" "$work/real/expected" >"$work/out" 2>&1; then
+# Diagnostic : type, étiquette, plateforme et User de chaque config contrôlée (rien d'autre).
+code=0
+RAIJIN_POLICY_DIAG=1 python3 infra/lib/deploy_policy.py images "$work/real/images.tar.gz" raijin-dev "$sha1" "$work/real/expected" >"$work/out" 2>&1 || code=$?
+grep '^  diag config' "$work/out" || true
+if [[ "$code" == 0 ]]; then
   ok "images réelles acceptées ($(tr '\n' ' ' <"$work/real/expected"))"
 else
   ko "images réelles refusées : $(tr '\n' ' ' <"$work/out" | head -c 400)"

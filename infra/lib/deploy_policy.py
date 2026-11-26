@@ -179,8 +179,23 @@ def cmd_bundle(archive, dest):
 
 
 # --- images -------------------------------------------------------------------------------------------
-def check_image_config(ref, cfg):
-    c = (cfg or {}).get('config') or {}
+def check_image_config(ref, cfg, media='', tag=''):
+    cfg = cfg if isinstance(cfg, dict) else {}
+    c = cfg.get('config') or cfg.get('Config') or {}
+    os_, arch = str(cfg.get('os', '')), str(cfg.get('architecture', ''))
+    user_raw = str(c.get('User') or '')
+    if os.environ.get('RAIJIN_POLICY_DIAG') == '1':
+        # Diagnostic (CI) : seulement le type, l'étiquette, la plateforme et l'utilisateur, jamais d'autre contenu.
+        print(f'  diag config {ref} type={media or "?"} image={tag or "?"} plateforme={os_ or "?"}/{arch or "?"} '
+              f'User={user_raw!r}', file=sys.stderr)
+    # Config non exécutable : manifeste d'attestation BuildKit (plateforme unknown/unknown, aucun processus). Docker
+    # refuse d'en créer un conteneur ; rien d'autre n'est dispensé de contrôle.
+    if os_ == 'unknown' and arch == 'unknown' and not c.get('Entrypoint') and not c.get('Cmd'):
+        if c.get('User') or c.get('Labels'):
+            fail(f'{ref} : config d\'attestation inattendue (utilisateur ou labels)')
+        return
+    if os_ != 'linux':
+        fail(f'{ref} : plateforme d\'image inattendue')
     for key in (c.get('Labels') or {}):
         k = str(key).lower()
         # traefik.* : lu par Traefik sur le conteneur (routeur caché dans l'image). com.docker.compose.* (posés par
@@ -189,7 +204,7 @@ def check_image_config(ref, cfg):
             fail(f'{ref} : label d\'image interdit (traefik.*)')
     if c.get('Volumes'):
         fail(f'{ref} : VOLUME déclaré dans l\'image')
-    user = str(c.get('User') or '').split(':')[0]
+    user = user_raw.split(':')[0].strip()
     if user in ('', 'root', '0'):
         fail(f'{ref} : l\'image doit tourner avec un utilisateur non root (USER)')
 
@@ -252,6 +267,7 @@ def cmd_images(archive, name, sha, expected_out=None):
         fail('manifest.json absent ou vide (archive docker save attendue)')
         return finish('images')
     tags, configs, pending, manifest_tags = [], set(), set(), set()
+    config_info = {}
     for entry in manifest:
         repo_tags = entry.get('RepoTags') or []
         if not repo_tags:
@@ -263,6 +279,7 @@ def cmd_images(archive, name, sha, expected_out=None):
             fail('Config absente de manifest.json')
         else:
             configs.add(cfg)
+            config_info.setdefault(cfg, ('manifest.json', ','.join(str(t) for t in repo_tags)))
     index = _json(data['index.json'], 'index.json') if 'index.json' in data else None
     if index is not None:
         if not isinstance(index, dict):
@@ -314,6 +331,7 @@ def cmd_images(archive, name, sha, expected_out=None):
                     fail('config OCI sans empreinte sha256')
                 elif str(doc['config'].get('mediaType', '')) in IMAGE_CONFIG_TYPES:
                     configs.add(cb)
+                    config_info.setdefault(cb, (str(doc['config'].get('mediaType')), 'index.json'))
                 # Sinon : config qui n'est pas une image exécutable (attestation in-toto de BuildKit, signature…) :
                 # Docker ne peut pas en créer de conteneur ; rien à contrôler côté USER / labels.
                 elif not str(doc['config'].get('mediaType', '')):
@@ -331,7 +349,8 @@ def cmd_images(archive, name, sha, expected_out=None):
                 if cfg is None or c not in got:
                     fail('configuration d\'image illisible')
                 else:
-                    check_image_config(c[-12:], cfg)
+                    media, tag = config_info.get(c, ('', ''))
+                    check_image_config(c[-12:], cfg, media, tag)
     for tag in tags:
         if not ref.match(tag):
             fail(f'étiquette refusée (attendu {name}/<image>:<commit livré>)')

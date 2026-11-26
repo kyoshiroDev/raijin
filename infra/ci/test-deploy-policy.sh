@@ -214,7 +214,7 @@ def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=Non
         def add(n, obj=None, raw=None):
             data = raw if raw is not None else json.dumps(obj).encode()
             ti = tarfile.TarInfo(n); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
-        cfg = json.dumps({'config': {'Labels': labels or {}, 'Volumes': volumes, 'User': user}}).encode()
+        cfg = json.dumps({'architecture': 'amd64', 'os': 'linux', 'config': {'Labels': labels or {}, 'Volumes': volumes, 'User': user}}).encode()
         if cfg_size:
             cfg += b' ' * cfg_size
         cdig = hashlib.sha256(cfg).hexdigest()
@@ -222,7 +222,7 @@ def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=Non
             add(f'blobs/sha256/{cdig}', raw=cfg)
         if oci is not None:
             # index.json → manifeste OCI → config (éventuellement une AUTRE config que celle de manifest.json)
-            ocfg = json.dumps({'config': {'Labels': oci, 'User': 'node'}}).encode()
+            ocfg = json.dumps({'architecture': 'amd64', 'os': 'linux', 'config': {'Labels': oci, 'User': 'node'}}).encode()
             odig = hashlib.sha256(ocfg).hexdigest()
             add(f'blobs/sha256/{odig}', raw=ocfg)
             man = json.dumps({'schemaVersion': 2, 'config': {'mediaType': oci_type, 'digest': f'sha256:{odig}'}, 'layers': []}).encode()
@@ -230,11 +230,12 @@ def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=Non
             add(f'blobs/sha256/{mdig}', raw=man)
             descs = [{'digest': f'sha256:{mdig}'}]
             if attestation:
-                # Comme BuildKit : index d'image = manifeste d'image + manifeste d'attestation (config in-toto, sans USER).
-                att = json.dumps({'_type': 'https://in-toto.io/Statement/v0.1'}).encode()
+                # Comme BuildKit : index d'image = manifeste d'image + manifeste d'attestation dont la config est de type
+                # image OCI, plateforme unknown/unknown, sans utilisateur ni commande (non exécutable).
+                att = json.dumps(attestation if isinstance(attestation, dict) else {'architecture': 'unknown', 'os': 'unknown', 'config': {}, 'rootfs': {'type': 'layers', 'diff_ids': []}}).encode()
                 adig = hashlib.sha256(att).hexdigest()
                 add(f'blobs/sha256/{adig}', raw=att)
-                aman = json.dumps({'schemaVersion': 2, 'config': {'mediaType': 'application/vnd.in-toto+json', 'digest': f'sha256:{adig}'}, 'layers': []}).encode()
+                aman = json.dumps({'schemaVersion': 2, 'config': {'mediaType': 'application/vnd.oci.image.config.v1+json', 'digest': f'sha256:{adig}'}, 'layers': []}).encode()
                 amdig = hashlib.sha256(aman).hexdigest()
                 add(f'blobs/sha256/{amdig}', raw=aman)
                 descs.append({'digest': f'sha256:{amdig}', 'annotations': {'vnd.docker.reference.type': 'attestation-manifest'}})
@@ -262,6 +263,9 @@ save('img-volume.tar.gz', ok, volumes={'/data': {}})
 save('img-root.tar.gz', ok, user='')
 save('img-oci-label.tar.gz', ok, oci={'traefik.enable': 'true'})
 save('img-attestation.tar.gz', ok, oci={}, attestation=True)
+save('img-fake-attestation.tar.gz', ok, oci={}, attestation={'architecture': 'unknown', 'os': 'unknown', 'config': {'User': 'root', 'Cmd': ['sh']}})
+save('img-numeric-user.tar.gz', ok, user='1000:1000')
+save('img-root-uid.tar.gz', ok, user='0:0')
 save('img-oci-docker-type.tar.gz', ok, oci={'traefik.enable': 'true'}, oci_type='application/vnd.docker.container.image.v1+json')
 save('img-big-config.tar.gz', ok, cfg_size=3 * 1024 * 1024)   # > 2 Mio : lue quand même (plus de budget)
 save('img-huge-manifest.tar.gz', ok, manifest_size=5 * 1024 * 1024)
@@ -292,7 +296,10 @@ image_case refus img-label-case.tar.gz "avec LABEL Traefik.* (casse)"
 image_case refus img-volume.tar.gz "avec VOLUME"
 image_case refus img-root.tar.gz "sans USER (root)"
 image_case refus img-oci-label.tar.gz "config de l'index OCI avec label traefik.*"
-image_case ok img-attestation.tar.gz "index BuildKit avec manifeste d'attestation (in-toto, sans USER)"
+image_case ok img-attestation.tar.gz "index BuildKit avec manifeste d'attestation (unknown/unknown, sans USER)"
+image_case refus img-fake-attestation.tar.gz "fausse attestation exécutable (Cmd, USER root)"
+image_case ok img-numeric-user.tar.gz "USER 1000:1000"
+image_case refus img-root-uid.tar.gz "USER 0:0"
 image_case refus img-oci-docker-type.tar.gz "config de type Docker via l'index avec label traefik.*"
 image_case ok img-big-config.tar.gz "config de 3 Mio lue en entier"
 image_case refus img-huge-manifest.tar.gz "manifest.json au-delà du plafond"
