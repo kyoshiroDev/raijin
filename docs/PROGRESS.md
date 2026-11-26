@@ -1,9 +1,8 @@
 # PROGRESS — Raijin Shield
 
 ## ACTION REQUISE (vide si rien)
-- **Clés Helius** (reportées par décision de l'utilisateur le 2026-11-25, non bloquant pour la v1) : coller `HELIUS_API_KEY` et `BENCH_HELIUS_API_KEY` dans `.env` (variables déjà présentes, vides), puis cocher `docs/SECRETS-CHECKLIST.md`.
+- ~~Clés Helius~~ : copiées dans `.env` par l'utilisateur (2026-11-26), cochées dans SECRETS-CHECKLIST.md.
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
-- **Helius : clés à copier dans ton `.env`** (https://dashboard.helius.dev → API Keys → bouton copier) : ligne « raijin-api » → `HELIUS_API_KEY` ; ligne « raijin-banc-de-test » → `BENCH_HELIUS_API_KEY`. Coche ensuite `docs/SECRETS-CHECKLIST.md`.
 - **Question Helius** : la clé existante « Raijin » (créée le 21/11) a été utilisée le 22/11 vers 1 h 15 : sert-elle à l'ancien scanner en production ? (on n'y touche pas). Veux-tu renommer le projet auto-nommé « Singerrag » en « raijin » ? La clé inutilisée « Llamasage » peut être supprimée par toi si tu veux.
 
 - ~~`.env.example`~~ : fait (créé par toi, commité `2289dc9`).
