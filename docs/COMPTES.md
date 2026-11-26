@@ -5,7 +5,7 @@ Coche au fur et à mesure. Active la **double authentification** partout où c'e
 
 ## Ordre de création (important)
 1. **Domaine** `raijinshield.com` chez OVH (ton compte OVH existant).
-2. **Zoho Mail** (nouveau compte, inscription avec ton e-mail perso), puis lance `docs/prompts/zoho-mail.md` : il crée `contact@`, `support@` et `admin@raijinshield.com`.
+2. [x] **Zoho Mail** (fait le 2026-11-26 : `contact@` boîte, `support@` et `admin@` alias, DNS MX/SPF/DKIM/DMARC posés ; détail dans `docs/OPS-LOG.md`) (nouveau compte, inscription avec ton e-mail perso), puis lance `docs/prompts/zoho-mail.md` : il crée `contact@`, `support@` et `admin@raijinshield.com`.
 3. **Tous les autres comptes** avec **`admin@raijinshield.com`** comme e-mail d'inscription (alias gratuit qui arrive dans la même boîte, filtré dans un dossier « Comptes ») : Google (option « utiliser mon adresse e-mail actuelle », pas besoin de Gmail), Stripe, Resend, Helius, Backblaze, UptimeRobot, Sentry, X, Telegram.
    Exceptions : **GitHub** et **OVH** restent sur tes comptes perso existants.
 
@@ -27,7 +27,7 @@ Coche au fur et à mesure. Active la **double authentification** partout où c'e
 
 | # | Service | À quoi ça sert | Coût | Ce que TU fais | Ce que Claude fait |
 |---|---|---|---|---|---|
-| 7 | **Zoho Mail** — **nouvelle organisation séparée de celle de MTC** | Boîtes `contact@` et `support@raijinshield.com` | 0 € (le plan gratuit n'accepte qu'un domaine par organisation) | Créer un **nouveau compte Zoho** (avec ton e-mail perso, voir « Ordre de création ») et choisir le plan Forever Free ; ajouter ce compte dans l'app Zoho Mail à côté de celui de MTC | Ajouter le domaine `raijinshield.com`, DNS MX/SPF/DKIM chez OVH (compatibles avec Resend), alias `support@`, filtres (Stripe, inscriptions, alertes) |
+| 7 | [x] **Zoho Mail** (configuré le 2026-11-26) — **nouvelle organisation séparée de celle de MTC** | Boîtes `contact@` et `support@raijinshield.com` | 0 € (le plan gratuit n'accepte qu'un domaine par organisation) | Créer un **nouveau compte Zoho** (avec ton e-mail perso, voir « Ordre de création ») et choisir le plan Forever Free ; ajouter ce compte dans l'app Zoho Mail à côté de celui de MTC | Ajouter le domaine `raijinshield.com`, DNS MX/SPF/DKIM chez OVH (compatibles avec Resend), alias `support@`, filtres (Stripe, inscriptions, alertes) |
 | 8 | **Backblaze B2** (tu l'utilises pour XMR) | Sauvegardes hors site des bases | ~0 € (10 Go gratuits) | Rien si compte existant | Bucket **dédié** `raijin-backups` privé, règle de cycle de vie 30 jours, clé d'application limitée à ce bucket |
 | 9 | **UptimeRobot** | Être prévenu si le site tombe | 0 € | Créer le compte | Moniteurs sur landing, app, `api/health`, banc ; alertes e-mail |
 | 10 | **Sentry** | Erreurs front et back en production | 0 € (plan Developer) | Créer le compte | Projets `raijin-web`, `raijin-api`, `raijin-banc`, DSN, filtrage des données personnelles |
