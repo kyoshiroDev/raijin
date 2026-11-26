@@ -841,7 +841,7 @@ sudo adduser --disabled-password --gecos "Raijin deploy dev" deploy-dev
 sudo adduser --disabled-password --gecos "Raijin deploy prod" deploy-prod
 groups deploy-dev deploy-prod                  # ni « docker » ni « sudo » ne doivent apparaître
 sudo install -d -o root -g root -m 755 /srv/raijin /srv/raijin/incoming
-sudo install -d -o root -g root -m 3770 /srv/raijin/lock                         # dossier du verrou (sticky)
+sudo install -d -o root -g root -m 755 /srv/raijin/lock                          # dossier du verrou (traversable, non inscriptible)
 sudo install -o root -g root -m 0644 /dev/null /srv/raijin/lock/deploy.lock       # verrou dev + prod, lu par les deux
 sudo install -d -o root -g root -m 711 /var/lib/raijin-deploy                     # zone racine (versions importées)
 sudo install -d -o deploy-dev  -g deploy-dev  -m 750 /srv/raijin/dev

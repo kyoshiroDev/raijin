@@ -32,8 +32,17 @@
 # /var/lib/raijin-deploy/sauvegardes/), ne touche qu'à ce qui s'appelle raijin* / deploy-dev / deploy-prod ; jamais de
 # « docker compose down », « prune », « volume rm » ; la configuration de Traefik, de sshd et des autres projets n'est
 # pas modifiée. Aucun secret affiché : les secrets générés (openssl rand) sont écrits directement dans les fichiers 600.
-set -euo pipefail
+set -Eeuo pipefail
 umask 022
+CURRENT_BLOCK='préparation'
+on_error() {
+  local code=$? line="$1"
+  ((BASH_SUBSHELL == 0)) || return 0
+  printf '\nÉtape « %s » échouée (ligne %s, code %s).\n' "$CURRENT_BLOCK" "$line" "$code" >&2
+  printf "Rien n'a été cassé : ce qui était déjà fait reste en place et rien n'a été supprimé.\n" >&2
+  printf 'Corrige la cause affichée ci-dessus, puis relance le script : il reprend là où il en était.\n' >&2
+}
+trap 'on_error $LINENO' ERR
 export LC_ALL=C.UTF-8 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -123,6 +132,7 @@ confirm() { # $1 = safe | ask, $2 = question
 }
 run_block() { # titre, safe|ask, fonction
   title "$1"
+  CURRENT_BLOCK="$1"
   DRY=1 PENDING=0
   "$3"
   ((PENDING)) || return 0
@@ -237,8 +247,11 @@ missing_pkgs() {
   printf '%s ' "${out[@]}"
 }
 install_pkgs() {
+  # NEEDRESTART_MODE=l : needrestart liste seulement, ne redémarre AUCUN service (ceux de MTC et XMR Trader compris).
+  DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l NEEDRESTART_SUSPEND=1 apt-get update -qq
   # shellcheck disable=SC2046
-  apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $(missing_pkgs)
+  DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l NEEDRESTART_SUSPEND=1 \
+    apt-get install -y -qq --no-install-recommends $(missing_pkgs)
 }
 block_packages() {
   if ! have dpkg-query || ! have apt-get; then
@@ -287,13 +300,16 @@ ensure_dir() { # chemin propriétaire groupe mode
   if [[ "$cur" == "$o $g $m" ]]; then ok "$p ($cur)"
   else act "corriger $p : $cur -> $o $g $m" fix_perm "$p" "$o" "$g" "$m"; fi
 }
-fix_perm() { chown "$2:$3" "$1"; chmod "$4" "$1"; }
+fix_perm() {
+  [[ ! -L "$1" ]] || die "$1 est un lien symbolique : rien n'est modifié."
+  chown -h "$2:$3" "$1"; chmod "$4" "$1"
+}
 block_dirs() { # C2
   local hd hp
   hd="$(home_of deploy-dev)" hp="$(home_of deploy-prod)"
   ensure_dir "$BASE" root root 755
   ensure_dir "$BASE/incoming" root root 755
-  ensure_dir "$BASE/lock" root root 3770
+  ensure_dir "$BASE/lock" root root 755
   if [[ -f "$BASE/lock/deploy.lock" && ! -L "$BASE/lock/deploy.lock" ]]; then
     local cur; cur="$(perm_of "$BASE/lock/deploy.lock")"
     if [[ "$cur" == "root root 644" ]]; then ok "$BASE/lock/deploy.lock ($cur)"
@@ -557,6 +573,30 @@ fill_env() { # fichier, liste « CLÉ:type » ; ne remplit QUE les variables vid
     act "générer $k dans $f (openssl rand, jamais affiché)" write_secret "$f" "$k" "$t"
   done
 }
+# Mots de passe Postgres : si le volume de données existe déjà, ses mots de passe ont été fixés à sa création. En
+# générer de nouveaux rendrait le .env incohérent avec la base : avertissement, et génération seulement sur
+# confirmation explicite (toujours demandée), sinon « reste à faire » (reprendre les anciennes valeurs).
+PG_KEYS=(POSTGRES_SUPERUSER_PASSWORD RAIJIN_DB_PASSWORD BENCH_DB_PASSWORD)
+write_pg_secret_confirm() {
+  printf "  Le volume Docker %s existe déjà : %s a été fixé à sa création. Un nouveau mot de passe ne correspondra pas à la base.\n" "$3" "$2"
+  if confirm ask "Générer quand même $2 (déconseillé : reprends plutôt l'ancienne valeur) ?"; then
+    write_secret "$1" "$2" hex
+  else
+    ACT_SKIPPED=1
+    TODO+=("$1 : $2 vide alors que le volume $3 existe : reprends l'ancienne valeur (ancien infra/.env de la partie A).")
+  fi
+}
+fill_pg() { # fichier, volume
+  local f="$1" vol="$2" k exists=0
+  if ((DOCKER_OK)) && docker volume inspect "$vol" >/dev/null 2>&1; then exists=1; fi
+  if ((!exists)); then fill_env "$f" "${PG_KEYS[@]/%/:hex}"; return 0; fi
+  for k in "${PG_KEYS[@]}"; do
+    if [[ -n "$(env_value "$f" "$k")" ]]; then ok "$(basename "$(dirname "$(dirname "$f")")") $(basename "$f") : $k renseignée"; continue; fi
+    warn "volume Postgres $vol déjà présent mais $k vide dans $f : mot de passe incohérent si un nouveau est généré."
+    if ((!DRY)) && [[ ! -f "$f" ]]; then continue; fi
+    act "$k : génération seulement sur confirmation (volume $vol existant)" write_pg_secret_confirm "$f" "$k" "$vol"
+  done
+}
 fill_public() { # fichier, clé, valeur, source
   local f="$1" k="$2" v="$3"
   [[ -n "$(env_value "$f" "$k")" ]] && return 0
@@ -576,7 +616,8 @@ block_env() {
   elif [[ -e "$BASE/prod/env/.env.bench-api" ]]; then ok "$BASE/prod/env/.env.bench-api présent (le banc sera déployé)"; fi
 
   f="$BASE/prod/env/.env"
-  fill_env "$f" POSTGRES_SUPERUSER_PASSWORD:hex RAIJIN_DB_PASSWORD:hex BENCH_DB_PASSWORD:hex REDIS_PASSWORD:hex REDIS_BENCH_PASSWORD:hex
+  fill_pg "$f" raijin-pgdata
+  fill_env "$f" REDIS_PASSWORD:hex REDIS_BENCH_PASSWORD:hex
   fill_public "$f" TRAEFIK_NETWORK "$TRAEFIK_NET" "réseau du Traefik détecté (A2)"
   fill_public "$f" TRAEFIK_ENTRYPOINT "$TRAEFIK_EP" "entrypoint :443 détecté"
   fill_public "$f" TRAEFIK_CERTRESOLVER "$TRAEFIK_CR" "certresolver détecté"
@@ -585,7 +626,8 @@ block_env() {
     fill_public "$f" DEPLOY_GIT_REMOTE "git@github.com:$REPO.git" "--repo"
   fi
   f="$BASE/dev/env/.env"
-  fill_env "$f" POSTGRES_SUPERUSER_PASSWORD:hex RAIJIN_DB_PASSWORD:hex BENCH_DB_PASSWORD:hex REDIS_PASSWORD:hex
+  fill_pg "$f" raijin-dev-pgdata
+  fill_env "$f" REDIS_PASSWORD:hex
   fill_public "$f" TRAEFIK_ENTRYPOINT "$TRAEFIK_EP" "même entrypoint que la prod"
   fill_public "$f" TRAEFIK_CERTRESOLVER "$TRAEFIK_CR" "même certresolver que la prod"
   if [[ -z "$(env_value "$f" DEV_BASIC_AUTH_USERS)" ]]; then
@@ -614,12 +656,16 @@ pub_line() { # fichier .pub -> « type base64 » validé, ou vide
   awk '$1 ~ /^(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa)$/ && $2 ~ /^[A-Za-z0-9+\/=]+$/ {print $1 " " $2}' "$f"
 }
 append_key() { # utilisateur, fichier, ligne
+  [[ ! -L "$2" && ! -L "$(dirname "$2")" ]] || die "$2 ou son dossier est un lien symbolique : rien n'est modifié."
   if [[ ! -e "$2" ]]; then install -o "$1" -g "$1" -m 600 /dev/null "$2"; fi
   printf '%s\n' "$3" >>"$2"
 }
 ensure_authorized() { # env (dev | prod), fichier .pub, argument de la porte, commentaire
   local u="deploy-$1" src="$2" arg="$3" comment="$4" home ak key line cur
   home="$(home_of "$u")" ak="$(home_of "$u")/.ssh/authorized_keys"
+  if [[ -L "$home/.ssh" || -L "$ak" ]]; then
+    warn "$ak (ou ~$u/.ssh) est un lien symbolique : refusé, à remplacer par un vrai fichier à la main."; return 0
+  fi
   if [[ -z "$src" ]]; then
     if [[ -s "$ak" ]] && grep -q "command=\"$GATE/infra/deploy-gate.sh $arg\"" "$ak"; then ok "$ak : clé à commande forcée présente"
     else todo "clé publique de $u non fournie (--keys ou --$1-key) : lance infra/vps-install.sh depuis ton PC (C5)."; fi
@@ -645,7 +691,9 @@ ensure_authorized() { # env (dev | prod), fichier .pub, argument de la porte, co
     fi
   fi
 }
-install_ro_key() { backup_file "$2"; install -o deploy-prod -g deploy-prod -m 600 "$1" "$2"; }
+install_ro_key() {
+  [[ ! -L "$2" && ! -L "$(dirname "$2")" ]] || die "$2 ou son dossier est un lien symbolique : rien n'est modifié."
+  backup_file "$2"; install -o deploy-prod -g deploy-prod -m 600 "$1" "$2"; }
 install_github_known() {
   local tmp; tmp="$(mktemp)"
   ssh-keyscan -t ed25519 github.com 2>/dev/null >"$tmp" || true
@@ -655,6 +703,7 @@ install_github_known() {
     TODO+=("empreinte de github.com non enregistrée (réseau ?) : relance le script.")
     return 0
   fi
+  [[ ! -L "$1" && ! -L "$(dirname "$1")" ]] || { rm -f -- "$tmp"; die "$1 ou son dossier est un lien symbolique : rien n'est modifié."; }
   install -o deploy-prod -g deploy-prod -m 644 "$tmp" "$1"
   rm -f -- "$tmp"
 }
@@ -663,6 +712,9 @@ block_keys() {
   ensure_authorized prod "$PROD_KEY" prod-depot github-raijin-depot-prod
   local ssh_dir dst kh
   ssh_dir="$(home_of deploy-prod)/.ssh" dst="$(home_of deploy-prod)/.ssh/github_readonly" kh="$(home_of deploy-prod)/.ssh/known_hosts_github"
+  if [[ -L "$ssh_dir" || -L "$dst" || -L "$kh" ]]; then
+    warn "$ssh_dir, $dst ou $kh est un lien symbolique : refusé (clé de lecture non installée)."; return 0
+  fi
   if [[ -n "$RO_KEY" ]]; then
     if ! ssh-keygen -y -f "$RO_KEY" >/dev/null 2>&1; then warn "$RO_KEY n'est pas une clé privée OpenSSH lisible sans phrase de passe."
     elif [[ -f "$dst" ]] && cmp -s "$RO_KEY" "$dst"; then ok "$dst (clé de lecture du dépôt)"

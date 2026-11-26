@@ -38,7 +38,7 @@ done
 check_perm() { [[ "$(stat -c '%U %G %a' "$1")" == "$2" ]] || fail "$1 : $(stat -c '%U %G %a' "$1") au lieu de $2"; }
 check_perm /srv/raijin "root root 755"
 check_perm /srv/raijin/incoming "root root 755"
-check_perm /srv/raijin/lock "root root 3770"
+check_perm /srv/raijin/lock "root root 755"
 check_perm /srv/raijin/lock/deploy.lock "root root 644"
 check_perm /var/lib/raijin-deploy "root root 711"
 check_perm /srv/raijin/dev "deploy-dev deploy-dev 750"
@@ -55,6 +55,10 @@ check_perm /etc/sudoers.d/raijin-deploy "root root 440"
 visudo -c >/dev/null || fail "visudo -c"
 grep -qx 'deploy-dev  ALL=(root) NOPASSWD: /opt/raijin-deploy/infra/docker-priv.sh dev \*' /etc/sudoers.d/raijin-deploy || fail "règle sudoers dev"
 runuser -u deploy-dev -- ls /srv/raijin/prod >/dev/null 2>&1 && fail "deploy-dev lit /srv/raijin/prod"
+for u in deploy-dev deploy-prod; do
+  runuser -u "$u" -- flock -n /srv/raijin/lock/deploy.lock true || fail "$u ne peut pas prendre le verrou (deploy-gate.sh refuserait)"
+  runuser -u "$u" -- sh -c ': >/srv/raijin/lock/x' 2>/dev/null && fail "$u peut écrire dans /srv/raijin/lock"
+done
 key_dev="$(awk '{print $1" "$2}' keys/raijin-deploy-dev.pub)"
 grep -qxF "restrict,command=\"/opt/raijin-deploy/infra/deploy-gate.sh dev\" $key_dev github-raijin-deploy-dev" /home/deploy-dev/.ssh/authorized_keys || fail "authorized_keys dev"
 key_prod="$(awk '{print $1" "$2}' keys/raijin-depot-prod.pub)"

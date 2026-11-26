@@ -63,7 +63,14 @@ if [[ -n "$(git status --porcelain -- "${FROZEN[@]}")" ]]; then
   printf 'ATTENTION : des scripts copiés sur le VPS ont des modifications non commitées.\n'
 fi
 if [[ "$branch" != main ]]; then
-  printf 'ATTENTION : branche « %s ». Les scripts figés du VPS doivent normalement venir de main, après relecture (C4).\n' "$branch"
+  cat <<EOF2
+
+ATTENTION : tu es sur la branche « $branch », pas sur main.
+  Les scripts de déploiement installés sur le VPS (/opt/raijin-deploy, « scripts figés ») seront ceux de « $branch ».
+  C'est normal tant que la PR dev → main n'est pas fusionnée. Après la fusion, repasse sur main
+  (git switch main && git pull --ff-only) et relance « bash infra/vps-install.sh » pour les réinstaller (C8).
+EOF2
+  ask_yes "Continuer avec les scripts de « $branch » ?" || die "arrêté à ta demande : rien n'a été fait."
 fi
 
 printf '\nVPS : %s@%s (port %s) · dépôt GitHub : %s · mode : %s\n' "$SSH_USER" "$HOST" "$PORT" "$REPO" \
@@ -92,7 +99,18 @@ done
 umask 077
 DEST="$SSH_USER@$HOST"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/rj.XXXXXX")"
-trap 'ssh -o ControlPath="$TMP/cm" -O exit "$DEST" >/dev/null 2>&1 || true; rm -rf -- "$TMP"' EXIT
+remote_dir=''
+cleanup() {
+  # Dossier temporaire du VPS (archive et clé de lecture) : supprimé même après Ctrl-C ou coupure.
+  if [[ "$remote_dir" =~ ^/[A-Za-z0-9._/-]+/\.raijin-setup\.[A-Za-z0-9]+$ ]]; then
+    ssh -p "$PORT" -o ControlPath="$TMP/cm" -o ConnectTimeout=15 "$DEST" "rm -rf -- '$remote_dir'" >/dev/null 2>&1 \
+      || printf '\nATTENTION : supprime à la main sur le VPS le dossier temporaire %s\n' "$remote_dir" >&2
+  fi
+  ssh -o ControlPath="$TMP/cm" -O exit "$DEST" >/dev/null 2>&1 || true
+  rm -rf -- "$TMP"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
 mkdir -p "$TMP/stage/infra/lib" "$TMP/stage/keys"
 for f in "${FROZEN[@]}"; do cp -- "$f" "$TMP/stage/$f"; done
 for k in raijin-deploy-dev raijin-depot-prod raijin-github-readonly; do
@@ -105,12 +123,12 @@ tar -C "$TMP/stage" -cf "$TMP/raijin-setup.tar" .
 SSHO=(-p "$PORT" -o ControlMaster=auto -o ControlPath="$TMP/cm" -o ControlPersist=600)
 printf '\n== Connexion au VPS ==\n'
 remote_dir="$(ssh "${SSHO[@]}" "$DEST" 'mktemp -d "$HOME/.raijin-setup.XXXXXX"')"
-[[ "$remote_dir" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "dossier temporaire distant inattendu."
+[[ "$remote_dir" =~ ^/[A-Za-z0-9._/-]+/\.raijin-setup\.[A-Za-z0-9]+$ ]] || { remote_dir=''; die "dossier temporaire distant inattendu."; }
 scp -q -P "$PORT" -o ControlPath="$TMP/cm" "$TMP/raijin-setup.tar" "$DEST:$remote_dir/"
 mode='--preview-apply'; ((CHECK)) && mode='--check'
 printf 'Le mot de passe demandé est celui de sudo sur le VPS (compte %s).\n' "$SSH_USER"
 set +e
-ssh -t "${SSHO[@]}" "$DEST" "cd '$remote_dir' && tar -xf raijin-setup.tar && sudo bash infra/vps-setup.sh $mode --keys keys --repo '$REPO'; rc=\$?; rm -rf -- '$remote_dir'; exit \$rc"
+ssh -t "${SSHO[@]}" "$DEST" "trap \"rm -rf -- '$remote_dir'\" EXIT INT TERM HUP; cd '$remote_dir' && tar -xf raijin-setup.tar && sudo bash infra/vps-setup.sh $mode --keys keys --repo '$REPO'; rc=\$?; rm -rf -- '$remote_dir'; exit \$rc"
 rc=$?
 set -e
 ((rc == 0)) || printf '\nATTENTION : vps-setup.sh s%sest terminé avec le code %s (voir ci-dessus).\n' "'" "$rc"
