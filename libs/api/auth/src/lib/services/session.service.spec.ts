@@ -58,6 +58,25 @@ describe('SessionService', () => {
     });
   }
 
+  it('rotation liée au sid de l’access : même session acceptée, autre session refusée sans consommer ni révoquer', async () => {
+    const { mock, sessions } = setup();
+    mock.refreshToken.findUnique.mockResolvedValue({
+      id: 'rt-1',
+      sessionId: 'sid-attaquant',
+      usedAt: null,
+      expiresAt: future(),
+      session: { id: 'sid-attaquant', userId: 'attaquant', revokedAt: null, expiresAt: future(), userAgent: null },
+    });
+    await expectExpired(sessions.rotate('injecte', client, 'sid-victime'));
+    expect(mock.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(mock.session.updateMany).not.toHaveBeenCalled();
+
+    mock.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    mock.refreshToken.create.mockResolvedValue({});
+    mock.session.update.mockResolvedValue({ id: 'sid-attaquant', userId: 'attaquant' });
+    await expect(sessions.rotate('injecte', client, 'sid-attaquant')).resolves.toMatchObject({ session: { id: 'sid-attaquant' } });
+  });
+
   it('refresh valide d’une session coupée par la suspension → 403 ACCOUNT_SUSPENDED', async () => {
     const { mock, sessions } = setup();
     mock.refreshToken.findUnique.mockResolvedValue({

@@ -175,7 +175,7 @@ describe('auth du banc (HTTP)', () => {
     const attempts: [string, string][] = [
       ['Cookie', ''],
       ['Cookie', `rj_at=${forgedJwt}; rj_csrf=abc`],
-      ['Cookie', `__Host-rj_at=${forgedJwt}; __Secure-rj_rt=abc`],
+      ['Cookie', `__Host-rj_at=${forgedJwt}; __Host-rj_rt=abc; __Secure-rj_rt=abc`],
       ['Authorization', `Bearer ${forgedJwt}`],
       ['Cookie', 'rjb_session=inventé'],
       ['Cookie', `rjb_session=${'a'.repeat(400)}`],

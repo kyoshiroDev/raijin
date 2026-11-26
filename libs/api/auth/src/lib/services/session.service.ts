@@ -55,14 +55,19 @@ export class SessionService {
     return { session, refreshToken };
   }
 
-  /** Échange un refresh valide contre un nouveau (même session). Erreur : 401 AUTH_SESSION_EXPIRED. */
-  async rotate(rawToken: string, client: ClientInfo): Promise<IssuedRefresh> {
+  /**
+   * Échange un refresh valide contre un nouveau (même session). Erreur : 401 AUTH_SESSION_EXPIRED.
+   * `expectedSessionId` (sid de l'access token signé de la requête) : un refresh d'une autre session
+   * est refusé sans être consommé ni révoquer sa famille (refresh injecté par un tiers).
+   */
+  async rotate(rawToken: string, client: ClientInfo, expectedSessionId: string | null = null): Promise<IssuedRefresh> {
     const now = new Date();
     const record = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: sha256(rawToken) },
       include: { session: true },
     });
     if (!record) throw expired();
+    if (expectedSessionId !== null && record.sessionId !== expectedSessionId) throw expired();
 
     if (record.usedAt) {
       if (now.getTime() - record.usedAt.getTime() <= REFRESH_REUSE_GRACE_MS) {

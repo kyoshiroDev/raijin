@@ -28,7 +28,7 @@ Tous `HttpOnly`, `SameSite=Lax`, sans `Domain`, `Secure` quand `COOKIE_SECURE=tr
 | Rôle | Nom en production | Nom en dev (http://localhost) | Chemin |
 |---|---|---|---|
 | Access token (JWT, `JWT_ACCESS_TTL`, 15 min par défaut) | `__Host-rj_at` | `rj_at` | `/` |
-| Refresh token opaque (`JWT_REFRESH_TTL`, 30 j par défaut) | `__Secure-rj_rt` | `rj_rt` | `/api/v1/auth` uniquement |
+| Refresh token opaque (`JWT_REFRESH_TTL`, 30 j par défaut) | `__Host-rj_rt` (ancien `__Secure-rj_rt` sur `/api/v1/auth` accepté une dernière fois puis effacé) | `rj_rt` | `/` |
 | Jeton CSRF | `__Host-rj_csrf` | `rj_csrf` | `/` |
 
 Aucun jeton de session n'est renvoyé dans un corps de réponse : seul le jeton CSRF l'est (`csrfToken`), pour que le

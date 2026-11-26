@@ -214,11 +214,19 @@ export class AuthService {
   }
 
   /** Rotation du refresh (cookie) : nouvelle paire de jetons, même session. */
-  async refresh(rawRefreshToken: string | null, client: ClientInfo): Promise<IssuedSession> {
+  /**
+   * Rotation du refresh. `expectedSessionId` : sid de l'access token signé (même expiré) présent
+   * dans la requête ; s'il est fourni, le refresh doit appartenir à cette session.
+   */
+  async refresh(
+    rawRefreshToken: string | null,
+    client: ClientInfo,
+    expectedSessionId: string | null = null,
+  ): Promise<IssuedSession> {
     // Pas de cookie de refresh : visiteur jamais connecté ou déconnecté. Code distinct
     // (UNAUTHORIZED) pour que le front n'essaie pas de rafraîchir.
     if (!rawRefreshToken) throw new ApiException('UNAUTHORIZED', HttpStatus.UNAUTHORIZED);
-    const { session, refreshToken } = await this.sessions.rotate(rawRefreshToken, client);
+    const { session, refreshToken } = await this.sessions.rotate(rawRefreshToken, client, expectedSessionId);
     const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
     if (!user) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
     if (user.suspendedAt) {

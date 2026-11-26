@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import { testConfig } from '../../testing/test-config';
 import { ApiException } from '../errors/api-exception';
-import { AuthCookies, cookieNames, REFRESH_COOKIE_PATH } from './cookies';
+import { AuthCookies, cookieNames, LEGACY_REFRESH_COOKIE_PATH, LEGACY_SECURE_REFRESH_COOKIE, REFRESH_COOKIE_PATH } from './cookies';
 import { hmac, randomToken, safeEqual, sha256 } from './crypto';
 import { CsrfGuard, CsrfService, SessionIdResolverRegistry, SKIP_CSRF } from './csrf';
 
@@ -35,11 +35,11 @@ function fakeResponse() {
 
 describe('AuthCookies', () => {
   it('noms préfixés en mode Secure, simples en dev', () => {
-    expect(cookieNames(true)).toEqual({ access: '__Host-rj_at', refresh: '__Secure-rj_rt', csrf: '__Host-rj_csrf' });
+    expect(cookieNames(true)).toEqual({ access: '__Host-rj_at', refresh: '__Host-rj_rt', csrf: '__Host-rj_csrf' });
     expect(cookieNames(false)).toEqual({ access: 'rj_at', refresh: 'rj_rt', csrf: 'rj_csrf' });
   });
 
-  it('pose des cookies HttpOnly, SameSite=Lax, Secure selon la config, refresh limité à /api/v1/auth', () => {
+  it('pose des cookies HttpOnly, SameSite=Lax, Secure, `__Host-` (Path=/, sans Domain) ; efface l’ancien refresh', () => {
     const cookies = new AuthCookies(testConfig({ COOKIE_SECURE: 'true' }));
     const res = fakeResponse();
     cookies.setSession(res, 'acc', 'ref');
@@ -47,12 +47,56 @@ describe('AuthCookies', () => {
     const [access, refresh, csrf] = res.cookie.mock.calls;
     expect(access?.[0]).toBe('__Host-rj_at');
     expect(access?.[2]).toMatchObject({ httpOnly: true, secure: true, sameSite: 'lax', path: '/' });
-    expect(refresh?.[0]).toBe('__Secure-rj_rt');
-    expect(refresh?.[2]).toMatchObject({ path: REFRESH_COOKIE_PATH, httpOnly: true });
+    expect(refresh?.[0]).toBe('__Host-rj_rt');
+    expect(REFRESH_COOKIE_PATH).toBe('/');
+    expect(refresh?.[2]).toMatchObject({ path: '/', httpOnly: true, secure: true, sameSite: 'lax' });
     expect(csrf?.[0]).toBe('__Host-rj_csrf');
-    expect(access?.[2]).not.toHaveProperty('domain');
+    for (const call of res.cookie.mock.calls) expect(call[2]).not.toHaveProperty('domain');
+    // Migration : l'ancien `__Secure-rj_rt` (Path=/api/v1/auth) est expiré à chaque pose de session.
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      LEGACY_SECURE_REFRESH_COOKIE,
+      expect.objectContaining({ path: LEGACY_REFRESH_COOKIE_PATH, secure: true, httpOnly: true }),
+    );
+    res.clearCookie.mockClear();
     cookies.clearSession(res);
-    expect(res.clearCookie).toHaveBeenCalledTimes(2);
+    expect(res.clearCookie.mock.calls.map((call) => [call[0], call[1].path])).toEqual([
+      [LEGACY_SECURE_REFRESH_COOKIE, LEGACY_REFRESH_COOKIE_PATH],
+      ['__Host-rj_at', '/'],
+      ['__Host-rj_rt', '/'],
+    ]);
+  });
+
+  it('en dev (http), `rj_rt` passe sur Path=/ et l’ancien chemin /api/v1/auth est expiré', () => {
+    const cookies = new AuthCookies(testConfig());
+    const res = fakeResponse();
+    cookies.setSession(res, 'acc', 'ref');
+    expect(res.clearCookie).toHaveBeenCalledWith('rj_rt', expect.objectContaining({ path: LEGACY_REFRESH_COOKIE_PATH }));
+    expect(res.cookie).toHaveBeenCalledWith('rj_rt', 'ref', expect.objectContaining({ path: '/' }));
+  });
+
+  describe('readRefresh', () => {
+    const secure = new AuthCookies(testConfig({ COOKIE_SECURE: 'true' }));
+    const req = (header: string, cookies: Record<string, string>) =>
+      ({ headers: { cookie: header }, cookies }) as unknown as Request;
+
+    it('nouveau nom prioritaire ; ancien `__Secure-rj_rt` lu seulement en son absence (migration)', () => {
+      expect(secure.readRefresh(req('__Host-rj_rt=n', { '__Host-rj_rt': 'n' }))).toEqual({ kind: 'token', token: 'n', legacy: false });
+      expect(secure.readRefresh(req('__Secure-rj_rt=o', { '__Secure-rj_rt': 'o' }))).toEqual({ kind: 'token', token: 'o', legacy: true });
+      expect(
+        secure.readRefresh(req('__Secure-rj_rt=o; __Host-rj_rt=n', { '__Secure-rj_rt': 'o', '__Host-rj_rt': 'n' })),
+      ).toEqual({ kind: 'token', token: 'n', legacy: false });
+      expect(secure.readRefresh(req('', {}))).toEqual({ kind: 'none' });
+      expect(secure.readRefresh({} as Request)).toEqual({ kind: 'none' });
+    });
+
+    it('nom répété dans l’en-tête brut (cookie injecté par un sous-domaine) : duplicate', () => {
+      const header = '__Host-rj_rt=attaquant; __Host-rj_at=a; __Host-rj_rt=victime';
+      expect(secure.readRefresh(req(header, { '__Host-rj_rt': 'attaquant' }))).toEqual({ kind: 'duplicate' });
+      const legacy = '__Secure-rj_rt=attaquant;__Secure-rj_rt=victime';
+      expect(secure.readRefresh(req(legacy, { '__Secure-rj_rt': 'attaquant' }))).toEqual({ kind: 'duplicate' });
+      const dev = new AuthCookies(testConfig());
+      expect(dev.readRefresh(req('rj_rt=a; rj_rt=b', { rj_rt: 'a' }))).toEqual({ kind: 'duplicate' });
+    });
   });
 
   it('lit un cookie borné et ignore les valeurs vides ou démesurées', () => {

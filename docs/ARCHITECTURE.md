@@ -400,7 +400,7 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
   | Rôle | Nom prod (`COOKIE_SECURE=true`) | Nom dev | Path | Domain |
   |---|---|---|---|---|
   | Access | `__Host-rj_at` | `rj_at` | `/` | aucun (hôte API seul) |
-  | Refresh | `__Secure-rj_rt` | `rj_rt` | `/api/v1/auth` | aucun |
+  | Refresh | `__Host-rj_rt` | `rj_rt` | `/` | aucun |
   | CSRF | `__Host-rj_csrf` | `rj_csrf` | `/` | aucun |
 
   Aucun jeton dans le corps des réponses ni dans le `localStorage`/`sessionStorage`. Le cookie
@@ -408,6 +408,9 @@ inter-projets). Logo PNG `APP_URL/icons/icon-192.png` (les clients mail bloquent
   reste lisible pour la garde CSRF de `POST /auth/refresh`. Un refresh réutilisé dans les 10 s
   (onglets concurrents) reçoit 409 `CONFLICT` sans révoquer la famille ni effacer les cookies (le
   front rejoue sa requête) ; au-delà, toute la famille est révoquée (401 `AUTH_SESSION_EXPIRED`).
+  Le refresh est refusé (401 `AUTH_SESSION_EXPIRED`, cookies effacés) si l'en-tête `Cookie` répète son
+  nom ou s'il n'appartient pas à la session (`sid`) de l'access signé présent. L'ancien
+  `__Secure-rj_rt` (`Path=/api/v1/auth`) est accepté une dernière fois s'il est lié à l'access, puis expiré.
   Sans cookie (jamais connecté, déconnecté) : 401 `UNAUTHORIZED`, le front ne tente pas de refresh.
   La garde d'auth vérifie en base que la session n'est pas révoquée (déconnexion immédiate).
   `COOKIE_DOMAIN` reste vide (cookies liés à l'hôte de l'API).

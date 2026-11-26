@@ -111,7 +111,18 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthSession> {
     try {
-      return this.respond(res, await this.auth.refresh(this.cookies.read(req, 'refresh'), client));
+      const presented = this.cookies.readRefresh(req);
+      // Nom de refresh répété dans l'en-tête Cookie : injection probable (sous-domaine), on refuse.
+      if (presented.kind === 'duplicate') throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+      // Le refresh doit appartenir à la session de l'access token signé (même expiré) s'il y en a un.
+      const sessionId = this.accessTokens.readSessionId(req);
+      if (presented.kind === 'token' && presented.legacy && !sessionId) {
+        // Ancien `__Secure-rj_rt` (déposable avec Domain) : accepté une dernière fois, seulement lié à un access.
+        throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+      }
+      const token = presented.kind === 'token' ? presented.token : null;
+      // `respond` pose le nouveau `__Host-rj_rt` et efface l'ancien nom / ancien chemin.
+      return this.respond(res, await this.auth.refresh(token, client, sessionId));
     } catch (error) {
       // 409 (refresh concurrent dans la fenêtre de grâce) : les cookies déjà tournés restent valables.
       if (!(error instanceof ApiException && error.code === 'CONFLICT')) this.cookies.clearSession(res);
@@ -126,7 +137,7 @@ export class AuthController {
     @Client() client: ClientInfo,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.auth.logout(this.accessTokens.readSessionId(req), this.cookies.read(req, 'refresh'), client);
+    await this.auth.logout(this.accessTokens.readSessionId(req), this.presentedRefresh(req), client);
     this.cookies.clearSession(res);
     // Nouveau jeton CSRF anonyme : le front peut enchaîner sur une nouvelle connexion.
     this.cookies.setCsrf(res, this.csrf.issue(null));
@@ -147,7 +158,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionState> {
     if (!auth) {
-      if (this.cookies.read(req, 'refresh')) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+      if (this.cookies.readRefresh(req).kind !== 'none') throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
       return { authenticated: false };
     }
     const user = await this.auth.currentUser(auth.userId);
@@ -220,6 +231,12 @@ export class AuthController {
     @Client() client: ClientInfo,
   ): Promise<void> {
     await this.auth.changePassword(auth.userId, auth.sessionId, body, client);
+  }
+
+  /** Refresh unique de la requête (nouveau nom, sinon ancien) ; `null` s'il manque ou s'il est répété. */
+  private presentedRefresh(req: Request): string | null {
+    const presented = this.cookies.readRefresh(req);
+    return presented.kind === 'token' ? presented.token : null;
   }
 
   /** Pose les cookies httpOnly et renvoie la session publique (aucun jeton hormis le CSRF). */

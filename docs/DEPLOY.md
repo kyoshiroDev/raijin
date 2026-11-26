@@ -1028,7 +1028,8 @@ prochain déploiement ou avec `docker start …`). Ne lance jamais `docker compo
 
 ## C10. Cookies et sous-domaine dev
 
-Les cookies d'accès et CSRF de l'API portent le préfixe `__Host-` (aucun attribut `Domain` possible) ; le cookie de
-rafraîchissement est en `__Secure-rj_rt` (chemin `/api/v1/auth`). Un `__Secure-` peut, en théorie, être posé avec
-`Domain=raijinshield.com` par un autre sous-domaine (le dev, par exemple) et envoyé à `app.` : c'est la raison de la
-basicAuth et du cloisonnement du dev. Durcissement possible côté API (non fait) : refresh en `__Host-` avec `Path=/`.
+Les trois cookies de l'API (accès, CSRF et rafraîchissement `__Host-rj_rt`, `Path=/`) portent le préfixe `__Host-` :
+aucun attribut `Domain` possible, donc un autre sous-domaine (le dev, par exemple) ne peut pas en déposer pour `app.`.
+En plus, `POST /auth/refresh` refuse un en-tête `Cookie` qui répète le nom du refresh et exige que la session du refresh
+corresponde au `sid` du cookie d'accès (docs/SECURITY.md, menace 3). L'ancien `__Secure-rj_rt` n'est accepté qu'une
+dernière fois, avec un cookie d'accès de la même session, puis effacé. La basicAuth et le cloisonnement du dev restent.

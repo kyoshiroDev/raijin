@@ -58,14 +58,21 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   connu au-delà d'une XSS (qui pourrait lire le jeton en mémoire, voir menace 1).
 
 ### 3. Vol ou fixation de session
-- **Parades** : cookies `HttpOnly`, `Secure` (imposé en prod), `SameSite=Lax`, préfixés en mode Secure,
-  refresh limité au chemin `/api/v1/auth` (`libs/api/core/src/lib/security/cookies.ts`) ; access JWT 15 min ;
+- **Parades** : cookies `HttpOnly`, `Secure` (imposé en prod), `SameSite=Lax`, tous préfixés `__Host-` en mode
+  Secure (`__Host-rj_at`, `__Host-rj_rt`, `__Host-rj_csrf` : `Path=/`, aucun `Domain`, donc non déposables par un
+  sous-domaine comme `dev.raijinshield.com`) (`libs/api/core/src/lib/security/cookies.ts`) ; `POST /auth/refresh`
+  refuse (401 `AUTH_SESSION_EXPIRED` + effacement) un en-tête `Cookie` qui répète le nom du refresh, et exige que
+  le refresh appartienne à la session (`sid`) de l'access signé quand il est présent, sans consommer ni révoquer
+  le refresh d'une autre session (`auth.controller.ts`, `SessionService.rotate`) ; migration : l'ancien
+  `__Secure-rj_rt` (`Path=/api/v1/auth`) est accepté une dernière fois, seulement lié à un `__Host-rj_at` signé de
+  la même session, puis expiré à chaque pose de session ; access JWT 15 min ;
   refresh **opaque haché** en base, rotation à chaque usage, réutilisation hors délai de grâce = révocation de
   toute la famille + audit (`libs/api/auth/src/lib/services/session.service.ts`) ; déconnexion globale au
   changement ou à la réinitialisation du mot de passe, abonnements push supprimés (`49c8904`) ; suspension
   coupe les sessions ; sessions admin 30 min d'inactivité / 8 h max (`admin-session.ts`) ; banc 2 h / 12 h.
-- **Tests** : `session.service.spec.ts` (rotation, réutilisation, course, suspension), `security.spec.ts`
-  (attributs des cookies), `auth.e2e.spec.ts`, `admin-security.e2e.spec.ts`.
+- **Tests** : `session.service.spec.ts` (rotation, réutilisation, course, suspension, sid différent),
+  `security.spec.ts` (attributs des cookies, nom répété, ancien nom), `auth.controller.spec.ts` (double cookie,
+  sid différent, migration depuis `__Secure-rj_rt`), `auth.e2e.spec.ts`, `admin-security.e2e.spec.ts`.
 - **Risque résiduel** : réutilisation d'un refresh tolérée < 10 s (onglets concurrents, 409 sans révocation) ;
   pas de liaison de session à l'appareil ou à l'IP.
 

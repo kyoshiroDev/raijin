@@ -104,6 +104,31 @@ describe('API Raijin : parcours d’auth', () => {
     expect((await client.post('/auth/refresh')).status).toBe(200);
   });
 
+  it('refresh d’une autre session ou nom de refresh répété (cookie injecté) : 401, sans consommer le refresh d’autrui', async () => {
+    const victim = await registerAndVerify(uniqueEmail('fixation-victime'));
+    const attacker = await registerAndVerify(uniqueEmail('fixation-attaquant'));
+    const attackerRefresh = attacker.cookies.get('rj_rt') ?? '';
+    expect(attackerRefresh).not.toBe('');
+
+    // Refresh de l'attaquant glissé à côté de l'access de la victime : sid différent, refusé.
+    const forged = victim.clone();
+    forged.cookies.set('rj_rt', attackerRefresh);
+    const mismatch = await forged.post('/auth/refresh');
+    expect(mismatch.status).toBe(401);
+    expect(mismatch.data['code']).toBe('AUTH_SESSION_EXPIRED');
+    // Le refresh de l'attaquant n'a été ni consommé ni révoqué.
+    expect((await attacker.post('/auth/refresh')).status).toBe(200);
+
+    // Deux cookies de refresh du même nom dans l'en-tête : refusé avant toute rotation.
+    const doubled = victim.clone();
+    doubled.cookies.set('rj_rt', `${attacker.cookies.get('rj_rt') ?? ''}; rj_rt=${victim.cookies.get('rj_rt') ?? ''}`);
+    const duplicate = await doubled.post('/auth/refresh');
+    expect(duplicate.status).toBe(401);
+    expect(duplicate.data['code']).toBe('AUTH_SESSION_EXPIRED');
+    // La session de la victime reste utilisable avec son propre refresh.
+    expect((await victim.post('/auth/refresh')).status).toBe(200);
+  });
+
   it('verify-email/resend connecté avec un corps vide : renvoi à l’adresse de la session', async () => {
     const email = uniqueEmail('resend');
     const client = await new ApiClient().init();

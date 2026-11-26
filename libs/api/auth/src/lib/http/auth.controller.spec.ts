@@ -132,7 +132,8 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
       .expect(200);
     const cookies = cookiesOf(res);
     expect(cookies['rj_at']?.raw).toMatch(/HttpOnly/);
-    expect(cookies['rj_rt']?.raw).toMatch(/Path=\/api\/v1\/auth/);
+    expect(cookies['rj_rt']?.raw).toMatch(/Path=\/;/);
+    expect(cookies['rj_rt']?.raw).not.toMatch(/Domain=/i);
     expect(cookies['rj_csrf']?.value).toBe(res.body.csrfToken);
     expect(JSON.stringify(res.body)).not.toContain(session.accessToken);
     expect(JSON.stringify(res.body)).not.toContain('refresh-opaque');
@@ -150,7 +151,7 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
         Cookie: `rj_csrf=${res.body.csrfToken}; rj_at=${session.accessToken}; rj_rt=refresh-opaque`,
       })
       .expect(200);
-    expect(auth.refresh).toHaveBeenCalledWith('refresh-opaque', expect.anything());
+    expect(auth.refresh).toHaveBeenCalledWith('refresh-opaque', expect.anything(), 'sid-login');
 
     // Sans l'access token qui porte le sid, ce jeton lié n'est plus accepté.
     await request(server())
@@ -182,6 +183,30 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
       .post('/api/v1/auth/refresh')
       .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `rj_csrf=${token}; rj_at=${expired}; rj_rt=r` })
       .expect(200);
+  });
+
+  it('POST /auth/refresh avec un nom de refresh répété dans l’en-tête Cookie : 401 + effacement, aucune rotation', async () => {
+    const { token, cookie } = await anonymousCsrf();
+    const res = await request(server())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `${cookie}; rj_rt=injecte; rj_rt=legitime` })
+      .expect(401);
+    expect(res.body).toEqual({ code: 'AUTH_SESSION_EXPIRED', message: expect.any(String) });
+    expect(auth.refresh).not.toHaveBeenCalled();
+    expect(cookiesOf(res)['rj_rt']?.raw).toMatch(/Expires=Thu, 01 Jan 1970/);
+  });
+
+  it('POST /auth/refresh : le sid de l’access est transmis ; refresh d’une autre session refusé (401 + effacement)', async () => {
+    const session = issued('sid-victime');
+    const csrfRes = await request(server()).get('/api/v1/auth/csrf').set('Cookie', `rj_at=${session.accessToken}`).expect(200);
+    const token = csrfRes.body.csrfToken as string;
+    auth.refresh.mockRejectedValue(ApiException.auth('AUTH_SESSION_EXPIRED', 401));
+    const res = await request(server())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `rj_csrf=${token}; rj_at=${session.accessToken}; rj_rt=autre-session` })
+      .expect(401);
+    expect(auth.refresh).toHaveBeenCalledWith('autre-session', expect.anything(), 'sid-victime');
+    expect(cookiesOf(res)['rj_at']?.raw).toMatch(/Expires=Thu, 01 Jan 1970/);
   });
 
   it('POST /auth/refresh concurrent (409 CONFLICT) : cookies conservés', async () => {
@@ -300,5 +325,98 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
       .send({ currentPassword: 'ancienne phrase', newPassword: 'nouvelle phrase de passe' })
       .expect(204);
     expect(auth.changePassword).toHaveBeenCalledWith('u', 'sid-pw', expect.objectContaining({ newPassword: 'nouvelle phrase de passe' }), expect.anything());
+  });
+});
+
+describe('AuthController en mode Secure (`__Host-`) : migration depuis `__Secure-rj_rt`', () => {
+  const secureConfig = testConfig({ RATE_LIMIT_AUTH_PER_MINUTE: '1000', COOKIE_SECURE: 'true' });
+  let app: NestExpressApplication;
+  let accessTokens: AccessTokenService;
+  const auth = { refresh: jest.fn(), logout: jest.fn() };
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ApiCoreModule.forRoot(secureConfig), FakePrismaModule, ApiAuthModule],
+    })
+      .overrideProvider(AuthService)
+      .useValue(auth)
+      .overrideProvider(SessionService)
+      .useValue({ isActive: jest.fn() })
+      .compile();
+    app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
+    setupApp(app, secureConfig);
+    await app.init();
+    accessTokens = app.get(AccessTokenService);
+  });
+
+  afterAll(() => app.close());
+  beforeEach(() => jest.clearAllMocks());
+
+  /** Jeton CSRF lié au sid de l'access fourni. */
+  async function boundCsrf(accessToken: string): Promise<string> {
+    const res = await request(app.getHttpServer()).get('/api/v1/auth/csrf').set('Cookie', `__Host-rj_at=${accessToken}`).expect(200);
+    return res.body.csrfToken as string;
+  }
+
+  function session(sid: string) {
+    const { token, expiresAt } = accessTokens.sign({ sub: 'u', sid, role: 'USER' });
+    return { user: userFixture({ id: 'u' }), sessionId: sid, accessToken: token, accessTokenExpiresAt: expiresAt, refreshToken: 'nouveau' };
+  }
+
+  /** Tous les Set-Cookie bruts (un même nom peut apparaître avec deux chemins). */
+  const setCookies = (res: request.Response) => (res.headers['set-cookie'] as unknown as string[] | undefined) ?? [];
+
+  it('ancien `__Secure-rj_rt` accepté une dernière fois : nouveau `__Host-rj_rt` (Path=/) posé, ancien expiré sur son chemin', async () => {
+    const current = session('sid-1');
+    const token = await boundCsrf(current.accessToken);
+    auth.refresh.mockResolvedValue(current);
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set({
+        Origin: ORIGIN,
+        'X-CSRF-Token': token,
+        Cookie: `__Host-rj_csrf=${token}; __Host-rj_at=${current.accessToken}; __Secure-rj_rt=ancien`,
+      })
+      .expect(200);
+    expect(auth.refresh).toHaveBeenCalledWith('ancien', expect.anything(), 'sid-1');
+    const raw = setCookies(res);
+    const fresh = raw.find((c) => c.startsWith('__Host-rj_rt=nouveau'));
+    expect(fresh).toMatch(/Path=\/;/);
+    expect(fresh).toMatch(/HttpOnly/);
+    expect(fresh).toMatch(/Secure/);
+    expect(fresh).toMatch(/SameSite=Lax/);
+    expect(fresh).not.toMatch(/Domain=/i);
+    const legacy = raw.find((c) => c.startsWith('__Secure-rj_rt='));
+    expect(legacy).toMatch(/Path=\/api\/v1\/auth/);
+    expect(legacy).toMatch(/Expires=Thu, 01 Jan 1970/);
+  });
+
+  it('ancien `__Secure-rj_rt` sans access signé (déposable avec Domain) : refusé, aucune rotation', async () => {
+    const anon = await request(app.getHttpServer()).get('/api/v1/auth/csrf').expect(200);
+    const token = anon.body.csrfToken as string;
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `__Host-rj_csrf=${token}; __Secure-rj_rt=injecte` })
+      .expect(401);
+    expect(res.body.code).toBe('AUTH_SESSION_EXPIRED');
+    expect(auth.refresh).not.toHaveBeenCalled();
+  });
+
+  it('`__Host-rj_rt` présent : l’ancien nom (injecté) est ignoré ; ancien nom répété : refusé', async () => {
+    const current = session('sid-2');
+    const token = await boundCsrf(current.accessToken);
+    auth.refresh.mockResolvedValue(current);
+    const base = `__Host-rj_csrf=${token}; __Host-rj_at=${current.accessToken}`;
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `${base}; __Secure-rj_rt=injecte; __Host-rj_rt=legitime` })
+      .expect(200);
+    expect(auth.refresh).toHaveBeenCalledWith('legitime', expect.anything(), 'sid-2');
+    auth.refresh.mockClear();
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `${base}; __Secure-rj_rt=injecte; __Secure-rj_rt=ancien` })
+      .expect(401);
+    expect(auth.refresh).not.toHaveBeenCalled();
   });
 });

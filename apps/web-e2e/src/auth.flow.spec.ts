@@ -44,7 +44,10 @@ async function expectAuthCookiesSafe(context: BrowserContext) {
     expect(cookie?.httpOnly, `${name} httpOnly`).toBe(true);
     expect(cookie?.sameSite, `${name} SameSite=Lax`).toBe('Lax');
   }
-  expect(cookies.find((c) => c.name === 'rj_rt')?.path, 'refresh limité à /api/v1/auth').toBe('/api/v1/auth');
+  // Refresh sur Path=/ (préfixe `__Host-` en production : ni Domain ni sous-chemin possibles), un seul cookie de ce nom.
+  const refreshCookies = cookies.filter((c) => c.name === 'rj_rt');
+  expect(refreshCookies, 'un seul cookie de refresh').toHaveLength(1);
+  expect(refreshCookies[0]?.path, 'refresh sur Path=/').toBe('/');
 }
 
 async function expectNoTokenInStorage(page: Page, context: BrowserContext) {

@@ -301,6 +301,9 @@ describe('AuthService sessions', () => {
     const issued = await service.refresh('r1', client);
     expect(issued.sessionId).toBe('sid-1');
     expect(issued.refreshToken).toBe('r2');
+    expect(sessions.rotate).toHaveBeenCalledWith('r1', client, null);
+    await service.refresh('r1', client, 'sid-1');
+    expect(sessions.rotate).toHaveBeenLastCalledWith('r1', client, 'sid-1');
   });
 
   it('refresh sans cookie : UNAUTHORIZED (pas de refresh à tenter) ; utilisateur supprimé : AUTH_SESSION_EXPIRED', async () => {
