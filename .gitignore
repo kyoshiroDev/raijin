@@ -66,3 +66,4 @@ supabase/.temp/
 
 # Kits de mise à jour dézippés (temporaires)
 _maj/
+__pycache__/
