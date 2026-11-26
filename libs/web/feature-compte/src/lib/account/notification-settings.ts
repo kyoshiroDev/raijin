@@ -131,7 +131,7 @@ export const IOS_PUSH_HELP =
           <button type="button" rjButton="secondary" icon="retry" [loading]="loading()" (click)="load()">Réessayer</button>
         </div>
       } @else {
-        <div class="grid grid-cols-1 gap-x-8 lg:grid-cols-2" aria-busy="true" aria-label="Chargement des préférences">
+        <div class="grid grid-cols-1 gap-x-8 lg:grid-cols-2" role="status" aria-busy="true" aria-label="Chargement des préférences">
           @for (row of [1, 2, 3]; track row) {
             <div class="flex items-center gap-4 py-3">
               <div class="flex flex-1 flex-col gap-2"><rj-skeleton class="h-4 w-40" /><rj-skeleton class="h-3 w-56 max-w-full" /></div>

@@ -201,7 +201,7 @@ const CLOCK_MS = 60_000;
           }
         }
         @default {
-          <div class="flex flex-col gap-6 md:gap-8" aria-busy="true" aria-label="Chargement des suivis">
+          <div class="flex flex-col gap-6 md:gap-8" role="status" aria-busy="true" aria-label="Chargement des suivis">
             <rj-skeleton shape="block" class="h-24 md:h-20" />
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
               @for (card of skeletonCards; track card) {

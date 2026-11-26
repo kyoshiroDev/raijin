@@ -29,7 +29,7 @@ const DONE: Readonly<Record<PortalAction, string>> = {
       @if (billing.status() === 'error') {
         <rj-error-state title="Raijin n’a pas pu préparer la simulation" [retrying]="loading()" (retry)="load()" />
       } @else if (billing.status() !== 'ready') {
-        <div class="flex flex-col gap-4" aria-busy="true" aria-label="Chargement de la simulation">
+        <div class="flex flex-col gap-4" role="status" aria-busy="true" aria-label="Chargement de la simulation">
           <rj-skeleton class="h-8 w-56" />
           <rj-skeleton shape="block" class="h-72" />
         </div>

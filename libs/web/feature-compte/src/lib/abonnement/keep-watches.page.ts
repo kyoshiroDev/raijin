@@ -25,7 +25,7 @@ export function keepCandidates(items: readonly Watch[]): Watch[] {
       @if (store.status() === 'error') {
         <rj-error-state title="Raijin n’a pas pu charger tes suivis" [retrying]="retrying()" (retry)="retry()" />
       } @else if (store.status() !== 'ready') {
-        <div class="flex flex-col gap-4" aria-busy="true" aria-label="Chargement des suivis">
+        <div class="flex flex-col gap-4" role="status" aria-busy="true" aria-label="Chargement des suivis">
           <rj-skeleton class="h-8 w-72 max-w-full md:h-11" />
           <rj-skeleton class="h-5 w-96 max-w-full" />
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

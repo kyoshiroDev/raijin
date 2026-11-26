@@ -34,7 +34,7 @@ export function watchesToChoose(recap: TrialRecap): number {
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-6 md:gap-8">
       @switch (state()) {
         @case ('loading') {
-          <div class="flex flex-col items-center gap-4" aria-busy="true" aria-label="Chargement du récapitulatif">
+          <div class="flex flex-col items-center gap-4" role="status" aria-busy="true" aria-label="Chargement du récapitulatif">
             <rj-skeleton shape="block" class="h-28 w-24" />
             <rj-skeleton class="h-8 w-72 max-w-full" />
             <div class="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">

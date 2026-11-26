@@ -162,7 +162,7 @@ export const REDIRECT_REFUSED_MESSAGE = 'Raijin n’a pas pu ouvrir la page de p
         <p class="text-label text-ink-muted" data-disclaimer>{{ disclaimer }}</p>
       </div>
     } @else {
-      <div class="flex flex-col gap-6 md:gap-8" aria-busy="true" aria-label="Chargement des offres">
+      <div class="flex flex-col gap-6 md:gap-8" role="status" aria-busy="true" aria-label="Chargement des offres">
         <div class="flex flex-col gap-2">
           <rj-skeleton class="h-8 w-44 md:h-11" />
           <rj-skeleton class="h-5 w-64 max-w-full" />

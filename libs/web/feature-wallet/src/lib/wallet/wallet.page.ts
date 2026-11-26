@@ -109,7 +109,7 @@ type View = 'loading' | 'auth-error' | 'signed-out' | 'plan' | 'access-error' | 
 
       @switch (view()) {
         @case ('loading') {
-          <div class="flex flex-col gap-3" aria-busy="true" aria-label="Chargement du scan de wallet">
+          <div class="flex flex-col gap-3" role="status" aria-busy="true" aria-label="Chargement du scan de wallet">
             <rj-skeleton class="h-5 w-48" />
             <div class="flex gap-2"><rj-skeleton shape="block" class="h-12 flex-1" /><rj-skeleton shape="block" class="h-12 w-12 xs:w-28" /></div>
             <rj-skeleton class="h-4 w-64 max-w-full" />
@@ -209,7 +209,7 @@ type View = 'loading' | 'auth-error' | 'signed-out' | 'plan' | 'access-error' | 
 
           @switch (resultView()) {
             @case ('loading') {
-              <div class="flex flex-col gap-4 md:gap-6" aria-busy="true" aria-label="Scan du wallet en cours">
+              <div class="flex flex-col gap-4 md:gap-6" role="group" aria-busy="true" aria-label="Scan du wallet en cours">
                 <p class="flex items-center gap-2 text-body-sm text-ink-muted">
                   <rj-icon name="loader" [size]="16" [spin]="true" class="shrink-0" />
                   Raijin lit les comptes de tokens et vérifie chaque token. Ça peut prendre jusqu’à 15 secondes.

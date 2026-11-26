@@ -124,7 +124,7 @@ export function trialText(user: PublicUser): string {
       <rj-change-password-sheet [(open)]="passwordOpen" [email]="user.email" />
       <rj-delete-account-sheet [(open)]="deleteOpen" [email]="user.email" (deleted)="onDeleted()" />
     } @else {
-      <div class="flex flex-col gap-6 md:gap-8" aria-busy="true" aria-label="Chargement du compte">
+      <div class="flex flex-col gap-6 md:gap-8" role="status" aria-busy="true" aria-label="Chargement du compte">
         <div class="flex flex-col gap-2">
           <rj-skeleton class="h-8 w-40 md:h-11" />
           <rj-skeleton class="h-5 w-56" />
