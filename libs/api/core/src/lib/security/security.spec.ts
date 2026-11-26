@@ -89,6 +89,36 @@ describe('AuthCookies', () => {
       expect(secure.readRefresh({} as Request)).toEqual({ kind: 'none' });
     });
 
+    it('après LEGACY_REFRESH_COOKIE_UNTIL : ancien nom ignoré (ni lu ni compté), seulement à effacer', () => {
+      const expired = new AuthCookies(testConfig({ COOKIE_SECURE: 'true', LEGACY_REFRESH_COOKIE_UNTIL: '2020-01-01T00:00:00Z' }));
+      const r = req('__Secure-rj_rt=o; __Secure-rj_rt=p', { '__Secure-rj_rt': 'o' });
+      expect(expired.readRefresh(r)).toEqual({ kind: 'none' });
+      expect(expired.hasLegacyRefresh(r)).toBe(true);
+      expect(expired.hasLegacyRefresh(req('__Host-rj_rt=n', { '__Host-rj_rt': 'n' }))).toBe(false);
+    });
+
+    it('efface l’ancien nom sans Domain et avec Domain=<parent de APP_URL>, sur les chemins connus', () => {
+      const cookies = new AuthCookies(
+        testConfig({ COOKIE_SECURE: 'true', APP_URL: 'https://app.raijinshield.com' }),
+      );
+      const res = fakeResponse();
+      cookies.clearLegacyRefreshEverywhere(res);
+      const calls = res.clearCookie.mock.calls.map((call) => [call[0], call[1].path, call[1].domain]);
+      expect(calls).toEqual([
+        [LEGACY_SECURE_REFRESH_COOKIE, '/api/v1/auth', undefined],
+        [LEGACY_SECURE_REFRESH_COOKIE, '/api/v1/auth/refresh', undefined],
+        [LEGACY_SECURE_REFRESH_COOKIE, '/', undefined],
+        [LEGACY_SECURE_REFRESH_COOKIE, '/api/v1/auth', 'raijinshield.com'],
+        [LEGACY_SECURE_REFRESH_COOKIE, '/api/v1/auth/refresh', 'raijinshield.com'],
+        [LEGACY_SECURE_REFRESH_COOKIE, '/', 'raijinshield.com'],
+      ]);
+      for (const call of res.clearCookie.mock.calls) expect(call[1]).toMatchObject({ secure: true, httpOnly: true });
+      // En dev (http) : aucun ancien nom distinct, rien à effacer.
+      const dev = fakeResponse();
+      new AuthCookies(testConfig()).clearLegacyRefreshEverywhere(dev);
+      expect(dev.clearCookie).not.toHaveBeenCalled();
+    });
+
     it('nom répété dans l’en-tête brut (cookie injecté par un sous-domaine) : duplicate', () => {
       const header = '__Host-rj_rt=attaquant; __Host-rj_at=a; __Host-rj_rt=victime';
       expect(secure.readRefresh(req(header, { '__Host-rj_rt': 'attaquant' }))).toEqual({ kind: 'duplicate' });

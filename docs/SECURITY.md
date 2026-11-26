@@ -65,7 +65,13 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   le refresh appartienne à la session (`sid`) de l'access signé quand il est présent, sans consommer ni révoquer
   le refresh d'une autre session (`auth.controller.ts`, `SessionService.rotate`) ; migration : l'ancien
   `__Secure-rj_rt` (`Path=/api/v1/auth`) est accepté une dernière fois, seulement lié à un `__Host-rj_at` signé de
-  la même session, puis expiré à chaque pose de session ; access JWT 15 min ;
+  la même session, et seulement jusqu'à `LEGACY_REFRESH_COOKIE_UNTIL` (ISO 8601 ; défaut 2026-11-26 +
+  `JWT_REFRESH_TTL`, soit 2026-12-26 avec 30 j), puis expiré à chaque pose de session ; il est aussi effacé avec
+  `Domain=<domaine parent de APP_URL>` (jamais déduit d'un en-tête) sur `/api/v1/auth`, `/api/v1/auth/refresh` et
+  `/`, et `GET /auth/session` ne compte un refresh que s'il s'agit de `__Host-rj_rt` ou de l'ancien cookie avec
+  un `sid` signé (pas de boucle 401 sur un cookie injecté). **À faire après la date limite** : retirer
+  `LEGACY_SECURE_REFRESH_COOKIE`, `legacyRefreshUntil` et la lecture de l'ancien nom (`cookies.ts`,
+  `auth.controller.ts`, `app-config.ts`) en gardant l'effacement quelques semaines ; access JWT 15 min ;
   refresh **opaque haché** en base, rotation à chaque usage, réutilisation hors délai de grâce = révocation de
   toute la famille + audit (`libs/api/auth/src/lib/services/session.service.ts`) ; déconnexion globale au
   changement ou à la réinitialisation du mot de passe, abonnements push supprimés (`49c8904`) ; suspension

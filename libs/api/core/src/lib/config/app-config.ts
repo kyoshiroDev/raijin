@@ -59,6 +59,17 @@ export interface AppConfig {
     readonly refreshTtlMs: number;
     readonly cookieSecret: string;
     readonly cookieSecure: boolean;
+    /**
+     * Date limite d'acceptation de l'ancien refresh `__Secure-rj_rt` (migration vers `__Host-rj_rt`) ;
+     * au-delà il est seulement effacé (`LEGACY_REFRESH_COOKIE_UNTIL`, ISO 8601 ; défaut : mise en service + JWT_REFRESH_TTL).
+     */
+    readonly legacyRefreshUntil: Date;
+    /**
+     * Domaine parent de l'hôte qui reçoit les cookies (ex. `raijinshield.com` pour `app.raijinshield.com`,
+     * l'API étant servie sous `/api` de l'app), dérivé de APP_URL (jamais d'un en-tête) : sert uniquement à effacer un ancien refresh posé avec `Domain=`
+     * par un sous-domaine. `null` en dev ou si l'hôte n'a pas de parent.
+     */
+    readonly cookieParentDomain: string | null;
     readonly emailVerifyTtlMs: number;
     readonly passwordResetTtlMs: number;
     readonly magicLinkTtlMs: number;
@@ -269,6 +280,7 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default('30d'),
   COOKIE_SECRET: optionalString,
   COOKIE_SECURE: optionalString,
+  LEGACY_REFRESH_COOKIE_UNTIL: optionalString,
   EMAIL_VERIFY_TTL: z.string().default('24h'),
   PASSWORD_RESET_TTL: z.string().default('30m'),
   MAGIC_LINK_TTL: z.string().default('15m'),
@@ -437,6 +449,22 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+/** Mise en service du refresh `__Host-rj_rt` : point de départ de la fenêtre de migration par défaut. */
+export const LEGACY_REFRESH_MIGRATION_START = new Date('2026-11-26T00:00:00Z');
+
+/** Domaine parent d'un hôte (`app.raijinshield.com` → `raijinshield.com`) ; `null` pour localhost, une IP ou un domaine nu. */
+export function parentDomainOf(url: string): string | null {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (/^[\d.]+$/.test(host) || host.includes(':')) return null;
+  const labels = host.split('.').filter(Boolean);
+  return labels.length >= 3 ? labels.slice(1).join('.') : null;
+}
+
 function originOf(url: string): string {
   return new URL(url).origin;
 }
@@ -509,6 +537,14 @@ export function loadConfig(
   }
 
   const cookieSecure = parseBoolean(e.COOKIE_SECURE, isProduction);
+  let legacyRefreshUntil = new Date(
+    LEGACY_REFRESH_MIGRATION_START.getTime() + duration('JWT_REFRESH_TTL', e.JWT_REFRESH_TTL),
+  );
+  if (e.LEGACY_REFRESH_COOKIE_UNTIL) {
+    const parsed = new Date(e.LEGACY_REFRESH_COOKIE_UNTIL);
+    if (Number.isNaN(parsed.getTime())) problems.push('LEGACY_REFRESH_COOKIE_UNTIL : date ISO 8601 attendue');
+    else legacyRefreshUntil = parsed;
+  }
   if (isProduction && !cookieSecure) problems.push('COOKIE_SECURE : doit valoir true en production');
 
   const extraOrigins = (e.CORS_ORIGINS ?? '')
@@ -612,6 +648,8 @@ export function loadConfig(
       refreshTtlMs: duration('JWT_REFRESH_TTL', e.JWT_REFRESH_TTL),
       cookieSecret: secret('COOKIE_SECRET'),
       cookieSecure,
+      legacyRefreshUntil,
+      cookieParentDomain: cookieSecure ? parentDomainOf(e.APP_URL) : null,
       emailVerifyTtlMs: duration('EMAIL_VERIFY_TTL', e.EMAIL_VERIFY_TTL),
       passwordResetTtlMs: duration('PASSWORD_RESET_TTL', e.PASSWORD_RESET_TTL),
       magicLinkTtlMs: duration('MAGIC_LINK_TTL', e.MAGIC_LINK_TTL),

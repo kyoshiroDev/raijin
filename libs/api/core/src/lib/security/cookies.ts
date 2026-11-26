@@ -12,7 +12,10 @@ export const REFRESH_COOKIE_PATH = '/';
 /** Ancien chemin du refresh (`__Secure-rj_rt`, avant le passage en `__Host-`) : effacé à la rotation. */
 export const LEGACY_REFRESH_COOKIE_PATH = '/api/v1/auth';
 
-/** Ancien nom du refresh en mode Secure : accepté une dernière fois puis effacé (migration douce). */
+/**
+ * Ancien nom du refresh en mode Secure : accepté une dernière fois (jusqu'à `auth.legacyRefreshUntil`)
+ * puis effacé (migration douce). À retirer du code après cette date (docs/SECURITY.md, menace 3).
+ */
 export const LEGACY_SECURE_REFRESH_COOKIE = '__Secure-rj_rt';
 
 export interface CookieNames {
@@ -54,6 +57,9 @@ function rawCookieNames(req: Request): string[] {
     .filter((name) => name.length > 0);
 }
 
+/** Chemins où un ancien `__Secure-rj_rt` a pu être déposé (le nôtre, ou celui d'un cookie injecté). */
+const LEGACY_REFRESH_CLEAR_PATHS = [LEGACY_REFRESH_COOKIE_PATH, '/api/v1/auth/refresh', '/'] as const;
+
 /** Pose et lit les cookies de session : tous HttpOnly, SameSite=Lax, sans Domain. */
 @Injectable()
 export class AuthCookies {
@@ -64,6 +70,32 @@ export class AuthCookies {
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
     this.names = cookieNames(config.auth.cookieSecure);
     this.legacyRefresh = config.auth.cookieSecure ? LEGACY_SECURE_REFRESH_COOKIE : null;
+  }
+
+  /** L'ancien `__Secure-rj_rt` est-il encore accepté (fenêtre de migration) ? */
+  private legacyAccepted(): boolean {
+    return this.legacyRefresh !== null && Date.now() < this.config.auth.legacyRefreshUntil.getTime();
+  }
+
+  /** L'en-tête `Cookie` brut contient-il l'ancien nom du refresh (accepté ou non) ? */
+  hasLegacyRefresh(req: Request): boolean {
+    return this.legacyRefresh !== null && rawCookieNames(req).includes(this.legacyRefresh);
+  }
+
+  /**
+   * Efface l'ancien `__Secure-rj_rt` partout où il a pu être posé : sans Domain et avec
+   * `Domain=<domaine parent>` (dérivé de API_URL, jamais d'un en-tête), sur les chemins connus.
+   * Sans cela, un cookie injecté par un sous-domaine provoquerait un 401 à chaque visite.
+   */
+  clearLegacyRefreshEverywhere(res: Response): void {
+    if (!this.legacyRefresh) return;
+    const parent = this.config.auth.cookieParentDomain;
+    const domains: (string | undefined)[] = parent ? [undefined, parent] : [undefined];
+    for (const domain of domains) {
+      for (const path of LEGACY_REFRESH_CLEAR_PATHS) {
+        res.clearCookie(this.legacyRefresh, { ...this.base(path), ...(domain ? { domain } : {}) });
+      }
+    }
   }
 
   private base(path: string, maxAge?: number): CookieOptions {
@@ -109,17 +141,19 @@ export class AuthCookies {
 
   /**
    * Refresh de la requête. Refusé (`duplicate`) si l'en-tête `Cookie` brut contient plusieurs fois
-   * le nom du refresh (ou l'ancien nom) : un cookie injecté par un sous-domaine passerait sinon en
+   * le nom du refresh (ou l'ancien nom, pendant la migration) : un cookie injecté par un sous-domaine passerait sinon en
    * premier. Le nouveau nom prime ; l'ancien `__Secure-rj_rt` n'est lu qu'en son absence.
    */
   readRefresh(req: Request): PresentedRefresh {
     const names = rawCookieNames(req);
     const count = (target: string) => names.filter((name) => name === target).length;
     if (count(this.names.refresh) > 1) return { kind: 'duplicate' };
-    if (this.legacyRefresh && count(this.legacyRefresh) > 1) return { kind: 'duplicate' };
+    const legacyName = this.legacyAccepted() ? this.legacyRefresh : null;
+    if (legacyName && count(legacyName) > 1) return { kind: 'duplicate' };
     const current = this.readNamed(req, this.names.refresh);
     if (current) return { kind: 'token', token: current, legacy: false };
-    const legacy = this.legacyRefresh ? this.readNamed(req, this.legacyRefresh) : null;
+    // Après `legacyRefreshUntil`, l'ancien nom est ignoré (seulement effacé par le contrôleur).
+    const legacy = legacyName ? this.readNamed(req, legacyName) : null;
     return legacy ? { kind: 'token', token: legacy, legacy: true } : { kind: 'none' };
   }
 

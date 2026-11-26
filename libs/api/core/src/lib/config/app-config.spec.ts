@@ -1,6 +1,6 @@
 import { PUBLIC_PLAN_CATALOG } from '@raijin/shared-contracts';
 import { planPolicyLimits } from '../plan/plan-policy';
-import { ConfigError, generateVapidKeys, loadConfig } from './app-config';
+import { ConfigError, generateVapidKeys, LEGACY_REFRESH_MIGRATION_START, loadConfig, parentDomainOf } from './app-config';
 import { parseDuration } from './duration';
 
 const strong = 'S'.repeat(48);
@@ -343,5 +343,26 @@ describe('loadConfig — REDIS_URL avec mot de passe (phase 8)', () => {
     const warnings: string[] = [];
     loadConfig({ ...prodEnv, REDIS_URL: url }, (warning) => warnings.push(warning));
     expect(warnings.join(' ')).not.toContain('9f8e7d6c5b4a39281706f5e4d3c2b1a0');
+  });
+});
+
+describe('migration du refresh `__Secure-rj_rt` → `__Host-rj_rt`', () => {
+  it('date limite : mise en service + JWT_REFRESH_TTL par défaut, surchargeable, refusée si invalide', () => {
+    expect(loadConfig(prodEnv).auth.legacyRefreshUntil.getTime()).toBe(
+      LEGACY_REFRESH_MIGRATION_START.getTime() + (parseDuration('30d') ?? 0),
+    );
+    const custom = loadConfig({ ...prodEnv, LEGACY_REFRESH_COOKIE_UNTIL: '2027-01-15T00:00:00Z' });
+    expect(custom.auth.legacyRefreshUntil.toISOString()).toBe('2027-01-15T00:00:00.000Z');
+    expect(() => loadConfig({ ...prodEnv, LEGACY_REFRESH_COOKIE_UNTIL: 'bientôt' })).toThrow(/LEGACY_REFRESH_COOKIE_UNTIL/);
+  });
+
+  it('domaine parent dérivé de APP_URL (jamais d’un en-tête), absent en dev', () => {
+    expect(loadConfig(prodEnv).auth.cookieParentDomain).toBe('raijinshield.com');
+    expect(loadConfig({ NODE_ENV: 'development' }).auth.cookieParentDomain).toBeNull();
+    expect(parentDomainOf('https://dev.raijinshield.com')).toBe('raijinshield.com');
+    expect(parentDomainOf('https://raijinshield.com')).toBeNull();
+    expect(parentDomainOf('http://localhost:4200')).toBeNull();
+    expect(parentDomainOf('http://127.0.0.1:3100')).toBeNull();
+    expect(parentDomainOf('pas une url')).toBeNull();
   });
 });

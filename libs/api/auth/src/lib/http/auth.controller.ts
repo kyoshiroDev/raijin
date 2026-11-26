@@ -127,6 +127,9 @@ export class AuthController {
       // 409 (refresh concurrent dans la fenêtre de grâce) : les cookies déjà tournés restent valables.
       if (!(error instanceof ApiException && error.code === 'CONFLICT')) this.cookies.clearSession(res);
       throw error;
+    } finally {
+      // Ancien `__Secure-rj_rt` (le nôtre ou injecté avec Domain=) : effacé partout, quelle que soit l'issue.
+      if (this.cookies.hasLegacyRefresh(req)) this.cookies.clearLegacyRefreshEverywhere(res);
     }
   }
 
@@ -139,6 +142,7 @@ export class AuthController {
   ): Promise<void> {
     await this.auth.logout(this.accessTokens.readSessionId(req), this.presentedRefresh(req), client);
     this.cookies.clearSession(res);
+    if (this.cookies.hasLegacyRefresh(req)) this.cookies.clearLegacyRefreshEverywhere(res);
     // Nouveau jeton CSRF anonyme : le front peut enchaîner sur une nouvelle connexion.
     this.cookies.setCsrf(res, this.csrf.issue(null));
   }
@@ -147,6 +151,8 @@ export class AuthController {
    * État de session (`SessionState`) :
    * - aucun cookie de session (ni access ni refresh) : 200 `{ authenticated: false }`, sans 401 ;
    * - cookie de refresh seul (access expiré et effacé) : 401 `AUTH_SESSION_EXPIRED` → le front rafraîchit ;
+   *   seuls comptent `__Host-rj_rt`, ou l'ancien `__Secure-rj_rt` accompagné d'un sid signé : un ancien
+   *   cookie seul (peut-être injecté par un sous-domaine) est effacé et la réponse reste anonyme ;
    * - cookie d'access invalide, expiré ou session révoquée : 401 `AUTH_SESSION_EXPIRED` (garde) ;
    * - session valide : `{ authenticated: true, ...AuthSession }`.
    */
@@ -158,7 +164,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionState> {
     if (!auth) {
-      if (this.cookies.readRefresh(req).kind !== 'none') throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+      if (this.refreshWorthTrying(req)) throw ApiException.auth('AUTH_SESSION_EXPIRED', HttpStatus.UNAUTHORIZED);
+      if (this.cookies.hasLegacyRefresh(req)) this.cookies.clearLegacyRefreshEverywhere(res);
       return { authenticated: false };
     }
     const user = await this.auth.currentUser(auth.userId);
@@ -231,6 +238,18 @@ export class AuthController {
     @Client() client: ClientInfo,
   ): Promise<void> {
     await this.auth.changePassword(auth.userId, auth.sessionId, body, client);
+  }
+
+  /**
+   * Un refresh vaut-il la peine d'être tenté (état de session) ? `__Host-rj_rt` unique, ou ancien
+   * `__Secure-rj_rt` / nom répété seulement avec un sid signé (même expiré) : sinon le front tournerait
+   * en boucle (session → 401 → refresh refusé) sur un cookie injecté.
+   */
+  private refreshWorthTrying(req: Request): boolean {
+    const presented = this.cookies.readRefresh(req);
+    if (presented.kind === 'none') return false;
+    if (presented.kind === 'token' && !presented.legacy) return true;
+    return this.accessTokens.readSessionId(req) !== null;
   }
 
   /** Refresh unique de la requête (nouveau nom, sinon ancien) ; `null` s'il manque ou s'il est répété. */

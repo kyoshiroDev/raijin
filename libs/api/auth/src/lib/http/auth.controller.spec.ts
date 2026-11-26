@@ -329,7 +329,12 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
 });
 
 describe('AuthController en mode Secure (`__Host-`) : migration depuis `__Secure-rj_rt`', () => {
-  const secureConfig = testConfig({ RATE_LIMIT_AUTH_PER_MINUTE: '1000', COOKIE_SECURE: 'true' });
+  const secureConfig = testConfig({
+    RATE_LIMIT_AUTH_PER_MINUTE: '1000',
+    COOKIE_SECURE: 'true',
+    APP_URL: 'http://app.raijinshield.test',
+    CORS_ORIGINS: ORIGIN,
+  });
   let app: NestExpressApplication;
   let accessTokens: AccessTokenService;
   const auth = { refresh: jest.fn(), logout: jest.fn() };
@@ -418,5 +423,42 @@ describe('AuthController en mode Secure (`__Host-`) : migration depuis `__Secure
       .set({ Origin: ORIGIN, 'X-CSRF-Token': token, Cookie: `${base}; __Secure-rj_rt=injecte; __Secure-rj_rt=ancien` })
       .expect(401);
     expect(auth.refresh).not.toHaveBeenCalled();
+  });
+
+  /** Effacements de l'ancien nom portant `Domain=<parent>`. */
+  const domainClears = (res: request.Response) =>
+    setCookies(res).filter((c) => c.startsWith('__Secure-rj_rt=') && /Domain=raijinshield\.test/i.test(c) && /Expires=Thu, 01 Jan 1970/.test(c));
+
+  it('refresh : un ancien `__Secure-rj_rt` injecté avec Domain= est aussi effacé avec Domain=<parent>', async () => {
+    const current = session('sid-3');
+    const token = await boundCsrf(current.accessToken);
+    auth.refresh.mockResolvedValue(current);
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set({
+        Origin: ORIGIN,
+        'X-CSRF-Token': token,
+        Cookie: `__Host-rj_csrf=${token}; __Host-rj_at=${current.accessToken}; __Secure-rj_rt=injecte; __Host-rj_rt=legitime`,
+      })
+      .expect(200);
+    expect(domainClears(res).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('GET /auth/session : ancien cookie seul (sans sid signé) → 200 anonyme + effacement partout, pas de boucle 401', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1/auth/session').set('Cookie', '__Secure-rj_rt=injecte').expect(200);
+    expect(res.body).toEqual({ authenticated: false });
+    expect(domainClears(res).length).toBeGreaterThanOrEqual(1);
+    // Ancien cookie avec un sid signé (access expiré) : 401, le front tente le refresh (migration).
+    const expired = new JwtService({}).sign(
+      { sub: 'u', sid: 'sid-4', role: 'USER', exp: Math.floor(Date.now() / 1000) - 60 },
+      { secret: secureConfig.auth.accessSecret, issuer: 'raijin-api', audience: 'raijin-app' },
+    );
+    const withSid = await request(app.getHttpServer())
+      .get('/api/v1/auth/session')
+      .set('Cookie', `__Host-rj_at=${expired}; __Secure-rj_rt=ancien`)
+      .expect(401);
+    expect(withSid.body.code).toBe('AUTH_SESSION_EXPIRED');
+    // `__Host-rj_rt` seul : 401 comme avant (refresh à tenter).
+    await request(app.getHttpServer()).get('/api/v1/auth/session').set('Cookie', '__Host-rj_rt=r').expect(401);
   });
 });
