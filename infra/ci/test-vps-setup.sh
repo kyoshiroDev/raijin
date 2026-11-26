@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Test de infra/vps-setup.sh dans un conteneur Ubuntu jetable (CI, ou en local avec Docker) : --check n'écrit rien,
+# --apply --yes-safe installe utilisateurs, dossiers, verrou, scripts figés, sudoers, modèles .env (secrets générés,
+# jamais affichés) et authorized_keys ; une 2e passe ne change rien ; les blocs « toujours demandés » sont refusés
+# sans terminal. Docker, sshd et GitHub sont absents du conteneur : leurs blocs doivent se replier en « reste à faire ».
+#   infra/ci/test-vps-setup.sh
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+IMAGE="${VPS_SETUP_TEST_IMAGE:-ubuntu:24.04}"
+
+docker run --rm -i --network bridge -v "$PWD/infra:/src/infra:ro" "$IMAGE" bash -s <<'EOF'
+set -euo pipefail
+fail() { echo "ÉCHEC : $*" >&2; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-recommends openssh-client >/dev/null
+
+mkdir -p /work/infra/lib /work/keys
+cp /src/infra/vps-setup.sh /src/infra/deploy-gate.sh /src/infra/docker-priv.sh /src/infra/release.sh \
+   /src/infra/backup.sh /src/infra/watchdog.sh /work/infra/
+cp /src/infra/lib/common.sh /src/infra/lib/deploy_policy.py /work/infra/lib/
+ssh-keygen -q -t ed25519 -N '' -C t-dev -f /tmp/raijin-deploy-dev && cp /tmp/raijin-deploy-dev.pub /work/keys/
+ssh-keygen -q -t ed25519 -N '' -C t-prod -f /tmp/raijin-depot-prod && cp /tmp/raijin-depot-prod.pub /work/keys/
+cd /work
+
+echo "--- 1. --check : aucune écriture"
+bash infra/vps-setup.sh --check --keys keys --repo test-owner/raijin </dev/null >/tmp/check1.log 2>&1 || { cat /tmp/check1.log; fail "--check"; }
+grep -q '\[à faire\]' /tmp/check1.log || fail "--check n'annonce aucune action"
+for p in /srv/raijin /opt/raijin-deploy /var/lib/raijin-deploy /etc/sudoers.d/raijin-deploy; do [[ ! -e $p ]] || fail "--check a créé $p"; done
+! id deploy-dev >/dev/null 2>&1 || fail "--check a créé deploy-dev"
+
+echo "--- 2. --apply --yes-safe"
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --repo test-owner/raijin </dev/null >/tmp/apply1.log 2>&1 || { cat /tmp/apply1.log; fail "--apply"; }
+for u in deploy-dev deploy-prod; do
+  id "$u" >/dev/null || fail "$u absent"
+  id -nG "$u" | tr ' ' '\n' | grep -qxE 'docker|sudo' && fail "$u dans docker/sudo"
+  [[ "$(passwd -S "$u" | awk '{print $2}')" == L ]] || fail "$u : mot de passe non verrouillé"
+done
+check_perm() { [[ "$(stat -c '%U %G %a' "$1")" == "$2" ]] || fail "$1 : $(stat -c '%U %G %a' "$1") au lieu de $2"; }
+check_perm /srv/raijin "root root 755"
+check_perm /srv/raijin/incoming "root root 755"
+check_perm /srv/raijin/lock "root root 3770"
+check_perm /srv/raijin/lock/deploy.lock "root root 644"
+check_perm /var/lib/raijin-deploy "root root 711"
+check_perm /srv/raijin/dev "deploy-dev deploy-dev 750"
+check_perm /srv/raijin/dev/env "deploy-dev deploy-dev 700"
+check_perm /srv/raijin/prod "deploy-prod deploy-prod 750"
+check_perm /srv/raijin/prod/env "deploy-prod deploy-prod 700"
+check_perm /srv/raijin/incoming/prod "deploy-prod deploy-prod 700"
+check_perm /home/deploy-dev/.ssh "deploy-dev deploy-dev 700"
+for f in deploy-gate.sh docker-priv.sh release.sh backup.sh watchdog.sh; do
+  check_perm "/opt/raijin-deploy/infra/$f" "root root 755"; cmp -s "infra/$f" "/opt/raijin-deploy/infra/$f" || fail "$f différent"
+done
+check_perm /opt/raijin-deploy/infra/lib/deploy_policy.py "root root 644"
+check_perm /etc/sudoers.d/raijin-deploy "root root 440"
+visudo -c >/dev/null || fail "visudo -c"
+grep -qx 'deploy-dev  ALL=(root) NOPASSWD: /opt/raijin-deploy/infra/docker-priv.sh dev \*' /etc/sudoers.d/raijin-deploy || fail "règle sudoers dev"
+runuser -u deploy-dev -- ls /srv/raijin/prod >/dev/null 2>&1 && fail "deploy-dev lit /srv/raijin/prod"
+key_dev="$(awk '{print $1" "$2}' keys/raijin-deploy-dev.pub)"
+grep -qxF "restrict,command=\"/opt/raijin-deploy/infra/deploy-gate.sh dev\" $key_dev github-raijin-deploy-dev" /home/deploy-dev/.ssh/authorized_keys || fail "authorized_keys dev"
+key_prod="$(awk '{print $1" "$2}' keys/raijin-depot-prod.pub)"
+grep -qxF "restrict,command=\"/opt/raijin-deploy/infra/deploy-gate.sh prod-depot\" $key_prod github-raijin-depot-prod" /home/deploy-prod/.ssh/authorized_keys || fail "authorized_keys prod"
+check_perm /home/deploy-prod/.ssh/authorized_keys "deploy-prod deploy-prod 600"
+val() { awk -v k="$2" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { printf "%s", v }' "$1"; }
+for e in dev prod; do
+  for n in .env .env.api; do check_perm "/srv/raijin/$e/env/$n" "deploy-$e deploy-$e 600"; done
+  for k in POSTGRES_SUPERUSER_PASSWORD RAIJIN_DB_PASSWORD BENCH_DB_PASSWORD REDIS_PASSWORD; do
+    v="$(val "/srv/raijin/$e/env/.env" "$k")"
+    [[ "$v" =~ ^[0-9a-f]{64}$ ]] || fail "$e $k non généré"
+    grep -qF "$v" /tmp/apply1.log && fail "$e $k affiché"
+  done
+  for k in JWT_ACCESS_SECRET IP_HASH_SECRET COOKIE_SECRET TOTP_ENCRYPTION_KEY VAPID_PRIVATE_KEY; do
+    v="$(val "/srv/raijin/$e/env/.env.api" "$k")"
+    [[ ${#v} -ge 32 ]] || fail "$e $k non généré"
+    grep -qF "$v" /tmp/apply1.log && fail "$e $k affiché"
+  done
+  [[ "$(val "/srv/raijin/$e/env/.env.api" TOTP_ENCRYPTION_KEY | base64 -d | wc -c)" -eq 32 ]] || fail "TOTP ≠ 32 octets"
+  [[ "$(val "/srv/raijin/$e/env/.env.api" VAPID_PUBLIC_KEY)" =~ ^B[A-Za-z0-9_-]{86}$ ]] || fail "$e VAPID_PUBLIC_KEY"
+done
+[[ "$(val /srv/raijin/dev/env/.env REDIS_PASSWORD)" != "$(val /srv/raijin/prod/env/.env REDIS_PASSWORD)" ]] || fail "secret commun dev/prod"
+[[ "$(val /srv/raijin/prod/env/.env DEPLOY_GIT_REMOTE)" == git@github.com:test-owner/raijin.git ]] || fail "DEPLOY_GIT_REMOTE"
+[[ -z "$(val /srv/raijin/dev/env/.env DEV_BASIC_AUTH_USERS)" ]] || fail "basicAuth sans terminal"
+grep -q 'Traefik rejoint' /tmp/apply1.log || fail "bloc Traefik absent"
+grep -q 'Docker absent ou arrêté' /tmp/apply1.log || fail "repli Docker"
+grep -q 'DEV_BASIC_AUTH_USERS' /tmp/apply1.log || fail "basicAuth non signalée"
+
+echo "--- 3. 2e passe : idempotente"
+sums() { find /srv/raijin /opt/raijin-deploy /etc/sudoers.d /home/deploy-dev /home/deploy-prod -type f -exec sha256sum {} + | sort; }
+sums >/tmp/s1
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --repo test-owner/raijin </dev/null >/tmp/apply2.log 2>&1 || { cat /tmp/apply2.log; fail "2e --apply"; }
+sums >/tmp/s2
+diff /tmp/s1 /tmp/s2 || fail "la 2e passe a modifié des fichiers"
+grep -q '\[fait\]' /tmp/apply2.log && { grep '\[fait\]' /tmp/apply2.log; fail "la 2e passe a agi"; }
+bash infra/vps-setup.sh --check --keys keys --repo test-owner/raijin </dev/null >/tmp/check2.log 2>&1 || fail "--check final"
+if grep '\[à faire\]' /tmp/check2.log | grep -v -e 'mot de passe du dev' -e 'empreinte de github.com'; then fail "--check final annonce encore des actions"; fi
+echo "vps-setup.sh : tous les contrôles passent."
+EOF

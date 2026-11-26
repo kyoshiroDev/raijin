@@ -704,6 +704,47 @@ tests (`apps/web-e2e/scripts/serve-landing.mjs`) applique la même règle.
 
 # Partie C — Environnements dev/prod et déploiement continu
 
+## Méthode la plus simple : `bash infra/vps-install.sh`
+
+Sur **ton PC**, depuis la racine du dépôt (à jour sur `main`, scripts relus), une seule commande :
+
+```bash
+bash infra/vps-install.sh --check   # aperçu seulement : rien n'est modifié sur le VPS, aucune clé générée
+bash infra/vps-install.sh           # aperçu, « Continuer ? (o/N) », puis installation (un seul mot de passe sudo)
+```
+
+Le lanceur te demande l'adresse du VPS (ou la lit dans la variable d'environnement `DEPLOY_HOST` ; elle n'est écrite
+dans aucun fichier du dépôt) et l'utilisateur SSH (défaut `greg`), puis :
+1. génère au besoin dans `~/.ssh` (droits 600) les clés `raijin-deploy-dev`, `raijin-depot-prod` et
+   `raijin-github-readonly` (C5 étape 1) ;
+2. copie par `scp` une archive (scripts figés de `infra/`, clés publiques, clé de lecture du dépôt) dans un dossier
+   temporaire du VPS, supprimé à la fin ;
+3. lance sur le VPS `sudo bash infra/vps-setup.sh --preview-apply` : aperçu complet, « Continuer ? (o/N) », puis
+   application sans question des blocs non destructifs ; `docker network connect` sur Traefik, le retrait d'un groupe
+   et les unités systemd restent **toujours demandés** ;
+4. enregistre l'empreinte du VPS (`~/.ssh/raijin-known-hosts`) après l'avoir comparée à celle lue sur le VPS ;
+5. affiche la liste numérotée des secrets et variables GitHub avec les commandes `gh secret set … < ~/.ssh/raijin-…`
+   et `gh variable set DEPLOY_HOST` prêtes à copier (aucune clé affichée), et propose de les lancer.
+
+Ce que fait `infra/vps-setup.sh` (relançable sans casse, ne supprime rien : une version remplacée est gardée dans
+`/var/lib/raijin-deploy/sauvegardes/`) : paquets (`python3-yaml`, `apache2-utils`…), utilisateurs `deploy-dev` /
+`deploy-prod` (mot de passe verrouillé, hors `docker` et `sudo`), dossiers, verrou, scripts figés (C4), règles sudo
+validées par `visudo -cf`, modèles `/srv/raijin/<env>/env/.env*` en 600 (repris de la partie A s'ils existent),
+**secrets générés sur le VPS** (Postgres, Redis, JWT, cookies, TOTP, empreinte IP, paires VAPID dev et prod) sans
+jamais les afficher, mot de passe basicAuth du dev demandé au clavier, `authorized_keys` à commande forcée, clé de
+lecture GitHub, réseau `raijin-dev-edge`, détection du Traefik (réseau, entrypoint, certresolver, en lecture seule),
+vérifications `passwd -S`, `sshd -T`, isolement de `deploy-dev` et `git ls-remote`. Il termine par un résumé « fait /
+déjà en place / reste à faire » et la liste des variables à remplir toi-même (noms seulement : Helius, Resend,
+Stripe, Google…).
+
+Ce qu'il ne fait **pas** : modifier la configuration de Traefik, de sshd ou des autres projets (il signale seulement
+`AcceptEnv` / `AllowUsers` à corriger), lancer `docker compose down`, `prune` ou `volume rm`, saisir tes clés Helius,
+Stripe, Resend ou Google (elles viennent de tes tableaux de bord), déployer quoi que ce soit (C6).
+
+Sans le lanceur (archive copiée à la main, mode `--check` par défaut) : commandes en tête de `infra/vps-setup.sh`,
+puis `sudo bash infra/vps-setup.sh --apply …`. Testé en CI dans un conteneur jetable (`infra/ci/test-vps-setup.sh`).
+La procédure manuelle ci-dessous (C0 à C10) reste la référence.
+
 ## C0. Vue d'ensemble
 
 | | dev | prod |

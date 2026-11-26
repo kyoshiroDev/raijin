@@ -134,6 +134,11 @@ jobs:
       - name: Politique de déploiement (cas acceptés et refusés)
         run: infra/ci/test-deploy-policy.sh
 
+      # Installation du VPS (infra/vps-setup.sh) dans un conteneur Ubuntu jetable : --check sans écriture, --apply
+      # idempotent, secrets générés jamais affichés (docs/DEPLOY.md partie C, méthode rapide).
+      - name: Installation du VPS (vps-setup.sh, conteneur jetable)
+        run: infra/ci/test-vps-setup.sh
+
   e2e:
     name: e2e ${{ matrix.id }} (PR vers main ou lancement manuel)
     if: >-
