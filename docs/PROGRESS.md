@@ -25,7 +25,7 @@
 ## À brancher (service · prêt · manque · comment l'activer)
 | Service | Prêt | Manque | Comment l'activer |
 |---|---|---|---|
-| Domaine raijinshield.com | — | achat OVH (utilisateur) | acheter, puis phase 8 ter (DNS via ops-chrome) |
+| Domaine raijinshield.com | **DNS fait (2026-11-26)** : A @, www, app, api, banc, dev, api-dev, landing-dev → <IP du VPS> (TTL 3600), AAAA parking supprimés, CAA `0 issue "letsencrypt.org"` ; propagé sur 1.1.1.1 et 8.8.8.8 (détail docs/OPS-LOG.md) | déploiement sur le VPS | l'utilisateur lance le déploiement (docs/DEPLOY.md) ; Traefik demande les certificats Let's Encrypt à la première visite de chaque nom |
 | Stripe | code complet + FakeBillingProvider (dev/test) | compte Stripe (mode test), puis clés `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO_MONTHLY|YEARLY` | créer le compte → ops-chrome configure produit, prix, Portal, relances, webhook → l'utilisateur copie les clés dans `.env` → `BILLING_PROVIDER=stripe` |
 | Resend | — | compte + domaine | créer le compte ; dev via Mailpit |
 | Helius | compte (plan Free : 1 M crédits/mois, RPC 10 req/s, DAS 2 req/s, partagés entre les 2 clés) ; clés « raijin-api » et « raijin-banc-de-test » créées | copie des clés dans `.env` par l'utilisateur ; restriction IP du VPS | copier les clés ; phase 8 ter : API Keys → Access control (IP/CIDR du VPS) |
