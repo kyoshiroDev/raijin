@@ -13,7 +13,7 @@ Les noms de variables suivent `docs/ENV.md`.
 | `RESEND_API_KEY` | Resend | https://resend.com/api-keys — service pas encore créé | apps/api | [ ] |
 | `STRIPE_SECRET_KEY` | Stripe (test) | https://dashboard.stripe.com/test/apikeys (« sk_test_… ») — service pas encore créé | apps/api | [ ] |
 | `STRIPE_WEBHOOK_SECRET` | Stripe (test) | https://dashboard.stripe.com/test/webhooks → endpoint → secret de signature — service pas encore créé | apps/api | [ ] |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Cloud | https://console.cloud.google.com/iam-admin/serviceaccounts?authuser=4&project=raijin-admin → `raijin-admin-reader@raijin-admin.iam.gserviceaccount.com` → onglet Clés → Ajouter une clé → Créer une clé → JSON → Créer (compte de service créé le 2026-11-26, aucune clé encore) | apps/api (admin-analytics) | [ ] |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Cloud | https://console.cloud.google.com/iam-admin/serviceaccounts?authuser=4&project=raijin-admin → `raijin-admin-reader@raijin-admin.iam.gserviceaccount.com` → onglet Clés → Ajouter une clé → Créer une clé → JSON → Créer (clé créée et collée en base64 par l'utilisateur le 2026-11-26) | apps/api (admin-analytics) | [x] |
 | `SENTRY_DSN_API` / `SENTRY_DSN_WEB` | Sentry | https://sentry.io/settings/projects/ → projet → Client Keys (DSN) — service pas encore créé | apps/api / apps/web | [ ] |
 
 ## Secrets générés localement (aucun service)
