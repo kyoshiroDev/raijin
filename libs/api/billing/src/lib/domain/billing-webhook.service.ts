@@ -83,6 +83,8 @@ export class BillingWebhookService {
     );
     // Événement ancien : état d'abonnement non réappliqué, mais e-mails de facture dus (une fois par facture).
     if (outcome === 'processed' || outcome === 'stale') await this.afterCommit(event, effects);
+    // Rejeu d'un événement de facture : renvoie l'e-mail si sa mise en file avait échoué (marqueur retiré).
+    if (outcome === 'duplicate' && (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed')) await this.recoverMails(event, subscription, invoice, checkout);
     this.logger.log(`Événement ${event.id} (${event.type}) : ${outcome}`);
     return outcome;
   }
@@ -171,15 +173,51 @@ export class BillingWebhookService {
 
     if (applied) await this.syncPlan(tx, event, user, effects);
 
-    if (event.type === 'invoice.paid' && invoice && invoice.amountPaidCents > 0 && (await this.claimMail(tx, 'receipt', invoice.id))) effects.receipt = invoice;
-    if (event.type === 'invoice.payment_failed') {
-      if (await this.claimMail(tx, 'payment_failed', invoice?.id ?? event.id)) {
-        effects.paymentFailed = true;
-        effects.failedInvoice = invoice;
-      }
-      await this.productEvent(tx, user.id, 'payment_failed', {});
-    }
+    await this.claimMails(tx, event, invoice, effects);
+    if (event.type === 'invoice.payment_failed') await this.productEvent(tx, user.id, 'payment_failed', {});
     return stale ? 'stale' : 'processed';
+  }
+
+  /** Réserve les e-mails de facture dus par l'événement (reçu si montant payé > 0, échec de paiement). */
+  private async claimMails(tx: Tx, event: BillingWebhookEvent, invoice: ProviderInvoice | null, effects: AfterCommit): Promise<void> {
+    if (event.type === 'invoice.paid' && invoice && invoice.amountPaidCents > 0 && (await this.claimMail(tx, 'receipt', invoice.id))) effects.receipt = invoice;
+    if (event.type === 'invoice.payment_failed' && (await this.claimMail(tx, 'payment_failed', mailKey(event, invoice)))) {
+      effects.paymentFailed = true;
+      effects.failedInvoice = invoice;
+    }
+  }
+
+  /**
+   * Événement de facture déjà traité : si le marqueur d'e-mail a été retiré (mise en file en échec), le réserve
+   * à nouveau et met l'e-mail en file. Marqueur présent (cas nominal) → rien. Aucun autre effet n'est rejoué.
+   */
+  private async recoverMails(
+    event: BillingWebhookEvent,
+    subscription: ProviderSubscription | null,
+    invoice: ProviderInvoice | null,
+    checkout: ReturnType<typeof checkoutSessionRefs>,
+  ): Promise<void> {
+    const effects: AfterCommit = { userId: null, email: null, resume: false, enforce: false, receipt: null, paymentFailed: false, failedInvoice: null, interval: null, renewsAt: null };
+    await this.prisma.$transaction(
+      async (tx) => {
+        const customerId = subscription?.customerId ?? checkout?.customerId ?? invoice?.customerId ?? null;
+        const user = await this.findUser(tx, [subscription?.userId ?? null, checkout?.userId ?? null], customerId);
+        if (!user) return;
+        await this.claimMails(tx, event, invoice, effects);
+        if (!effects.receipt && !effects.paymentFailed) return;
+        effects.userId = user.id;
+        effects.email = user.email;
+        if (subscription) {
+          effects.interval = this.intervalOf(subscription);
+          effects.renewsAt = subscription.currentPeriodEnd;
+        }
+      },
+      { timeout: 15_000, maxWait: 10_000 },
+    );
+    if (effects.userId) {
+      this.logger.warn(`Événement ${event.id} : e-mail de facture remis en file au rejeu (BILLING_MAIL_RECOVERED)`);
+      await this.afterCommit(event, effects);
+    }
   }
 
   /**
@@ -253,13 +291,39 @@ export class BillingWebhookService {
       if (effects.enforce) await this.plans.enforcePlanLimit(userId);
     });
     if (!email) return;
-    // File `notify` (jobId = facture) ; un événement n'est traité qu'une fois (StripeEvent).
+    // File `notify` (jobId = type + facture : BullMQ dédoublonne) ; marqueur `mail:<type>:<facture>` déjà réservé.
     const base = { userId, interval: effects.interval, renewsAt: effects.renewsAt };
+    let deferred = false;
     if (effects.receipt) {
       const invoice = effects.receipt;
-      await this.safely(event, 'RECEIPT_MAIL', () => this.mail.enqueue({ ...base, kind: 'receipt', invoice }, event.id));
+      deferred = !(await this.deliver(event, 'receipt', invoice.id, () => this.mail.enqueue({ ...base, kind: 'receipt', invoice }, event.id)));
     }
-    if (effects.paymentFailed) await this.safely(event, 'PAYMENT_FAILED_MAIL', () => this.mail.enqueue({ ...base, kind: 'payment_failed', invoice: effects.failedInvoice }, event.id));
+    if (effects.paymentFailed) {
+      const invoice = effects.failedInvoice;
+      const sent = await this.deliver(event, 'payment_failed', mailKey(event, invoice), () => this.mail.enqueue({ ...base, kind: 'payment_failed', invoice }, event.id));
+      deferred ||= !sent;
+    }
+    // 500 → Stripe rejoue l'événement → `recoverMails` remet l'e-mail en file (au moins une fois, jamais deux).
+    if (deferred) throw new BillingMailDeferredError();
+  }
+
+  /**
+   * Met l'e-mail en file. En échec (Redis indisponible…), retire le marqueur (hors transaction, journalisé) pour
+   * qu'un rejeu puisse le renvoyer ; `false` si l'e-mail n'a pas été mis en file.
+   */
+  private async deliver(event: BillingWebhookEvent, kind: 'receipt' | 'payment_failed', key: string, run: () => Promise<void>): Promise<boolean> {
+    try {
+      await run();
+      return true;
+    } catch (error) {
+      this.logger.error(`Événement ${event.id} : e-mail ${kind} non mis en file (${errorCode(error)}), marqueur retiré`);
+      try {
+        await this.prisma.stripeEvent.deleteMany({ where: { id: `mail:${kind}:${key}` } });
+      } catch (cleanup) {
+        this.logger.error(`Événement ${event.id} : marqueur mail:${kind} non retiré (${errorCode(cleanup)}, BILLING_MAIL_LOST)`);
+      }
+      return false;
+    }
   }
 
   private async safely(event: BillingWebhookEvent, step: string, run: () => Promise<unknown>): Promise<void> {
@@ -268,6 +332,20 @@ export class BillingWebhookService {
     } catch (error) {
       this.logger.error(`Événement ${event.id} : ${step} en échec (${errorCode(error)})`);
     }
+  }
+}
+
+/** Clé du marqueur et du job : facture, sinon identifiant de l'événement. */
+function mailKey(event: BillingWebhookEvent, invoice: ProviderInvoice | null): string {
+  return invoice?.id ?? event.id;
+}
+
+/** E-mail de facture non mis en file : état appliqué, mais 500 pour que Stripe rejoue l'événement. */
+export class BillingMailDeferredError extends Error {
+  readonly code = 'BILLING_MAIL_DEFERRED';
+  constructor() {
+    super('E-mail de facturation non mis en file');
+    this.name = 'BillingMailDeferredError';
   }
 }
 

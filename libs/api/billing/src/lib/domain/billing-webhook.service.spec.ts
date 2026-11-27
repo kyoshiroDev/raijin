@@ -1,4 +1,6 @@
+import { RecordingJobQueue, type EnqueueOptions, type JobData } from '@raijin/api-alerts';
 import { billingKit, NOW, type BillingKit } from '../../testing/billing-test-kit';
+import { BillingMailDeferredError } from './billing-webhook.service';
 import { FIXTURE_TOKENS } from '../../testing/webhook-fixtures';
 import { WebhookSignatureError } from '../provider/billing-provider';
 import { signEventJson, signFakeEvent } from '../provider/fake-billing.provider';
@@ -361,15 +363,93 @@ describe('BillingWebhookService : factures, retard de paiement, résiliation', (
     expect(user(kit)['plan']).toBe('FREE');
   });
 
-  it('effets après commit en échec (e-mail, suivis) : journalisés, événement traité', async () => {
+  it('suivis en échec après commit : journalisés, événement traité', async () => {
     const kit = setup();
     knownSubscription(kit);
-    kit.mailer.fail = true;
     kit.hooks.resumePlanLimited.mockRejectedValueOnce(new Error('db'));
     const event = kit.fixture('invoice.paid', overrides);
     await expect(kit.webhook.handle(event.payload, event.signature)).resolves.toBe('processed');
     expect(user(kit)['plan']).toBe('PRO');
-    const failed = kit.fixture('invoice.payment_failed', overrides);
-    await expect(kit.webhook.handle(failed.payload, failed.signature)).resolves.toBe('processed');
+    expect(kit.mailer.sent).toHaveLength(1);
+  });
+});
+
+/** File dont `add` échoue tant que `down` est vrai (Redis indisponible). */
+class FlakyQueue extends RecordingJobQueue {
+  down = true;
+  override async add(name: string, data: JobData, options: EnqueueOptions = {}): Promise<void> {
+    if (this.down) throw Object.assign(new Error('redis'), { code: 'ECONNREFUSED' });
+    return super.add(name, data, options);
+  }
+}
+
+function markers(kit: BillingKit) {
+  return (kit.prisma.tables['stripeEvent'] ?? []).map((row) => row['id']).filter((id) => String(id).startsWith('mail:'));
+}
+
+describe('BillingWebhookService : e-mails de facture au moins une fois, jamais deux', () => {
+  function flakyKit() {
+    const queue = new FlakyQueue();
+    const kit = billingKit({ queue });
+    kit.prisma.addUser({ id: USER, email: 'kyo@exemple.fr' });
+    knownSubscription(kit);
+    const stored = kit.fake.createInvoice(kit.fake.subscription(FIXTURE_TOKENS.subscriptionId) ?? {}, true);
+    return { kit, queue, invoiceId: stored['id'] as string };
+  }
+
+  it('reçu : file en échec → marqueur retiré, 500, état appliqué → rejeu → un seul job', async () => {
+    const { kit, queue, invoiceId } = flakyKit();
+    const paid = kit.fixture('invoice.paid', { ...overrides, invoiceId });
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).rejects.toBeInstanceOf(BillingMailDeferredError);
+    expect(user(kit)['plan']).toBe('PRO');
+    expect(markers(kit)).toEqual([]);
+    expect(queue.jobs).toHaveLength(0);
+    queue.down = false;
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('duplicate');
+    expect(queue.jobs.map((job) => job.options.jobId)).toEqual([`billing-receipt-${invoiceId}`]);
+    expect(markers(kit)).toEqual([`mail:receipt:${invoiceId}`]);
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('duplicate');
+    expect(queue.jobs).toHaveLength(1);
+    expect(events(kit, 'subscription_activated')).toHaveLength(1);
+  });
+
+  it('échec de paiement : file en échec → rejeu → un e-mail, un seul événement payment_failed', async () => {
+    const { kit, queue, invoiceId } = flakyKit();
+    queue.down = false;
+    const first = kit.fixture('checkout.session.completed', overrides);
+    await kit.webhook.handle(first.payload, first.signature);
+    knownSubscription(kit, { status: 'past_due' });
+    queue.down = true;
+    const failed = kit.fixture('invoice.payment_failed', { ...overrides, invoiceId });
+    await expect(kit.webhook.handle(failed.payload, failed.signature)).rejects.toBeInstanceOf(BillingMailDeferredError);
+    expect(markers(kit)).toEqual([]);
+    queue.down = false;
+    await expect(kit.webhook.handle(failed.payload, failed.signature)).resolves.toBe('duplicate');
+    await expect(kit.webhook.handle(failed.payload, failed.signature)).resolves.toBe('duplicate');
+    expect(queue.jobs.map((job) => job.options.jobId)).toEqual([`billing-payment_failed-${invoiceId}`]);
+    expect(events(kit, 'payment_failed')).toHaveLength(1);
+  });
+
+  it('file OK : rejeu (même événement ou nouvel événement de la même facture) → aucun second job', async () => {
+    const { kit, queue, invoiceId } = flakyKit();
+    queue.down = false;
+    const paid = kit.fixture('invoice.paid', { ...overrides, created: T0, invoiceId });
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('processed');
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('duplicate');
+    const again = kit.fixture('invoice.paid', { ...overrides, created: T1, invoiceId });
+    await expect(kit.webhook.handle(again.payload, again.signature)).resolves.toBe('processed');
+    expect(queue.jobs).toHaveLength(1);
+  });
+
+  it('envoi direct (jobs désactivés) en échec : marqueur retiré, rejeu → un seul reçu', async () => {
+    const kit = setup();
+    knownSubscription(kit);
+    kit.mailer.fail = true;
+    const paid = kit.fixture('invoice.paid', overrides);
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).rejects.toBeInstanceOf(BillingMailDeferredError);
+    kit.mailer.fail = false;
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('duplicate');
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('duplicate');
+    expect(kit.mailer.sent).toHaveLength(1);
   });
 });

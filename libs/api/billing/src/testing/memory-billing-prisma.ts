@@ -112,6 +112,11 @@ export class MemoryBillingPrisma {
         for (const row of list) update(row, data);
         return { count: list.length };
       },
+      deleteMany: async ({ where }: { where: Where }) => {
+        const before = rows().length;
+        this.tables[table] = rows().filter((row) => !matches(row, where));
+        return { count: before - rows().length };
+      },
       upsert: async ({ where, create, update: changes }: { where: Where; create: Row; update: Row }) => {
         this.upserts += 1;
         if (this.failOnUpsert === this.upserts) throw new Error('panne simulée');
