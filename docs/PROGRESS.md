@@ -449,3 +449,5 @@
 
 - Tour 6 de la relecture finale (`bba7127`) : **REFUSÉ** (3 points : réaudit du lot cb1422d..bba7127 à consigner, captures des pages légales à refaire, entonnoir de l'admin à 390 px). Configuration Stripe en mode réel faite à la demande explicite de l'utilisateur (« je veux que tu crées les abonnements sur la prod avec chrome », puis « le compte est activé », 2026-11-27) ; aucune clé manipulée par un agent.
 - **Audit 6 (security-reviewer) sur cb1422d..HEAD** : 0 critique, 0 important, 4 mineurs (marqueur d'e-mail Stripe perdu si la mise en file échoue → correction en cours ; un seul e-mail d'échec par facture → décision de l'orchestrateur : voulu, pour ne pas multiplier les e-mails à chaque nouvelle tentative de Stripe ; pas de purge de StripeEvent, croissance négligeable ; adresse personnelle de l'EI publiée → imposée par la LCEN sauf domiciliation, décision de l'utilisateur) ; corrections de l'audit 5 vérifiées.
+
+- Tour 7 de la relecture finale (`9e28d50`) : **REFUSÉ** (2 points : mots collés sur la landing livrée — CGU, confidentialité, comment ça marche ; audit à consigner pour `a10220e` et `9e28d50`). Corrections en cours.
