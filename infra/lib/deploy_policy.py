@@ -21,11 +21,14 @@
 #                                         limités aux deux modèles du dépôt
 #   resolve  <brut.json> <résolu.json>    retire build et x-* du rendu (la config livrée ne construit jamais rien)
 #   compose  <résolu.json> --name … --root … --network … --entrypoint … --certresolver … --tag … --hosts a,b
-#            [--edge traefik-shared|dedicated]
+#            [--edge traefik-shared|dedicated] [--traefik-network <réseau de référence>]
 #                                         politique complète de la configuration résolue ; --edge (dev seulement,
 #                                         RAIJIN_DEV_EDGE, docs/DEPLOY.md C2) : traefik-shared (défaut, option B) = le
 #                                         dev rejoint le réseau du Traefik existant (jamais un réseau raijin-…) ;
-#                                         dedicated (option A) = réseau d'entrée propre au dev raijin-dev-…
+#                                         dedicated (option A) = réseau d'entrée propre au dev raijin-dev-… ;
+#                                         --traefik-network : réseau du Traefik écrit par root sur le VPS
+#                                         (/var/lib/raijin-deploy/traefik-network) ; en option B, --network doit
+#                                         lui être égal (le .env du dev ne peut pas désigner un autre réseau)
 #   loaded   <attendues>                  (sortie de `docker load` sur l'entrée) : exactement les étiquettes attendues
 #   copyin   <source> <dest> <max> <uid>  copie racine sûre d'un fichier de l'utilisateur (sans lien, propriétaire)
 #   thirdparty <résolu.json>              images tierces (épinglées par empreinte) à télécharger avant `--pull never`
@@ -100,7 +103,16 @@ DEV_HOST_RE = re.compile(r'^(dev|[a-z0-9-]+-dev)\.[a-z0-9.-]+$')
 # RAIJIN_DEV_EDGE (docs/DEPLOY.md C2) : option B (défaut) ou option A.
 DEV_EDGES = ('traefik-shared', 'dedicated')
 NETWORK_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
-DATA_IMAGE = re.compile(r'^(postgres|redis):')
+INTERNAL_ONLY_IMAGE = re.compile(r'^(postgres|redis|axllent/mailpit):')
+MAILPIT_IMAGE = re.compile(r'^axllent/mailpit:')
+DEV_EDGE_NETWORK = 'raijin-dev-edge'
+
+
+def labels_of(service):
+    labels = service.get('labels') or {}
+    if isinstance(labels, list):
+        labels = dict(item.split('=', 1) if '=' in item else (item, '') for item in labels)
+    return labels
 
 errors = []
 
@@ -614,6 +626,7 @@ def cmd_compose(argv):
     for opt in ('--name', '--root', '--network', '--entrypoint', '--certresolver', '--tag', '--hosts'):
         p.add_argument(opt, required=True)
     p.add_argument('--edge', default='')
+    p.add_argument('--traefik-network', default='')
     a = p.parse_args(argv)
     a.root = os.path.realpath(a.root)
     a.hosts = {h.strip().lower() for h in a.hosts.split(',') if h.strip()}
@@ -641,6 +654,10 @@ def cmd_compose(argv):
             # Option B : le réseau du Traefik existant, jamais un réseau de Raijin (interne de la prod ou du dev).
             fail('réseau d\'entrée du dev (option B, traefik-shared) : réseau du Traefik existant attendu, '
                  'jamais un réseau raijin-… (docs/DEPLOY.md C2)')
+        elif edge == 'traefik-shared' and a.network != a.traefik_network:
+            # Exactement le réseau du Traefik relevé par root sur le VPS (comme la prod), pas un autre réseau existant.
+            fail('réseau d\'entrée du dev (option B) : TRAEFIK_NETWORK doit être le réseau du Traefik de référence '
+                 '(/var/lib/raijin-deploy/traefik-network, écrit par infra/vps-setup.sh, docs/DEPLOY.md C2)')
     elif a.edge:
         fail('--edge ne concerne que le dev')
     elif a.network.lower().startswith('raijin'):
@@ -656,8 +673,14 @@ def cmd_compose(argv):
     if cfg.get('name') != name:
         fail('nom de projet différent de celui de l\'environnement')
     networks = cfg.get('networks') or {}
+    # Réseaux « d'entrée » : externes, ou portant le nom du réseau d'entrée ou de raijin-dev-edge (quel que soit le
+    # drapeau) : Postgres, Redis et Mailpit n'y vont jamais.
+    edge_names = {a.network.lower(), DEV_EDGE_NETWORK}
+    edge_keys = {k for k, n in networks.items() if n.get('external') or str(n.get('name', '')).lower() in edge_names}
     for key, net in networks.items():
         net_name = str(net.get('name', ''))
+        if not net.get('external') and net_name.lower() in edge_names:
+            fail(f'réseau {key[:40]} : nom du réseau d\'entrée ou de {DEV_EDGE_NETWORK} refusé pour un réseau du projet')
         if net.get('external'):
             if net_name != a.network:
                 fail(f'réseau externe {key[:40]} refusé (seul le réseau d\'entrée de l\'environnement)')
@@ -739,14 +762,20 @@ def cmd_compose(argv):
         for net in nets:
             if net not in networks:
                 fail(f'{svc} : réseau non déclaré')
-            elif networks[net].get('external') and DATA_IMAGE.match(image):
-                # Postgres et Redis restent sur le réseau interne du projet : jamais sur le réseau du Traefik, partagé
-                # avec les autres projets (et avec le dev en option B).
-                fail(f'{svc} : base de données ou cache sur le réseau d\'entrée refusé')
-        labels = s.get('labels') or {}
-        if isinstance(labels, list):
-            labels = dict(item.split('=', 1) if '=' in item else (item, '') for item in labels)
-        check_labels(svc, labels, a)
+            elif net in edge_keys and INTERNAL_ONLY_IMAGE.match(image):
+                # Postgres, Redis et Mailpit restent sur le réseau interne du projet : jamais sur le réseau du Traefik,
+                # partagé avec les autres projets (et avec le dev en option B), ni sur raijin-dev-edge.
+                fail(f'{svc} : base de données, cache ou Mailpit sur le réseau d\'entrée refusé')
+        if INTERNAL_ONLY_IMAGE.match(image):
+            if any(str(k).lower().startswith('traefik') for k in (labels_of(s))):
+                fail(f'{svc} : labels Traefik refusés (service jamais exposé)')
+            if MAILPIT_IMAGE.match(image):
+                env = s.get('environment') or {}
+                if isinstance(env, list):
+                    env = dict(item.split('=', 1) if '=' in item else (item, '') for item in env)
+                if not str(env.get('MP_UI_AUTH') or env.get('MP_UI_AUTH_FILE') or '').strip():
+                    fail(f'{svc} : Mailpit sans authentification (MP_UI_AUTH obligatoire)')
+        check_labels(svc, labels_of(s), a)
     finish('compose')
 
 

@@ -53,7 +53,7 @@ edge_mode="$(sed -n 's/^RAIJIN_DEV_EDGE=//p' "${RAIJIN_DEPLOY_BASE:-${RUNNER_TEM
 edge_mode="${edge_mode:-traefik-shared}"
 edge_net=traefik-ci
 [[ "$edge_mode" == dedicated ]] && edge_net=raijin-dev-edge
-for c in raijin-dev-api raijin-dev-web raijin-dev-landing raijin-dev-mailpit; do
+for c in raijin-dev-api raijin-dev-web raijin-dev-landing; do
   nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c")"
   if [[ " $nets" != *" raijin-internal "* && " $nets" == *" $edge_net "* ]] \
      && { [[ "$edge_mode" != dedicated ]] || [[ " $nets" != *" traefik-ci "* ]]; }; then
@@ -62,6 +62,14 @@ for c in raijin-dev-api raijin-dev-web raijin-dev-landing raijin-dev-mailpit; do
     ko "$c : réseaux inattendus ($nets, option $edge_mode)"
   fi
 done
+# Mailpit : réseau interne du dev seul (jamais le réseau d'entrée), interface protégée par Mailpit lui-même.
+nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' raijin-dev-mailpit)"
+[[ "$nets" == "raijin-dev-internal " ]] && ok "raijin-dev-mailpit : réseau interne dev seul" || ko "raijin-dev-mailpit : réseaux $nets"
+mp() { docker exec raijin-dev-api node -e "fetch('http://raijin-mailpit:8025/_mailpit/api/v1/messages',{headers:process.argv[1]?{authorization:'Basic '+Buffer.from(process.argv[1]).toString('base64')}:{},signal:AbortSignal.timeout(5000)}).then(r=>console.log(r.status),()=>console.log(0))" "${1:-}"; }
+code="$(mp)"; [[ "$code" == 401 ]] && ok "Mailpit : API sans mot de passe → 401" || ko "Mailpit : API sans mot de passe → $code"
+code="$(mp "${DEV_CI_BASIC_AUTH:-}")"; [[ "$code" == 200 ]] && ok "Mailpit : API avec le mot de passe du dev → 200" || ko "Mailpit : API avec le mot de passe du dev → $code"
+seen="$(docker exec raijin-api getent hosts raijin-mailpit 2>/dev/null || true)"
+[[ -z "$seen" ]] && ok "prod : raijin-mailpit introuvable depuis le réseau d'entrée" || ko "prod : raijin-mailpit résolu ($seen)"
 # Postgres et Redis de la prod : injoignables depuis le dev (réseau interne de la prod seulement).
 for target in raijin-postgres:5432 raijin-redis:6379; do
   ip="$(docker inspect -f '{{with index .NetworkSettings.Networks "raijin-internal"}}{{.IPAddress}}{{end}}' "${target%%:*}")"
@@ -123,8 +131,10 @@ check dev.raijinshield.com /t/DezXAZ8z7PnrnLZxU5PfJLQ1uXWuqxbUzvsCiAq4Sg8D 401
 AUTH=1 check dev.raijinshield.com /t/DezXAZ8z7PnrnLZxU5PfJLQ1uXWuqxbUzvsCiAq4Sg8D 200 'x-robots-tag: noindex' 'content-type: text/html'
 check dev.raijinshield.com /robots.txt 200 'x-robots-tag: noindex, nofollow' '!www-authenticate'
 grep -q '^Disallow: /$' "$tmp/body" && ok "dev : robots.txt Disallow: /" || ko "dev : robots.txt sans « Disallow: / »"
+# Mailpit n'est plus routé par Traefik : /_mailpit/ tombe sur l'app (basicAuth), jamais sur Mailpit.
 check dev.raijinshield.com /_mailpit/ 401
-AUTH=1 check dev.raijinshield.com /_mailpit/ 200 'x-robots-tag: noindex'
+code="$(curl -sk --config "$tmp/auth" -o "$tmp/body" -w '%{http_code}' --resolve "dev.raijinshield.com:$PORT:127.0.0.1" "https://dev.raijinshield.com:$PORT/_mailpit/api/v1/messages" || echo 000)"
+grep -q '"messages"' "$tmp/body" && ko "dev : Mailpit joignable par Traefik ($code)" || ok "dev : Mailpit non routé par Traefik ($code)"
 
 echo "== Landing dev"
 check landing-dev.raijinshield.com / 401 'www-authenticate: basic'

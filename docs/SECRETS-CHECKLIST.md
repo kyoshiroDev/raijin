@@ -51,13 +51,15 @@ Après création : supprime les clés privées du PC (`shred -u ~/.ssh/raijin-de
 
 ## Déploiement continu : secrets sur le VPS (docs/DEPLOY.md C2, C3, C5)
 
-Fichiers `/srv/raijin/<env>/env/` en 600, lisibles par `deploy-dev` ou `deploy-prod` seul ; valeurs **distinctes**
-entre dev et prod. Édition : `sudo -u deploy-prod nano /srv/raijin/prod/env/.env` (ou `deploy-dev`).
+Fichiers `/srv/raijin/<env>/env/` en 600, lisibles par `deploy-dev` ou `deploy-prod` seul (sauf le `.env` du dev :
+`root:deploy-dev` 640, lu par `deploy-dev` sans pouvoir le modifier) ; valeurs **distinctes**
+entre dev et prod. Édition : `sudo -u deploy-prod nano /srv/raijin/prod/env/.env` (ou `deploy-dev` pour `dev/env/.env.api`),
+`sudo nano /srv/raijin/dev/env/.env`.
 
 | Variable / fichier | Où la trouver / la générer | Utilisé par | Fait |
 |---|---|---|---|
 | Clé de lecture du dépôt `~deploy-prod/.ssh/github_readonly` | clé **privée** `~/.ssh/raijin-github-readonly` (générée par `vps-install.sh`, copiée sur le VPS par `vps-setup.sh --readonly-key`) ; la clé publique va dans GitHub → **Settings → Deploy keys → Add deploy key**, titre `vps-raijin-lecture`, **sans** « Allow write access » | `deploy-gate.sh --approve` (`git ls-remote` : le commit doit être la tête de `main`) | [ ] |
-| `DEV_BASIC_AUTH_USERS` (`/srv/raijin/dev/env/.env`) | demandé au clavier par `sudo bash infra/vps-setup.sh --apply` (haché bcrypt, jamais affiché), ou `htpasswd -nBC 12 <utilisateur>` (paquet `apache2-utils`), collé **entre apostrophes** (le hash contient des `$`). Mot de passe distinct de celui du banc | Traefik, middleware `raijin-dev-auth` devant app, landing, API et Mailpit du dev (`infra/docker-compose.env-dev.yml`) ; exigé par `infra/deploy.sh --env dev` | [ ] |
+| `DEV_BASIC_AUTH_USERS` (`/srv/raijin/dev/env/.env`) | demandé au clavier par `sudo bash infra/vps-setup.sh --apply` (haché bcrypt, jamais affiché), ou `htpasswd -nBC 12 <utilisateur>` (paquet `apache2-utils`), collé **entre apostrophes** (le hash contient des `$`). Mot de passe distinct de celui du banc | Traefik, middleware `raijin-dev-auth` devant app, landing et API du dev, et Mailpit (`MP_UI_AUTH`, un seul utilisateur) (`infra/docker-compose.env-dev.yml`) ; exigé par `infra/deploy.sh --env dev`. Fichier `root:deploy-dev` 640 : `sudo nano` | [ ] |
 | `BENCH_BASIC_AUTH_USERS` (`/srv/raijin/prod/env/.env`) | `htpasswd -nBC 12 <utilisateur>`, **entre apostrophes** ; mot de passe distinct de celui du dev | Traefik devant `banc.raijinshield.com` (`infra/docker-compose.yml`, profil `bench`) ; exigé par `infra/deploy.sh --bench` (docs/DEPLOY.md A14) | [ ] |
 | `POSTGRES_SUPERUSER_PASSWORD`, `RAIJIN_DB_PASSWORD`, `BENCH_DB_PASSWORD`, `REDIS_PASSWORD` (prod et dev), `REDIS_BENCH_PASSWORD` (prod) | **générés sur le VPS** par `infra/vps-setup.sh` (`openssl rand -hex 32`, jamais affichés) ; à la main : `openssl rand -hex 32`, une valeur par variable | Postgres, Redis, `raijin-api`, `raijin-bench-api`, `infra/deploy.sh` (contrôle ≥ 24 caractères) | [ ] vérifié |
 | `JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `IP_HASH_SECRET`, `TOTP_ENCRYPTION_KEY`, `VAPID_PRIVATE_KEY` (`.env.api` prod et dev) | **générés sur le VPS** par `infra/vps-setup.sh` (une paire VAPID par environnement) | `raijin-api` prod et dev | [ ] vérifié |

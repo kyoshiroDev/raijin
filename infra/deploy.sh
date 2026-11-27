@@ -74,7 +74,9 @@ fi
 [[ -r "$RAIJIN_API_ENV_FILE" ]] || die "fichier $RAIJIN_API_ENV_FILE absent (modèle : docs/ENV.md)."
 for f in "$RAIJIN_ENV_FILE" "$RAIJIN_API_ENV_FILE"; do
   perms="$(stat -L -c '%a' "$f")"
-  [[ "$perms" == 600 || "$perms" == 400 ]] || warn "$f est lisible par d'autres comptes (droits $perms) : chmod 600 $f"
+  # 640 admis pour le .env du dev (root:deploy-dev, docs/DEPLOY.md C3).
+  [[ "$perms" == 600 || "$perms" == 400 || ( "$perms" == 640 && "$RAIJIN_ENV" == dev && "$f" == "$RAIJIN_ENV_FILE" ) ]] \
+    || warn "$f est lisible par d'autres comptes (droits $perms) : chmod 600 $f"
 done
 
 for key in TRAEFIK_NETWORK TRAEFIK_CERTRESOLVER LANDING_DOMAIN APP_DOMAIN API_DOMAIN \
@@ -125,6 +127,9 @@ fi
 TRAEFIK_NETWORK="$(env_get "$RAIJIN_ENV_FILE" TRAEFIK_NETWORK)"
 docker network inspect "$TRAEFIK_NETWORK" >/dev/null 2>&1 \
   || die "réseau Traefik « $TRAEFIK_NETWORK » introuvable : vérifie le nom avec « docker network ls » (docs/DEPLOY.md A2)."
+# Traefik doit être relié à ce réseau (option B : le réseau du Traefik existant ; option A : raijin-dev-edge connecté).
+traefik_on_network "$TRAEFIK_NETWORK" \
+  || die "aucun conteneur Traefik n'est relié au réseau « $TRAEFIK_NETWORK » (docs/DEPLOY.md A2, C2)."
 
 if [[ "$bench" == 1 ]]; then
   [[ -d apps/raijin-banc-de-test-api ]] || die "--bench : apps/raijin-banc-de-test-api introuvable dans ce dépôt."

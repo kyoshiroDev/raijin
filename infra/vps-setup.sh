@@ -187,7 +187,7 @@ set_var() {
     { print }
     END { if (!done) print k "=" v }' "$file" >"$tmp"
   chown --reference="$file" "$tmp"
-  chmod 600 "$tmp"
+  chmod --reference="$file" "$tmp"
   mv -f -- "$tmp" "$file"
 }
 
@@ -564,25 +564,30 @@ ask_basic_auth() {
   line=''
 }
 
-create_env_file() { # fichier, propriétaire, générateur
-  install -o "$2" -g "$2" -m 600 /dev/null "$1"
+# Droits attendus : 600 à l'utilisateur de l'environnement, sauf le .env du dev : root:deploy-dev 640 (lu par la porte
+# par le groupe, jamais modifiable par deploy-dev : réseau d'entrée, domaines, mot de passe du dev ; C3).
+env_owner() { if [[ "$1" == dev && "$2" == .env ]]; then echo "root deploy-dev 640"; else echo "deploy-$1 deploy-$1 600"; fi; }
+create_env_file() { # fichier, « propriétaire groupe mode », générateur
+  local o g m; read -r o g m <<<"$2"
+  install -o "$o" -g "$g" -m "$m" /dev/null "$1"
   "$3" >>"$1"
 }
-copy_env_file() { install -o "$3" -g "$3" -m 600 "$1" "$2"; }
+copy_env_file() { local o g m; read -r o g m <<<"$3"; install -o "$o" -g "$g" -m "$m" "$1" "$2"; }
 
 ensure_env_file() { # env, nom (.env | .env.api), générateur
-  local env="$1" name="$2" gen="$3" u="deploy-$1" f="$BASE/$1/env/$2" cur legacy=''
+  local env="$1" name="$2" gen="$3" f="$BASE/$1/env/$2" cur legacy='' want o g m
+  want="$(env_owner "$1" "$2")"; read -r o g m <<<"$want"
   [[ "$env" == prod ]] && legacy="/opt/raijin/infra/$name"
   if [[ -L "$f" ]]; then warn "$f est un lien symbolique (refusé par la porte) : à remplacer à la main."; return 0; fi
   if [[ ! -e "$f" ]]; then
     if ((!DRY)) && ! [[ -d "$BASE/$env/env" ]] ; then printf '  [passé]    %s (dossier absent)\n' "$f"; return 0; fi
-    if [[ -n "$legacy" && -f "$legacy" ]]; then act "reprendre $legacy (partie A) dans $f (600, $u)" copy_env_file "$legacy" "$f" "$u"
-    else act "créer le modèle $f (600, $u, valeurs vides)" create_env_file "$f" "$u" "$gen"; fi
+    if [[ -n "$legacy" && -f "$legacy" ]]; then act "reprendre $legacy (partie A) dans $f ($want)" copy_env_file "$legacy" "$f" "$want"
+    else act "créer le modèle $f ($want, valeurs vides)" create_env_file "$f" "$want" "$gen"; fi
     return 0
   fi
   cur="$(perm_of "$f")"
-  if [[ "$cur" == "$u $u 600" ]]; then ok "$f ($cur)"
-  else act "corriger $f : $cur -> $u $u 600" fix_perm "$f" "$u" "$u" 600; fi
+  if [[ "$cur" == "$want" ]]; then ok "$f ($cur)"
+  else act "corriger $f : $cur -> $want" fix_perm "$f" "$o" "$g" "$m"; fi
 }
 fill_env() { # fichier, liste « CLÉ:type » ; ne remplit QUE les variables vides ou absentes
   local f="$1" spec k t; shift
@@ -653,7 +658,8 @@ block_env() {
   if [[ "$mode" == dedicated ]]; then
     fill_public "$f" TRAEFIK_NETWORK "$DEV_EDGE" "option A : réseau propre au dev"
   else
-    fill_public "$f" TRAEFIK_NETWORK "$TRAEFIK_NET" "option B : même réseau Traefik que la prod"
+    local pnet; pnet="$(env_value "$BASE/prod/env/.env" TRAEFIK_NETWORK)"
+    fill_public "$f" TRAEFIK_NETWORK "${pnet:-$TRAEFIK_NET}" "option B : même réseau Traefik que la prod"
   fi
   if [[ -n "$DEV_EDGE_OPT" && -n "$(env_value "$f" RAIJIN_DEV_EDGE)" && "$(env_value "$f" RAIJIN_DEV_EDGE)" != "$DEV_EDGE_OPT" ]]; then
     warn "--dev-edge $DEV_EDGE_OPT mais RAIJIN_DEV_EDGE=$(env_value "$f" RAIJIN_DEV_EDGE) dans $f : rien n'est changé, modifie le fichier toi-même (et TRAEFIK_NETWORK, C2)."
@@ -766,6 +772,22 @@ block_keys() {
   else act "enregistrer l'empreinte de github.com dans $kh (comparée à $GITHUB_ED25519_FP)" install_github_known "$kh"; fi
 }
 
+# --- Réseau du Traefik de référence (C2) : seul réseau d'entrée accepté pour le dev en option B -----------------------
+TRAEFIK_REF="$VARLIB/traefik-network"
+write_traefik_ref() { local t; t="$(mktemp "$VARLIB/.traefik-network.XXXXXX")"; printf '%s\n' "$1" >"$t"; chmod 644 "$t"; mv -f -- "$t" "$TRAEFIK_REF"; }
+block_traefik_ref() {
+  local want cur=''
+  want="$(env_value "$BASE/prod/env/.env" TRAEFIK_NETWORK)"; want="${want:-$TRAEFIK_NET}"
+  [[ -f "$TRAEFIK_REF" && ! -L "$TRAEFIK_REF" ]] && cur="$(head -n 1 "$TRAEFIK_REF" | tr -d '[:space:]')"
+  if [[ -z "$want" ]]; then
+    todo "réseau de Traefik inconnu : renseigne TRAEFIK_NETWORK (A2) dans $BASE/prod/env/.env puis relance ($TRAEFIK_REF)."
+  elif [[ ! "$want" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ || "$want" == raijin* ]]; then
+    warn "TRAEFIK_NETWORK de la prod (« $want ») invalide comme réseau de référence (C2)."
+  elif [[ "$cur" == "$want" ]]; then ok "$TRAEFIK_REF : $cur"
+  elif ((!DRY)) && [[ ! -d "$VARLIB" ]]; then printf '  [passé]    %s (dossier absent)\n' "$TRAEFIK_REF"
+  else act "écrire $TRAEFIK_REF = $want (root 644, réseau d'entrée du dev en option B)" write_traefik_ref "$want"; fi
+}
+
 # --- Docker : réseau d'entrée du dev (C2) -----------------------------------------------------------------------------
 block_network() {
   if [[ "$(dev_edge_mode)" != dedicated ]]; then
@@ -851,6 +873,12 @@ block_verify() {
     if runuser -u deploy-dev -- ls "$BASE/prod" >/dev/null 2>&1; then warn "deploy-dev peut lire $BASE/prod : la porte refusera le dev."
     else ok "deploy-dev ne peut pas lire $BASE/prod"; fi
   fi
+  if user_exists deploy-dev && [[ -f "$BASE/dev/env/.env" ]]; then
+    # La porte (deploy-dev) lit le .env du dev par son groupe, sans pouvoir l'écrire (C3).
+    if runuser -u deploy-dev -- test -r "$BASE/dev/env/.env" && ! runuser -u deploy-dev -- test -w "$BASE/dev/env/.env"; then
+      ok "deploy-dev lit $BASE/dev/env/.env sans pouvoir le modifier"
+    else warn "$BASE/dev/env/.env : deploy-dev doit le lire sans pouvoir l'écrire (root:deploy-dev 640, C3)."; fi
+  fi
   if have sshd; then
     local t ae pue au ag
     t="$(sshd -T 2>/dev/null || true)"
@@ -919,7 +947,8 @@ report_env() {
       else printf '  %-41s %-26s %s\n' "${line%%|*}" "$k" "$(hint "$k")"; TODO+=("$f : $k"); fi
     done
   done
-  printf '  Édition : sudo -u deploy-prod nano %s/prod/env/.env.api   (ou deploy-dev pour le dev ; garde les droits 600)\n' "$BASE"
+  printf '  Édition : sudo -u deploy-prod nano %s/prod/env/.env.api   (deploy-dev pour dev/env/.env.api ; droits 600)\n' "$BASE"
+  printf '           sudo nano %s/dev/env/.env   (root:deploy-dev 640 : deploy-dev le lit sans pouvoir le modifier)\n' "$BASE"
 }
 
 summary() {
@@ -954,6 +983,7 @@ run_all() {
   run_block "Règles sudo (C2, C6)" safe block_sudoers
   run_block "Fichiers de variables (C3)" safe block_env
   run_block "Clés SSH et GitHub (C5)" safe block_keys
+  run_block "Réseau du Traefik de référence (C2)" safe block_traefik_ref
   run_block "Réseau d'entrée du dev (C2, option $(dev_edge_mode))" safe block_network
   run_block "Traefik et réseau du dev (C2 ; option A : toujours demandé)" ask block_traefik
   run_block "Sauvegardes et veille systemd (C3, toujours demandé)" ask block_systemd

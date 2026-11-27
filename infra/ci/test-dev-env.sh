@@ -53,6 +53,10 @@ traefik_nets() { docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}
 traefik_before="$(traefik_nets)"
 grep -qx 'RAIJIN_DEV_EDGE=traefik-shared' "$RAIJIN_DEPLOY_BASE/dev/env/.env" && grep -qx 'TRAEFIK_NETWORK=traefik-ci' "$RAIJIN_DEPLOY_BASE/dev/env/.env" \
   && ok "dev en option B (traefik-shared, réseau traefik-ci)" || ko "fichier du dev : option B attendue (fake-env.sh)"
+# Réseau de référence du Traefik, écrit par root sur le VPS (infra/vps-setup.sh) : seul réseau d'entrée accepté en B.
+mkdir -p "$RAIJIN_PRIV_BASE"
+printf 'traefik-ci\n' >"$RAIJIN_PRIV_BASE/traefik-network"
+dev_env="$RAIJIN_DEPLOY_BASE/dev/env/.env"
 
 sha1="$(git rev-parse HEAD)"
 mkdir -p "$work/v1"
@@ -102,6 +106,15 @@ infra/deploy-gate.sh --approve "$sha1" >"$work/out" 2>&1 && ko "activation sans 
 expect_refused "dev déployé par un utilisateur qui lit la prod" "deploy dev $sha1" "$work/v1.tar"
 chmod 000 "$RAIJIN_DEPLOY_BASE/prod"
 [[ -d "$RAIJIN_DEPLOY_BASE/incoming/prod" ]] && chmod 000 "$RAIJIN_DEPLOY_BASE/incoming/prod"
+# .env du dev modifiable par l'utilisateur qui déploie (sur le VPS : deploy-dev) → refus ; puis root:<groupe> 640
+# comme infra/vps-setup.sh (lu par le groupe, jamais modifiable), et la porte le lit toujours.
+expect_refused ".env du dev modifiable par l'utilisateur du dev" "deploy dev $sha1" "$work/v1.tar"
+sudo chown "root:$(id -gn)" "$dev_env" && sudo chmod 640 "$dev_env"
+[[ -r "$dev_env" && ! -w "$dev_env" ]] && ok ".env du dev root 640 : lisible, non modifiable par l'utilisateur du dev" || ko ".env du dev : droits inattendus"
+# Option B : TRAEFIK_NETWORK du dev différent du réseau de référence → refus (aucun démarrage).
+printf 'autre-reseau\n' >"$RAIJIN_PRIV_BASE/traefik-network"
+expect_refused "option B : réseau d'entrée différent du réseau de référence" "deploy dev $sha1" "$work/v1.tar"
+printf 'traefik-ci\n' >"$RAIJIN_PRIV_BASE/traefik-network"
 
 # Étiquette étrangère (ici une image « traefik ») : refusée avant tout docker load.
 d="$(mktemp -d)"

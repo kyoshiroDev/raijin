@@ -64,7 +64,8 @@ render() {
 # défauts du dev surchargeables par DEV_NET et DEV_EDGE_MODE, comme le fichier choisi par DEV_ENVFILE).
 policy_compose() {
   local env="$1" file="$2" name=raijin hosts="$prod_hosts" net=traefik-ci edge=()
-  [[ "$env" == dev ]] && { name=raijin-dev hosts="$dev_hosts" net="${DEV_NET:-traefik-ci}"; edge=(--edge "${5:-${DEV_EDGE_MODE:-traefik-shared}}"); }
+  [[ "$env" == dev ]] && { name=raijin-dev hosts="$dev_hosts" net="${DEV_NET:-traefik-ci}"
+    edge=(--edge "${5:-${DEV_EDGE_MODE:-traefik-shared}}" --traefik-network "${DEV_REF-traefik-ci}"); }
   python3 "$policy" compose "$file" --name "$name" --root "$infra" --network "${4:-$net}" --entrypoint websecure \
     --certresolver ci --tag "$sha" --hosts "${3:-$hosts}" "${edge[@]}"
 }
@@ -110,6 +111,17 @@ devenv aprod traefik-ci dedicated
 DEV_ENVFILE=aprod DEV_EDGE_MODE=dedicated judge dev && ko "option A sur le réseau Traefik de la prod accepté" \
   || ok "refusé : option A sur le réseau Traefik de la prod ($(head -n 1 "$work/out"))"
 DEV_EDGE_MODE=autre judge dev && ko "RAIJIN_DEV_EDGE inconnu accepté" || ok "refusé : RAIJIN_DEV_EDGE inconnu ($(head -n 1 "$work/out"))"
+devenv bother autre-reseau traefik-shared
+DEV_ENVFILE=bother DEV_NET=autre-reseau judge dev && ko "option B sur un réseau autre que celui du Traefik de référence accepté" \
+  || ok "refusé : option B sur un réseau existant autre que le réseau de référence ($(head -n 1 "$work/out"))"
+DEV_REF='' judge dev && ko "option B sans réseau de référence accepté" || ok "refusé : option B sans réseau de référence (/var/lib/raijin-deploy/traefik-network)"
+reject "réseau du projet nommé raijin-dev-edge" dev "$(overlay netedge 'services: {raijin-api: {networks: [raijin-internal, traefik, x]}}
+networks: {x: {name: raijin-dev-edge, internal: true}}')"
+reject "réseau du projet au nom du réseau d'entrée" dev "$(overlay netentry 'services: {raijin-api: {networks: [raijin-internal, traefik, x]}}
+networks: {x: {name: traefik-ci, internal: true}}')"
+reject "Mailpit sur le réseau du Traefik" dev "$(overlay mpedge 'services: {raijin-mailpit: {networks: [raijin-internal, traefik]}}')"
+reject "Mailpit sans MP_UI_AUTH" dev "$(overlay mpauth 'services: {raijin-mailpit: {environment: {MP_UI_AUTH: ""}}}')"
+reject "Mailpit routé par Traefik (labels)" dev "$(overlay mplab 'services: {raijin-mailpit: {labels: ["traefik.enable=true"]}}')"
 reject "option B : Postgres du dev sur le réseau du Traefik" dev "$(overlay pgedge 'services: {raijin-postgres: {networks: [raijin-internal, traefik]}}')"
 reject "option B : Redis du dev sur le réseau du Traefik" dev "$(overlay redisedge 'services: {raijin-redis: {networks: [raijin-internal, traefik]}}')"
 reject "option B : réseau interne de la prod ajouté au dev" dev "$(overlay prodnet 'services: {raijin-api: {networks: [raijin-internal, traefik, prodint]}}

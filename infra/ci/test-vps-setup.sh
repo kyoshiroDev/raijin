@@ -65,8 +65,15 @@ key_prod="$(awk '{print $1" "$2}' keys/raijin-depot-prod.pub)"
 grep -qxF "restrict,command=\"/opt/raijin-deploy/infra/deploy-gate.sh prod-depot\" $key_prod github-raijin-depot-prod" /home/deploy-prod/.ssh/authorized_keys || fail "authorized_keys prod"
 check_perm /home/deploy-prod/.ssh/authorized_keys "deploy-prod deploy-prod 600"
 val() { awk -v k="$2" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { printf "%s", v }' "$1"; }
+check_perm /srv/raijin/dev/env/.env "root deploy-dev 640"
+runuser -u deploy-dev -- cat /srv/raijin/dev/env/.env >/dev/null || fail "deploy-dev (la porte) ne lit pas le .env du dev"
+runuser -u deploy-dev -- sh -c ': >>/srv/raijin/dev/env/.env' 2>/dev/null && fail "deploy-dev peut modifier le .env du dev"
+check_perm /srv/raijin/dev/env/.env.api "deploy-dev deploy-dev 600"
+check_perm /srv/raijin/prod/env/.env "deploy-prod deploy-prod 600"
+check_perm /srv/raijin/prod/env/.env.api "deploy-prod deploy-prod 600"
+[[ ! -e /var/lib/raijin-deploy/traefik-network ]] || fail "réseau de référence écrit sans Traefik connu"
+grep -q 'Réseau du Traefik de référence' /tmp/apply1.log || fail "bloc du réseau de référence absent"
 for e in dev prod; do
-  for n in .env .env.api; do check_perm "/srv/raijin/$e/env/$n" "deploy-$e deploy-$e 600"; done
   for k in POSTGRES_SUPERUSER_PASSWORD RAIJIN_DB_PASSWORD BENCH_DB_PASSWORD REDIS_PASSWORD; do
     v="$(val "/srv/raijin/$e/env/.env" "$k")"
     [[ "$v" =~ ^[0-9a-f]{64}$ ]] || fail "$e $k non généré"
@@ -90,6 +97,15 @@ grep -q 'docker network connect' /tmp/apply1.log && fail "option B : docker netw
 [[ -z "$(val /srv/raijin/dev/env/.env TRAEFIK_NETWORK)" ]] || fail "dev TRAEFIK_NETWORK rempli sans Traefik détecté"
 grep -q 'Docker absent ou arrêté' /tmp/apply1.log || fail "repli Docker"
 grep -q 'DEV_BASIC_AUTH_USERS' /tmp/apply1.log || fail "basicAuth non signalée"
+
+echo "--- 2 bis. réseau de référence du Traefik (option B) écrit depuis TRAEFIK_NETWORK de la prod"
+sed -i 's/^TRAEFIK_NETWORK=$/TRAEFIK_NETWORK=traefik_test/' /srv/raijin/prod/env/.env
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --repo test-owner/raijin </dev/null >/tmp/apply1b.log 2>&1 || { cat /tmp/apply1b.log; fail "--apply (référence)"; }
+check_perm /var/lib/raijin-deploy/traefik-network "root root 644"
+[[ "$(cat /var/lib/raijin-deploy/traefik-network)" == traefik_test ]] || fail "réseau de référence : $(cat /var/lib/raijin-deploy/traefik-network)"
+runuser -u deploy-dev -- cat /var/lib/raijin-deploy/traefik-network >/dev/null || fail "deploy-dev ne lit pas le réseau de référence"
+check_perm /srv/raijin/dev/env/.env "root deploy-dev 640"
+[[ "$(val /srv/raijin/dev/env/.env TRAEFIK_NETWORK)" == traefik_test ]] || fail "option B : TRAEFIK_NETWORK du dev ≠ celui de la prod"
 
 echo "--- 3. 2e passe : idempotente"
 sums() { find /srv/raijin /opt/raijin-deploy /etc/sudoers.d /home/deploy-dev /home/deploy-prod -type f -exec sha256sum {} + | sort; }

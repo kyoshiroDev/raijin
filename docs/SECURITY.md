@@ -292,10 +292,15 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     label `traefik.*`, aucun `VOLUME`, utilisateur non root), configuration Compose **résolue** une seule fois sous
     `env -i` (ni privilège, ni port publié, ni montage de l'hôte ou du socket Docker, ni `cap_add`, `network_mode`,
     `extra_hosts`, `dns`, `env_file`, `include`, `extends`, `label_file` ; aucun réseau externe autre que le
-    réseau d'entrée ; Postgres / Redis jamais sur ce réseau ; en option B, jamais un réseau `raijin-…` comme
-    réseau d'entrée ; routeurs `Host(`…`)` stricts limités aux noms du dev ; `priority` ≤ 1000) ;
+    réseau d'entrée ; aucun réseau du projet au nom du réseau d'entrée ou de `raijin-dev-edge` ; Postgres, Redis et
+    Mailpit jamais sur un tel réseau (selon son nom) ni routés par Traefik ; Mailpit sans `MP_UI_AUTH` refusé ;
+    en option B, réseau d'entrée **égal** au réseau de référence écrit par root
+    (`/var/lib/raijin-deploy/traefik-network`), jamais un réseau `raijin-…` ; routeurs `Host(`…`)` stricts
+    limités aux noms du dev ; `priority` ≤ 1000) ;
   - **utilisateurs séparés hors du groupe `docker`** : `deploy-dev` et `deploy-prod`, mots de passe verrouillés ;
-    `deploy-dev` ne lit rien de `/srv/raijin/prod` (vérifié avant chaque déploiement du dev) ;
+    `deploy-dev` ne lit rien de `/srv/raijin/prod` (vérifié avant chaque déploiement du dev) ; le `.env` du dev
+    (réseau d'entrée, domaines, mot de passe) appartient à root en 640 : `deploy-dev` le lit sans pouvoir le
+    modifier (la porte et `release.sh` refusent sinon) ;
   - **`docker-priv.sh`** (root par sudo, environnement imposé par sudoers) : seul accès à Docker, sous-commandes
     fixes (`sync-init`, `import`, `deploy`, `recover`, `status`), appelant vérifié, images recontrôlées puis sortie
     de `docker load` comparée à la liste attendue ;
@@ -309,7 +314,10 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     **arrêt sûr** côté VPS : commenter la ligne de `~deploy-dev/.ssh/authorized_keys` (efficace même contre un
     workflow modifié sur `dev`) ;
   - réseau d'entrée : option B sans modification du conteneur Traefik de MTC (PROMPT §7), option A (réseau
-    `raijin-dev-edge` dédié) disponible sur décision de l'utilisateur.
+    `raijin-dev-edge` dédié) disponible sur décision de l'utilisateur ; Traefik relié au réseau vérifié ;
+  - **Mailpit du dev** (magic links, réinitialisations) : réseau interne du dev seulement, jamais joignable depuis
+    le réseau partagé, interface et API protégées par Mailpit (`MP_UI_AUTH`, mot de passe du dev), lecture par
+    tunnel SSH.
 - **Tests** : `infra/ci/test-deploy-policy.sh` (configurations réelles prod, dev option B et option A acceptées ;
   livraisons dangereuses, réseaux `raijin-…` en option B, Postgres / Redis sur le réseau d'entrée, jeton OIDC forgé
   refusés), `infra/ci/test-dev-env.sh` et `check-stack-dev.sh` (livraison par la porte, retour automatique, Traefik

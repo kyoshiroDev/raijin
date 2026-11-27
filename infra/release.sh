@@ -48,7 +48,15 @@ API_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" API_DOMAIN)"
 LANDING_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" LANDING_DOMAIN)"
 hosts="$APP_DOMAIN,$API_DOMAIN,$LANDING_DOMAIN"
 EDGE=()
-[[ "$env" == dev ]] && EDGE=(--edge "$(env_get "$RAIJIN_ENV_FILE" RAIJIN_DEV_EDGE)")
+if [[ "$env" == dev ]]; then
+  # .env du dev : root, 640 (docs/DEPLOY.md C3) ; réseau de référence du Traefik écrit par root (C2, option B).
+  [[ -f "$RAIJIN_ENV_FILE" && "$(stat -c '%u %a' -- "$RAIJIN_ENV_FILE")" == "0 640" ]] \
+    || die "$RAIJIN_ENV_FILE doit appartenir à root, droits 640 (docs/DEPLOY.md C3)."
+  ref_file="${RAIJIN_PRIV_BASE:-/var/lib/raijin-deploy}/traefik-network"
+  ref=''
+  [[ -f "$ref_file" && ! -L "$ref_file" ]] && ref="$(head -n 1 -- "$ref_file" | tr -d '[:space:]')"
+  EDGE=(--edge "$(env_get "$RAIJIN_ENV_FILE" RAIJIN_DEV_EDGE)" --traefik-network "$ref")
+fi
 if [[ "$env" == prod ]]; then
   bench_domain="$(env_get "$RAIJIN_ENV_FILE" BENCH_DOMAIN)"
   hosts+=",www.$LANDING_DOMAIN,${bench_domain:-banc.raijinshield.com}"
@@ -69,6 +77,10 @@ rc() {
 
 docker compose run --help 2>/dev/null | grep -q -- '--pull' || die "docker compose run --pull absent : mets Docker Compose à jour (2.24 minimum, A1)."
 docker network inspect "$TRAEFIK_NETWORK" >/dev/null 2>&1 || die "réseau d'entrée « $TRAEFIK_NETWORK » introuvable (docs/DEPLOY.md C2)."
+if ! traefik_on_network "$TRAEFIK_NETWORK"; then
+  [[ "$env" == dev ]] && die "aucun conteneur Traefik sur le réseau d'entrée « $TRAEFIK_NETWORK » (docs/DEPLOY.md C2)."
+  warn "aucun conteneur dont l'image contient « traefik » sur « $TRAEFIK_NETWORK » : vérifie A2 (le contrôle de routage tranchera)."
+fi
 
 check
 # Images tierces (officielles, épinglées par empreinte) : téléchargées ici, puisque up / run ne téléchargent jamais.

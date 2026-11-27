@@ -521,7 +521,8 @@ Projet Compose `raijin-dev` à côté de la production (docs/DEPLOY.md, partie C
 En déploiement continu, les fichiers sont dans `/srv/raijin/dev/env/` (`.env`, `.env.api`, droits 600) ; dans un
 dépôt cloné, `infra/.env.dev` et `infra/.env.dev.api` (`infra/deploy.sh --env dev`).
 
-Modèle de `/srv/raijin/dev/env/.env` (valeurs **factices**) :
+Modèle de `/srv/raijin/dev/env/.env` (valeurs **factices** ; fichier `root:deploy-dev` 640, édité par `sudo nano`,
+docs/DEPLOY.md C3) :
 
 ```dotenv
 # Préfixe de tous les noms Docker du dev (conteneurs, images, routeurs Traefik, réseau, volumes) : ne pas changer
@@ -545,7 +546,8 @@ RAIJIN_DB_PASSWORD=changeme-factice-hex
 # Base raijin_bench créée par le script d'init commun (inutilisée en dev) : une valeur quand même
 BENCH_DB_PASSWORD=changeme-factice-hex
 REDIS_PASSWORD=changeme-factice-hex
-# basicAuth Traefik devant tout le dev (app, landing, API, Mailpit) : htpasswd -nBC 12 <utilisateur>
+# basicAuth Traefik devant tout le dev (app, landing, API) et mot de passe de Mailpit (MP_UI_AUTH) :
+# htpasswd -nBC 12 <utilisateur>, UN SEUL utilisateur
 # ENTRE APOSTROPHES (le hash contient des $). Mot de passe distinct de celui du banc.
 DEV_BASIC_AUTH_USERS='kyoshiro:$2y$12$hash-bcrypt-factice'
 # GA4 et Search Console : jamais en dev (forcés à vide par deploy.sh et par le workflow de déploiement)
@@ -557,7 +559,8 @@ DEV_BASIC_AUTH_USERS='kyoshiro:$2y$12$hash-bcrypt-factice'
   `https://api-dev.raijinshield.com/api/v1/billing/webhook`) : une clé `sk_live_` / `rk_live_` est refusée par
   `infra/deploy.sh --env dev` ;
 - e-mails : rien à configurer, ils sont **toujours** capturés par Mailpit (`MAIL_PROVIDER=smtp`, `SMTP_HOST`,
-  `RESEND_API_KEY` vide : imposés par `infra/docker-compose.env-dev.yml`) ; à lire sur `https://dev.raijinshield.com/_mailpit/` ;
+  `RESEND_API_KEY` vide : imposés par `infra/docker-compose.env-dev.yml`) ; Mailpit est sur le réseau interne du dev seulement, à lire par
+  tunnel SSH (docs/DEPLOY.md C3, « Lire les e-mails du dev ») ;
 - paire VAPID **propre au dev** ; `SENTRY_ENVIRONMENT=dev` ;
 - Helius : de préférence une clé distincte (offre gratuite) et des budgets bas (`HELIUS_DAILY_CREDIT_BUDGET`,
   `WATCH_DAILY_CREDIT_BUDGET`, `WALLET_DAILY_CREDIT_BUDGET`) ; `JOBS_ENABLED=false` tant que tu ne testes pas les alertes ;

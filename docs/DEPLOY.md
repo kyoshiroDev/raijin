@@ -759,7 +759,7 @@ La procédure manuelle ci-dessous (C0 à C10) reste la référence.
 | Accès | mot de passe Traefik (basicAuth) partout, sauf `robots.txt`, la santé, le webhook Stripe et les images OG d'`api-dev` | public |
 | Indexation | `X-Robots-Tag: noindex, nofollow` et `robots.txt` `Disallow: /` partout | normale |
 | Stripe | **mode test** obligatoire (clé live refusée) | test puis réel (A7) |
-| E-mails | jamais envoyés : capturés par Mailpit, `https://dev.raijinshield.com/_mailpit/` | Resend |
+| E-mails | jamais envoyés : capturés par Mailpit (réseau interne du dev seul, mot de passe du dev), lus par tunnel SSH (C3) | Resend |
 | GA4 / Search Console | désactivés | activés |
 | Mémoire max | ≈ 0,9 Go (Postgres 256 Mo, Redis 96 Mo, API 384 Mo, statiques 2 × 48 Mo, Mailpit 64 Mo) | ≈ 1,4 Go (A13) |
 | Sauvegarde avant migration | non (données de test) | oui (`backup.sh --no-offsite`) |
@@ -883,7 +883,7 @@ Traefik a été créé par MyTradingCoach, et PROMPT §7 interdit de toucher à 
 
 | | Option B : `RAIJIN_DEV_EDGE=traefik-shared` (**défaut**) | Option A : `RAIJIN_DEV_EDGE=dedicated` |
 |---|---|---|
-| Principe | les conteneurs exposés du dev (`raijin-dev-api`, `-web`, `-landing`, `-mailpit`) rejoignent le **même réseau Traefik externe que la prod** (`TRAEFIK_NETWORK` = valeur de A2) | réseau `raijin-dev-edge` propre au dev, que Traefik rejoint en plus des siens |
+| Principe | les conteneurs exposés du dev (`raijin-dev-api`, `-web`, `-landing` ; jamais Mailpit, Postgres ni Redis) rejoignent le **même réseau Traefik externe que la prod** (`TRAEFIK_NETWORK` = valeur de A2) | réseau `raijin-dev-edge` propre au dev, que Traefik rejoint en plus des siens |
 | Conteneur Traefik de MTC | **jamais modifié** (aucune commande sur lui) | modifié à chaud : `docker network connect raijin-dev-edge <traefik>` (sans toucher à ses fichiers) |
 | Ce que le dev peut joindre directement | l'API, l'app, la landing et le banc de la prod **et** les conteneurs de MTC / XMR Trader présents sur ce réseau (sans passer par Traefik) | rien d'autre que Traefik |
 | Ce qui reste isolé | Postgres et Redis de la prod (réseau interne `raijin-internal`, jamais sur le réseau d'entrée : refusé par la porte), secrets de la prod (`deploy-dev` ne lit rien de `/srv/raijin/prod`), volumes, noms, routeurs Traefik (`Host(`…-dev…`)` seulement) | idem |
@@ -897,9 +897,14 @@ RAIJIN_DEV_EDGE=traefik-shared
 TRAEFIK_NETWORK=<réseau de Traefik trouvé en A2, le même que la prod>
 ```
 
-`infra/vps-setup.sh` les remplit ainsi par défaut. Les contrôles (`infra/deploy.sh`, `infra/lib/deploy_policy.py`,
-rejoués par `release.sh` avant chaque `up`) refusent en option B tout réseau `raijin-…` (interne de la prod ou du dev)
-comme réseau d'entrée, tout réseau externe autre que `TRAEFIK_NETWORK`, et Postgres / Redis sur ce réseau.
+`infra/vps-setup.sh` les remplit ainsi par défaut, et écrit en root le **réseau de référence**
+`/var/lib/raijin-deploy/traefik-network` (644, = `TRAEFIK_NETWORK` de la prod). Les contrôles
+(`infra/lib/deploy_policy.py`, par la porte puis par `release.sh` avant chaque `up`) exigent en option B que
+`TRAEFIK_NETWORK` du dev soit **exactement** ce réseau de référence (jamais un autre réseau existant ni un réseau
+`raijin-…`), refusent tout réseau externe autre que `TRAEFIK_NETWORK`, tout réseau du projet portant le nom du
+réseau d'entrée ou de `raijin-dev-edge`, et Postgres, Redis ou Mailpit sur un tel réseau (selon son nom, pas
+seulement le drapeau `external`). `infra/deploy.sh` et `release.sh` vérifient qu'un conteneur Traefik est relié au
+réseau d'entrée.
 
 Option A (seulement si tu la choisis, après avoir noté ta décision) : `sudo bash infra/vps-setup.sh --apply
 --dev-edge dedicated` (demande toujours confirmation), ou à la main :
@@ -930,10 +935,16 @@ sudo install -o deploy-prod -g deploy-prod -m 600 /opt/raijin/infra/.env.bench-a
 
 # Dev : nouveaux fichiers, valeurs propres au dev (modèle docs/ENV.md « Dev (VPS) » ; RAIJIN_DEV_EDGE et
 # TRAEFIK_NETWORK selon l'option choisie en C2 : par défaut traefik-shared et le réseau de Traefik de la prod)
-sudo -u deploy-dev nano /srv/raijin/dev/env/.env
+# .env du dev : root:deploy-dev 640 (deploy-dev le lit, ne peut pas le modifier ; la porte refuse sinon)
+sudo nano /srv/raijin/dev/env/.env
+sudo chown root:deploy-dev /srv/raijin/dev/env/.env && sudo chmod 640 /srv/raijin/dev/env/.env
 sudo -u deploy-dev nano /srv/raijin/dev/env/.env.api
-sudo chmod 600 /srv/raijin/dev/env/.env* /srv/raijin/prod/env/.env*
+sudo chmod 600 /srv/raijin/dev/env/.env.api /srv/raijin/prod/env/.env*
 ```
+
+Pourquoi : le `.env` du dev fixe son réseau d'entrée, ses domaines et son mot de passe ; la clé du dev (GitHub) ou
+une livraison compromise ne doit pas pouvoir les changer. La porte et `release.sh` refusent un `.env` du dev qui
+n'appartient pas à root avec les droits 640.
 
 Ajoute à `/srv/raijin/prod/env/.env` (activation de la prod, C5) :
 
@@ -966,7 +977,25 @@ DEPLOY_GIT_REMOTE=git@github.com:<ton-compte>/raijin.git
 htpasswd -nBC 12 kyoshiro        # paquet apache2-utils ; tape un mot de passe DIFFÉRENT de celui du banc
 ```
 
-Copie la ligne **entre apostrophes** dans `DEV_BASIC_AUTH_USERS` de `/srv/raijin/dev/env/.env`.
+Copie la ligne **entre apostrophes** dans `DEV_BASIC_AUTH_USERS` de `/srv/raijin/dev/env/.env` (**un seul**
+utilisateur : la même valeur protège aussi l'interface de Mailpit, `MP_UI_AUTH`).
+
+### Lire les e-mails du dev (Mailpit)
+
+Mailpit n'est que sur le réseau interne du dev (ni Traefik, ni réseau partagé) et demande lui-même le mot de passe
+du dev. Pour l'ouvrir, un relais temporaire sur le VPS, puis un tunnel SSH depuis ton PC :
+
+```bash
+# sur le VPS (ton compte) : relais local 127.0.0.1:18025 → Mailpit, arrêté à la fin
+ip="$(sudo docker inspect -f '{{(index .NetworkSettings.Networks "raijin-dev-internal").IPAddress}}' raijin-dev-mailpit)"
+sudo docker run -d --rm --name raijin-dev-mailpit-tunnel -p 127.0.0.1:18025:8025 alpine/socat \
+  TCP-LISTEN:8025,fork,reuseaddr "TCP:$ip:8025"
+sudo docker network connect raijin-dev-internal raijin-dev-mailpit-tunnel
+# sur ton PC
+ssh -N -L 8025:127.0.0.1:18025 greg@<IP du VPS>        # puis http://localhost:8025/_mailpit/ (mot de passe du dev)
+# sur le VPS, après lecture
+sudo docker stop raijin-dev-mailpit-tunnel
+```
 
 ### Stripe en mode test pour le dev
 
@@ -1081,7 +1110,7 @@ clé de production dans GitHub, jeton OIDC d'une autre branche refusé).
    sudo -u deploy-prod ls /srv/raijin/incoming/prod                              # archives de prod en attente d'activation (2 au plus)
    ```
 6. Vérifications du dev : `https://dev.raijinshield.com` demande le mot de passe, puis inscription → e-mail visible
-   dans `https://dev.raijinshield.com/_mailpit/` ; `curl -s https://api-dev.raijinshield.com/api/v1/health` répond
+   dans Mailpit par le tunnel de C3 (« Lire les e-mails du dev ») ; `curl -s https://api-dev.raijinshield.com/api/v1/health` répond
    sans mot de passe ; `curl -s https://dev.raijinshield.com/robots.txt` affiche `Disallow: /`.
 
 Déploiement manuel sans GitHub (dépannage) : depuis le dépôt cloné, `infra/deploy.sh --env dev` (fichiers

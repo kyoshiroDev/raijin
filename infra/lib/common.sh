@@ -141,3 +141,9 @@ send_alert() {
   send_alert_push "$subject" "$body" && ok=0
   return "$ok"
 }
+
+# traefik_on_network <réseau> : vrai si un conteneur Traefik en marche (image contenant « traefik », comme la
+# détection de infra/vps-setup.sh) est relié à ce réseau. Lecture seule.
+traefik_on_network() {
+  docker ps --filter "network=$1" --format '{{.Image}}' 2>/dev/null | grep -qi traefik
+}

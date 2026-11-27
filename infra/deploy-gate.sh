@@ -49,6 +49,10 @@ CLEAN_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 say() { printf '%s [deploy-gate] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 refuse() { say "REFUS : $*" >&2; exit 2; }
 name_of() { if [[ "$1" == dev ]]; then echo raijin-dev; else echo raijin; fi; }
+# Réseau du Traefik relevé par root (infra/vps-setup.sh) : en option B, le seul réseau d'entrée accepté pour le dev.
+TRAEFIK_REF_FILE="${RAIJIN_PRIV_BASE:-/var/lib/raijin-deploy}/traefik-network"
+traefik_ref() { [[ -f "$TRAEFIK_REF_FILE" && ! -L "$TRAEFIK_REF_FILE" ]] && head -n 1 -- "$TRAEFIK_REF_FILE" | tr -d '[:space:]' || true; }
+dev_env_ok() { [[ -f "$1" && ! -L "$1" && "$(stat -c '%u %a' -- "$1")" == "0 640" ]]; }
 
 # Accès à Docker : UNIQUEMENT par docker-priv.sh en root (sudo, environnement fixé par sudoers, C2) ; deploy-dev et
 # deploy-prod ne sont pas dans le groupe docker. RAIJIN_PRIV_CMD : tests de la CI seulement (effacé sous SSH).
@@ -117,7 +121,7 @@ deliver() {
   local entrypoint edge=()
   entrypoint="$(env_get "$env_file" TRAEFIK_ENTRYPOINT)"
   # Dev : réseau d'entrée selon RAIJIN_DEV_EDGE (traefik-shared par défaut = option B, dedicated = option A, C2).
-  [[ "$env" == dev ]] && edge=(--edge "$(env_get "$env_file" RAIJIN_DEV_EDGE)")
+  [[ "$env" == dev ]] && edge=(--edge "$(env_get "$env_file" RAIJIN_DEV_EDGE)" --traefik-network "$(traefik_ref)")
   python3 "$POLICY" compose "$rel/compose.resolved.json" --name "$name" --root "$stable" \
     --network "$(env_get "$env_file" TRAEFIK_NETWORK)" --entrypoint "${entrypoint:-websecure}" \
     --certresolver "$(env_get "$env_file" TRAEFIK_CERTRESOLVER)" --tag "$sha" --hosts "$hosts" "${edge[@]}" \
@@ -241,6 +245,9 @@ case "$gate_key:$verb" in
     for p in "$DEPLOY_BASE/prod" "$DEPLOY_BASE/prod/env/.env" "$DEPLOY_BASE/prod/env/.env.api" "$DEPLOY_BASE/incoming/prod"; do
       if [[ -e "$p" && ( -r "$p" || -x "$p" ) ]]; then refuse "isolation dev/prod absente : $p est accessible à $(id -un) (C2)."; fi
     done
+    # .env du dev : propriété de root, 640 (lu par deploy-dev par son groupe, jamais modifiable par lui) : réseau
+    # d'entrée, domaines et mot de passe du dev ne peuvent être changés ni par la clé du dev ni par une livraison.
+    dev_env_ok "$base/env/.env" || refuse "$base/env/.env doit appartenir à root, droits 640 (sudo chown root:deploy-dev ; sudo chmod 640 ; docs/DEPLOY.md C3)."
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || refuse "commit invalide (40 caractères hexadécimaux attendus)."
     take_lock
     check_disk "$base"
