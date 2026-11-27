@@ -403,6 +403,33 @@ describe('lisibilité à 320 px (aucune troncature)', () => {
     expect(Array.from(th.querySelectorAll('[data-rj-break-text] > span')).map((span) => span.textContent)).toEqual(['/', 'tarifs/', 'faq']);
   });
 
+  it('cartes de rj-data-table : même hauteur dans une rangée (grille étirée, carte en colonne, pied en bas)', async () => {
+    interface Row { name: string; plan: string; note: string }
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(RjDataTable<Row>);
+    fixture.componentRef.setInput('caption', 'Comptes');
+    fixture.componentRef.setInput('columns', [
+      { key: 'name', label: 'Nom', value: (row: Row) => row.name, primary: true },
+      { key: 'plan', label: 'Plan', value: (row: Row) => row.plan },
+      { key: 'note', label: 'Note', value: (row: Row) => row.note, hideOnMobile: true },
+    ]);
+    fixture.componentRef.setInput('rows', [
+      { name: 'court', plan: 'Free', note: 'a' },
+      { name: 'un titre beaucoup plus long qui passe sur plusieurs lignes', plan: 'Pro', note: 'b' },
+    ]);
+    fixture.componentRef.setInput('rowLink', () => '/admin/utilisateurs');
+    await fixture.whenStable();
+    const grid = (fixture.nativeElement as HTMLElement).querySelector('[data-rj-cards]') as HTMLElement;
+    expect(grid.className).toContain('items-stretch');
+    expect(grid.className).not.toContain('items-start');
+    const cards = Array.from(grid.querySelectorAll<HTMLElement>('[data-rj-card]'));
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      expect(card.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'h-full']));
+      expect((card.querySelector('[data-rj-card-more]') as HTMLElement).className).toContain('mt-auto');
+    }
+  });
+
   it('rj-admin-filters layout="grid" : grille pleine largeur à colonnes auto-fit, toujours alignée en haut', async () => {
     const fixture = TestBed.createComponent(RjAdminFilters);
     fixture.componentRef.setInput('layout', 'grid');

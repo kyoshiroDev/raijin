@@ -76,10 +76,10 @@ import { ADMIN_PAGE_PERIODS, RjAdminReportState, comparisonLabel, previousLabel,
             />
             <ol class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
               @for (step of data.funnel; track step.key; let i = $index) {
-                <li class="flex min-w-0 flex-col gap-0.5 rounded-md border border-line bg-surface-raised p-3">
+                <li class="flex h-full min-w-0 flex-col gap-0.5 rounded-md border border-line bg-surface-raised p-3">
                   <span class="text-label text-ink-muted">{{ i + 1 }}. {{ labels[step.key] }}</span>
                   <span class="tabular text-h3 font-semibold text-ink">{{ count(step.value) }}</span>
-                  <span class="text-label text-ink-muted">
+                  <span class="mt-auto text-label text-ink-muted">
                     @if (step.rateFromPrevious !== null && step.exceedsPrevious) {
                       <span class="tabular">{{ ratio(step.rateFromPrevious) }}</span> (plafonné)<span aria-hidden="true">*</span>
                     } @else if (step.rateFromPrevious !== null) {

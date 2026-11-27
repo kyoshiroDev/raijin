@@ -70,6 +70,7 @@ interface Row {
  * Tableau générique de l'admin, mobile first (PROMPT §3) :
  * - moins de 768 px : cartes empilées (colonne `primary` en titre, autres colonnes en paires libellé / valeur) ;
  *   les colonnes `hideOnMobile` restent consultables dans un repli natif « Plus de détails » ;
+ *   cartes de même hauteur dans une rangée (grille `items-stretch`, carte `h-full flex flex-col`, pied en `mt-auto`) ;
  * - de 768 à 1279 px : les mêmes cartes en grille de 2 colonnes, toutes les colonnes visibles ;
  * - à partir de 1280 px : tableau dense (chiffres alignés à droite), sans hauteur maximale (aucune ligne coupée :
  *   la pagination « Afficher plus » de l'écran limite la longueur), défilement horizontal seulement en dernier
@@ -136,9 +137,9 @@ interface Row {
         </table>
       </div>
 
-      <ul class="grid grid-cols-1 items-start gap-2 md:grid-cols-2 xl:hidden" data-rj-cards [attr.aria-label]="caption()">
+      <ul class="grid grid-cols-1 items-stretch gap-2 md:grid-cols-2 xl:hidden" data-rj-cards [attr.aria-label]="caption()">
         @for (row of view(); track row.id) {
-          <li class="min-w-0 rounded-md border border-line bg-surface">
+          <li class="flex h-full min-w-0 flex-col rounded-md border border-line bg-surface" data-rj-card>
             @if (row.link) {
               <a
                 [routerLink]="row.link.path"
@@ -165,7 +166,7 @@ interface Row {
             </dl>
             @if (row.secondary.length > 0) {
               <!-- Colonnes secondaires repliées sous 768 px : jamais perdues, ouvertes d'un toucher. -->
-              <details class="group border-t border-line md:hidden" data-rj-card-more>
+              <details class="group mt-auto border-t border-line md:hidden" data-rj-card-more>
                 <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-body-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring [&::-webkit-details-marker]:hidden">
                   <span>Plus de détails</span>
                   <rj-icon [name]="chevron" [size]="16" class="transition-transform duration-150 ease-raijin group-open:rotate-90" />
