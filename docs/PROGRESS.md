@@ -1,7 +1,7 @@
 # PROGRESS — Raijin Shield
 
 ## ACTION REQUISE (vide si rien)
-- **Décision réseau du dev (relecture tour 4, point 3)** : option B (défaut, `RAIJIN_DEV_EDGE=traefik-shared` : le dev rejoint le réseau Traefik de la prod, le Traefik de MTC n'est pas modifié ; risque : le code du dev peut joindre directement l'API/app/banc de la prod et les conteneurs de MTC présents sur ce réseau) ou option A (`dedicated` : réseau `raijin-dev-edge` relié au Traefik de MTC par `docker network connect`). Voir docs/DEPLOY.md C2.
+- ~~Décision réseau du dev~~ : **option B** (`traefik-shared`), choisie par le relecteur final à la demande de l'utilisateur (« pour le choix demande au relecteur », 2026-11-27) : conforme à PROMPT §7 (aucune modification du Traefik de MTC). Conditions exigées : (a) en-tête secret injecté par Traefik et exigé par raijin-api et raijin-bench-api de la prod (403 sinon, sauf santé ; TRUST_PROXY seulement si l'en-tête est valide), (b) test CI appel direct dev→prod = 403 / via Traefik = 200, (c) option A jamais appliquée sans décision consignée ; DEPLOY.md C2 et SECURITY.md §17 à jour.
 - **Docker local bloqué** : `sudo systemctl restart docker` (terminal à part), puis « docker ok » (captures admin, e2e radar/bot).
 - ~~Clés Helius~~ : `HELIUS_API_KEY` et `BENCH_HELIUS_API_KEY` copiées dans `.env` par l'utilisateur (2026-11-26), cochées dans SECRETS-CHECKLIST.md.
 - Comptes existants (réponse du 2026-11-21) : **Helius uniquement**. Les autres services restent en simulation locale (Mailpit, BillingProvider simulé, Google désactivé).
