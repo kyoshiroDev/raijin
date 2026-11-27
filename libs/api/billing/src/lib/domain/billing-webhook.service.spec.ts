@@ -260,6 +260,61 @@ describe('BillingWebhookService : factures, retard de paiement, résiliation', (
     expect(kit.prisma.tables['subscription']?.[0]?.['latestInvoiceId']).toBe(stored['id']);
   });
 
+  it('session traitée avant la facture (créée 1 s plus tôt) : facture « stale » mais un reçu', async () => {
+    const kit = setup();
+    knownSubscription(kit);
+    const stored = kit.fake.createInvoice(kit.fake.subscription(FIXTURE_TOKENS.subscriptionId) ?? {}, true);
+    const checkout = kit.fixture('checkout.session.completed', { ...overrides, created: T1 });
+    await expect(kit.webhook.handle(checkout.payload, checkout.signature)).resolves.toBe('processed');
+    const paid = kit.fixture('invoice.paid', { ...overrides, created: T0, invoiceId: stored['id'] as string });
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('stale');
+    expect(kit.mailer.sent.map((mail) => mail.subject)).toEqual(['Ton reçu Raijin Pro (14,90 €)']);
+    expect(user(kit)['plan']).toBe('PRO');
+    expect(kit.prisma.tables['subscription']?.[0]?.['lastEventAt']).toEqual(new Date(T1));
+  });
+
+  it('facture traitée avant la session : un seul reçu', async () => {
+    const kit = setup();
+    knownSubscription(kit);
+    const stored = kit.fake.createInvoice(kit.fake.subscription(FIXTURE_TOKENS.subscriptionId) ?? {}, true);
+    const paid = kit.fixture('invoice.paid', { ...overrides, created: T0, invoiceId: stored['id'] as string });
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('processed');
+    const checkout = kit.fixture('checkout.session.completed', { ...overrides, created: T1 });
+    await expect(kit.webhook.handle(checkout.payload, checkout.signature)).resolves.toBe('processed');
+    expect(kit.mailer.sent.map((mail) => mail.subject)).toEqual(['Ton reçu Raijin Pro (14,90 €)']);
+    expect(user(kit)['plan']).toBe('PRO');
+  });
+
+  it('invoice.paid rejoué (même événement ou nouvel événement pour la même facture) : pas de second reçu', async () => {
+    const kit = setup();
+    knownSubscription(kit);
+    const stored = kit.fake.createInvoice(kit.fake.subscription(FIXTURE_TOKENS.subscriptionId) ?? {}, true);
+    const invoiceId = stored['id'] as string;
+    const paid = kit.fixture('invoice.paid', { ...overrides, created: T0, invoiceId });
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('processed');
+    await expect(kit.webhook.handle(paid.payload, paid.signature)).resolves.toBe('duplicate');
+    const again = kit.fixture('invoice.paid', { ...overrides, created: T1, invoiceId });
+    await expect(kit.webhook.handle(again.payload, again.signature)).resolves.toBe('processed');
+    const older = kit.fixture('invoice.paid', { ...overrides, created: T0, invoiceId });
+    await expect(kit.webhook.handle(older.payload, older.signature)).resolves.toBe('stale');
+    expect(kit.mailer.sent).toHaveLength(1);
+  });
+
+  it('invoice.payment_failed ancien : e-mail d’échec envoyé une fois, état non réappliqué', async () => {
+    const kit = setup();
+    knownSubscription(kit);
+    const checkout = kit.fixture('checkout.session.completed', { ...overrides, created: T1 });
+    await kit.webhook.handle(checkout.payload, checkout.signature);
+    knownSubscription(kit, { status: 'past_due' });
+    const failed = kit.fixture('invoice.payment_failed', { ...overrides, created: T0 });
+    await expect(kit.webhook.handle(failed.payload, failed.signature)).resolves.toBe('stale');
+    await expect(kit.webhook.handle(failed.payload, failed.signature)).resolves.toBe('duplicate');
+    const retry = kit.fixture('invoice.payment_failed', { ...overrides, created: T0 });
+    await expect(kit.webhook.handle(retry.payload, retry.signature)).resolves.toBe('stale');
+    expect(kit.mailer.sent.map((mail) => mail.subject)).toEqual(['Ton paiement Raijin Pro n’est pas passé']);
+    expect(kit.prisma.tables['subscription']?.[0]?.['status']).toBe('ACTIVE');
+  });
+
   it('invoice.paid à 0 € : aucun reçu', async () => {
     const kit = setup();
     const event = kit.fixture('invoice.paid', { ...overrides, amountCents: 0 });

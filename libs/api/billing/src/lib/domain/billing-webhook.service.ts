@@ -81,7 +81,8 @@ export class BillingWebhookService {
       },
       { timeout: 15_000, maxWait: 10_000 },
     );
-    if (outcome === 'processed') await this.afterCommit(event, effects);
+    // Événement ancien : état d'abonnement non réappliqué, mais e-mails de facture dus (une fois par facture).
+    if (outcome === 'processed' || outcome === 'stale') await this.afterCommit(event, effects);
     this.logger.log(`Événement ${event.id} (${event.type}) : ${outcome}`);
     return outcome;
   }
@@ -143,9 +144,11 @@ export class BillingWebhookService {
       if (!owner) await tx.user.update({ where: { id: user.id }, data: { stripeCustomerId: customerId } });
     }
 
+    // Stripe crée `invoice.paid` avant `checkout.session.completed` : l'ancienneté ne saute QUE la mise à jour
+    // de l'état d'abonnement, jamais le reçu ni l'e-mail d'échec de la facture.
+    const stale = Boolean(subscription && existing?.lastEventAt && event.created.getTime() < existing.lastEventAt.getTime());
     let applied = false;
-    if (subscription) {
-      if (existing?.lastEventAt && event.created.getTime() < existing.lastEventAt.getTime()) return 'stale';
+    if (subscription && !stale) {
       const interval = this.intervalOf(subscription);
       const data = {
         stripePriceId: subscription.priceId,
@@ -168,13 +171,24 @@ export class BillingWebhookService {
 
     if (applied) await this.syncPlan(tx, event, user, effects);
 
-    if (event.type === 'invoice.paid' && invoice && invoice.amountPaidCents > 0) effects.receipt = invoice;
+    if (event.type === 'invoice.paid' && invoice && invoice.amountPaidCents > 0 && (await this.claimMail(tx, 'receipt', invoice.id))) effects.receipt = invoice;
     if (event.type === 'invoice.payment_failed') {
-      effects.paymentFailed = true;
-      effects.failedInvoice = invoice;
+      if (await this.claimMail(tx, 'payment_failed', invoice?.id ?? event.id)) {
+        effects.paymentFailed = true;
+        effects.failedInvoice = invoice;
+      }
       await this.productEvent(tx, user.id, 'payment_failed', {});
     }
-    return 'processed';
+    return stale ? 'stale' : 'processed';
+  }
+
+  /**
+   * Un seul e-mail par facture et par type, même si Stripe envoie plusieurs événements pour la même facture :
+   * marqueur `mail:<type>:<facture>` dans `StripeEvent`, inséré dans la transaction (rollback → réessai possible).
+   */
+  private async claimMail(tx: Tx, kind: 'receipt' | 'payment_failed', key: string): Promise<boolean> {
+    const inserted = await tx.stripeEvent.createMany({ data: [{ id: `mail:${kind}:${key}`, type: `mail.${kind}` }], skipDuplicates: true });
+    return inserted.count > 0;
   }
 
   /** `User.plan` = PRO si au moins un abonnement a un statut Pro (`active`, `trialing`, `past_due`). */
