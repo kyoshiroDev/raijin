@@ -5,6 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { DISCLAIMER } from './lib/content';
+import { findGluedWords } from './lib/glued-words';
 import { EDITOR } from './lib/legal';
 import { STATIC_PAGES } from './lib/pages';
 import { formatPrice } from './lib/pricing';
@@ -56,11 +57,18 @@ const APP_PATHS = ['/compte/inscription', '/compte/connexion', '/analyse'];
 /** Mots et symboles interdits par la charte (BRAND.md, PROMPT.md §2). */
 const FORBIDDEN = [/\bx10\b/i, /\bmoon\b/i, /\bgems?\b/i, /achète/i, /opportunité/i, /signal d['’]achat/i, /🚀/u, /💰/u];
 
+/** Texte visible, espaces insécables (typographie française du build) ramenées à des espaces. */
 function visibleText(doc: Document): string {
+  return rawVisibleText(doc).replace(/\u00a0/g, ' ');
+}
+
+function rawVisibleText(doc: Document): string {
   const clone = doc.body.cloneNode(true) as HTMLElement;
   for (const script of clone.querySelectorAll('script, style')) script.remove();
   return clone.textContent ?? '';
 }
+
+const plain = (text: string | null | undefined) => (text ?? '').replace(/\u00a0/g, ' ').trim();
 
 describe('build : pages et SEO', () => {
   it('produit toutes les pages attendues', () => {
@@ -200,10 +208,10 @@ describe('build : liens', () => {
 describe('build : contenu', () => {
   it('la mention légale figure dans le pied de page de chaque page et dans le contenu de la page Tarifs', () => {
     for (const page of pages) {
-      expect(page.doc.querySelector('footer [data-disclaimer]')?.textContent?.trim(), page.path).toBe(DISCLAIMER);
+      expect(plain(page.doc.querySelector('footer [data-disclaimer]')?.textContent), page.path).toBe(DISCLAIMER);
     }
     const tarifs = pages.find((page) => page.path === '/tarifs') as Page;
-    expect(tarifs.doc.querySelector('main [data-disclaimer]')?.textContent?.trim()).toBe(DISCLAIMER);
+    expect(plain(tarifs.doc.querySelector('main [data-disclaimer]')?.textContent)).toBe(DISCLAIMER);
   });
 
   it('les prix affichés sur l’accueil et les tarifs sont ceux du catalogue', () => {
@@ -232,6 +240,24 @@ describe('build : contenu', () => {
     for (const word of ['rj_consent', 'rj_attr', '_ga', 'sessionStorage', 'Stripe', 'Resend', 'Helius', 'CNIL']) {
       expect(privacy).toContain(word);
     }
+  });
+
+  it.each(pages.map((page) => [page.path, page] as const))('%s : aucun mot collé à un lien, une expression ou une parenthèse', (_, page) => {
+    expect(findGluedWords(page.html)).toEqual([]);
+  });
+
+  it.each(pages.map((page) => [page.path, page] as const))('%s : espace insécable avant « : ; ? ! » et autour des guillemets', (_, page) => {
+    const clone = page.doc.body.cloneNode(true) as HTMLElement;
+    for (const node of clone.querySelectorAll('script, style, pre, code, svg')) node.remove();
+    const text = clone.textContent ?? '';
+    expect(text.match(/.{0,30}(?: [:;?!»]|« )(?=[\s\u00a0)\].,…»]|$).{0,10}/gmu) ?? []).toEqual([]);
+  });
+
+  it('mentions légales : « assistance : » et le SIRET ne se coupent pas', () => {
+    const legal = pages.find((page) => page.path === '/mentions-legales') as Page;
+    expect(rawVisibleText(legal.doc)).toContain('assistance\u00a0:');
+    const siret = [...legal.doc.querySelectorAll('.whitespace-nowrap')].map((node) => node.textContent);
+    expect(siret).toContain(EDITOR.siret);
   });
 
   it('aucun mot interdit dans les pages ni dans les contenus sources', () => {

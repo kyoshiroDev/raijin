@@ -13,7 +13,7 @@ import { EDITOR, HOST } from '../lib/legal';
   <ul>
     <li>Éditeur : {EDITOR.name}, exerçant sous le nom commercial « {EDITOR.tradeName} »</li>
     <li>Forme juridique : {EDITOR.legalForm}</li>
-    <li>SIREN : {EDITOR.siren} — SIRET : {EDITOR.siret}</li>
+    <li>SIREN : <span class="whitespace-nowrap">{EDITOR.siren}</span> — SIRET : <span class="whitespace-nowrap">{EDITOR.siret}</span></li>
     <li>Code APE : {EDITOR.ape}</li>
     {/* TODO TVA : régime non confirmé, aucune mention de TVA publiée (voir lib/legal.ts). */}
     <li>Adresse : {EDITOR.address}</li>
