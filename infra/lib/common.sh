@@ -147,3 +147,28 @@ send_alert() {
 traefik_on_network() {
   docker ps --filter "network=$1" --format '{{.Image}}' 2>/dev/null | grep -qi traefik
 }
+
+# traefik_exposure <réseau> : (lecture seule, docs/SECURITY.md §17) chaque Traefik relié à ce réseau exposerait-il
+# l'en-tête X-Raijin-Edge (EDGE_SHARED_SECRET en clair dans sa configuration) : api.insecure, log.level DEBUG/TRACE,
+# en-têtes gardés par le journal d'accès, routeur api@internal sans middleware ? Affiche les constats (noms seulement,
+# jamais de valeur). Code : 0 rien trouvé, 3 exposition trouvée, autre : contrôle impossible. Ne modifie jamais Traefik.
+traefik_exposure() {
+  local t out rc=0 r kind msg
+  for t in $(docker ps --filter "network=$1" --format '{{.Names}} {{.Image}}' 2>/dev/null | awk 'tolower($2) ~ /traefik/ {print $1}'); do
+    r=0
+    out="$(python3 -I "$(dirname "${BASH_SOURCE[0]}")/deploy_policy.py" traefik-exposure "$t" 2>&1)" || r=$?
+    while IFS=$'\t' read -r kind msg; do
+      case "$kind" in
+        REFUS) warn "Traefik $t : $msg" ;;
+        INFO) log "Traefik $t : $msg" ;;
+        '') ;;
+        *) warn "Traefik $t : contrôle d'exposition impossible (${kind:0:120})" ;;
+      esac
+    done <<<"$out"
+    if ((r == 3)); then rc=3; elif ((r != 0 && rc != 3)); then rc=$r; fi
+  done
+  if ((rc == 3)); then
+    warn "EDGE_SHARED_SECRET peut fuiter par ce Traefik (créé par MTC, jamais modifié par Raijin) : décision à toi, voir docs/DEPLOY.md C2 et docs/SECURITY.md §17 ; une fois corrigé, régénère EDGE_SHARED_SECRET dans le .env de la prod."
+  fi
+  return "$rc"
+}

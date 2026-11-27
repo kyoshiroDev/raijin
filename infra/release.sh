@@ -81,6 +81,14 @@ if ! traefik_on_network "$TRAEFIK_NETWORK"; then
   [[ "$env" == dev ]] && die "aucun conteneur Traefik sur le réseau d'entrée « $TRAEFIK_NETWORK » (docs/DEPLOY.md C2)."
   warn "aucun conteneur dont l'image contient « traefik » sur « $TRAEFIK_NETWORK » : vérifie A2 (le contrôle de routage tranchera)."
 fi
+# Fuite possible de X-Raijin-Edge (EDGE_SHARED_SECRET, en clair dans la configuration de Traefik) : api.insecure,
+# log.level DEBUG, en-têtes gardés au journal d'accès (docs/SECURITY.md §17). Lecture seule, Traefik jamais modifié.
+# Prod : avertissement ; dev : refus (ses conteneurs joignent Traefik ; contrôle impossible = refus aussi).
+traefik_expo=0
+traefik_exposure "$TRAEFIK_NETWORK" || traefik_expo=$?
+if [[ "$env" == dev && "$traefik_expo" != 0 ]]; then
+  die "dev refusé : le Traefik de « $TRAEFIK_NETWORK » exposerait l'en-tête X-Raijin-Edge de la prod (ou contrôle impossible) ; corrige Traefik (docs/DEPLOY.md C2), puis relance la livraison."
+fi
 
 check
 # Images tierces (officielles, épinglées par empreinte) : téléchargées ici, puisque up / run ne téléchargent jamais.

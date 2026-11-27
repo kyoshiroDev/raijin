@@ -35,8 +35,12 @@
 #   oidc     <jeton> --jwks f --aud a --repo r --sha s
 #                                         jeton OIDC GitHub Actions (RS256) : émis pour .github/workflows/deploy.yml
 #                                         sur refs/heads/main, au commit s, pour l'empreinte de l'archive (audience)
+#   traefik-exposure <conteneur>|-       (lecture seule) le Traefik exposerait-il X-Raijin-Edge (EDGE_SHARED_SECRET) ?
+#                                         api.insecure, log.level DEBUG/TRACE, en-têtes gardés par le journal d'accès,
+#                                         routeur api@internal sans middleware : code 3 et lignes « REFUS<TAB>… »
+#                                         (docs/SECURITY.md §17, docs/DEPLOY.md C2)
 # Les messages ne contiennent que des noms (services, clés), jamais de valeur (le JSON contient des mots de passe).
-# Python 3.8+ ; bibliothèque standard uniquement.
+# Python 3.8+ ; bibliothèque standard uniquement (PyYAML / tomllib utilisés s'ils sont présents, traefik-exposure).
 # =====================================================================================================
 import argparse
 import base64
@@ -898,7 +902,242 @@ def cmd_oidc(argv):
     finish('oidc')
 
 
+# --- traefik-exposure ---------------------------------------------------------------------------------
+# Le secret EDGE_SHARED_SECRET est posé par Traefik (customRequestHeaders.X-Raijin-Edge, labels de la prod) : il est
+# donc EN CLAIR dans la configuration dynamique de Traefik. Il fuit si Traefik expose son API sans protection
+# (--api.insecure : port 8080 joignable depuis tout conteneur d'un réseau de Traefik, dev compris en option B), journalise
+# sa configuration (--log.level=DEBUG/TRACE) ou garde les en-têtes dans ses journaux d'accès. Lecture seule : arguments,
+# variables TRAEFIK_*, fichier de configuration statique monté (lu sur l'hôte), labels des routeurs vers api@internal.
+# Rien n'est jamais affiché d'autre que des NOMS (les variables de Traefik contiennent des clés de l'hébergeur DNS).
+TRAEFIK_TRUE = ('', 'true', '1', 'yes', 'on')
+TRAEFIK_DEFAULT_FILES = ('/etc/traefik/traefik.yml', '/etc/traefik/traefik.yaml', '/etc/traefik/traefik.toml',
+                         '/traefik.yml', '/traefik.yaml', '/traefik.toml')
+TRAEFIK_FIX = {
+    'api-insecure': ('API de Traefik sans protection (api.insecure) : la configuration, en-tête X-Raijin-Edge compris, '
+                     'est lisible depuis tout conteneur relié à Traefik (port 8080)',
+                     'retirer --api.insecure (ou TRAEFIK_API_INSECURE / api.insecure du fichier) ; si le tableau de '
+                     'bord sert, le publier par un routeur vers api@internal protégé (basicAuth + liste d\'IP)'),
+    'log-debug': ('journal de Traefik en DEBUG/TRACE : la configuration dynamique (en-têtes compris) est journalisée',
+                  'remettre --log.level=INFO (ou WARN / ERROR), puis effacer les journaux déjà écrits'),
+    'accesslog-keep': ('journal d\'accès de Traefik qui conserve les en-têtes (headers.defaultMode=keep ou '
+                       'names.X-Raijin-Edge=keep)',
+                       'remettre accesslog.fields.headers.defaultMode à drop (défaut) et X-Raijin-Edge à drop ou '
+                       'redact, puis effacer les journaux d\'accès déjà écrits'),
+    'api-router': ('routeur Docker vers api@internal SANS middleware (API de Traefik publiée sans authentification)',
+                   'ajouter un middleware basicAuth ou forwardAuth (et une liste d\'IP) à ce routeur, ou le retirer'),
+}
+
+
+def _traefik_flat_cli(args):
+    out, i = {}, 0
+    args = [a for a in (args or []) if isinstance(a, str)]
+    while i < len(args):
+        a = args[i]
+        i += 1
+        if not a.startswith('--'):
+            continue
+        key, eq, val = a[2:].partition('=')
+        if not eq:
+            # « --log.level DEBUG » : valeur dans l'argument suivant ; « --api.insecure » seul = vrai.
+            if i < len(args) and not args[i].startswith('-'):
+                val = args[i]
+                i += 1
+            else:
+                val = 'true'
+        out[key.strip().lower()] = val
+    return out
+
+
+def _traefik_flat_env(env):
+    out = {}
+    for item in env or []:
+        if not isinstance(item, str) or '=' not in item:
+            continue
+        key, val = item.split('=', 1)
+        if key.upper().startswith('TRAEFIK_') and key.upper() != 'TRAEFIK_':
+            out[key[8:].lower().replace('_', '.')] = val
+    return out
+
+
+def _traefik_flat_tree(node, prefix, out):
+    if isinstance(node, dict):
+        if prefix:
+            out.setdefault(prefix, '')
+        for k, v in node.items():
+            _traefik_flat_tree(v, f'{prefix}.{str(k).lower()}' if prefix else str(k).lower(), out)
+    elif isinstance(node, list):
+        out.setdefault(prefix, '')
+    elif prefix:
+        out[prefix] = '' if node is None else (str(node).lower() if isinstance(node, bool) else str(node))
+
+
+def _traefik_flat_yaml(text):
+    try:
+        import yaml  # python3-yaml (installé par infra/vps-setup.sh) ; sinon lecture simplifiée ci-dessous
+        out = {}
+        _traefik_flat_tree(yaml.safe_load(text) or {}, '', out)
+        return out
+    except ImportError:
+        pass
+    out, stack = {}, []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or s.startswith('#') or s.startswith('-'):
+            continue
+        m = re.match(r'^(\s*)([^:#\s][^:#]*?)\s*:(?:\s+(.*))?$', raw.split(' #', 1)[0].rstrip())
+        if not m:
+            continue
+        indent, key, val = len(m.group(1)), m.group(2).strip('\'"').lower(), (m.group(3) or '').strip().strip('\'"')
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        path = '.'.join([k for _, k in stack] + [key])
+        out[path] = val
+        if not val:
+            stack.append((indent, key))
+    return out
+
+
+def _traefik_flat_toml(text):
+    try:
+        import tomllib  # Python 3.11+
+        out = {}
+        _traefik_flat_tree(tomllib.loads(text), '', out)
+        return out
+    except ImportError:
+        pass
+    except ValueError:
+        return {}
+    out, section = {}, ''
+    for raw in text.splitlines():
+        s = raw.split('#', 1)[0].strip()
+        if not s:
+            continue
+        m = re.fullmatch(r'\[+\s*([^\]]+?)\s*\]+', s)
+        if m:
+            section = m.group(1).strip().strip('"').lower()
+            out.setdefault(section, '')
+            continue
+        if '=' in s:
+            k, v = s.split('=', 1)
+            k = k.strip().strip('"').lower()
+            out[f'{section}.{k}' if section else k] = v.strip().strip('\'"')
+    return out
+
+
+def _traefik_check(flat, src, refus):
+    def low(k):
+        v = flat.get(k)
+        return None if v is None else str(v).strip().lower()
+    if low('api.insecure') in TRAEFIK_TRUE:
+        refus.append(('api-insecure', src))
+    if low('log.level') in ('debug', 'trace'):
+        refus.append(('log-debug', src))
+    keep = low('accesslog.fields.headers.defaultmode') == 'keep'
+    for k, v in flat.items():
+        if k.startswith('accesslog.fields.headers.names.') and k[31:] == 'x-raijin-edge' and str(v).lower() == 'keep':
+            keep = True
+    if keep:
+        refus.append(('accesslog-keep', src))
+    api = low('api')
+    return (api is not None and api not in ('false', '0', 'no', 'off')) or any(k.startswith('api.') for k in flat)
+
+
+def _traefik_host_path(path, mounts):
+    best = None
+    for m in mounts or []:
+        d = (m.get('Destination') or '').rstrip('/') or '/'
+        if (path == d or path.startswith(d.rstrip('/') + '/')) and m.get('Source'):
+            if best is None or len(d) > len(best[0]):
+                best = (d, m['Source'])
+    if best is None:
+        return None
+    rest = path[len(best[0]):].lstrip('/') if best[0] != '/' else path.lstrip('/')
+    return os.path.join(best[1], rest) if rest else best[1]
+
+
+def cmd_traefik_exposure(argv):
+    # traefik-exposure <conteneur> : lit `docker inspect` (lecture seule) ; traefik-exposure - : JSON sur l'entrée
+    # ({"inspect": <docker inspect>, "labels": [<labels de chaque conteneur>]}, tests). Code 3 = exposition trouvée.
+    import subprocess
+    if len(argv) != 1:
+        print('usage : deploy_policy.py traefik-exposure <conteneur>|-', file=sys.stderr)
+        sys.exit(2)
+    if argv[0] == '-':
+        data = json.load(sys.stdin)
+        inspect, labels_list = data.get('inspect'), data.get('labels') or []
+    else:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', argv[0]):
+            print('traefik-exposure : nom de conteneur invalide', file=sys.stderr)
+            sys.exit(2)
+        def docker(*a):
+            return subprocess.run(['docker', *a], check=True, capture_output=True, text=True, timeout=60).stdout
+        inspect = json.loads(docker('inspect', '--type', 'container', argv[0]))
+        ids = docker('ps', '-q').split()
+        labels_list = [json.loads(line) for line in (docker('inspect', '-f', '{{json .Config.Labels}}', *ids)
+                                                    if ids else '').splitlines() if line.strip()]
+    if isinstance(inspect, list):
+        inspect = inspect[0] if inspect else {}
+    inspect = inspect or {}
+    cfg = inspect.get('Config') or {}
+    args = list(inspect.get('Args') or [])
+    # L'entrée de l'image (« traefik ») peut porter les arguments dans Config.Cmd ou Config.Entrypoint.
+    for extra in (cfg.get('Entrypoint') or [], cfg.get('Cmd') or []):
+        args += [a for a in extra if isinstance(a, str) and a not in args]
+    refus, infos, api_on = [], [], False
+    cli = _traefik_flat_cli(args)
+    api_on |= _traefik_check(cli, 'arguments de commande', refus)
+    env = _traefik_flat_env(cfg.get('Env'))
+    api_on |= _traefik_check(env, 'variables TRAEFIK_*', refus)
+    explicit = cli.get('configfile') or env.get('configfile')
+    files = [explicit] if explicit else list(TRAEFIK_DEFAULT_FILES)
+    seen_file = False
+    for path in files:
+        path = path if path.startswith('/') else os.path.join(cfg.get('WorkingDir') or '/', path)
+        host = _traefik_host_path(os.path.normpath(path), inspect.get('Mounts'))
+        if not host or not os.path.isfile(host):
+            continue
+        seen_file = True
+        try:
+            with open(host, 'r', encoding='utf-8', errors='replace') as fh:
+                text = fh.read(1024 ** 2)
+        except OSError:
+            infos.append(f'fichier de configuration statique {path} illisible : vérifie-le à la main')
+            continue
+        flat = _traefik_flat_toml(text) if path.endswith('.toml') else _traefik_flat_yaml(text)
+        api_on |= _traefik_check(flat, f'fichier {path}', refus)
+    if explicit and not seen_file:
+        infos.append(f'fichier de configuration statique {explicit} non trouvé parmi les montages : vérifie-le à la main')
+    elif not seen_file and not cli and not env:
+        infos.append('aucun argument ni fichier de configuration statique monté : si l\'image contient une '
+                     'configuration, vérifie api.insecure, log.level et accessLog.fields.headers à la main')
+    routers = {}
+    for labels in labels_list:
+        low = {str(k).lower(): str(v) for k, v in (labels or {}).items()}
+        for k, v in low.items():
+            m = re.fullmatch(r'traefik\.http\.routers\.([^.]+)\.service', k)
+            if m and v.strip().lower() == 'api@internal':
+                routers[m.group(1)] = bool(low.get(f'traefik.http.routers.{m.group(1)}.middlewares', '').strip())
+    if api_on and not any(code == 'api-insecure' for code, _ in refus):
+        bad = sorted(r for r, protected in routers.items() if not protected)
+        if bad:
+            refus.append(('api-router', 'labels : ' + ', '.join(re.sub(r'[^A-Za-z0-9_@-]', '?', r)[:60] for r in bad[:5])))
+        elif routers:
+            infos.append('API de Traefik publiée par un routeur avec middleware : vérifie que c\'est une '
+                         'authentification (basicAuth / forwardAuth)')
+        else:
+            infos.append('API de Traefik activée sans routeur Docker vers api@internal : si la configuration '
+                         'dynamique (fichiers) en définit un, vérifie qu\'il est protégé')
+    for code, src in refus:
+        what, fix = TRAEFIK_FIX[code]
+        print(f'REFUS\t{what} ({src}). À changer côté Traefik : {fix}.')
+    for msg in infos:
+        print(f'INFO\t{msg}.')
+    sys.exit(3 if refus else 0)
+
+
 def main(argv):
+    if argv and argv[0] == 'traefik-exposure':
+        return cmd_traefik_exposure(argv[1:])
     if len(argv) == 3 and argv[0] == 'bundle':
         return cmd_bundle(argv[1], argv[2])
     if len(argv) in (4, 5) and argv[0] == 'images':
@@ -919,7 +1158,7 @@ def main(argv):
         return cmd_thirdparty(argv[1])
     if argv and argv[0] == 'oidc':
         return cmd_oidc(argv[1:])
-    print('usage : deploy_policy.py bundle|images|envfiles|resolve|compose|thirdparty|oidc …', file=sys.stderr)
+    print('usage : deploy_policy.py bundle|images|envfiles|resolve|compose|thirdparty|oidc|traefik-exposure …', file=sys.stderr)
     sys.exit(2)
 
 

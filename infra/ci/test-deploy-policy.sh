@@ -414,5 +414,24 @@ oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "ci/raijin/
 oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "$good_ref" "$(printf '%040d' 1)" $((now + 300)))")" "autre commit"
 oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "$good_ref" "$sha" $((now - 3600)))")" "expiré"
 
+# Traefik qui exposerait X-Raijin-Edge (docs/SECURITY.md §17) : entrée JSON (comme `docker inspect`), code 3 = refus.
+hidden="hebergeur-$(openssl rand -hex 16)"
+expo_case() {  # expo_case <ok|refus> <JSON> <libellé>
+  local got=ok
+  printf '%s' "$2" | python3 -I "$policy" traefik-exposure - >"$work/out" 2>&1 || got=refus
+  grep -qF "$hidden" "$work/out" && ko "traefik-exposure $3 : valeur affichée"
+  if [[ "$got" == "$1" ]]; then ok "traefik-exposure $3 : $got"; else ko "traefik-exposure $3 : $got au lieu de $1 ($(head -c 200 "$work/out"))"; fi
+}
+tx() { printf '{"inspect":[{"Args":%s,"Config":{"Env":%s}}],"labels":%s}' "$1" "${2:-[]}" "${3:-[]}"; }
+expo_case refus "$(tx '["--api.insecure=true"]' "[\"OVH_APPLICATION_SECRET=$hidden\"]")" "api.insecure"
+expo_case refus "$(tx '["--api.insecure"]')" "api.insecure sans valeur"
+expo_case refus "$(tx '["--log.level", "debug"]')" "log.level debug (argument séparé)"
+expo_case refus "$(tx '[]' '["TRAEFIK_LOG_LEVEL=TRACE"]')" "TRAEFIK_LOG_LEVEL=TRACE"
+expo_case refus "$(tx '[]' '["TRAEFIK_API_INSECURE=true"]')" "TRAEFIK_API_INSECURE"
+expo_case refus "$(tx '["--accesslog.fields.headers.names.X-Raijin-Edge=keep"]')" "en-tête gardé au journal d'accès"
+expo_case refus "$(tx '["--api=true"]' '[]' '[{"traefik.http.routers.d.service":"api@internal"}]')" "routeur api@internal sans middleware"
+expo_case ok "$(tx '["--api=true","--log.level=INFO"]' '[]' '[{"traefik.http.routers.d.service":"api@internal","traefik.http.routers.d.middlewares":"auth"}]')" "routeur api@internal protégé"
+expo_case ok "$(tx '["--api.insecure=false","--log.level=WARN","--entrypoints.web.forwardedheaders.insecure=true","--accesslog.fields.headers.defaultmode=drop"]' "[\"OVH_APPLICATION_SECRET=$hidden\"]")" "Traefik propre"
+
 if (( failures > 0 )); then echo "$failures contrôle(s) en échec."; exit 1; fi
 echo "Politique de déploiement : tous les contrôles sont verts."

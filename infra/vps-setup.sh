@@ -248,8 +248,38 @@ detect_docker() {
   TRAEFIK_CR="$(printf '%s' "$args" | grep -oE -- '--certificatesresolvers\.[A-Za-z0-9_-]+\.' \
     | sed -E 's/--certificatesresolvers\.([A-Za-z0-9_-]+)\./\1/' | sort -u || true)"
   [[ $(printf '%s\n' "$TRAEFIK_CR" | grep -c .) -eq 1 ]] || TRAEFIK_CR=''
+  # Fuite possible de X-Raijin-Edge (EDGE_SHARED_SECRET en clair dans la configuration de Traefik, docs/SECURITY.md §17) :
+  # arguments, variables TRAEFIK_*, fichier statique monté, routeurs api@internal. Lecture seule ; noms seulement.
+  if have python3; then
+    TRAEFIK_EXPO="$(python3 -I "$SCRIPT_DIR/lib/deploy_policy.py" traefik-exposure "$TRAEFIK" 2>&1)" || TRAEFIK_EXPO_RC=$?
+  else
+    TRAEFIK_EXPO_RC=127
+  fi
 }
-TRAEFIK_CANDIDATES='' TRAEFIK_NETS='' TRAEFIK_NETS_ALL=''
+TRAEFIK_CANDIDATES='' TRAEFIK_NETS='' TRAEFIK_NETS_ALL='' TRAEFIK_EXPO='' TRAEFIK_EXPO_RC=0
+# Code 3 : le Traefik exposerait l'en-tête X-Raijin-Edge (api.insecure, log.level DEBUG/TRACE, en-têtes gardés au
+# journal d'accès, routeur api@internal sans middleware) : option B refusée (C2), Traefik jamais modifié.
+traefik_exposed() { [[ -n "$TRAEFIK" ]] && ((TRAEFIK_EXPO_RC == 3)); }
+show_traefik_exposure() {
+  local kind msg
+  while IFS=$'\t' read -r kind msg; do
+    case "$kind" in
+      REFUS) warn "Traefik ($TRAEFIK) : $msg" ;;
+      INFO) info "Traefik ($TRAEFIK) : $msg" ;;
+      '') ;;
+      *) todo "contrôle d'exposition de Traefik : sortie inattendue (${kind:0:120})" ;;
+    esac
+  done <<<"$TRAEFIK_EXPO"
+  if traefik_exposed; then
+    warn "option B refusée : le Traefik de MTC ($TRAEFIK) exposerait l'en-tête X-Raijin-Edge (EDGE_SHARED_SECRET de la prod) aux conteneurs du dev. Ce script ne modifie JAMAIS Traefik : les changements ci-dessus touchent MTC et sont ta décision ; ensuite relance --check, puis régénère EDGE_SHARED_SECRET dans $BASE/prod/env/.env (il a pu fuiter) et redéploie la prod (docs/DEPLOY.md C2, docs/SECURITY.md §17)."
+  elif ((TRAEFIK_EXPO_RC == 127)); then
+    todo "python3 absent : contrôle d'exposition de Traefik non fait (relance après le bloc Paquets, docs/SECURITY.md §17)."
+  elif ((TRAEFIK_EXPO_RC)); then
+    todo "contrôle d'exposition de Traefik impossible (code $TRAEFIK_EXPO_RC) : vérifie api.insecure, log.level et accessLog.fields.headers à la main (docs/SECURITY.md §17)."
+  else
+    ok "Traefik ($TRAEFIK) : ni API sans protection, ni journal DEBUG, ni en-têtes gardés au journal d'accès (§17)"
+  fi
+}
 # Mode du réseau d'entrée du dev (C2) : --dev-edge, sinon le .env du dev, sinon traefik-shared (option B).
 # Option A seulement si confirmée dans CE lancement (drapeau + phrase) : un .env qui dit « dedicated » ne suffit pas.
 dev_edge_mode() {
@@ -874,7 +904,10 @@ block_traefik_ref() {
   local want cur=''
   want="$(env_value "$BASE/prod/env/.env" TRAEFIK_NETWORK)"; want="${want:-$TRAEFIK_NET}"
   [[ -f "$TRAEFIK_REF" && ! -L "$TRAEFIK_REF" ]] && cur="$(head -n 1 "$TRAEFIK_REF" | tr -d '[:space:]')"
-  if [[ -z "$want" ]]; then
+  if traefik_exposed; then
+    warn "option B refusée : $TRAEFIK_REF n'est pas écrit tant que Traefik ($TRAEFIK) expose l'en-tête X-Raijin-Edge (voir le bloc Traefik)."
+    [[ -z "$cur" ]] || info "$TRAEFIK_REF existant laissé en place (rien n'est supprimé) : release.sh refuse les livraisons du dev tant que Traefik expose l'en-tête."
+  elif [[ -z "$want" ]]; then
     todo "réseau de Traefik inconnu : renseigne TRAEFIK_NETWORK (A2) dans $BASE/prod/env/.env puis relance ($TRAEFIK_REF)."
   elif [[ ! "$want" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ || "$want" == raijin* ]]; then
     warn "TRAEFIK_NETWORK de la prod (« $want ») invalide comme réseau de référence (C2)."
@@ -904,8 +937,9 @@ block_traefik() { # constats ; option A seulement : « docker network connect »
   [[ -n "$TRAEFIK_EP" ]] || todo "entrypoint HTTPS non détecté (configuration en fichier ?) : renseigne TRAEFIK_ENTRYPOINT (A2) dans les deux .env."
   [[ -n "$TRAEFIK_CR" ]] || todo "certresolver non détecté : renseigne TRAEFIK_CERTRESOLVER (A2) dans les deux .env."
   [[ -n "$TRAEFIK_NET" ]] || todo "réseau de Traefik à choisir : renseigne TRAEFIK_NETWORK (A2) dans $BASE/prod/env/.env."
+  show_traefik_exposure
   if [[ "$(dev_edge_mode)" != dedicated ]]; then
-    ok "option B : le conteneur Traefik ($TRAEFIK) n'est pas modifié ; le dev utilise ${TRAEFIK_NET:-son réseau (à choisir)}"
+    traefik_exposed || ok "option B : le conteneur Traefik ($TRAEFIK) n'est pas modifié ; le dev utilise ${TRAEFIK_NET:-son réseau (à choisir)}"
     if printf '%s\n' "$TRAEFIK_NETS_ALL" | grep -qx "$DEV_EDGE"; then
       info "Traefik est encore relié à $DEV_EDGE (option A d'une installation précédente) : rien n'est retiré automatiquement (C2)."
     fi
@@ -1004,6 +1038,10 @@ block_verify() {
     if runuser -u deploy-prod -- env GIT_SSH_COMMAND="ssh -F none -i $hp/.ssh/github_readonly -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hp/.ssh/known_hosts_github -o ConnectTimeout=15" \
       timeout 30 git ls-remote "$remote" refs/heads/main >/dev/null 2>&1; then ok "git ls-remote de main avec la clé de lecture"
     else todo "git ls-remote refusé : ajoute la clé de lecture dans GitHub (Settings → Deploy keys, SANS écriture), puis relance --check."; fi
+  fi
+  # X-Raijin-Edge (docs/SECURITY.md §17) : rappel du constat du bloc Traefik.
+  if traefik_exposed; then
+    warn "vérification : Traefik ($TRAEFIK) exposerait EDGE_SHARED_SECRET : option B refusée, livraisons du dev refusées, prod en avertissement (C2)."
   fi
 }
 

@@ -139,6 +139,14 @@ docker network inspect "$TRAEFIK_NETWORK" >/dev/null 2>&1 \
 # Traefik doit être relié à ce réseau (option B : le réseau du Traefik existant ; option A : raijin-dev-edge connecté).
 traefik_on_network "$TRAEFIK_NETWORK" \
   || die "aucun conteneur Traefik n'est relié au réseau « $TRAEFIK_NETWORK » (docs/DEPLOY.md A2, C2)."
+# Fuite possible de X-Raijin-Edge (EDGE_SHARED_SECRET) par le Traefik de MTC (docs/SECURITY.md §17, lecture seule) :
+# prod = avertissement (décision de l'utilisateur, Traefik jamais modifié) ; dev = refus (ses conteneurs joignent Traefik).
+traefik_expo=0
+traefik_exposure "$TRAEFIK_NETWORK" || traefik_expo=$?
+if [[ "$env" == dev && "$traefik_expo" != 0 ]]; then
+  die "dev refusé : le Traefik de « $TRAEFIK_NETWORK » exposerait l'en-tête X-Raijin-Edge de la prod (ou contrôle impossible) ; corrige Traefik (docs/DEPLOY.md C2) puis relance."
+fi
+unset traefik_expo
 
 if [[ "$bench" == 1 ]]; then
   [[ -d apps/raijin-banc-de-test-api ]] || die "--bench : apps/raijin-banc-de-test-api introuvable dans ce dépôt."

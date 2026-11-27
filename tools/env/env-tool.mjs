@@ -8,6 +8,7 @@
 //   --split <dir>  (utilisé par infra/vps-install.sh) découpe .env.dev / .env.prod en fichiers du serveur :
 //                  <dir>/dev/.env, <dir>/dev/.env.api, <dir>/prod/.env, .env.api, .env.bench-api
 //   --root <dir>   dossier du dépôt (défaut : dossier courant)
+//   Sauvegardes : <fichier>.bak-<date>, les 3 plus récentes par fichier (les plus anciennes écrasées puis supprimées).
 //
 // Modèle de référence : tools/env/env-schema.mjs. Aucune dépendance. Tous les fichiers écrits en 600.
 import { spawnSync } from 'node:child_process';
@@ -301,6 +302,44 @@ function backup(file, now) {
   return path.basename(dest);
 }
 
+/** Sauvegardes gardées par fichier (.env.bak-*, .env.dev.bak-*…) : les plus récentes ; elles contiennent des secrets. */
+export const KEEP_BACKUPS = 3;
+const BACKUP_RE = /^(.+)\.bak-(\d{8}-\d{6})(?:-(\d+))?$/;
+/** Sauvegardes de `file` (noms), de la plus récente à la plus ancienne. */
+function backupsOf(file) {
+  const dir = path.dirname(file);
+  const base = path.basename(file);
+  return fs
+    .readdirSync(dir)
+    .map((n) => [n, BACKUP_RE.exec(n)])
+    .filter(([, m]) => m && m[1] === base)
+    .map(([n, m]) => [n, `${m[2]}-${String(m[3] ?? 1).padStart(6, '0')}`])
+    .sort((a, b) => (a[1] < b[1] ? 1 : a[1] > b[1] ? -1 : 0))
+    .map(([n]) => path.join(dir, n));
+}
+/** Efface une sauvegarde : contenu écrasé par des zéros puis fichier supprimé (lien symbolique : seulement retiré). */
+function shred(f) {
+  const st = fs.lstatSync(f);
+  if (st.isFile() && st.size > 0) {
+    const fd = fs.openSync(f, 'r+');
+    try {
+      const zeros = Buffer.alloc(Math.min(st.size, 1 << 16));
+      for (let pos = 0; pos < st.size; pos += zeros.length)
+        fs.writeSync(fd, zeros, 0, Math.min(zeros.length, st.size - pos), pos);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+  fs.unlinkSync(f);
+}
+/** Ne garde que les KEEP_BACKUPS sauvegardes les plus récentes de `file` ; renvoie le nombre de sauvegardes effacées. */
+export function pruneBackups(file, keep = KEEP_BACKUPS) {
+  const old = backupsOf(file).slice(keep);
+  for (const f of old) shred(f);
+  return old.length;
+}
+
 function gitIgnored(root, name) {
   const r = spawnSync('git', ['check-ignore', '-q', '--', name], {
     cwd: root,
@@ -367,7 +406,7 @@ export function run(
         fs
           .readFileSync(fileURLToPath(import.meta.url), 'utf8')
           .split('\n')
-          .slice(1, 13)
+          .slice(1, 14)
           .map((l) => l.replace(/^\/\/ ?/, ''))
           .join('\n'),
       );
@@ -414,6 +453,7 @@ export function run(
     plans.push({ kind, existing, built: buildFile(kind, existing, local) });
   }
   let problems = 0;
+  let pruned = 0;
   for (const { kind, existing, built } of plans) {
     const f = file(kind);
     const before = existing ? fs.readFileSync(f, 'utf8') : null;
@@ -424,6 +464,7 @@ export function run(
       const bak = existing ? backup(f, now) : null;
       writeSecure(f, built.text);
       log(existing ? `  réorganisé (sauvegarde : ${bak})` : '  créé');
+      if (existing) pruned += pruneBackups(f);
     } else if (!opts.check) {
       fs.chmodSync(f, 0o600);
       log('  déjà à jour');
@@ -476,6 +517,14 @@ export function run(
       ? `${problems} variable(s) obligatoire(s) à remplir (voir ci-dessus).`
       : 'Toutes les variables obligatoires sont renseignées.',
   );
+  const kept = ['local', ...SERVER_KINDS].reduce(
+    (n, k) => n + backupsOf(file(k)).length,
+    0,
+  );
+  if (kept || pruned)
+    log(
+      `Rappel : ${kept} sauvegarde(s) .env*.bak-* gardée(s) (les ${KEEP_BACKUPS} plus récentes par fichier${pruned ? `, ${pruned} plus ancienne(s) écrasée(s) puis supprimée(s)` : ''}). Elles contiennent tes secrets : supprime-les dès que tu n'en as plus besoin (l'écrasement n'est pas garanti sur un SSD ; ne les commite jamais).`,
+    );
   return 0;
 }
 

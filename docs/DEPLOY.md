@@ -933,6 +933,31 @@ prod injoignables, appel direct du dev vers `raijin-api` et `raijin-bench-api` d
 Traefik accepté), options A et B, l'en-tête `X-Raijin-Edge` et leurs refus dans `infra/ci/test-deploy-policy.sh`,
 garde de l'option A dans `infra/ci/test-vps-setup.sh`.
 
+**Condition (b) de l'option B : le Traefik ne doit pas exposer `X-Raijin-Edge`.** `EDGE_SHARED_SECRET` est **en
+clair** dans la configuration dynamique de Traefik (labels `customRequestHeaders.X-Raijin-Edge`). Il fuirait, et
+l'option B ne protégerait plus rien, si le Traefik de MTC a l'une de ces options (arguments `--…`, variables
+`TRAEFIK_*` ou fichier de configuration statique) :
+
+| Option de Traefik | Pourquoi c'est une fuite | À changer côté Traefik (ta décision, cela touche MTC) |
+|---|---|---|
+| `--api.insecure=true` (`TRAEFIK_API_INSECURE`, `api.insecure`) | API sur le port 8080 de Traefik, joignable depuis **tout conteneur d'un réseau de Traefik** (dev compris) : `/api/http/middlewares` renvoie l'en-tête | retirer l'option ; si le tableau de bord sert, routeur vers `api@internal` avec middleware `basicAuth` (et liste d'IP) |
+| `--api` avec un routeur vers `api@internal` **sans middleware** | même fuite, par un nom d'hôte public | ajouter `basicAuth` / `forwardAuth` au routeur, ou le retirer |
+| `--log.level=DEBUG` ou `TRACE` | la configuration dynamique est écrite dans les journaux | `--log.level=INFO` (ou `WARN`), puis effacer les journaux déjà écrits |
+| `--accesslog.fields.headers.defaultmode=keep` ou `…names.X-Raijin-Edge=keep` | en-têtes conservés dans le journal d'accès | `defaultmode=drop` (défaut), `X-Raijin-Edge` en `drop` ou `redact`, puis effacer les journaux |
+
+Contrôle en lecture seule (`deploy_policy.py traefik-exposure`, aucun changement sur Traefik, aucune valeur
+affichée) : `infra/vps-setup.sh` lit `docker inspect` (arguments, variables `TRAEFIK_*`, fichier statique monté,
+`--configFile` ou `/etc/traefik/traefik.{yml,yaml,toml}`, lu sur l'hôte) et les labels des routeurs vers
+`api@internal` ; si l'un de ces cas est trouvé : **avertissement et option B refusée** (réseau de référence
+`/var/lib/raijin-deploy/traefik-network` non écrit ; un fichier déjà présent n'est pas supprimé). `release.sh` et
+`infra/deploy.sh` refont le contrôle à chaque livraison : **dev refusé** (contrôle impossible = refus aussi), **prod :
+avertissement** (le risque concerne aussi les conteneurs de MTC sur ce réseau). Après correction de Traefik :
+`sudo bash infra/vps-setup.sh --check`, puis **régénère `EDGE_SHARED_SECRET`** (il a pu fuiter :
+`sudo -u deploy-prod sed -i 's/^EDGE_SHARED_SECRET=.*/EDGE_SHARED_SECRET=/' /srv/raijin/prod/env/.env` puis
+`sudo bash infra/vps-setup.sh --apply`, qui en génère un nouveau sans l'afficher) et redéploie la prod. Tests :
+`infra/ci/test-vps-setup.sh` étape 6 (Traefik factices : `--api.insecure`, `--log.level=DEBUG`, en-têtes gardés par
+argument et par variable, fichier statique monté, routeur sans middleware → refus ; Traefik propre → option B).
+
 ## C3. Fichiers de variables
 
 Un dossier par environnement, lisible par son seul utilisateur (`deploy-dev` ou `deploy-prod`). Les **secrets d'application ne quittent jamais le VPS** :

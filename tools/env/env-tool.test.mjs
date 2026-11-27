@@ -1,10 +1,18 @@
 // Tests de tools/env/env-tool.mjs (node --test tools/env/). Fichiers factices dans un dossier temporaire.
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { FILES, collapse, parseEnv, run, splitForServer } from './env-tool.mjs';
+import {
+  FILES,
+  KEEP_BACKUPS,
+  collapse,
+  parseEnv,
+  run,
+  splitForServer,
+} from './env-tool.mjs';
 import { VARIABLES, schemaIndex } from './env-schema.mjs';
 
 // Valeurs factices assemblées à l'exécution : aucun littéral au format d'une clé dans le dépôt (scan gitleaks).
@@ -241,4 +249,60 @@ test('découpage pour le serveur : fichiers Compose / API / banc, valeurs non vi
   assert.equal(mode(path.join(out, 'prod', '.env.api')), 0o600);
   assert.ok(!fs.existsSync(path.join(out, 'prod', '.env.bench-api')));
   assert.ok(!fs.existsSync(path.join(out, 'dev')), '.env.dev absent : rien');
+});
+
+test('sauvegardes : seules les 3 plus récentes par fichier, anciennes effacées, rappel affiché', () => {
+  const dir = tmpRepo({ local: LOCAL });
+  // Contenu factice généré à l'exécution (aucun littéral au format d'une clé).
+  const old = `MY_OLD_VAR=${crypto.randomBytes(12).toString('hex')}\n`;
+  const names = [
+    '.env.bak-20250101-080000',
+    '.env.bak-20250102-080000',
+    '.env.bak-20250102-080000-2',
+    '.env.bak-20250103-080000',
+    '.env.bak-20250104-080000',
+  ];
+  for (const n of names)
+    fs.writeFileSync(path.join(dir, n), old, { mode: 0o600 });
+  // Sauvegarde d'un AUTRE fichier et nom voisin : jamais touchés.
+  fs.writeFileSync(path.join(dir, '.env.dev.bak-20240101-080000'), old);
+  fs.writeFileSync(path.join(dir, '.env.bak-notes'), old);
+  const out = runIn(dir);
+  assertNoSecret(out);
+  assert.ok(!out.includes(old.trim()), "valeur d'une sauvegarde affichée");
+  const left = fs
+    .readdirSync(dir)
+    .filter((f) => /^\.env\.bak-\d/.test(f))
+    .sort();
+  assert.equal(KEEP_BACKUPS, 3);
+  assert.deepEqual(left, [
+    '.env.bak-20250103-080000',
+    '.env.bak-20250104-080000',
+    '.env.bak-20261127-100000',
+  ]);
+  assert.ok(fs.existsSync(path.join(dir, '.env.dev.bak-20240101-080000')));
+  assert.ok(fs.existsSync(path.join(dir, '.env.bak-notes')));
+  assert.match(out, /Rappel : \d+ sauvegarde\(s\) \.env\*\.bak-\* gardée\(s\)/);
+  assert.match(out, /3 plus ancienne\(s\) écrasée\(s\) puis supprimée\(s\)/);
+  // Nouvelles passes qui réécrivent .env : toujours 3 sauvegardes au plus.
+  for (let i = 0; i < 3; i++) {
+    fs.appendFileSync(path.join(dir, FILES.local), `\n# passe ${i}\n`);
+    runIn(dir);
+  }
+  const after = fs.readdirSync(dir).filter((f) => /^\.env\.bak-\d/.test(f));
+  assert.equal(after.length, 3);
+  assert.ok(after.every((f) => f.startsWith('.env.bak-20261127-100000')));
+});
+
+test("sauvegardes : --check n'efface rien mais rappelle leur présence", () => {
+  const dir = tmpRepo({ local: LOCAL });
+  const old = `MY_OLD_VAR=${crypto.randomBytes(12).toString('hex')}\n`;
+  for (let d = 1; d <= 5; d++)
+    fs.writeFileSync(path.join(dir, `.env.bak-2025010${d}-080000`), old);
+  const out = runIn(dir, ['--check']);
+  assert.equal(
+    fs.readdirSync(dir).filter((f) => f.startsWith('.env.bak-')).length,
+    5,
+  );
+  assert.match(out, /Rappel : 5 sauvegarde\(s\)/);
 });

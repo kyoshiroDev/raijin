@@ -3,6 +3,8 @@
 # --apply --yes-safe installe utilisateurs, dossiers, verrou, scripts figés, sudoers, modèles .env (secrets générés,
 # jamais affichés) et authorized_keys ; une 2e passe ne change rien ; les blocs « toujours demandés » sont refusés
 # sans terminal. Docker, sshd et GitHub sont absents du conteneur : leurs blocs doivent se replier en « reste à faire ».
+# Étape 6 : Docker factice et Traefik factices (api.insecure, log DEBUG, en-têtes gardés au journal d'accès, fichier
+# statique monté, routeur api@internal sans middleware) : option B refusée ; Traefik propre : option B retenue.
 #   infra/ci/test-vps-setup.sh
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -156,5 +158,90 @@ bash infra/vps-setup.sh --apply --yes-safe --keys keys --envs envs --repo test-o
 sums >/tmp/s4
 diff /tmp/s3 /tmp/s4 || fail "la 2e fusion a modifié des fichiers"
 grep -q '\[fait\]' /tmp/apply4.log && { grep '\[fait\]' /tmp/apply4.log; fail "la 2e fusion a agi"; }
+
+echo "--- 6. Traefik factice : X-Raijin-Edge exposé (api.insecure, DEBUG, en-têtes gardés…) → option B refusée ; propre → OK"
+# Docker factice (root seulement) : un conteneur « traefik-test » décrit par /tmp/fake-traefik.json ; jamais de vrai Docker.
+cat >/usr/local/bin/docker <<'FAKE'
+#!/bin/bash
+[[ $EUID -eq 0 ]] || exit 1
+F=/tmp/fake-traefik.json
+py() { python3 -I -c "import json,sys; d=json.load(open('$F')); $1"; }
+case "$1" in
+  info) exit 0 ;;
+  version) echo 27.0.0 ;;
+  compose) [[ "${2:-}" == version ]] && echo 2.29.0 || exit 1 ;;
+  ps)
+    case "$*" in
+      *' -q'*) echo f00d ;;
+      *'{{.Names}} {{.Image}}'*) echo 'traefik-test traefik:v3.6' ;;
+      *) echo 'traefik:v3.6' ;;
+    esac ;;
+  inspect)
+    shift
+    if [[ "$1" == -f ]]; then
+      case "$2" in
+        *Networks*) echo 'traefik_test ' ;;
+        '{{json .Args}}') py 'print(json.dumps(d["inspect"][0]["Args"]))' ;;
+        '{{json .Config.Labels}}') py '[print(json.dumps(l)) for l in d["labels"]]' ;;
+        *) exit 1 ;;
+      esac
+    else
+      [[ "$*" == *traefik-test* ]] || exit 1
+      py 'print(json.dumps(d["inspect"]))'
+    fi ;;
+  network) [[ "${2:-}" == inspect && "${3:-}" == traefik_test ]] ;;
+  *) exit 1 ;;
+esac
+FAKE
+chmod 755 /usr/local/bin/docker
+sentinel="hebergeur-$(openssl rand -hex 16)"
+mkdir -p /tmp/tcfg-bad /tmp/tcfg-ok
+printf 'entryPoints:\n  websecure:\n    address: ":443"\napi:\n  insecure: true\n' >/tmp/tcfg-bad/traefik.yml
+printf 'entryPoints:\n  websecure:\n    address: ":443"\n    forwardedHeaders:\n      insecure: true\nlog:\n  level: INFO\n' >/tmp/tcfg-ok/traefik.yml
+base_args='"--providers.docker=true","--entrypoints.websecure.address=:443","--certificatesresolvers.le.acme.tlschallenge=true"'
+# fixture <arguments JSON> <variables JSON> <labels JSON> <montages JSON>
+fixture() {
+  python3 -I -c 'import json,sys; a=sys.argv; json.dump({"inspect":[{"Name":"/traefik-test","Args":json.loads(a[1]),"Config":{"Env":json.loads(a[2]),"Labels":{}},"Mounts":json.loads(a[4])}],"labels":json.loads(a[3])}, open("/tmp/fake-traefik.json","w"))' "$@"
+}
+expo_check() { # expo_check <nom> <refus|ok> <motif attendu>
+  bash infra/vps-setup.sh --check --keys keys --repo test-owner/raijin </dev/null >"/tmp/expo-$1.log" 2>&1 || { cat "/tmp/expo-$1.log"; fail "--check Traefik $1"; }
+  grep -qF "$sentinel" "/tmp/expo-$1.log" && fail "Traefik $1 : valeur d'une variable de Traefik affichée"
+  if [[ "$2" == refus ]]; then
+    grep -q 'option B refusée' "/tmp/expo-$1.log" || { cat "/tmp/expo-$1.log"; fail "Traefik $1 : option B non refusée"; }
+    grep -q "n'est pas écrit tant que Traefik" "/tmp/expo-$1.log" || fail "Traefik $1 : réseau de référence non bloqué"
+    grep -q 'ne modifie JAMAIS Traefik' "/tmp/expo-$1.log" || fail "Traefik $1 : décision de l'utilisateur non rappelée"
+    grep -q 'vérification : Traefik (traefik-test) exposerait EDGE_SHARED_SECRET' "/tmp/expo-$1.log" || fail "Traefik $1 : rappel des vérifications absent"
+  else
+    grep -q 'option B refusée' "/tmp/expo-$1.log" && { grep 'ATTENTION' "/tmp/expo-$1.log"; fail "Traefik $1 : option B refusée à tort"; }
+    grep -q 'option B : le conteneur Traefik (traefik-test) n' "/tmp/expo-$1.log" || fail "Traefik $1 : option B non retenue"
+  fi
+  grep -q -- "$3" "/tmp/expo-$1.log" || { cat "/tmp/expo-$1.log"; fail "Traefik $1 : « $3 » absent"; }
+}
+fixture "[$base_args,\"--api.insecure=true\"]" "[\"OVH_APPLICATION_SECRET=$sentinel\"]" '[]' '[]'
+expo_check insecure refus 'api.insecure) : la configuration'
+fixture "[$base_args,\"--log.level=DEBUG\"]" '[]' '[]' '[]'
+expo_check debug refus 'journal de Traefik en DEBUG'
+fixture "[$base_args,\"--accesslog=true\",\"--accesslog.fields.headers.defaultmode=keep\"]" '[]' '[]' '[]'
+expo_check accesslog refus "journal d'accès de Traefik qui conserve les en-têtes (headers.defaultMode=keep ou names.X-Raijin-Edge=keep) (arguments"
+fixture "[$base_args]" "[\"TRAEFIK_ACCESSLOG_FIELDS_HEADERS_NAMES_X-Raijin-Edge=keep\",\"TRAEFIK_LOG_LEVEL=WARN\"]" '[]' '[]'
+expo_check env-names refus "en-têtes .* (variables TRAEFIK_\*)"
+fixture "[$base_args]" '[]' '[]' '[{"Type":"bind","Source":"/tmp/tcfg-bad","Destination":"/etc/traefik"}]'
+expo_check fichier refus '(fichier /etc/traefik/traefik.yml)'
+fixture "[$base_args,\"--api.dashboard=true\"]" '[]' '[{"traefik.http.routers.dash.service":"api@internal","traefik.http.routers.dash.rule":"Host(`t.exemple.invalid`)"}]' '[]'
+expo_check routeur refus 'routeur Docker vers api@internal SANS middleware'
+fixture "[$base_args,\"--log.level=WARN\",\"--api.dashboard=true\"]" "[\"OVH_APPLICATION_SECRET=$sentinel\",\"TRAEFIK_LOG_LEVEL=INFO\"]" \
+  '[{"traefik.http.routers.dash.service":"api@internal","traefik.http.routers.dash.middlewares":"dash-auth"}]' \
+  '[{"Type":"bind","Source":"/tmp/tcfg-ok","Destination":"/etc/traefik"}]'
+expo_check propre ok 'ni API sans protection, ni journal DEBUG'
+# --apply : réseau de référence jamais écrit tant que Traefik expose l'en-tête ; réécrit une fois Traefik corrigé.
+mv /var/lib/raijin-deploy/traefik-network /tmp/traefik-network.saved
+fixture "[$base_args,\"--api.insecure\"]" '[]' '[]' '[]'
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --repo test-owner/raijin </dev/null >/tmp/expo-apply1.log 2>&1 || { cat /tmp/expo-apply1.log; fail "--apply Traefik exposé"; }
+[[ ! -e /var/lib/raijin-deploy/traefik-network ]] || fail "réseau de référence écrit malgré un Traefik exposé"
+grep -q 'option B refusée' /tmp/expo-apply1.log || fail "--apply : option B non refusée"
+fixture "[$base_args,\"--log.level=INFO\"]" '[]' '[]' '[]'
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --repo test-owner/raijin </dev/null >/tmp/expo-apply2.log 2>&1 || { cat /tmp/expo-apply2.log; fail "--apply Traefik propre"; }
+[[ "$(cat /var/lib/raijin-deploy/traefik-network)" == traefik_test ]] || fail "réseau de référence non réécrit avec un Traefik propre"
+rm -f /usr/local/bin/docker
 echo "vps-setup.sh : tous les contrôles passent."
 EOF
