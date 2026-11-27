@@ -79,6 +79,10 @@ AUTH_LOCKOUT_DURATION=15m
 #   0 si l'API est exposée sans proxy. Jamais plus que le nombre réel de proxys (IP falsifiable).
 #   Vide en dev.
 TRUST_PROXY=
+# Secret partagé avec Traefik, posé par lui dans l'en-tête X-Raijin-Edge (docs/SECURITY.md §17). Prod : généré sur le
+#   VPS (openssl rand -hex 32), jamais dans le dépôt ni dans GitHub. Défini : 403 sans en-tête valide (sauf /api/v1/health…
+#   et /api/v1/internal/bot/…), X-Forwarded-For ignoré sans en-tête valide. Vide en local, en test et en dev.
+EDGE_SHARED_SECRET=
 # Raijin — clé AES-256-GCM des secrets TOTP de la 2FA admin (32 octets en base64). À générer : openssl rand -base64 32
 #   OBLIGATOIRE en production (l'API refuse de démarrer si absente, factice ou ≠ 32 octets) ; vide en dev = clé éphémère
 #   (2FA à réactiver après chaque redémarrage). La perdre en production = réactiver la 2FA :
@@ -421,6 +425,24 @@ complète dans `docs/DEPLOY.md`, partie A. En déploiement continu (partie C), l
 | `infra/.env.api` | conteneur `raijin-api` (`env_file`) | variables applicatives : blocs ci-dessus (secrets JWT, cookies, Resend, Stripe, Helius, VAPID, Google…) |
 | `infra/.env.bench-api` | conteneur `raijin-bench-api` (`infra/deploy.sh --bench`) | variables du banc : bloc « Banc » ci-dessous |
 
+**En-tête secret de Traefik** (`EDGE_SHARED_SECRET`, docs/SECURITY.md §17, condition (a) de l'option B du réseau du
+dev) : **générée sur le VPS** pour la production (`openssl rand -hex 32`, jamais dans le dépôt ni dans GitHub), fournie
+au conteneur `raijin-api` et à Traefik, qui pose la même valeur dans l'en-tête **`X-Raijin-Edge`** de chaque requête
+relayée (câblage : `infra/` et `docs/DEPLOY.md`). Comportement de l'API (`libs/api/core/src/lib/http/edge-guard.ts`,
+premier middleware) :
+- définie : toute requête sans en-tête valide reçoit **403** `{ code: "FORBIDDEN", message: "Accès refusé." }`
+  (`no-store`), sauf **`/api/v1/health`** et **`/api/v1/health/…`** (healthcheck Docker de l'image et healthcheck du
+  load balancer Traefik, qui n'appliquent pas les middlewares) et le préfixe **`/api/v1/internal/bot/…`** (appels
+  internes du bot, protégés par leur propre jeton de service ; exemption par préfixe, que ces routes existent ou non) ;
+- sans en-tête valide (routes exemptées comprises), `X-Forwarded-For`, `X-Forwarded-Host/Proto/Port`, `X-Real-IP` et
+  `Forwarded` sont **supprimés** : l'IP retenue (rate limiting, verrouillage, plafond de l'espace admin, empreinte
+  anonyme, journal d'audit) est celle de la socket, même avec `TRUST_PROXY=1` ;
+- comparaison à temps constant sur l'empreinte SHA-256 ; l'en-tête est retiré de la requête après contrôle (jamais
+  journalisé ni renvoyé) ;
+- absente, vide ou factice : contrôle **désactivé** (local, tests, dev) ; en production, le démarrage reste autorisé
+  (ne casse pas un déploiement existant) avec un **avertissement** au démarrage ; définie : 32 à 256 caractères
+  ASCII visibles, sinon refus de démarrer.
+
 **Imposées par `infra/docker-compose.yml`** (inutile de les mettre dans `infra/.env.api`, elles seraient ignorées) :
 `NODE_ENV=production`, `API_PORT=3000`, `APP_URL`, `LANDING_URL`, `API_URL`, `CORS_ORIGINS` (calculées depuis les
 domaines), `DATABASE_URL`, `REDIS_URL`, `BULLMQ_PREFIX=raijin`, `TRUST_PROXY=1` (un seul proxy : Traefik),
@@ -582,6 +604,16 @@ Le conteneur du banc ne reçoit aucune variable de Raijin (fichier distinct) ; s
 `raijin_bench`), `BENCH_REDIS_URL` (utilisateur ACL `raijin-bench`, mot de passe `REDIS_BENCH_PASSWORD` de `infra/.env`),
 `BULLMQ_PREFIX=raijin-bench` (clés `raijin-bench:<file>:*`), `TRUST_PROXY=1`, `COOKIE_SECURE=true`.
 Les migrations (`raijin-bench-migrate`, profil `tools`) reçoivent la même `BENCH_DATABASE_URL`.
+
+**En-tête secret de Traefik** (`EDGE_SHARED_SECRET`, docs/SECURITY.md §17, option B du réseau du dev) : même
+variable et même règle que l'API de Raijin, fournie au conteneur du banc par `infra/` (même valeur que celle que
+Traefik pose dans l'en-tête `X-Raijin-Edge`). Si elle est définie, toute requête sans en-tête valide reçoit un 403
+neutre (`{ code: "UNAUTHORIZED" }`), sauf `GET`/`HEAD /api/health` (sondes) ; sans en-tête valide, `X-Forwarded-*`
+est ignoré (IP de la socket, même avec `TRUST_PROXY=1`). Comparaison à temps constant sur l'empreinte SHA-256 ; la
+valeur n'est jamais journalisée ni renvoyée (l'en-tête est retiré de la requête après contrôle). Absente ou vide :
+contrôle désactivé ; en production, simple **avertissement** au démarrage. Définie en production : 32 à 256
+caractères ASCII visibles, non factice (`openssl rand -hex 32`), sinon refus de démarrer. La session et le TOTP du
+banc ne changent pas : l'en-tête ne remplace aucune authentification.
 
 ### Socle : compte, sessions, mode, notifications (T6)
 

@@ -17,6 +17,7 @@ const prodEnv = {
   COOKIE_SECURE: 'true',
   TRUST_PROXY: '1',
   TOTP_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString('base64'),
+  EDGE_SHARED_SECRET: 'e'.repeat(64),
 };
 
 describe('parseDuration', () => {
@@ -108,6 +109,28 @@ describe('loadConfig', () => {
   it('production : TRUST_PROXY obligatoire (0 explicite accepté)', () => {
     expect(() => loadConfig({ ...prodEnv, TRUST_PROXY: undefined })).toThrow(/TRUST_PROXY : obligatoire/);
     expect(loadConfig({ ...prodEnv, TRUST_PROXY: '0' }).trustProxy).toBe(false);
+  });
+
+  it('EDGE_SHARED_SECRET : absente = désactivée (avertissement en production, démarrage autorisé), valeur validée', () => {
+    const warnings: string[] = [];
+    expect(loadConfig({ ...prodEnv, EDGE_SHARED_SECRET: undefined }, (m) => warnings.push(m)).edgeSharedSecret).toBeNull();
+    expect(warnings.some((m) => m.startsWith('EDGE_SHARED_SECRET absente'))).toBe(true);
+    const devWarnings: string[] = [];
+    expect(loadConfig({ NODE_ENV: 'test' }, (m) => devWarnings.push(m)).edgeSharedSecret).toBeNull();
+    expect(devWarnings.some((m) => m.includes('EDGE_SHARED_SECRET'))).toBe(false);
+    const edge = 'a1'.repeat(32);
+    const silent: string[] = [];
+    expect(loadConfig({ ...prodEnv, EDGE_SHARED_SECRET: edge }, (m) => silent.push(m)).edgeSharedSecret).toBe(edge);
+    expect(silent.join('\n')).not.toContain(edge);
+    expect(loadConfig({ ...prodEnv, EDGE_SHARED_SECRET: '  ' }).edgeSharedSecret).toBeNull();
+    expect(loadConfig({ ...prodEnv, EDGE_SHARED_SECRET: 'changeme-edge-factice' }).edgeSharedSecret).toBeNull();
+    expect(() => loadConfig({ ...prodEnv, EDGE_SHARED_SECRET: 'court' })).toThrow(/EDGE_SHARED_SECRET/);
+    expect(() => loadConfig({ NODE_ENV: 'test', EDGE_SHARED_SECRET: `${'x'.repeat(20)} ${'y'.repeat(20)}` })).toThrow(/EDGE_SHARED_SECRET/);
+    try {
+      loadConfig({ ...prodEnv, EDGE_SHARED_SECRET: 'secret-trop-court' });
+    } catch (error) {
+      expect(String((error as Error).message)).not.toContain('secret-trop-court');
+    }
   });
 
   it('limite d’auth par défaut : 10 en production, 60 en dev ; surchargeable', () => {

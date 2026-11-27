@@ -52,6 +52,12 @@ export interface AppConfig {
   readonly redisUrl: string | null;
   /** Valeur de `trust proxy` d'Express (nombre de proxys de confiance), `false` si vide. */
   readonly trustProxy: number | false;
+  /**
+   * Secret partagé avec Traefik (`EDGE_SHARED_SECRET`) : si défini, toute requête sans en-tête `X-Raijin-Edge` valide
+   * reçoit 403 (sauf santé et `internal/bot/*`) et `X-Forwarded-For` n'est pris en compte qu'avec cet en-tête
+   * (docs/SECURITY.md §17). `null` : contrôle désactivé (local, tests, dev ; avertissement en production).
+   */
+  readonly edgeSharedSecret: string | null;
   readonly swaggerEnabled: boolean;
   readonly auth: {
     readonly accessSecret: string;
@@ -275,6 +281,7 @@ const envSchema = z.object({
   DATABASE_URL: optionalString,
   REDIS_URL: optionalString,
   TRUST_PROXY: optionalString,
+  EDGE_SHARED_SECRET: optionalString,
   JWT_ACCESS_SECRET: optionalString,
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
@@ -536,6 +543,19 @@ export function loadConfig(
     else problems.push('TRUST_PROXY : nombre de proxys de confiance attendu (0 à 10)');
   }
 
+  // En-tête secret posé par Traefik (docs/SECURITY.md §17). Absente ou factice : contrôle désactivé ; en production,
+  // le démarrage reste autorisé (ne casse pas un déploiement existant) mais un avertissement est journalisé.
+  let edgeSharedSecret: string | null = null;
+  if (isReal(e.EDGE_SHARED_SECRET)) {
+    if (e.EDGE_SHARED_SECRET.length < MIN_SECRET_LENGTH || e.EDGE_SHARED_SECRET.length > 256 || !/^[\x21-\x7e]+$/.test(e.EDGE_SHARED_SECRET)) {
+      problems.push(`EDGE_SHARED_SECRET : ${MIN_SECRET_LENGTH} à 256 caractères ASCII imprimables sans espace attendus (ex. openssl rand -hex 32)`);
+    } else {
+      edgeSharedSecret = e.EDGE_SHARED_SECRET;
+    }
+  } else if (isProduction) {
+    warn('EDGE_SHARED_SECRET absente : en-tête X-Raijin-Edge non exigé, X-Forwarded-For accepté de tout appelant du réseau Docker (docs/SECURITY.md §17).');
+  }
+
   const cookieSecure = parseBoolean(e.COOKIE_SECURE, isProduction);
   let legacyRefreshUntil = new Date(
     LEGACY_REFRESH_MIGRATION_START.getTime() + duration('JWT_REFRESH_TTL', e.JWT_REFRESH_TTL),
@@ -641,6 +661,7 @@ export function loadConfig(
     databaseUrl,
     redisUrl,
     trustProxy,
+    edgeSharedSecret,
     swaggerEnabled: !isProduction,
     auth: {
       accessSecret: secret('JWT_ACCESS_SECRET'),

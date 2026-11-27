@@ -87,6 +87,14 @@ export class RedisAttemptStore implements AttemptStore {
 }
 
 /**
+ * Plafond **par adresse** des e-mails d'authentification (lien magique, réinitialisation, vérification), en plus des
+ * limites par IP : au plus `AUTH_EMAIL_MAX_PER_WINDOW` envois par adresse et par heure, tous types confondus. Au-delà,
+ * la réponse reste identique (neutre) mais rien n'est envoyé : une IP tournante ne peut pas inonder une boîte.
+ */
+export const AUTH_EMAIL_MAX_PER_WINDOW = 5;
+export const AUTH_EMAIL_WINDOW_MS = 3_600_000;
+
+/**
  * Verrouillage temporaire par adresse (connexion, confirmation par mot de passe) : compteur
  * d'échecs indexé par HMAC(emailNormalized), appliqué aussi aux adresses sans compte, pour que
  * la réponse et le temps de traitement ne révèlent jamais si un compte existe.
@@ -153,6 +161,16 @@ export class LoginAttemptsService implements OnModuleDestroy {
     const attempt = await this.run((store) => store.increment(this.key(emailNormalized), this.config.auth.lockoutMs));
     const threshold = this.config.auth.lockoutThreshold;
     return { attempt, locked: attempt > threshold, lockedNow: attempt === threshold };
+  }
+
+  /**
+   * Compte un e-mail d'authentification pour l'adresse (HMAC, jamais en clair) ; faux au-delà du plafond. Appelé
+   * aussi pour les adresses sans compte, pour que le coût de la requête ne révèle pas l'existence du compte.
+   */
+  async allowAuthEmail(emailNormalized: string): Promise<boolean> {
+    const key = `rj:auth-mail:${hmac(this.config.auth.cookieSecret, `mail:${emailNormalized}`)}`;
+    const count = await this.run((store) => store.increment(key, AUTH_EMAIL_WINDOW_MS));
+    return count <= AUTH_EMAIL_MAX_PER_WINDOW;
   }
 
   async reset(emailNormalized: string): Promise<void> {

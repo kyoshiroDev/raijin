@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import type { AppConfig } from '../config/app-config';
 import { GENERIC_ERROR_MESSAGES } from '../errors/api-exception';
 import { ApiExceptionFilter } from '../errors/api-exception.filter';
+import { edgeGuardMiddleware } from './edge-guard';
 
 export const GLOBAL_PREFIX = 'api/v1';
 /** Taille maximale d'un corps JSON : les requêtes de l'API sont petites. */
@@ -27,15 +28,28 @@ export function maintenanceMiddleware(req: Request, res: Response, next: NextFun
     .json({ code: 'MAINTENANCE', message: GENERIC_ERROR_MESSAGES['MAINTENANCE'] });
 }
 
+/** Options de `setupApp`. */
+export interface SetupAppOptions {
+  /**
+   * Middlewares à monter juste après le contrôle de l'en-tête de Traefik et avant tout le reste
+   * (ex. corps brut du webhook Stripe, qui doit précéder le parseur JSON global).
+   */
+  readonly beforeParsers?: (app: NestExpressApplication) => void;
+}
+
 /**
  * Branche le socle HTTP sur l'application Nest (à appeler avant `listen`) :
- * préfixe /api/v1, trust proxy, Helmet, cookies, corps JSON borné, CORS strict avec credentials,
+ * contrôle de l'en-tête `X-Raijin-Edge` (premier middleware), préfixe /api/v1, trust proxy, Helmet, cookies, corps JSON borné, CORS strict avec credentials,
  * filtre d'erreurs `{code, message}`, OpenAPI hors production.
  * L'application doit être créée avec `{ bodyParser: false }`.
  */
-export function setupApp(app: NestExpressApplication, config: AppConfig): void {
+export function setupApp(app: NestExpressApplication, config: AppConfig, options: SetupAppOptions = {}): void {
   app.disable('x-powered-by');
+  // `trust proxy` reste réglé par TRUST_PROXY ; quand EDGE_SHARED_SECRET est défini, le contrôle ci-dessous supprime
+  // les en-têtes X-Forwarded-* d'une requête sans en-tête valide : Express retombe alors sur l'adresse de la socket.
   app.set('trust proxy', config.trustProxy);
+  app.use(edgeGuardMiddleware(config.edgeSharedSecret));
+  options.beforeParsers?.(app);
 
   app.use(
     helmet({

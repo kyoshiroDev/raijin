@@ -32,9 +32,11 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config, billing), {
     bodyParser: false,
   });
-  // Webhook Stripe : corps brut (signature sur les octets reçus), monté avant le parseur JSON global.
-  app.use(`/${GLOBAL_PREFIX}/${BILLING_WEBHOOK_PATH}`, billingWebhookRawBody());
-  setupApp(app, config);
+  setupApp(app, config, {
+    // Webhook Stripe : corps brut (signature sur les octets reçus), monté avant le parseur JSON global
+    // (et après le contrôle de l'en-tête X-Raijin-Edge : rien n'est lu d'une requête refusée).
+    beforeParsers: (http) => http.use(`/${GLOBAL_PREFIX}/${BILLING_WEBHOOK_PATH}`, billingWebhookRawBody()),
+  });
   await app.listen(config.port);
   emitNxReadySignal(app.getHttpServer());
   logger.log(`API Raijin à l'écoute sur http://localhost:${config.port}/${GLOBAL_PREFIX} (${config.env})`);

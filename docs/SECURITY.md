@@ -202,12 +202,16 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
 - **Parades** : `TRUST_PROXY` **obligatoire en prod** et égal au nombre exact de proxys (1, Traefik seul : le
   front reste même origine, nginx ne proxifie rien), `app.set('trust proxy', …)`
   (`libs/api/core/src/lib/http/setup-app.ts`, `app-config.ts`, I2 phase 2) ; Traefik remplace les
-  `X-Forwarded-*` reçus de clients non approuvés (comportement par défaut).
-- **Tests** : `app-config.spec.ts` (TRUST_PROXY requis et borné), `throttler.spec.ts`.
+  `X-Forwarded-*` reçus de clients non approuvés (comportement par défaut) ; avec `EDGE_SHARED_SECRET`,
+  `X-Forwarded-*` n'est pris en compte que si l'en-tête `X-Raijin-Edge` de Traefik est valide (§17).
+- **Tests** : `app-config.spec.ts` (TRUST_PROXY requis et borné, EDGE_SHARED_SECRET), `throttler.spec.ts`,
+  `setup-app.spec.ts` (403 sans en-tête ou avec un mauvais, 200 avec le bon, santé et `internal/bot` exemptés,
+  `X-Forwarded-For` ignoré sans en-tête valide, contrôle désactivé sans variable).
 - **Risque résiduel** (`docs/DEPLOY.md` §464-467, M7 phase 8) : un conteneur du réseau Traefik partagé avec
   MyTradingCoach peut joindre l'API sans passer par Traefik et forger `X-Forwarded-For` (contournement des
   limites par IP, pas d'accès aux comptes) ; si l'instance Traefik existante a `forwardedHeaders.insecure`, ou
-  si un CDN est ajouté sans ajuster `TRUST_PROXY` et `trustedIPs`, l'en-tête devient falsifiable.
+  si un CDN est ajouté sans ajuster `TRUST_PROXY` et `trustedIPs`, l'en-tête devient falsifiable. Ce contournement
+  direct est fermé dès que `EDGE_SHARED_SECRET` est posé (§17).
 
 ### 13. Chaîne d'approvisionnement
 - **Parades** : `pnpm install --frozen-lockfile` en CI ; scripts d'installation refusés par défaut, chaque
@@ -315,6 +319,20 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     workflow modifié sur `dev`) ;
   - réseau d'entrée : option B sans modification du conteneur Traefik de MTC (PROMPT §7), option A (réseau
     `raijin-dev-edge` dédié) disponible sur décision de l'utilisateur ; Traefik relié au réseau vérifié ;
+  - **en-tête secret de Traefik** (condition (a) de l'option B) : `EDGE_SHARED_SECRET` (généré sur le VPS, jamais dans
+    GitHub), que Traefik pose dans l'en-tête `X-Raijin-Edge` ; dans `raijin-api`, premier middleware
+    (`libs/api/core/src/lib/http/edge-guard.ts`, monté par `setupApp` avant les parseurs et le webhook Stripe) :
+    sans en-tête valide (comparaison à temps constant des empreintes SHA-256), **403 `FORBIDDEN` neutre**, sauf
+    `/api/v1/health…` (healthchecks Docker et Traefik) et le préfixe `/api/v1/internal/bot/…` (jeton de service du
+    bot) ; sans en-tête valide, `X-Forwarded-*`, `X-Real-IP` et `Forwarded` sont supprimés, donc **`trust proxy` ne
+    s'applique qu'aux requêtes venues de Traefik** (rate limiting, verrouillage, plafond de l'espace admin, empreinte
+    anonyme, audit) ; l'en-tête est retiré de la requête (jamais journalisé ni renvoyé). Variable absente en
+    production : démarrage autorisé avec avertissement (déploiement existant non cassé). Même règle pour
+    `raijin-bench-api` (docs/BENCH.md). Le partage `/t/<mint>` et les images OG passent par Traefik : servis ;
+  - **limites par compte** en plus des limites par IP : verrouillage par adresse à la connexion
+    (`AUTH_LOCKOUT_*`, existant), compteur par compte des codes 2FA admin (existant), et plafond de **5 e-mails
+    d'authentification par adresse et par heure** (inscription d'une adresse existante, renvoi de vérification, lien
+    magique, mot de passe oublié ; réponse neutre inchangée, `LoginAttemptsService.allowAuthEmail`) ;
   - **Mailpit du dev** (magic links, réinitialisations) : réseau interne du dev seulement, jamais joignable depuis
     le réseau partagé, interface et API protégées par Mailpit (`MP_UI_AUTH`, mot de passe du dev), lecture par
     tunnel SSH.
@@ -326,9 +344,10 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   agents), confiné aux noms, réseaux, volumes et ressources du dev ; l'interrupteur GitHub ne résiste pas à un
   workflow modifié sur une branche (secrets lisibles sous GitHub Free) : seul l'arrêt côté VPS le fait ; en
   option B, le code du dev joint directement l'API, l'app, la landing et le banc de la prod ainsi que les
-  conteneurs de MTC présents sur le réseau Traefik (contournement de la basicAuth du banc et des limites Traefik,
-  `X-Forwarded-For` forgeable : menace 12), les contrôles propres de l'API et du banc (sessions, CSRF, rôles,
-  quotas) s'appliquant toujours ; une faille de Docker ou du noyau permettrait de sortir du confinement.
+  conteneurs de MTC présents sur le réseau Traefik (contournement de la basicAuth du banc et des limites Traefik),
+  mais, une fois `EDGE_SHARED_SECRET` posé, l'API et le banc lui répondent **403** (hors santé et `internal/bot`) et
+  `X-Forwarded-For` n'y est plus forgeable ; sans la variable (avertissement au démarrage), ces contournements
+  restent possibles, les contrôles propres de l'API et du banc (sessions, CSRF, rôles, quotas) s'appliquant toujours ; une faille de Docker ou du noyau permettrait de sortir du confinement.
 
 ## Risques résiduels prioritaires (synthèse)
 

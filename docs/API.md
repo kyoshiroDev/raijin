@@ -15,6 +15,8 @@ foi**. Architecture détaillée : `docs/ARCHITECTURE.md` ; sécurité : `docs/SE
 | Erreurs | toujours `{ code, message }` (`apiErrorSchema`), `Cache-Control: no-store`, **jamais de stack en production** (ajoutée en dev pour les 500 seulement) |
 | Documentation interactive | Swagger UI sur **`/api/v1/docs`** (JSON : `/api/v1/docs-json`) **hors production uniquement** (`swaggerEnabled = !isProduction`) ; absente en production |
 | Maintenance | `MAINTENANCE_MODE=1` : toutes les routes sauf `/api/v1/health…` répondent **503 `MAINTENANCE`** avec `Retry-After: 300` |
+| En-tête de Traefik | `EDGE_SHARED_SECRET` défini (production) : toute requête sans en-tête `X-Raijin-Edge` valide (posé par Traefik) répond **403 `FORBIDDEN`**, sauf `/api/v1/health…` et `/api/v1/internal/bot/…` ; sans en-tête valide, `X-Forwarded-*` est ignoré (docs/ENV.md, docs/SECURITY.md §17) |
+| Plafond d'e-mails par adresse | inscription (adresse existante), `verify-email/resend`, `magic-link`, `forgot-password` : au plus 5 e-mails par adresse et par heure, tous types confondus, en plus des limites par IP ; au-delà, même réponse 202 neutre, sans envoi |
 
 Le produit est en **lecture seule on-chain** : aucune route ne signe, n'envoie de transaction ni ne propose de swap.
 Les verdicts ne sont pas un conseil en investissement.

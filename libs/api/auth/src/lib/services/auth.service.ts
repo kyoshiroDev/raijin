@@ -64,9 +64,11 @@ export class AuthService {
     }
     const emailNormalized = normalizeEmail(input.email);
     const passwordHash = await this.passwords.hash(input.password);
+    // Plafond d'e-mails par adresse (compté aussi pour une adresse libre : même coût).
+    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized);
     const existing = await this.prisma.user.findUnique({ where: { emailNormalized } });
     if (existing) {
-      await this.notifyExistingAccount(existing, client);
+      if (mailAllowed) await this.notifyExistingAccount(existing, client);
       return NEUTRAL_MESSAGES.register;
     }
 
@@ -128,7 +130,9 @@ export class AuthService {
       : email
         ? await this.prisma.user.findUnique({ where: { emailNormalized: normalizeEmail(email) } })
         : null;
-    if (user && !user.emailVerifiedAt) {
+    const target = user?.emailNormalized ?? (email ? normalizeEmail(email) : null);
+    const mailAllowed = target ? await this.attempts.allowAuthEmail(target) : false;
+    if (user && !user.emailVerifiedAt && mailAllowed) {
       const token = await this.tokens.issue(user.id, 'EMAIL_VERIFY', this.config.auth.emailVerifyTtlMs);
       this.dispatch('vérification', this.mail.sendEmailVerification(user.email, token));
     }
@@ -257,10 +261,10 @@ export class AuthService {
   // -------------------------------------------------------------------------
 
   async requestMagicLink(input: MagicLinkRequest, client: ClientInfo): Promise<string> {
-    const user = await this.prisma.user.findUnique({
-      where: { emailNormalized: normalizeEmail(input.email) },
-    });
-    if (user) {
+    const emailNormalized = normalizeEmail(input.email);
+    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized);
+    const user = await this.prisma.user.findUnique({ where: { emailNormalized } });
+    if (user && mailAllowed) {
       const token = await this.tokens.issue(
         user.id,
         'MAGIC_LINK',
@@ -296,8 +300,10 @@ export class AuthService {
   // -------------------------------------------------------------------------
 
   async forgotPassword(email: string, client: ClientInfo): Promise<string> {
-    const user = await this.prisma.user.findUnique({ where: { emailNormalized: normalizeEmail(email) } });
-    if (user) {
+    const emailNormalized = normalizeEmail(email);
+    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized);
+    const user = await this.prisma.user.findUnique({ where: { emailNormalized } });
+    if (user && mailAllowed) {
       const token = await this.tokens.issue(user.id, 'PASSWORD_RESET', this.config.auth.passwordResetTtlMs);
       this.dispatch('réinitialisation', this.mail.sendPasswordReset(user.email, token));
       await this.audit.record('auth.password_reset_requested', user.id, client);

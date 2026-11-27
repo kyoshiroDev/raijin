@@ -6,6 +6,7 @@ export * from './lib/config/redis';
 export * from './lib/errors/api-exception';
 export * from './lib/errors/api-exception.filter';
 export * from './lib/errors/error-code';
+export * from './lib/http/edge-guard';
 export * from './lib/http/setup-app';
 export * from './lib/pagination/page-cursor';
 export * from './lib/plan/plan-policy';

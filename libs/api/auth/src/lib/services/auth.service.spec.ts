@@ -352,6 +352,22 @@ describe('AuthService lien magique', () => {
     expect(mail.sendMagicLink).toHaveBeenCalledTimes(1);
   });
 
+  it('plafond par adresse (toutes IP) : au-delà de 5 e-mails par heure, réponse neutre identique mais aucun envoi', async () => {
+    const { mock, service, mail } = await setup();
+    mock.user.findUnique.mockResolvedValue(userFixture({ id: 'u' }));
+    for (let i = 0; i < 4; i++) await service.requestMagicLink({ email: 'jean.dupont@exemple.fr' }, client);
+    await service.forgotPassword('Jean.Dupont@exemple.fr', client);
+    expect(mail.sendMagicLink).toHaveBeenCalledTimes(4);
+    expect(mail.sendPasswordReset).toHaveBeenCalledTimes(1);
+    await expect(service.requestMagicLink({ email: 'jean.dupont@exemple.fr' }, client)).resolves.toBe(NEUTRAL_MESSAGES.magicLink);
+    await expect(service.forgotPassword('jean.dupont@exemple.fr', client)).resolves.toBe(NEUTRAL_MESSAGES.forgot);
+    expect(mail.sendMagicLink).toHaveBeenCalledTimes(4);
+    expect(mail.sendPasswordReset).toHaveBeenCalledTimes(1);
+    // Une autre adresse n'est pas concernée.
+    await service.requestMagicLink({ email: 'autre@exemple.fr' }, client);
+    expect(mail.sendMagicLink).toHaveBeenCalledTimes(5);
+  });
+
   it('vérification : session + page de retour, e-mail vérifié du même coup', async () => {
     const { mock, service, tokens } = await setup();
     tokens.consume.mockResolvedValue({ userId: 'u', redirectPath: '/alertes' });

@@ -1,8 +1,9 @@
-import { Body, Controller, Get, HttpStatus, Module, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Module, Post, Req } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import * as z from 'zod';
+import type { Request } from 'express';
 import request from 'supertest';
 import { testConfig } from '../../testing/test-config';
 import { ApiCoreModule } from '../api-core.module';
@@ -22,8 +23,21 @@ class FakeHealthController {
   }
 }
 
+@Controller('internal/bot')
+class FakeBotInternalController {
+  @Get('ping')
+  ping(@Req() req: Request) {
+    return { ip: req.ip ?? null };
+  }
+}
+
 @Controller('demo')
 class DemoController {
+  @Get('ip')
+  ip(@Req() req: Request) {
+    return { ip: req.ip ?? null, edge: req.headers['x-raijin-edge'] ?? null, raw: req.rawHeaders.some((h) => h.toLowerCase() === 'x-raijin-edge') };
+  }
+
   @Get('ok')
   ok() {
     return { ok: true };
@@ -60,7 +74,7 @@ class DemoController {
 
 async function createApp(env: Record<string, string> = {}): Promise<NestExpressApplication> {
   const config = testConfig({ RATE_LIMIT_AUTH_PER_MINUTE: '2', ...env });
-  @Module({ imports: [ApiCoreModule.forRoot(config)], controllers: [DemoController, FakeHealthController] })
+  @Module({ imports: [ApiCoreModule.forRoot(config)], controllers: [DemoController, FakeHealthController, FakeBotInternalController] })
   class DemoModule {}
   const app = await NestFactory.create<NestExpressApplication>(DemoModule, { bodyParser: false, logger: false });
   setupApp(app, config);
@@ -193,6 +207,84 @@ describe('setupApp en production', () => {
       await request(app.getHttpServer()).get('/api/v1/health').expect(200);
     } finally {
       await app.close();
+    }
+  });
+});
+
+describe('setupApp : en-tête secret de Traefik (EDGE_SHARED_SECRET, X-Raijin-Edge)', () => {
+  const secret = 'e'.repeat(40);
+  const forwarded = '203.0.113.7';
+  let app: NestExpressApplication;
+
+  beforeAll(async () => {
+    app = await createApp({ EDGE_SHARED_SECRET: secret, TRUST_PROXY: '1', RATE_LIMIT_PER_MINUTE: '1000' });
+  });
+  afterAll(() => app.close());
+
+  it('sans en-tête : 403 FORBIDDEN au corps neutre, sans écho de l’en-tête', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1/demo/ok').expect(403);
+    expect(res.body).toEqual({ code: 'FORBIDDEN', message: 'Accès refusé.' });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['x-raijin-edge']).toBeUndefined();
+    await request(app.getHttpServer()).post('/api/v1/demo/echo').send({ email: 'a@b.fr' }).expect(403);
+    await request(app.getHttpServer()).get('/api/v1/inconnu').expect(403);
+  });
+
+  it('mauvais en-tête (autre valeur, préfixe, valeur répétée, casse) : 403', async () => {
+    for (const value of ['f'.repeat(40), secret.slice(0, 39), `${secret}x`, secret.toUpperCase(), ' ']) {
+      await request(app.getHttpServer()).get('/api/v1/demo/ok').set('X-Raijin-Edge', value).expect(403);
+    }
+    await request(app.getHttpServer()).get('/api/v1/demo/ok').set('X-Raijin-Edge', `${secret}, ${secret}`).expect(403);
+  });
+
+  it('bon en-tête : 200, X-Forwarded-For pris en compte (trust proxy), en-tête retiré de la requête', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/demo/ip')
+      .set('x-raijin-edge', secret)
+      .set('X-Forwarded-For', forwarded)
+      .expect(200);
+    expect(res.body).toEqual({ ip: forwarded, edge: null, raw: false });
+    expect(JSON.stringify(res.headers)).not.toContain(secret);
+  });
+
+  it('santé sans en-tête : servie (healthchecks Docker et Traefik)', async () => {
+    await request(app.getHttpServer()).get('/api/v1/health').expect(200);
+    await request(app.getHttpServer()).get('/API/V1/HEALTH').expect(200);
+    // Le préfixe exempté ne couvre pas un chemin voisin.
+    await request(app.getHttpServer()).get('/api/v1/healthx').expect(403);
+  });
+
+  it('préfixe /api/v1/internal/bot/ exempté, mais X-Forwarded-For ignoré sans en-tête valide', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1/internal/bot/ping').set('X-Forwarded-For', forwarded).expect(200);
+    expect(res.body.ip).not.toBe(forwarded);
+    expect(res.body.ip).toMatch(/127\.0\.0\.1|::1/);
+    await request(app.getHttpServer()).get('/api/v1/internal/botx').expect(403);
+  });
+
+  it('X-Forwarded-For ignoré sans en-tête valide (IP = socket) : aucune falsification possible', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1/health').set('X-Forwarded-For', forwarded);
+    expect(res.status).toBe(200);
+    // Contrôle direct sur une route exemptée qui renvoie l'IP.
+    const bot = await request(app.getHttpServer())
+      .get('/api/v1/internal/bot/ping')
+      .set('X-Raijin-Edge', 'faux')
+      .set('X-Forwarded-For', forwarded)
+      .set('Forwarded', `for=${forwarded}`)
+      .expect(200);
+    expect(bot.body.ip).not.toBe(forwarded);
+  });
+
+  it('variable absente : contrôle désactivé, comportement inchangé (trust proxy selon TRUST_PROXY)', async () => {
+    const off = await createApp({ TRUST_PROXY: '1', RATE_LIMIT_PER_MINUTE: '1000' });
+    try {
+      const res = await request(off.getHttpServer()).get('/api/v1/demo/ip').set('X-Forwarded-For', forwarded).expect(200);
+      expect(res.body.ip).toBe(forwarded);
+      await request(off.getHttpServer()).get('/api/v1/demo/ok').expect(200);
+      // L'en-tête, même envoyé, n'est jamais visible en aval.
+      const scrubbed = await request(off.getHttpServer()).get('/api/v1/demo/ip').set('X-Raijin-Edge', 'peu importe').expect(200);
+      expect(scrubbed.body.edge).toBeNull();
+    } finally {
+      await off.close();
     }
   });
 });
