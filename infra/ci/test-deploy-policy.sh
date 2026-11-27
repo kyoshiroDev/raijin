@@ -34,10 +34,11 @@ POSTGRES_SUPERUSER_PASSWORD=$fill
 RAIJIN_DB_PASSWORD=$fill
 BENCH_DB_PASSWORD=$fill
 REDIS_PASSWORD=$fill
+EDGE_SHARED_SECRET=$(openssl rand -hex 32)
 EOF
 # Dev, option B (défaut) : même réseau Traefik que la prod (traefik-ci), aucun réseau propre au dev.
 sed -e 's/^LANDING_DOMAIN=.*/LANDING_DOMAIN=landing-dev.raijinshield.com/' -e 's/^APP_DOMAIN=.*/APP_DOMAIN=dev.raijinshield.com/' \
-  -e 's/^API_DOMAIN=.*/API_DOMAIN=api-dev.raijinshield.com/' "$work/prod.env" >"$work/dev.env"
+  -e 's/^API_DOMAIN=.*/API_DOMAIN=api-dev.raijinshield.com/' -e '/^EDGE_SHARED_SECRET=/d' "$work/prod.env" >"$work/dev.env"
 printf "RAIJIN_NAME=raijin-dev\nRAIJIN_DEV_EDGE=traefik-shared\nDEV_BASIC_AUTH_USERS='ci:\$apr1\$remplissage'\n" >>"$work/dev.env"
 # devenv <nom> <réseau> <mode> : variante du fichier du dev (réseau d'entrée et RAIJIN_DEV_EDGE).
 devenv() { sed -e "s/^TRAEFIK_NETWORK=.*/TRAEFIK_NETWORK=$2/" -e "s/^RAIJIN_DEV_EDGE=.*/RAIJIN_DEV_EDGE=$3/" "$work/dev.env" >"$work/$1.env"; }
@@ -126,6 +127,23 @@ reject "option B : Postgres du dev sur le réseau du Traefik" dev "$(overlay pge
 reject "option B : Redis du dev sur le réseau du Traefik" dev "$(overlay redisedge 'services: {raijin-redis: {networks: [raijin-internal, traefik]}}')"
 reject "option B : réseau interne de la prod ajouté au dev" dev "$(overlay prodnet 'services: {raijin-api: {networks: [raijin-internal, traefik, prodint]}}
 networks: {prodint: {external: true, name: raijin-internal}}')"
+
+echo "== En-tête X-Raijin-Edge (docs/SECURITY.md §17 : API et banc de la prod injoignables en direct)"
+grep -v '^EDGE_SHARED_SECRET=' "$work/prod.env" >"$work/noedge.env"
+cp "$work/noedge.env" "$work/badedge.env"; echo 'EDGE_SHARED_SECRET=trop-court' >>"$work/badedge.env"
+for e in noedge badedge; do
+  cp "$work/$e.env" "$work/prod-$e.env"
+  if (cp "$work/prod.env" "$work/prod.bak" && cp "$work/prod-$e.env" "$work/prod.env" && judge prod); then ko "prod sans EDGE_SHARED_SECRET valide ($e) acceptée"
+  else ok "refusé : prod sans EDGE_SHARED_SECRET valide ($e) ($(head -n 1 "$work/out"))"; fi
+  cp "$work/prod.bak" "$work/prod.env"
+done
+grep -q 'EDGE_SHARED_SECRET=[0-9a-f]\{64\}' "$work/prod.env" && ! grep -qF "$(sed -n 's/^EDGE_SHARED_SECRET=//p' "$work/prod.env")" "$work/out" \
+  && ok "valeur de EDGE_SHARED_SECRET absente des messages" || ko "EDGE_SHARED_SECRET affiché ou absent"
+reject "prod : routeur de l'API sans l'en-tête X-Raijin-Edge" prod "$(overlay edgemw 'services: {raijin-api: {labels: ["traefik.http.routers.raijin-api.middlewares=raijin-api-ratelimit,raijin-api-compress"]}}')"
+reject "prod : EDGE_SHARED_SECRET retiré du conteneur de l'API" prod "$(overlay edgeenv 'services: {raijin-api: {environment: {EDGE_SHARED_SECRET: ""}}}')"
+cp "$work/dev.env" "$work/devedge.env"; sed -n '/^EDGE_SHARED_SECRET=/p' "$work/prod.env" >>"$work/devedge.env"
+DEV_ENVFILE=devedge judge dev && ko "dev avec le secret X-Raijin-Edge de la prod accepté" \
+  || ok "refusé : EDGE_SHARED_SECRET dans le dev ($(head -n 1 "$work/out"))"
 
 echo "== Livraisons dangereuses (dev)"
 reject "privileged" dev "$(overlay privileged 'services: {raijin-web: {privileged: true}}')"

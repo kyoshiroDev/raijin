@@ -317,8 +317,10 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   - **interrupteur** `DEPLOY_DEV_AUTO` (variable GitHub, absente = désactivé, `0` = suspendu) pour le flux normal ;
     **arrêt sûr** côté VPS : commenter la ligne de `~deploy-dev/.ssh/authorized_keys` (efficace même contre un
     workflow modifié sur `dev`) ;
-  - réseau d'entrée : option B sans modification du conteneur Traefik de MTC (PROMPT §7), option A (réseau
-    `raijin-dev-edge` dédié) disponible sur décision de l'utilisateur ; Traefik relié au réseau vérifié ;
+  - réseau d'entrée : **option B retenue** (relecteur final, `docs/PROGRESS.md`), sans modification du conteneur
+    Traefik de MTC (PROMPT §7) ; option A (réseau `raijin-dev-edge` dédié) jamais appliquée par un script sans le
+    drapeau `--dev-edge dedicated` **et** la phrase « option A » tapée au terminal (`infra/vps-setup.sh`) ; Traefik
+    relié au réseau vérifié ;
   - **en-tête secret de Traefik** (condition (a) de l'option B) : `EDGE_SHARED_SECRET` (généré sur le VPS, jamais dans
     GitHub), que Traefik pose dans l'en-tête `X-Raijin-Edge` ; dans `raijin-api`, premier middleware
     (`libs/api/core/src/lib/http/edge-guard.ts`, monté par `setupApp` avant les parseurs et le webhook Stripe) :
@@ -328,7 +330,13 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     s'applique qu'aux requêtes venues de Traefik** (rate limiting, verrouillage, plafond de l'espace admin, empreinte
     anonyme, audit) ; l'en-tête est retiré de la requête (jamais journalisé ni renvoyé). Variable absente en
     production : démarrage autorisé avec avertissement (déploiement existant non cassé). Même règle pour
-    `raijin-bench-api` (docs/BENCH.md). Le partage `/t/<mint>` et les images OG passent par Traefik : servis ;
+    `raijin-bench-api` (docs/BENCH.md). Le partage `/t/<mint>` et les images OG passent par Traefik : servis.
+    Côté infrastructure : middlewares `headers.customRequestHeaders.X-Raijin-Edge=${EDGE_SHARED_SECRET}` sur
+    `raijin-api-headers`, `raijin-share-headers` et `raijin-bench-api-headers` (`infra/docker-compose.yml`), valeur
+    interpolée depuis `/srv/raijin/prod/env/.env` (généré par `infra/vps-setup.sh`, 600, jamais affiché ; masqué en
+    CI) ; `deploy_policy.py` exige en prod 64 hex sur l'en-tête **et** dans l'environnement des deux conteneurs, et
+    l'en-tête sur chaque routeur vers eux ; en dev, valeur vide obligatoire (Traefik retire l'en-tête) ;
+    `infra/deploy.sh` fait les mêmes contrôles. Aucun message ne cite la valeur ;
   - **limites par compte** en plus des limites par IP : verrouillage par adresse à la connexion
     (`AUTH_LOCKOUT_*`, existant), compteur par compte des codes 2FA admin (existant), et plafond de **5 e-mails
     d'authentification par adresse et par heure** (inscription d'une adresse existante, renvoi de vérification, lien
@@ -338,8 +346,15 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     tunnel SSH.
 - **Tests** : `infra/ci/test-deploy-policy.sh` (configurations réelles prod, dev option B et option A acceptées ;
   livraisons dangereuses, réseaux `raijin-…` en option B, Postgres / Redis sur le réseau d'entrée, jeton OIDC forgé
-  refusés), `infra/ci/test-dev-env.sh` et `check-stack-dev.sh` (livraison par la porte, retour automatique, Traefik
-  inchangé, Postgres / Redis de la prod injoignables depuis le dev), `infra/ci/test-vps-setup.sh`.
+  refusés ; prod sans `EDGE_SHARED_SECRET` valide, routeur sans l'en-tête, secret retiré du conteneur, secret dans le
+  dev : refusés), `infra/ci/test-dev-env.sh` et `check-stack-dev.sh` (livraison par la porte, retour automatique,
+  Traefik inchangé, Postgres / Redis de la prod injoignables depuis le dev ; appel direct depuis `raijin-dev-api` vers
+  `raijin-api` et `raijin-bench-api` de la prod → 403, avec ou sans faux en-tête ; même chemin via le Traefik factice
+  → 200 pour l'API, 401 sans session pour le banc, jamais 403), `infra/ci/test-vps-setup.sh` (secret généré, jamais
+  affiché, absent du dev ; option A refusée sans confirmation).
+- **Risque résiduel de l'option B** : le dev partage le réseau du Traefik avec les conteneurs de MTC / XMR Trader et
+  peut les joindre sans passer par Traefik (et réciproquement) : risque **déjà accepté pour la prod**, qui est sur le
+  même réseau ; l'API et le banc de la prod n'y sont plus joignables en direct (403).
 - **Risque résiduel** : **tout push sur `dev` s'exécute sur le VPS** quand `DEPLOY_DEV_AUTO=1` (y compris ceux des
   agents), confiné aux noms, réseaux, volumes et ressources du dev ; l'interrupteur GitHub ne résiste pas à un
   workflow modifié sur une branche (secrets lisibles sous GitHub Free) : seul l'arrêt côté VPS le fait ; en

@@ -12,7 +12,10 @@
 #   1. génère au besoin sur le PC (~/.ssh, droits 600, sans phrase de passe) : raijin-deploy-dev (clé du dev pour
 #      GitHub Actions), raijin-depot-prod (dépôt de la prod seulement), raijin-github-readonly (lecture du dépôt) ;
 #   2. prépare une archive : les scripts figés de infra/ (copie de ton dépôt local) et les clés publiques, plus la
-#      clé de lecture (seule clé privée qui va sur le VPS, pour « git ls-remote ») ;
+#      clé de lecture (seule clé privée qui va sur le VPS, pour « git ls-remote ») ; si .env.dev / .env.prod existent
+#      (bash tools/env/organiser-env.sh), propose d'y joindre leurs valeurs, découpées en fichiers du serveur :
+#      vps-setup.sh complète les variables vides de /srv/raijin/<env>/env/, ne remplace une valeur différente
+#      qu'après confirmation et ne touche jamais aux secrets générés sur le VPS (aucune valeur affichée) ;
 #   3. la copie par scp dans un dossier temporaire du VPS (supprimé à la fin), puis lance
 #      « sudo bash infra/vps-setup.sh --preview-apply » : aperçu, « Continuer ? (o/N) », puis application des blocs
 #      sûrs (option B par défaut, RAIJIN_DEV_EDGE=traefik-shared : le conteneur Traefik n'est pas modifié). Un seul
@@ -119,6 +122,21 @@ for k in raijin-deploy-dev raijin-depot-prod raijin-github-readonly; do
   [[ -f "$KD/$k.pub" ]] && cp -- "$KD/$k.pub" "$TMP/stage/keys/"
 done
 if ((!CHECK)) && [[ -f "$KD/raijin-github-readonly" ]]; then cp -- "$KD/raijin-github-readonly" "$TMP/stage/keys/"; fi
+# Valeurs de .env.dev / .env.prod (facultatif, jamais en --check) : découpées par tools/env/env-tool.mjs.
+if [[ -f .env.dev || -f .env.prod ]]; then
+  if ((CHECK)); then
+    printf '\n(--check : .env.dev et .env.prod ne sont pas envoyés ; sans --check, leur envoi est proposé.)\n'
+  elif ! command -v node >/dev/null; then
+    printf '\nNode.js absent sur le PC : .env.dev et .env.prod ne sont pas envoyés.\n'
+  else
+    printf '\n== Valeurs de .env.dev et .env.prod ==\n'
+    printf '  Sur le VPS : variables vides complétées, valeur différente remplacée seulement si tu confirmes,\n'
+    printf '  secrets générés sur le VPS jamais remplacés. Aucune valeur affichée.\n'
+    if ask_yes "Envoyer ces valeurs avec l'installation ?"; then
+      node tools/env/env-tool.mjs --split "$TMP/stage/envs" || die "découpage de .env.dev / .env.prod impossible (bash tools/env/organiser-env.sh --check)."
+    fi
+  fi
+fi
 tar -C "$TMP/stage" -cf "$TMP/raijin-setup.tar" .
 
 # --- 3. Copie et lancement sur le VPS (une seule connexion SSH, multiplexée) -------------------------------------------
@@ -202,7 +220,8 @@ fi
 cat <<EOF
 
 Ensuite :
-  - remplis sur le VPS les variables listées ci-dessus (« Variables à remplir par toi ») ;
+  - remplis les variables listées ci-dessus (« Variables à remplir par toi ») : dans .env.dev / .env.prod sur ton PC
+    (bash tools/env/organiser-env.sh, puis relance ce script), ou directement sur le VPS ;
   - relance « bash infra/vps-install.sh --check » : il vérifie notamment git ls-remote avec la clé de lecture ;
   - garde les clés ~/.ssh/raijin-* tant que tu en as besoin (relancer ce script réutilise les mêmes) ; une fois tout
     vérifié, tu peux les effacer (shred -u ~/.ssh/raijin-deploy-dev ~/.ssh/raijin-depot-prod ~/.ssh/raijin-github-readonly) :

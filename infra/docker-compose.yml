@@ -266,6 +266,8 @@ services:
       REDIS_URL: redis://raijin-api:${REDIS_PASSWORD}@raijin-redis:6379
       BULLMQ_PREFIX: raijin
       TRUST_PROXY: '1'
+      # Secret de l'en-tête X-Raijin-Edge posé par Traefik (vide en dev : contrôle inactif, docs/SECURITY.md §17)
+      EDGE_SHARED_SECRET: ${EDGE_SHARED_SECRET:-}
       COOKIE_SECURE: 'true'
       COOKIE_DOMAIN: ''
       WEB_INDEX_HTML_PATH: /app/web/index.html
@@ -336,6 +338,10 @@ services:
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-api-headers.headers.frameDeny=true
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-api-headers.headers.customResponseHeaders.X-Robots-Tag=noindex, nofollow
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-api-headers.headers.customResponseHeaders.Server=
+      # X-Raijin-Edge (option B du dev, docs/SECURITY.md §17) : secret EDGE_SHARED_SECRET du .env de la PROD (64 hex, généré par
+      #   infra/vps-setup.sh) ; vide en dev = en-tête retiré par Traefik. L'API et le banc refusent (403) toute requête sans cet
+      #   en-tête valide, sauf la santé : un conteneur voisin du réseau de Traefik (dev, MTC) ne peut pas les joindre en direct.
+      - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-api-headers.headers.customRequestHeaders.X-Raijin-Edge=${EDGE_SHARED_SECRET:-}
       # En-têtes de /t (document HTML de l'app ; la CSP vient de l'API, sharePageCsp)
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-share-headers.headers.stsSeconds=63072000
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-share-headers.headers.stsIncludeSubdomains=true
@@ -346,6 +352,7 @@ services:
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-share-headers.headers.permissionsPolicy=camera=(), microphone=(), geolocation=(), payment=()
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-share-headers.headers.customResponseHeaders.Cross-Origin-Opener-Policy=same-origin
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-share-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-share-headers.headers.customRequestHeaders.X-Raijin-Edge=${EDGE_SHARED_SECRET:-}
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-api-compress.compress=true
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-api-compress.compress.excludedcontenttypes=text/event-stream
 
@@ -493,6 +500,8 @@ services:
       BULLMQ_PREFIX: raijin-bench
       # Un seul proxy (Traefik) devant l'API du banc.
       TRUST_PROXY: '1'
+      # Secret de l'en-tête X-Raijin-Edge posé par Traefik (vide en dev : contrôle inactif, docs/SECURITY.md §17)
+      EDGE_SHARED_SECRET: ${EDGE_SHARED_SECRET:-}
       COOKIE_SECURE: 'true'
     read_only: true
     tmpfs:
@@ -548,6 +557,7 @@ services:
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-bench-api-headers.headers.frameDeny=true
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-bench-api-headers.headers.customResponseHeaders.X-Robots-Tag=noindex, nofollow
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-bench-api-headers.headers.customResponseHeaders.Server=
+      - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-bench-api-headers.headers.customRequestHeaders.X-Raijin-Edge=${EDGE_SHARED_SECRET:-}
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-bench-api-compress.compress=true
       - traefik.http.middlewares.${RAIJIN_NAME:-raijin}-bench-api-compress.compress.excludedcontenttypes=text/event-stream
 

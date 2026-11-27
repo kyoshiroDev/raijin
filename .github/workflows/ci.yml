@@ -121,7 +121,12 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck --version | head -2
-          git ls-files -z 'infra/*.sh' 'infra/**/*.sh' | xargs -0 shellcheck -x -S warning
+          git ls-files -z 'infra/*.sh' 'infra/**/*.sh' 'tools/**/*.sh' | xargs -0 shellcheck -x -S warning
+
+      # Outil des fichiers de variables (tools/env, sans dépendance) : valeurs conservées, ordre, doublons, inconnues,
+      # aucune valeur affichée, idempotence, découpage pour le serveur.
+      - name: Outil des variables (tools/env)
+        run: node --test tools/env/env-tool.test.mjs
 
       # Rapport seul pour l'instant (les workflows existants n'ont jamais été passés à actionlint) : à rendre bloquant
       # (retirer continue-on-error) dès que le premier rapport est vide.

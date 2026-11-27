@@ -34,6 +34,13 @@
 #                                 dedicated (option A) : réseau raijin-dev-edge propre au dev, que Traefik rejoint par
 #                                   « docker network connect » (modifie le conteneur de MTC : ta décision explicite).
 #                               Sans l'option : valeur déjà présente dans /srv/raijin/dev/env/.env, sinon traefik-shared.
+#                               L'option A n'est JAMAIS appliquée sans ce drapeau ET la phrase « option A » tapée au
+#                               terminal (décision à consigner d'abord dans docs/PROGRESS.md) ; option B retenue.
+#   --envs <dossier>            valeurs envoyées depuis ton PC (bash infra/vps-install.sh, tirées de .env.dev et
+#                               .env.prod) : <dossier>/dev/.env, .env.api ; <dossier>/prod/.env, .env.api, .env.bench-api.
+#                               Fusion : les variables vides du VPS sont complétées ; une valeur différente n'est
+#                               remplacée qu'après confirmation (ancienne version sauvegardée) ; les secrets générés
+#                               sur le VPS ne sont jamais remplacés. Aucune valeur affichée.
 #
 # Garanties : idempotent (relançable), ne supprime rien (une version remplacée est gardée dans
 # /var/lib/raijin-deploy/sauvegardes/), ne touche qu'à ce qui s'appelle raijin* / deploy-dev / deploy-prod ; jamais de
@@ -67,7 +74,7 @@ GITHUB_ED25519_FP='SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU'
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 MODE=check YES_SAFE=0 PREVIEW_APPLY=0
-REPO='' KEYS_DIR='' DEV_KEY='' PROD_KEY='' RO_KEY='' TRAEFIK='' DEV_EDGE_OPT=''
+REPO='' KEYS_DIR='' ENVS_DIR='' OPTION_A_OK=0 DEV_KEY='' PROD_KEY='' RO_KEY='' TRAEFIK='' DEV_EDGE_OPT=''
 
 usage() { sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { printf '\nERREUR : %s\n' "$*" >&2; exit 1; }
@@ -80,6 +87,7 @@ while (($#)); do
     --preview-apply) PREVIEW_APPLY=1 ;;
     --repo) REPO="${2:-}"; shift ;;
     --keys) KEYS_DIR="${2:-}"; shift ;;
+    --envs) ENVS_DIR="${2:-}"; shift ;;
     --dev-key) DEV_KEY="${2:-}"; shift ;;
     --prod-key) PROD_KEY="${2:-}"; shift ;;
     --readonly-key) RO_KEY="${2:-}"; shift ;;
@@ -103,6 +111,10 @@ if [[ -n "$KEYS_DIR" ]]; then
   [[ -n "$PROD_KEY" || ! -f "$KEYS_DIR/raijin-depot-prod.pub" ]] || PROD_KEY="$KEYS_DIR/raijin-depot-prod.pub"
   [[ -n "$RO_KEY" || ! -f "$KEYS_DIR/raijin-github-readonly" ]] || RO_KEY="$KEYS_DIR/raijin-github-readonly"
 fi
+if [[ -z "$ENVS_DIR" && -d "$SCRIPT_DIR/../envs" ]]; then ENVS_DIR="$SCRIPT_DIR/../envs"; fi
+if [[ -n "$ENVS_DIR" ]]; then
+  [[ -d "$ENVS_DIR" && ! -L "$ENVS_DIR" ]] || die "--envs : dossier introuvable."
+fi
 for f in "${FROZEN_EXEC[@]}" "${FROZEN_LIB[@]}"; do
   [[ -f "$SCRIPT_DIR/$f" ]] || die "fichier manquant à côté du script : infra/$f (copie l'archive complète)."
 done
@@ -110,6 +122,18 @@ done
 # Sudo appelant (pour la règle --approve et l'alias) : seulement un nom d'utilisateur ordinaire.
 CALLER="${SUDO_USER:-}"
 [[ "$CALLER" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$CALLER" != root ]] || CALLER=''
+
+# Option A (réseau propre au dev, « docker network connect » sur le Traefik de MTC) : décision écartée (option B
+# retenue). Garde : drapeau --dev-edge dedicated ET phrase tapée au terminal, sinon rien n'est appliqué.
+if [[ "$DEV_EDGE_OPT" == dedicated ]]; then
+  printf "\nOption A demandée (--dev-edge dedicated) : elle modifie le conteneur Traefik de MTC.\n"
+  printf "Elle ne s'applique que si ta décision est consignée dans docs/PROGRESS.md (option B retenue par défaut).\n"
+  if [[ -t 0 ]]; then
+    r=''; read -r -p "Tape « option A » pour confirmer (autre réponse = option B conservée) : " r || true
+    [[ "$r" == "option A" ]] && OPTION_A_OK=1
+  fi
+  ((OPTION_A_OK)) || { printf "Option A non confirmée : le réseau d'entrée du dev reste en option B.\n"; DEV_EDGE_OPT=''; }
+fi
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Affichage et moteur des blocs. Chaque bloc est une fonction appelée deux fois : passe de lecture (DRY=1 : constats et
@@ -227,11 +251,11 @@ detect_docker() {
 }
 TRAEFIK_CANDIDATES='' TRAEFIK_NETS='' TRAEFIK_NETS_ALL=''
 # Mode du réseau d'entrée du dev (C2) : --dev-edge, sinon le .env du dev, sinon traefik-shared (option B).
+# Option A seulement si confirmée dans CE lancement (drapeau + phrase) : un .env qui dit « dedicated » ne suffit pas.
 dev_edge_mode() {
-  local v="$DEV_EDGE_OPT"
-  [[ -n "$v" ]] || v="$(env_value "$BASE/dev/env/.env" RAIJIN_DEV_EDGE)"
-  [[ "$v" == dedicated ]] && echo dedicated || echo traefik-shared
+  ((OPTION_A_OK)) && echo dedicated || echo traefik-shared
 }
+dev_edge_file_mode() { env_value "$BASE/dev/env/.env" RAIJIN_DEV_EDGE; }
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Blocs
@@ -430,6 +454,8 @@ RAIJIN_DB_PASSWORD=
 BENCH_DB_PASSWORD=
 REDIS_PASSWORD=
 REDIS_BENCH_PASSWORD=
+# Secret de l'en-tête X-Raijin-Edge posé par Traefik vers raijin-api et raijin-bench-api (généré, jamais affiché)
+EDGE_SHARED_SECRET=
 # Valeurs publiques de la landing (facultatives, partie B)
 GA4_MEASUREMENT_ID=
 GOOGLE_SITE_VERIFICATION=
@@ -642,7 +668,7 @@ block_env() {
 
   f="$BASE/prod/env/.env"
   fill_pg "$f" raijin-pgdata
-  fill_env "$f" REDIS_PASSWORD:hex REDIS_BENCH_PASSWORD:hex
+  fill_env "$f" REDIS_PASSWORD:hex REDIS_BENCH_PASSWORD:hex EDGE_SHARED_SECRET:hex
   fill_public "$f" TRAEFIK_NETWORK "$TRAEFIK_NET" "réseau du Traefik détecté (A2)"
   fill_public "$f" TRAEFIK_ENTRYPOINT "$TRAEFIK_EP" "entrypoint :443 détecté"
   fill_public "$f" TRAEFIK_CERTRESOLVER "$TRAEFIK_CR" "certresolver détecté"
@@ -654,6 +680,9 @@ block_env() {
   fill_pg "$f" raijin-dev-pgdata
   fill_env "$f" REDIS_PASSWORD:hex
   local mode; mode="$(dev_edge_mode)"
+  if [[ "$mode" != dedicated && "$(dev_edge_file_mode)" == dedicated ]]; then
+    warn "$f : RAIJIN_DEV_EDGE=dedicated (option A) sans --dev-edge dedicated confirmé : rien n'est appliqué pour l'option A ; option B retenue (C2), mets RAIJIN_DEV_EDGE=traefik-shared et TRAEFIK_NETWORK = réseau de la prod."
+  fi
   fill_public "$f" RAIJIN_DEV_EDGE "$mode" "réseau d'entrée du dev, C2"
   if [[ "$mode" == dedicated ]]; then
     fill_public "$f" TRAEFIK_NETWORK "$DEV_EDGE" "option A : réseau propre au dev"
@@ -687,6 +716,72 @@ block_env() {
     vk=''
   done
 }
+
+# --- Valeurs envoyées depuis ton PC (.env.dev / .env.prod, bash infra/vps-install.sh) ------------------------------
+# Jamais remplacées quand elles sont déjà renseignées sur le VPS : secrets générés (ou demandés) par ce script, et le
+# choix du réseau d'entrée du dev (option A : drapeau et confirmation, jamais par fichier).
+PROTECTED_KEYS=" POSTGRES_SUPERUSER_PASSWORD RAIJIN_DB_PASSWORD BENCH_DB_PASSWORD REDIS_PASSWORD REDIS_BENCH_PASSWORD
+  REDIS_BOT_PASSWORD EDGE_SHARED_SECRET JWT_ACCESS_SECRET COOKIE_SECRET IP_HASH_SECRET TOTP_ENCRYPTION_KEY VAPID_PUBLIC_KEY
+  VAPID_PRIVATE_KEY DEV_BASIC_AUTH_USERS RAIJIN_DEV_EDGE "
+PROTECTED_KEYS="$(printf '%s' "$PROTECTED_KEYS" | tr -s ' \n' '  ')"
+declare -A MERGE_BACKED=()
+# Valeur brute (guillemets compris) de la dernière ligne KEY=, jamais affichée.
+env_raw() { RJ_KEY="$2" awk 'BEGIN{k=ENVIRON["RJ_KEY"]; v=""} index($0, k "=") == 1 { v = substr($0, length(k) + 2) } END { printf "%s", v }' "$1"; }
+incoming_keys() { awk '/^[A-Z][A-Z0-9_]*=/ { sub(/=.*/, ""); print }' "$1" | sort -u; }
+merge_fill_one() { local raw; raw="$(env_raw "$3" "$2")"; RJ_VALUE="$raw" set_var "$1" "$2"; raw=''; }
+merge_replace_one() { # fichier, clé, source : remplace toutes les lignes KEY= (sauvegarde du fichier une fois)
+  local file="$1" key="$2" raw tmp
+  if [[ -z "${MERGE_BACKED[$file]:-}" ]]; then backup_file "$file"; MERGE_BACKED[$file]=1; fi
+  raw="$(env_raw "$3" "$key")"
+  tmp="$(mktemp "$(dirname "$file")/.vps-setup.XXXXXX")"
+  RJ_KEY="$key" RJ_VALUE="$raw" awk 'BEGIN{k=ENVIRON["RJ_KEY"]; v=ENVIRON["RJ_VALUE"]; done=0}
+    index($0, k "=") == 1 { if (!done) print k "=" v; done = 1; next }
+    { print }
+    END { if (!done) print k "=" v }' "$file" >"$tmp"
+  raw=''
+  chown --reference="$file" "$tmp"; chmod --reference="$file" "$tmp"; mv -f -- "$tmp" "$file"
+}
+# Parcourt les fichiers reçus : $1 = fill (compléter les vides, bloc sûr) | replace (valeurs différentes, demandé).
+merge_pass() {
+  local what="$1" e n src dst k new cur same
+  if [[ -z "$ENVS_DIR" ]]; then
+    if [[ "$what" == fill ]]; then info "aucune valeur envoyée depuis le PC (bash infra/vps-install.sh propose .env.dev et .env.prod)."; fi
+    return 0
+  fi
+  for e in dev prod; do
+    for n in .env .env.api .env.bench-api; do
+      src="$ENVS_DIR/$e/$n" dst="$BASE/$e/env/$n"
+      [[ -f "$src" && ! -L "$src" ]] || continue
+      [[ "$n" != .env.bench-api || "$e" == prod ]] || continue
+      if [[ -L "$dst" ]]; then warn "$dst est un lien symbolique : valeurs du PC non fusionnées."; continue; fi
+      if [[ ! -e "$dst" ]]; then
+        [[ "$what" == fill ]] || continue
+        if ((!DRY)) && ! [[ -d "$BASE/$e/env" ]]; then printf '  [passé]    %s (dossier absent)\n' "$dst"; continue; fi
+        act "créer $dst ($(env_owner "$e" "$n"), valeurs du PC)" create_env_file "$dst" "$(env_owner "$e" "$n")" true
+      fi
+      same=0
+      while IFS= read -r k; do
+        [[ "$k" =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
+        new="$(env_value "$src" "$k")"
+        [[ -n "$new" ]] || continue
+        cur="$(env_value "$dst" "$k")"
+        if [[ -z "$cur" ]]; then
+          if [[ "$what" == fill ]]; then act "compléter $k dans $dst (valeur du PC, jamais affichée)" merge_fill_one "$dst" "$k" "$src"; fi
+        elif [[ "$cur" == "$new" ]]; then same=$((same + 1))
+        elif [[ " $PROTECTED_KEYS " == *" $k "* ]]; then
+          if [[ "$what" == fill ]]; then info "$e $n : $k garde la valeur du VPS (secret ou choix du serveur, jamais remplacé)"; fi
+        else
+          if [[ "$what" == replace ]]; then act "remplacer $k dans $dst par la valeur du PC (ancienne version sauvegardée)" merge_replace_one "$dst" "$k" "$src"; fi
+        fi
+        new='' cur=''
+      done < <(incoming_keys "$src")
+      if [[ "$what" == fill ]] && ((same)); then ok "$e $n : $same valeur(s) du PC déjà identiques"; fi
+    done
+  done
+  return 0
+}
+block_merge_fill() { merge_pass fill; }
+block_merge_replace() { merge_pass replace; }
 
 # --- Clés SSH (C5) ----------------------------------------------------------------------------------------------------
 pub_line() { # fichier .pub -> « type base64 » validé, ou vide
@@ -982,6 +1077,8 @@ run_all() {
   run_block "Scripts figés /opt/raijin-deploy (C4, C8)" safe block_frozen
   run_block "Règles sudo (C2, C6)" safe block_sudoers
   run_block "Fichiers de variables (C3)" safe block_env
+  run_block "Valeurs du PC : compléter les variables vides" safe block_merge_fill
+  run_block "Valeurs du PC : remplacer les valeurs différentes (toujours demandé)" ask block_merge_replace
   run_block "Clés SSH et GitHub (C5)" safe block_keys
   run_block "Réseau du Traefik de référence (C2)" safe block_traefik_ref
   run_block "Réseau d'entrée du dev (C2, option $(dev_edge_mode))" safe block_network

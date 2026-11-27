@@ -158,6 +158,33 @@ else
   ko "api-dev : webhook Stripe → $code (réponse de l'API attendue, sans basicAuth)"
 fi
 
+echo "== Accès direct du dev vers la prod (en-tête X-Raijin-Edge, docs/SECURITY.md §17)"
+# Option B : raijin-dev-api partage le réseau du Traefik avec raijin-api et raijin-bench-api. Un appel direct (sans
+# Traefik, donc sans l'en-tête secret) doit recevoir 403, même avec un faux en-tête ; le même chemin via Traefik passe.
+# direct <conteneur:port><chemin> [en-tête] → code HTTP vu depuis raijin-dev-api (node, sans outil réseau dans l'image).
+direct() {
+  docker exec -e RJ_URL="http://$1" -e RJ_HDR="${2:-}" raijin-dev-api node -e '
+    const h = process.env.RJ_HDR ? { "X-Raijin-Edge": process.env.RJ_HDR } : {};
+    fetch(process.env.RJ_URL, { headers: h, signal: AbortSignal.timeout(15000) })
+      .then((r) => console.log(r.status), () => console.log("000"));' 2>/dev/null || echo 000
+}
+code="$(direct raijin-api:3000/api/v1/billing/plans)"
+[[ "$code" == 403 ]] && ok "dev → raijin-api en direct : 403" || ko "dev → raijin-api en direct : $code au lieu de 403"
+code="$(direct raijin-api:3000/api/v1/billing/plans faux-entete-0000)"
+[[ "$code" == 403 ]] && ok "dev → raijin-api en direct, faux X-Raijin-Edge : 403" || ko "dev → raijin-api, faux en-tête : $code au lieu de 403"
+code="$(direct raijin-api:3000/api/v1/health)"
+[[ "$code" == 200 ]] && ok "dev → raijin-api /health en direct : 200 (santé exemptée)" || ko "dev → raijin-api /health : $code au lieu de 200"
+check api.raijinshield.com /api/v1/billing/plans 200
+if docker inspect raijin-bench-api >/dev/null 2>&1; then
+  code="$(direct raijin-bench-api:3000/api/status)"
+  [[ "$code" == 403 ]] && ok "dev → raijin-bench-api en direct : 403" || ko "dev → raijin-bench-api en direct : $code au lieu de 403"
+  # Via Traefik (basicAuth du banc) : l'en-tête passe, la session manque → 401 de l'API du banc, jamais 403.
+  printf 'user = "%s"\n' "${BENCH_CI_BASIC_AUTH:-}" >"$tmp/bench-auth"; chmod 600 "$tmp/bench-auth"
+  code="$(curl -sk --max-time 30 --config "$tmp/bench-auth" --resolve "banc.raijinshield.com:$PORT:127.0.0.1" -o /dev/null \
+    -w '%{http_code}' "https://banc.raijinshield.com:$PORT/api/status" || echo 000)"
+  [[ "$code" == 401 ]] && ok "banc via Traefik : en-tête accepté (401 sans session)" || ko "banc via Traefik : $code au lieu de 401"
+fi
+
 echo "== Production intacte"
 HDR='X-Raijin-Robots: deny' check raijinshield.com /robots.txt 200 '!x-robots-tag'
 if grep -q '^Disallow: /$' "$tmp/body"; then ko "prod : l'en-tête interne a changé robots.txt"; else ok "prod : robots.txt de la landing inchangé (en-tête interne ignoré)"; fi

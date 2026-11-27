@@ -878,8 +878,15 @@ sudo sshd -T | grep -iE '^(acceptenv|permituserenvironment|allowusers|allowgroup
 #   si allowusers / allowgroups existe : y ajouter deploy-dev et deploy-prod, puis sudo sshd -t && sudo systemctl reload ssh
 ```
 
-**Réseau d'entrée du dev** (`RAIJIN_DEV_EDGE` dans `/srv/raijin/dev/env/.env`) : **ta décision**. Le conteneur
-Traefik a été créé par MyTradingCoach, et PROMPT §7 interdit de toucher à MTC ; deux options, la B est le défaut :
+**Réseau d'entrée du dev** (`RAIJIN_DEV_EDGE` dans `/srv/raijin/dev/env/.env`) : **option B retenue** (choix du
+relecteur final, consigné dans `docs/PROGRESS.md`). Le conteneur Traefik a été créé par MyTradingCoach, et PROMPT §7
+interdit de toucher à MTC. Condition de l'option B : Traefik pose vers `raijin-api` et `raijin-bench-api` de la
+**prod** l'en-tête `X-Raijin-Edge` = `EDGE_SHARED_SECRET` (64 hex, généré par `infra/vps-setup.sh` dans
+`/srv/raijin/prod/env/.env`, droits 600, jamais affiché ni dans le dépôt) ; l'API et le banc répondent **403** à toute
+requête sans cet en-tête valide (sauf la santé) et ignorent alors `X-Forwarded-*` : un conteneur du dev (ou de MTC)
+qui les appelle en direct, sans Traefik, est refusé. Dans le dev, la valeur reste vide (Traefik retire l'en-tête) ;
+la porte refuse le secret côté dev, et refuse la prod si un routeur vers l'API ou le banc n'a pas l'en-tête ou si
+le secret manque (`deploy_policy.py`, `infra/deploy.sh`) :
 
 | | Option B : `RAIJIN_DEV_EDGE=traefik-shared` (**défaut**) | Option A : `RAIJIN_DEV_EDGE=dedicated` |
 |---|---|---|
@@ -888,7 +895,7 @@ Traefik a été créé par MyTradingCoach, et PROMPT §7 interdit de toucher à 
 | Ce que le dev peut joindre directement | l'API, l'app, la landing et le banc de la prod **et** les conteneurs de MTC / XMR Trader présents sur ce réseau (sans passer par Traefik) | rien d'autre que Traefik |
 | Ce qui reste isolé | Postgres et Redis de la prod (réseau interne `raijin-internal`, jamais sur le réseau d'entrée : refusé par la porte), secrets de la prod (`deploy-dev` ne lit rien de `/srv/raijin/prod`), volumes, noms, routeurs Traefik (`Host(`…-dev…`)` seulement) | idem |
 | Fragilité | aucune : rien à refaire si Traefik est recréé | si Traefik est **recréé** (mise à jour de MTC), la connexion disparaît : le dev répond 404/502 jusqu'à ce que tu relances `docker network connect` |
-| Risque | un code malveillant poussé sur `dev` peut appeler l'API de la prod **sans Traefik** : il contourne la basicAuth du banc, les limites Traefik, et peut forger `X-Forwarded-For` (l'API fait confiance à 1 saut, `TRUST_PROXY=1`) donc fausser le comptage par IP. Il reste soumis aux contrôles propres de l'API (sessions, CSRF, rôles, quotas par compte) et du banc (session propriétaire, CSRF). Même exposition que celle déjà acceptée pour MTC sur ce réseau | toucher un conteneur qui n'est pas à Raijin (décision de l'utilisateur à consigner dans `docs/PROGRESS.md`) |
+| Risque | appel direct de l'API ou du banc de la prod **sans Traefik** : **403** (en-tête `X-Raijin-Edge` absent, `X-Forwarded-For` ignoré). Reste : le dev peut joindre en direct les conteneurs de MTC / XMR Trader présents sur ce réseau, et l'app / la landing de la prod (fichiers statiques publics) ; risque **déjà accepté pour la prod**, qui partage ce réseau avec MTC | toucher un conteneur qui n'est pas à Raijin (décision de l'utilisateur à consigner dans `docs/PROGRESS.md`) |
 
 Option B (défaut, rien à faire sur Traefik) : dans `/srv/raijin/dev/env/.env`,
 
@@ -906,8 +913,10 @@ réseau d'entrée ou de `raijin-dev-edge`, et Postgres, Redis ou Mailpit sur un 
 seulement le drapeau `external`). `infra/deploy.sh` et `release.sh` vérifient qu'un conteneur Traefik est relié au
 réseau d'entrée.
 
-Option A (seulement si tu la choisis, après avoir noté ta décision) : `sudo bash infra/vps-setup.sh --apply
---dev-edge dedicated` (demande toujours confirmation), ou à la main :
+Option A (écartée ; seulement si tu reviens sur ce choix, après avoir consigné ta décision dans `docs/PROGRESS.md`) :
+`sudo bash infra/vps-setup.sh --apply --dev-edge dedicated`, puis taper « option A » quand le script le demande. Sans
+ce drapeau **et** cette phrase dans le même lancement, aucun script n'applique l'option A, même si le `.env` du dev
+contient `RAIJIN_DEV_EDGE=dedicated` (avertissement, option B conservée). À la main :
 
 ```bash
 docker network create raijin-dev-edge
@@ -920,7 +929,9 @@ En option A, le déploiement du dev échoue proprement (contrôle de routage) ta
 Revenir de A à B : remets `RAIJIN_DEV_EDGE=traefik-shared` et `TRAEFIK_NETWORK=<réseau de A2>`, redéploie le dev ;
 `docker network disconnect raijin-dev-edge <traefik>` reste à faire par toi (aucun script ne le fait). Tests : option B
 en CI de bout en bout (`infra/ci/test-dev-env.sh`, `check-stack-dev.sh` : Traefik inchangé, Postgres / Redis de la
-prod injoignables), options A et B et leurs refus dans `infra/ci/test-deploy-policy.sh`.
+prod injoignables, appel direct du dev vers `raijin-api` et `raijin-bench-api` de la prod → 403, même chemin via
+Traefik accepté), options A et B, l'en-tête `X-Raijin-Edge` et leurs refus dans `infra/ci/test-deploy-policy.sh`,
+garde de l'option A dans `infra/ci/test-vps-setup.sh`.
 
 ## C3. Fichiers de variables
 

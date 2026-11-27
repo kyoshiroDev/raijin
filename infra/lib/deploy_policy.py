@@ -539,6 +539,21 @@ def prefixed(value, name):
     return v.startswith(name + '-') and (name == 'raijin-dev' or not v.startswith('raijin-dev-'))
 
 
+# En-tête X-Raijin-Edge (docs/SECURITY.md §17, option B du dev) : posé par Traefik vers l'API et le banc de la PROD, valeur
+# EDGE_SHARED_SECRET (64 hex, générée sur le VPS). Prod : obligatoire et valide sur chaque routeur vers ces services ;
+# dev : toujours vide (Traefik retire l'en-tête), jamais le secret de la prod. Aucune valeur dans les messages.
+EDGE_OPT = 'customrequestheaders.x-raijin-edge'
+EDGE_SECRET_RE = re.compile(r'[0-9a-f]{64}')
+EDGE_TARGETS = ('api', 'bench-api')
+
+
+def env_of(service):
+    env = service.get('environment') or {}
+    if isinstance(env, list):
+        env = dict(item.split('=', 1) if '=' in item else (item, '') for item in env)
+    return env
+
+
 def check_labels(svc, labels, a):
     for key, value in labels.items():
         # La configuration résolue échappe « $ » en « $$ » (relue par Compose) : valeur réelle comparée.
@@ -585,9 +600,11 @@ def check_labels(svc, labels, a):
                 if v != a.certresolver:
                     fail(f'{svc} : routeur {obj} : certresolver différent de celui de l\'environnement')
             elif rest == 'service':
+                a.edge_routers.setdefault((svc, obj), {})['service'] = v
                 if '@' in v or not prefixed(v, a.name):
                     fail(f'{svc} : routeur {obj} : service refusé (autre fournisseur ou autre projet)')
             elif rest == 'middlewares':
+                a.edge_routers.setdefault((svc, obj), {})['mws'] = [x.strip() for x in v.split(',') if x.strip()]
                 for mw in [x.strip() for x in v.split(',') if x.strip()]:
                     if '@' in mw or not prefixed(mw, a.name):
                         fail(f'{svc} : routeur {obj} : middleware refusé (autre fournisseur ou autre projet)')
@@ -596,6 +613,16 @@ def check_labels(svc, labels, a):
             allowed = MIDDLEWARE_OPTIONS.get(mtype)
             if allowed is None:
                 fail(f'{svc} : middleware {obj} : type {mtype[:40]} refusé')
+                continue
+            if mtype == 'headers' and opt == EDGE_OPT:
+                if a.name == 'raijin-dev':
+                    if v:
+                        fail(f'{svc} : middleware {obj} : X-Raijin-Edge doit rester vide dans le dev (secret de la prod)')
+                elif EDGE_SECRET_RE.fullmatch(v):
+                    a.edge_mws.add(obj)
+                else:
+                    fail(f'{svc} : middleware {obj} : X-Raijin-Edge sans EDGE_SHARED_SECRET valide (64 hex, '
+                         'généré par infra/vps-setup.sh dans le .env de la prod)')
                 continue
             if mtype == 'headers' and (opt.startswith('customresponseheaders.') or opt == 'customrequestheaders.x-raijin-robots'):
                 continue
@@ -628,6 +655,7 @@ def cmd_compose(argv):
     p.add_argument('--edge', default='')
     p.add_argument('--traefik-network', default='')
     a = p.parse_args(argv)
+    a.edge_mws, a.edge_routers, a.edge_env = set(), {}, {}
     a.root = os.path.realpath(a.root)
     a.hosts = {h.strip().lower() for h in a.hosts.split(',') if h.strip()}
     name = a.name
@@ -776,6 +804,19 @@ def cmd_compose(argv):
                 if not str(env.get('MP_UI_AUTH') or env.get('MP_UI_AUTH_FILE') or '').strip():
                     fail(f'{svc} : Mailpit sans authentification (MP_UI_AUTH obligatoire)')
         check_labels(svc, labels_of(s), a)
+        secret = str(env_of(s).get('EDGE_SHARED_SECRET') or '')
+        if name == 'raijin-dev' and secret:
+            fail(f'{svc} : EDGE_SHARED_SECRET interdit dans le dev (secret de la prod, docs/SECURITY.md §17)')
+        a.edge_env[svc] = bool(EDGE_SECRET_RE.fullmatch(secret))
+    if name == 'raijin':
+        targets = {f'{name}-{t}' for t in EDGE_TARGETS}
+        for (svc, router), r in sorted(a.edge_routers.items()):
+            if r.get('service') not in targets:
+                continue
+            if not any(mw in a.edge_mws for mw in r.get('mws', [])):
+                fail(f'{svc} : routeur {router} vers {r["service"]} sans en-tête X-Raijin-Edge (docs/SECURITY.md §17)')
+            if not a.edge_env.get(svc):
+                fail(f'{svc} : EDGE_SHARED_SECRET absent ou invalide dans l\'environnement du conteneur (docs/SECURITY.md §17)')
     finish('compose')
 
 

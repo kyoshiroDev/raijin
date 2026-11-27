@@ -88,6 +88,10 @@ for e in dev prod; do
   [[ "$(val "/srv/raijin/$e/env/.env.api" VAPID_PUBLIC_KEY)" =~ ^B[A-Za-z0-9_-]{86}$ ]] || fail "$e VAPID_PUBLIC_KEY"
 done
 [[ "$(val /srv/raijin/dev/env/.env REDIS_PASSWORD)" != "$(val /srv/raijin/prod/env/.env REDIS_PASSWORD)" ]] || fail "secret commun dev/prod"
+v="$(val /srv/raijin/prod/env/.env EDGE_SHARED_SECRET)"
+[[ "$v" =~ ^[0-9a-f]{64}$ ]] || fail "prod EDGE_SHARED_SECRET non généré"
+grep -qF "$v" /tmp/apply1.log && fail "EDGE_SHARED_SECRET affiché"
+[[ -z "$(val /srv/raijin/dev/env/.env EDGE_SHARED_SECRET)" ]] || fail "EDGE_SHARED_SECRET dans le dev"
 [[ "$(val /srv/raijin/prod/env/.env DEPLOY_GIT_REMOTE)" == git@github.com:test-owner/raijin.git ]] || fail "DEPLOY_GIT_REMOTE"
 [[ -z "$(val /srv/raijin/dev/env/.env DEV_BASIC_AUTH_USERS)" ]] || fail "basicAuth sans terminal"
 grep -q 'Traefik et réseau du dev' /tmp/apply1.log || fail "bloc Traefik absent"
@@ -116,5 +120,41 @@ diff /tmp/s1 /tmp/s2 || fail "la 2e passe a modifié des fichiers"
 grep -q '\[fait\]' /tmp/apply2.log && { grep '\[fait\]' /tmp/apply2.log; fail "la 2e passe a agi"; }
 bash infra/vps-setup.sh --check --keys keys --repo test-owner/raijin </dev/null >/tmp/check2.log 2>&1 || fail "--check final"
 if grep '\[à faire\]' /tmp/check2.log | grep -v -e 'mot de passe du dev' -e 'empreinte de github.com'; then fail "--check final annonce encore des actions"; fi
+
+echo "--- 4. option A : jamais sans drapeau ET confirmation tapée"
+bash infra/vps-setup.sh --check --keys keys --repo test-owner/raijin --dev-edge dedicated </dev/null >/tmp/optA.log 2>&1 || { cat /tmp/optA.log; fail "--check option A"; }
+grep -q 'Option A non confirmée' /tmp/optA.log || fail "option A sans confirmation non refusée"
+grep -q 'option traefik-shared' /tmp/optA.log || fail "option A non confirmée : option B attendue"
+grep -q 'docker network connect' /tmp/optA.log && fail "option A proposée sans confirmation"
+
+echo "--- 5. valeurs envoyées depuis le PC (--envs) : vides complétées, différentes seulement sur confirmation, secrets du VPS gardés"
+mkdir -p envs/dev envs/prod
+jwt_before="$(val /srv/raijin/dev/env/.env.api JWT_ACCESS_SECRET)"
+printf 'HELIUS_API_KEY=pc-helius-SENTINEL\nJWT_ACCESS_SECRET=pc-jwt-SENTINEL\nHELIUS_DAILY_CREDIT_BUDGET=4000\n' >envs/dev/.env.api
+printf 'APP_DOMAIN=autre-dev.raijinshield.com\nRAIJIN_DEV_EDGE=dedicated\n' >envs/dev/.env
+printf 'WATCHDOG_ALERT_EMAIL=pc-SENTINEL@exemple.invalid\nBACKUP_RETENTION_DAYS=14\n' >envs/prod/.env
+printf 'BENCH_OWNER_EMAIL=banc-SENTINEL@exemple.invalid\nBENCH_MODE=shadow\n' >envs/prod/.env.bench-api
+chmod 600 envs/*/.env*
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --envs envs --repo test-owner/raijin </dev/null >/tmp/apply3.log 2>&1 || { cat /tmp/apply3.log; fail "--apply --envs"; }
+grep -q SENTINEL /tmp/apply3.log && fail "valeur du PC affichée"
+[[ "$(val /srv/raijin/dev/env/.env.api HELIUS_API_KEY)" == pc-helius-SENTINEL ]] || fail "HELIUS_API_KEY non complétée"
+[[ "$(val /srv/raijin/dev/env/.env.api JWT_ACCESS_SECRET)" == "$jwt_before" ]] || fail "secret du VPS remplacé"
+grep -q 'JWT_ACCESS_SECRET garde la valeur du VPS' /tmp/apply3.log || fail "secret gardé non signalé"
+[[ "$(val /srv/raijin/dev/env/.env.api HELIUS_DAILY_CREDIT_BUDGET)" == 5000 ]] || fail "valeur différente remplacée sans confirmation"
+grep -q 'remplacer HELIUS_DAILY_CREDIT_BUDGET' /tmp/apply3.log || fail "remplacement non proposé"
+[[ "$(val /srv/raijin/dev/env/.env APP_DOMAIN)" == dev.raijinshield.com ]] || fail "APP_DOMAIN du dev remplacé sans confirmation"
+[[ "$(val /srv/raijin/dev/env/.env RAIJIN_DEV_EDGE)" == traefik-shared ]] || fail "RAIJIN_DEV_EDGE modifié par un fichier"
+check_perm /srv/raijin/dev/env/.env "root deploy-dev 640"
+check_perm /srv/raijin/dev/env/.env.api "deploy-dev deploy-dev 600"
+[[ "$(val /srv/raijin/prod/env/.env WATCHDOG_ALERT_EMAIL)" == pc-SENTINEL@exemple.invalid ]] || fail "WATCHDOG_ALERT_EMAIL non complétée"
+[[ "$(val /srv/raijin/prod/env/.env BACKUP_RETENTION_DAYS)" == 7 ]] || fail "BACKUP_RETENTION_DAYS remplacé sans confirmation"
+check_perm /srv/raijin/prod/env/.env "deploy-prod deploy-prod 600"
+check_perm /srv/raijin/prod/env/.env.bench-api "deploy-prod deploy-prod 600"
+[[ "$(val /srv/raijin/prod/env/.env.bench-api BENCH_OWNER_EMAIL)" == banc-SENTINEL@exemple.invalid ]] || fail ".env.bench-api du PC"
+sums >/tmp/s3
+bash infra/vps-setup.sh --apply --yes-safe --keys keys --envs envs --repo test-owner/raijin </dev/null >/tmp/apply4.log 2>&1 || { cat /tmp/apply4.log; fail "2e --apply --envs"; }
+sums >/tmp/s4
+diff /tmp/s3 /tmp/s4 || fail "la 2e fusion a modifié des fichiers"
+grep -q '\[fait\]' /tmp/apply4.log && { grep '\[fait\]' /tmp/apply4.log; fail "la 2e fusion a agi"; }
 echo "vps-setup.sh : tous les contrôles passent."
 EOF

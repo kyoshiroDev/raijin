@@ -94,6 +94,15 @@ done
 file_name="$(env_get "$RAIJIN_ENV_FILE" RAIJIN_NAME)"
 [[ -z "$file_name" || "$file_name" == "$RAIJIN_NAME" ]] \
   || die "RAIJIN_NAME=$file_name dans $RAIJIN_ENV_FILE, attendu $RAIJIN_NAME pour l'environnement $RAIJIN_ENV."
+# En-tête X-Raijin-Edge posé par Traefik vers l'API et le banc de la prod (docs/SECURITY.md §17) : secret de la prod
+# seulement (64 hex, généré par infra/vps-setup.sh) ; jamais dans le dev (Traefik y retire l'en-tête). Valeur jamais affichée.
+if [[ "$RAIJIN_ENV" == dev ]]; then
+  [[ -z "$(env_get "$RAIJIN_ENV_FILE" EDGE_SHARED_SECRET)" ]] \
+    || die "EDGE_SHARED_SECRET doit rester vide dans $RAIJIN_ENV_FILE (secret de la prod, docs/SECURITY.md §17)."
+else
+  [[ "$(env_get "$RAIJIN_ENV_FILE" EDGE_SHARED_SECRET)" =~ ^[0-9a-f]{64}$ ]] \
+    || die "EDGE_SHARED_SECRET absent ou invalide dans $RAIJIN_ENV_FILE (64 caractères hexadécimaux : openssl rand -hex 32, ou sudo bash infra/vps-setup.sh --apply)."
+fi
 
 if [[ "$RAIJIN_ENV" == dev ]]; then
   # Le dev ne doit jamais toucher l'argent réel, ni partager un nom ou un secret avec la production.

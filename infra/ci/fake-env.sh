@@ -30,6 +30,7 @@ declare -A compose_vars=(
   [BENCH_DB_PASSWORD]="$(rand_hex)"
   [REDIS_PASSWORD]="$(rand_hex)"
   [REDIS_BENCH_PASSWORD]="$(rand_hex)"
+  [EDGE_SHARED_SECRET]="$(rand_hex)"
   [GA4_MEASUREMENT_ID]=""
   [GOOGLE_SITE_VERIFICATION]=""
   [BACKUP_DIR]="$RUNNER_TEMP/raijin-backups"
@@ -39,7 +40,7 @@ declare -A compose_vars=(
 : >infra/.env
 for key in "${!compose_vars[@]}"; do
   value="${compose_vars[$key]}"
-  [[ "$key" == *PASSWORD ]] && echo "::add-mask::$value"
+  [[ "$key" == *PASSWORD || "$key" == EDGE_SHARED_SECRET ]] && echo "::add-mask::$value"
   printf '%s=%s\n' "$key" "$value" >>infra/.env
   printf '%s=%s\n' "$key" "$value" >>"$GITHUB_ENV"
 done

@@ -1,5 +1,31 @@
 # Variables d'environnement — Raijin Shield
 
+## Où mettre quoi
+
+| Fichier (à la racine du dépôt, jamais commité, droits 600) | Pour quoi | Envoyé où |
+|---|---|---|
+| `.env` | **ta machine** (développement local : `pnpm nx serve …`) | nulle part |
+| `.env.dev` | **serveur dev** (dev.raijinshield.com) | sur le VPS, dans `/srv/raijin/dev/env/` |
+| `.env.prod` | **serveur prod** (app.raijinshield.com, le banc) | sur le VPS, dans `/srv/raijin/prod/env/` |
+| `.env.example` | modèle commité, valeurs factices | — |
+
+Pour ranger ces fichiers (aucune valeur n'est affichée, seulement des noms) :
+
+```bash
+bash tools/env/organiser-env.sh            # sauvegarde .env (.env.bak-<date>), le range, crée/complète .env.dev et .env.prod
+bash tools/env/organiser-env.sh --check    # n'écrit rien : liste les variables obligatoires encore vides
+bash tools/env/organiser-env.sh --example  # régénère aussi .env.example
+```
+
+Chaque fichier est rangé en sections numérotées (base, sécurité, Helius, Google, Stripe, e-mails, bot, radar…,
+réglages avancés à la fin), avec une ligne par variable : à quoi elle sert, si elle est obligatoire ou secrète, où
+l'obtenir. Les valeurs existantes sont toutes gardées (variables inconnues comprises, dans « Autres (à vérifier) »).
+Dans `.env.dev` / `.env.prod`, les clés communes (Helius, Stripe test, Google en prod…) sont reprises de `.env`, et
+les secrets du serveur restent vides : ils sont **générés par l'installation du VPS**. Ensuite,
+`bash infra/vps-install.sh` propose d'envoyer `.env.dev` et `.env.prod` : sur le VPS, les variables vides sont
+complétées, une valeur différente n'est remplacée qu'après confirmation (ancienne version sauvegardée) et les secrets
+générés sur le VPS ne sont jamais remplacés. Modèle de référence de toutes les variables : `tools/env/env-schema.mjs`.
+
 Modèle du `.env.example` racine (valeurs **factices** uniquement).
 
 > Le fichier `.env.example` n'a pas pu être créé par les agents : `.claude/settings.json`
@@ -494,6 +520,9 @@ BENCH_DB_PASSWORD=changeme-factice-hex
 #     déploiement suivant (raijin-redis redémarre, les données restent dans le volume).
 REDIS_PASSWORD=changeme-factice-hex
 REDIS_BENCH_PASSWORD=
+# En-tête X-Raijin-Edge posé par Traefik vers raijin-api et raijin-bench-api (option B du dev, docs/SECURITY.md §17) :
+#   64 hex, généré par infra/vps-setup.sh (openssl rand -hex 32), PROD seulement (vide ou absent dans le dev, sinon refus).
+EDGE_SHARED_SECRET=changeme-factice-hex
 
 # ---------------------------------------------------------------------
 # Landing : valeurs PUBLIQUES lues au build (exportées par infra/deploy.sh ; APP_URL = https://APP_DOMAIN)
