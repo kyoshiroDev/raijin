@@ -5,6 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { DISCLAIMER } from './lib/content';
+import { EDITOR } from './lib/legal';
 import { STATIC_PAGES } from './lib/pages';
 import { formatPrice } from './lib/pricing';
 import { canonicalUrl, SITE_URL } from './lib/seo';
@@ -215,10 +216,17 @@ describe('build : contenu', () => {
     }
   });
 
-  it('les pages légales affichent « À compléter » au lieu d’une identité', () => {
+  it('les pages légales affichent l’identité de l’éditeur (seul le médiateur reste « À compléter »)', () => {
     for (const path of ['/mentions-legales', '/cgu', '/confidentialite']) {
       const doc = (pages.find((page) => page.path === path) as Page).doc;
-      expect(doc.querySelectorAll('[data-legal-todo]').length, path).toBeGreaterThan(0);
+      const text = visibleText(doc);
+      for (const value of [EDITOR.name, EDITOR.address, EDITOR.contactEmail]) expect(text, path).toContain(value);
+      expect(text, path).not.toMatch(/293 B|mytradingcoach|conseil en stratégie/i);
+      expect(doc.querySelectorAll('[data-legal-todo]').length, path).toBe(path === '/cgu' ? 1 : 0);
+    }
+    const legal = visibleText((pages.find((page) => page.path === '/mentions-legales') as Page).doc);
+    for (const value of [EDITOR.siren, EDITOR.siret, EDITOR.publicationDirector, 'OVH SAS', 'Roubaix']) {
+      expect(legal).toContain(value);
     }
     const privacy = visibleText((pages.find((page) => page.path === '/confidentialite') as Page).doc);
     for (const word of ['rj_consent', 'rj_attr', '_ga', 'sessionStorage', 'Stripe', 'Resend', 'Helius', 'CNIL']) {

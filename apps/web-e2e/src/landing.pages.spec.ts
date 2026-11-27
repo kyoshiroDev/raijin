@@ -99,12 +99,12 @@ test.describe('landing : chaque page se charge sans erreur', () => {
   }
 
   for (const route of LANDING_ROUTES.filter((r) => r.legal)) {
-    test(`${route.slug} : champs légaux « À compléter » visibles, aucune identité inventée`, async ({ page }) => {
+    test(`${route.slug} : identité de l'éditeur affichée (seul le médiateur des CGU reste « À compléter »)`, async ({ page }) => {
       await openLanding(page, route.path);
+      await expect(page.locator('main')).toContainText('Grégory Tahir EI');
+      await expect(page.locator('main')).toContainText('contact@raijinshield.com');
       const todo = page.locator('main [data-legal-todo]');
-      expect(await todo.count(), 'champs légaux « À compléter »').toBeGreaterThan(0);
-      await expect(todo.first()).toHaveText('À compléter');
-      await expect(todo.first()).toBeVisible();
+      expect(await todo.count(), 'champs légaux « À compléter »').toBe(route.slug === 'cgu' ? 1 : 0);
     });
   }
 

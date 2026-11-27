@@ -53,7 +53,7 @@ export interface LandingRoute {
   status?: number;
   /** Page avec un fil d'Ariane visible (pages internes). */
   breadcrumb?: boolean;
-  /** Page légale : champs « À compléter » visibles. */
+  /** Page légale : identité de l'éditeur affichée. */
   legal?: boolean;
 }
 

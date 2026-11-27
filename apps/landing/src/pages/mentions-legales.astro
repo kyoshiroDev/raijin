@@ -1,7 +1,7 @@
 ---
 import LegalPage from '../components/LegalPage.astro';
-import LegalTodo from '../components/LegalTodo.astro';
 import { DISCLAIMER } from '../lib/content';
+import { EDITOR, HOST } from '../lib/legal';
 ---
 
 <LegalPage
@@ -11,19 +11,20 @@ import { DISCLAIMER } from '../lib/content';
 >
   <h2>Éditeur du site</h2>
   <ul>
-    <li>Nom ou raison sociale : <LegalTodo /></li>
-    <li>Forme juridique et capital : <LegalTodo /></li>
-    <li>Numéro SIREN / SIRET : <LegalTodo /></li>
-    <li>Numéro de TVA intracommunautaire : <LegalTodo /></li>
-    <li>Adresse du siège : <LegalTodo /></li>
-    <li>Adresse e-mail de contact : <LegalTodo /></li>
-    <li>Directeur ou directrice de la publication : <LegalTodo /></li>
+    <li>Éditeur : {EDITOR.name}, exerçant sous le nom commercial « {EDITOR.tradeName} »</li>
+    <li>Forme juridique : {EDITOR.legalForm}</li>
+    <li>SIREN : {EDITOR.siren} — SIRET : {EDITOR.siret}</li>
+    <li>Code APE : {EDITOR.ape}</li>
+    {/* TODO TVA : régime non confirmé, aucune mention de TVA publiée (voir lib/legal.ts). */}
+    <li>Adresse : {EDITOR.address}</li>
+    <li>Contact : <a href={`mailto:${EDITOR.contactEmail}`}>{EDITOR.contactEmail}</a> (assistance : <a href={`mailto:${EDITOR.supportEmail}`}>{EDITOR.supportEmail}</a>)</li>
+    <li>Directeur de la publication : {EDITOR.publicationDirector}</li>
   </ul>
 
   <h2>Hébergement</h2>
   <p>
-    Le site et l'application sont hébergés par OVH SAS (OVHcloud), 2 rue Kellermann, 59100 Roubaix, France,
-    sur des serveurs situés dans l'Union européenne.
+    Le site et l'application sont hébergés sur un serveur privé virtuel de {HOST.name}, {HOST.address}, situé
+    dans l'Union européenne.
   </p>
 
   <h2>Objet du service</h2>

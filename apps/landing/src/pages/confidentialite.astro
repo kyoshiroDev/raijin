@@ -1,6 +1,6 @@
 ---
 import LegalPage from '../components/LegalPage.astro';
-import LegalTodo from '../components/LegalTodo.astro';
+import { EDITOR } from '../lib/legal';
 import {
   ATTRIBUTION_COOKIE_MAX_AGE_DAYS,
   ATTRIBUTION_COOKIE_NAME,
@@ -56,8 +56,9 @@ const cookies = [
 >
   <h2>Responsable du traitement</h2>
   <p>
-    <LegalTodo /> (identité et coordonnées de l'éditeur, voir les <a href="/mentions-legales">mentions légales</a>).
-    Contact pour tes données : <LegalTodo />.
+    {EDITOR.name}, exerçant sous le nom commercial « {EDITOR.tradeName} », {EDITOR.address} (voir les
+    <a href="/mentions-legales">mentions légales</a>). Contact pour tes données :
+    <a href={`mailto:${EDITOR.contactEmail}`}>{EDITOR.contactEmail}</a>.
   </p>
 
   <h2>Ce que Raijin ne fait pas</h2>
@@ -207,7 +208,7 @@ const cookies = [
     Conformément au RGPD et à la loi Informatique et Libertés, tu disposes d'un droit d'accès, de rectification,
     d'effacement, de limitation, d'opposition et de portabilité de tes données, et du droit de retirer ton
     consentement à tout moment. Depuis l'app, tu peux exporter tes données et supprimer ton compte (Compte). Pour toute
-    autre demande, écris à : <LegalTodo />. Tu peux aussi introduire une réclamation auprès de la CNIL
+    autre demande, écris à : <a href={`mailto:${EDITOR.contactEmail}`}>{EDITOR.contactEmail}</a>. Tu peux aussi introduire une réclamation auprès de la CNIL
     (<a href="https://www.cnil.fr" rel="noopener noreferrer">cnil.fr</a>).
   </p>
 </LegalPage>
