@@ -426,11 +426,22 @@ export class ConfigError extends Error {
 const VAPID_PUBLIC_PATTERN = /^[A-Za-z0-9_-]{86,88}$/;
 const VAPID_PRIVATE_PATTERN = /^[A-Za-z0-9_-]{42,44}$/;
 
-/** Paire VAPID P-256 (format de `web-push generate-vapid-keys`) : développement seulement. */
-export function generateVapidKeys(): { publicKey: string; privateKey: string } {
+/**
+ * Paire VAPID P-256 (format de `web-push generate-vapid-keys`) : développement seulement.
+ * `getPrivateKey()` renvoie le scalaire sans zéros de tête (31 octets ou moins environ 1 fois sur 256) :
+ * il est remis à 32 octets (remplissage à gauche), longueur exigée par web-push. La clé publique
+ * non compressée fait toujours 65 octets. `privateKeySource` (tests) fournit un scalaire imposé.
+ */
+export function generateVapidKeys(privateKeySource?: () => Buffer): { publicKey: string; privateKey: string } {
   const ecdh = createECDH('prime256v1');
-  ecdh.generateKeys();
-  return { publicKey: ecdh.getPublicKey().toString('base64url'), privateKey: ecdh.getPrivateKey().toString('base64url') };
+  if (privateKeySource) ecdh.setPrivateKey(privateKeySource());
+  else ecdh.generateKeys();
+  const raw = ecdh.getPrivateKey();
+  const publicKey = ecdh.getPublicKey(null, 'uncompressed');
+  if (raw.length > 32 || publicKey.length !== 65) throw new Error('Paire VAPID P-256 invalide');
+  const privateKey = Buffer.alloc(32);
+  raw.copy(privateKey, 32 - raw.length);
+  return { publicKey: publicKey.toString('base64url'), privateKey: privateKey.toString('base64url') };
 }
 
 const DEV_DATABASE_URL = 'postgresql://raijin:changeme-factice@localhost:5433/raijin?schema=public';

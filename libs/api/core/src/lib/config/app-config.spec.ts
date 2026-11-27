@@ -195,6 +195,24 @@ describe('loadConfig', () => {
     expect(config.services['vapid']).toBe(false);
   });
 
+  it('VAPID : clé privée toujours sur 32 octets, même quand le scalaire commence par un octet nul', () => {
+    const scalar = Buffer.alloc(32, 0x11);
+    scalar[0] = 0x00;
+    const pair = generateVapidKeys(() => Buffer.from(scalar));
+    expect(pair.privateKey).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(Buffer.from(pair.privateKey, 'base64url').equals(scalar)).toBe(true);
+    const publicKey = Buffer.from(pair.publicKey, 'base64url');
+    expect(publicKey).toHaveLength(65);
+    expect(publicKey[0]).toBe(0x04);
+    const twoZeros = Buffer.alloc(32, 0x22);
+    twoZeros[0] = 0x00;
+    twoZeros[1] = 0x00;
+    expect(Buffer.from(generateVapidKeys(() => Buffer.from(twoZeros)).privateKey, 'base64url').equals(twoZeros)).toBe(true);
+    const random = generateVapidKeys();
+    expect(Buffer.from(random.privateKey, 'base64url')).toHaveLength(32);
+    expect(Buffer.from(random.publicKey, 'base64url')).toHaveLength(65);
+  });
+
   it('VAPID : les deux clés ou aucune ; sans clés en production, push indisponible', () => {
     const pair = generateVapidKeys();
     const both = loadConfig({ ...prodEnv, VAPID_PUBLIC_KEY: pair.publicKey, VAPID_PRIVATE_KEY: pair.privateKey });
