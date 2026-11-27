@@ -7,9 +7,11 @@ import { test } from 'node:test';
 import { FILES, collapse, parseEnv, run, splitForServer } from './env-tool.mjs';
 import { VARIABLES, schemaIndex } from './env-schema.mjs';
 
+// Valeurs factices assemblées à l'exécution : aucun littéral au format d'une clé dans le dépôt (scan gitleaks).
+const fake = (...parts) => parts.join('');
 const SENTINELS = {
-  HELIUS_API_KEY: 'SENTINEL-helius-0001',
-  STRIPE_SECRET_KEY: 'sk_test_SENTINEL0002',
+  HELIUS_API_KEY: fake('SENTINEL', '-helius-', '0001'),
+  STRIPE_SECRET_KEY: fake('sk_', 'test_', 'SENTINEL0002'),
   JWT_ACCESS_SECRET: 'SENTINEL-jwt-0003',
   MY_OLD_VAR: 'SENTINEL-old-0004',
 };

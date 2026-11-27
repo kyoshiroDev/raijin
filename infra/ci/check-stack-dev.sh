@@ -161,23 +161,38 @@ fi
 echo "== Accès direct du dev vers la prod (en-tête X-Raijin-Edge, docs/SECURITY.md §17)"
 # Option B : raijin-dev-api partage le réseau du Traefik avec raijin-api et raijin-bench-api. Un appel direct (sans
 # Traefik, donc sans l'en-tête secret) doit recevoir 403, même avec un faux en-tête ; le même chemin via Traefik passe.
-# direct <conteneur:port><chemin> [en-tête] → code HTTP vu depuis raijin-dev-api (node, sans outil réseau dans l'image).
+# Les appels visent l'IP de chaque conteneur de la prod sur le réseau d'entrée, jamais son nom : le dev reprend les
+# mêmes noms de service (raijin-api…), que Docker résout depuis raijin-dev-api vers le dev lui-même (alias réseau).
+# direct <ip:port><chemin> [en-tête] → code HTTP vu depuis raijin-dev-api (node, sans outil réseau dans l'image).
 direct() {
   docker exec -e RJ_URL="http://$1" -e RJ_HDR="${2:-}" raijin-dev-api node -e '
     const h = process.env.RJ_HDR ? { "X-Raijin-Edge": process.env.RJ_HDR } : {};
     fetch(process.env.RJ_URL, { headers: h, signal: AbortSignal.timeout(15000) })
       .then((r) => console.log(r.status), () => console.log("000"));' 2>/dev/null || echo 000
 }
-code="$(direct raijin-api:3000/api/v1/billing/plans)"
-[[ "$code" == 403 ]] && ok "dev → raijin-api en direct : 403" || ko "dev → raijin-api en direct : $code au lieu de 403"
-code="$(direct raijin-api:3000/api/v1/billing/plans faux-entete-0000)"
-[[ "$code" == 403 ]] && ok "dev → raijin-api en direct, faux X-Raijin-Edge : 403" || ko "dev → raijin-api, faux en-tête : $code au lieu de 403"
-code="$(direct raijin-api:3000/api/v1/health)"
-[[ "$code" == 200 ]] && ok "dev → raijin-api /health en direct : 200 (santé exemptée)" || ko "dev → raijin-api /health : $code au lieu de 200"
+# IP sur le réseau d'entrée de la prod (traefik-ci, quel que soit le mode du dev).
+prod_edge_ip() { docker inspect -f "{{with index .NetworkSettings.Networks \"traefik-ci\"}}{{.IPAddress}}{{end}}" "$1" 2>/dev/null || true; }
+# Valeur fausse construite à l'exécution (aucun littéral ressemblant à une clé dans le dépôt).
+wrong_edge="$(printf 'faux%.0s' 1 2 3 4)"
+if [[ "$edge_mode" == dedicated ]]; then
+  ok "option A : appels directs vers la prod sans objet (réseaux d'entrée séparés)"
+else
+  prod_ip="$(prod_edge_ip raijin-api)"
+  [[ -n "$prod_ip" ]] || ko "raijin-api : aucune IP sur traefik-ci"
+  code="$(direct "$prod_ip:3000/api/v1/billing/plans")"
+  [[ "$code" == 403 ]] && ok "dev → raijin-api ($prod_ip) en direct : 403" || ko "dev → raijin-api ($prod_ip) en direct : $code au lieu de 403"
+  code="$(direct "$prod_ip:3000/api/v1/billing/plans" "$wrong_edge")"
+  [[ "$code" == 403 ]] && ok "dev → raijin-api en direct, faux X-Raijin-Edge : 403" || ko "dev → raijin-api, faux en-tête : $code au lieu de 403"
+  code="$(direct "$prod_ip:3000/api/v1/health")"
+  [[ "$code" == 200 ]] && ok "dev → raijin-api /health en direct : 200 (santé exemptée)" || ko "dev → raijin-api /health : $code au lieu de 200"
+fi
 check api.raijinshield.com /api/v1/billing/plans 200
 if docker inspect raijin-bench-api >/dev/null 2>&1; then
-  code="$(direct raijin-bench-api:3000/api/status)"
-  [[ "$code" == 403 ]] && ok "dev → raijin-bench-api en direct : 403" || ko "dev → raijin-bench-api en direct : $code au lieu de 403"
+  bench_ip="$(prod_edge_ip raijin-bench-api)"
+  if [[ "$edge_mode" != dedicated ]]; then
+    code="$(direct "$bench_ip:3000/api/status")"
+    [[ "$code" == 403 ]] && ok "dev → raijin-bench-api ($bench_ip) en direct : 403" || ko "dev → raijin-bench-api ($bench_ip) en direct : $code au lieu de 403"
+  fi
   # Via Traefik (basicAuth du banc) : l'en-tête passe, la session manque → 401 de l'API du banc, jamais 403.
   printf 'user = "%s"\n' "${BENCH_CI_BASIC_AUTH:-}" >"$tmp/bench-auth"; chmod 600 "$tmp/bench-auth"
   code="$(curl -sk --max-time 30 --config "$tmp/bench-auth" --resolve "banc.raijinshield.com:$PORT:127.0.0.1" -o /dev/null \

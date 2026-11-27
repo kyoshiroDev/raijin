@@ -29,3 +29,8 @@
 bb831f16b4d3334540f38f764c8e7b8b0cfa19c3:libs/api/solana/src/lib/collect/watch-collector.spec.ts:generic-api-key:26
 f98641096a2f2de94c9e94b785f2d24eb3436976:libs/api/alerts/src/lib/jobs/redis-url.spec.ts:generic-api-key:11
 f98641096a2f2de94c9e94b785f2d24eb3436976:libs/api/core/src/lib/throttler/throttler.spec.ts:generic-api-key:61
+# b76ed83 (2026-11-27), relu : en-tête factice du test d'accès direct (check-stack-dev.sh) et sentinelles de
+# env-tool.test.mjs (« SENTINEL… »), jamais de vrais secrets ; littéraux retirés au commit suivant.
+b76ed83b5cbcf0f199de7f23ace202287e68355e:infra/ci/check-stack-dev.sh:generic-api-key:173
+b76ed83b5cbcf0f199de7f23ace202287e68355e:tools/env/env-tool.test.mjs:stripe-access-token:12
+b76ed83b5cbcf0f199de7f23ace202287e68355e:tools/env/env-tool.test.mjs:generic-api-key:11
