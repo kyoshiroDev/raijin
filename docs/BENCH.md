@@ -384,6 +384,10 @@ démarre avec `verdict_records` à la mise en service, §9 P10, écran `/justess
    curl -sI -u kyoshiro $B/ | grep -i x-robots-tag                                 # noindex, nofollow
    curl -s -u kyoshiro $B/robots.txt                                               # Disallow: /
    ```
+   Si `EDGE_SHARED_SECRET` est défini (docs/ENV.md, bloc « Banc ») : appelée **sans Traefik** (depuis un conteneur du
+   réseau partagé), l'API du banc répond 403 à tout sauf `GET /api/health`, et ignore `X-Forwarded-For` ; à travers
+   Traefik, rien ne change (Traefik pose l'en-tête `X-Raijin-Edge`). Sans la variable, un avertissement apparaît au
+   démarrage (`docker logs raijin-bench-api`).
    (`-u kyoshiro` demande le mot de passe Traefik ; il ne va pas dans l'historique.) Aucun lien public ne pointe vers
    `banc.raijinshield.com` : ne le mets ni sur la landing, ni dans l'app, ni dans un e-mail.
 

@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import type { BenchConfig } from '../config/bench-config';
 import { BenchExceptionFilter } from './bench-exception.filter';
+import { createEdgeGuard } from './edge-guard';
 
 /** Corps JSON maximal : les requêtes du banc sont petites. */
 export const BENCH_JSON_BODY_LIMIT = '32kb';
@@ -18,7 +19,7 @@ export function benchHeadersMiddleware(_req: Request, res: Response, next: NextF
 
 /**
  * Socle HTTP de l'API du banc (à appeler avant `listen`, application créée avec `{ bodyParser: false }`) :
- * préfixe `/api`, `trust proxy`, Helmet (CSP `default-src 'none'`), `noindex`, cookies, JSON borné,
+ * préfixe `/api`, `trust proxy`, en-tête secret de Traefik (`X-Raijin-Edge`, si `EDGE_SHARED_SECRET`), Helmet (CSP `default-src 'none'`), `noindex`, cookies, JSON borné,
  * CORS limité aux origines du banc avec credentials, erreurs `{ code, message }`, arrêt propre.
  */
 export function setupBenchApp(app: NestExpressApplication, config: BenchConfig): void {
@@ -34,6 +35,8 @@ export function setupBenchApp(app: NestExpressApplication, config: BenchConfig):
     }),
   );
   app.use(benchHeadersMiddleware);
+  // Avant tout lecteur de `req.ip` : sans en-tête valide, `X-Forwarded-*` est retiré (IP de la socket) et 403.
+  app.use(createEdgeGuard(config.edgeSecretDigest));
   app.use(cookieParser());
   app.useBodyParser('json', { limit: BENCH_JSON_BODY_LIMIT });
   app.enableCors({

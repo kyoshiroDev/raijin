@@ -19,6 +19,7 @@ async function bootstrap(): Promise<void> {
     }
     throw error;
   }
+  for (const warning of config.warnings) Logger.warn(`Configuration : ${warning}`, 'BenchBootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(config), { bodyParser: false });
   setupBenchApp(app, config);
   await app.listen(config.port);

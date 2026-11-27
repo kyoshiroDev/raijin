@@ -124,4 +124,30 @@ describe('loadBenchConfig', () => {
     expect(looksFake('changeme-factice-hex')).toBe(true);
     expect(looksFake('Zr8kP2vQ7mW1xN5tB9cL3hJ6fD0sA4gY')).toBe(false);
   });
+
+  describe('EDGE_SHARED_SECRET (en-tête X-Raijin-Edge)', () => {
+    const EDGE = 'c4f1a9e07b3d5628e1f0a7b9c2d4e6f8';
+
+    it('absent : contrôle désactivé ; avertissement en production, sans échec', () => {
+      expect(loadBenchConfig({ NODE_ENV: 'test', BENCH_OWNER_EMAIL: 'a@b.test' })).toMatchObject({ edgeSecretDigest: null, warnings: [] });
+      const prod = loadBenchConfig(PROD);
+      expect(prod.edgeSecretDigest).toBeNull();
+      expect(prod.warnings).toEqual([expect.stringContaining('EDGE_SHARED_SECRET')]);
+    });
+
+    it('défini : seule son empreinte est gardée, jamais la valeur', () => {
+      const config = loadBenchConfig({ ...PROD, EDGE_SHARED_SECRET: EDGE });
+      expect(config.edgeSecretDigest).toHaveLength(32);
+      expect(config.warnings).toEqual([]);
+      expect(JSON.stringify(config)).not.toContain(EDGE);
+    });
+
+    it('production : refus si factice, trop court ou non ASCII visible, sans citer la valeur', () => {
+      for (const value of ['changeme-edge-secret-changeme-000000', 'court', 'avec espace interne 0123456789abcdef']) {
+        const problems = problemsOf({ ...PROD, EDGE_SHARED_SECRET: value });
+        expect(problems).toEqual([expect.stringContaining('EDGE_SHARED_SECRET')]);
+        expect(problems.join(' ')).not.toContain(value);
+      }
+    });
+  });
 });

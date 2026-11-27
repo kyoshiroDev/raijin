@@ -2,6 +2,7 @@ import { benchModeSchema, type BenchMode } from '@raijin/bench-contracts';
 import { loadBenchSolanaSettings } from '@raijin/bench-solana';
 import type { VapidKeys } from '@raijin/server-push';
 import { emailSchema } from '@raijin/shared-contracts';
+import { edgeSecretDigest } from '../http/edge-guard';
 
 /**
  * Configuration de l'API du banc (`infra/.env.bench-api` + variables imposées par `infra/docker-compose.yml`),
@@ -17,6 +18,13 @@ export interface BenchConfig {
   readonly port: number;
   /** Valeur de `trust proxy` d'Express (nombre de proxys de confiance : 1 = Traefik). */
   readonly trustProxy: number;
+  /**
+   * Empreinte SHA-256 de `EDGE_SHARED_SECRET` (en-tête `X-Raijin-Edge` posé par Traefik) ; `null` : contrôle
+   * désactivé. Le secret lui-même n'est pas gardé.
+   */
+  readonly edgeSecretDigest: Buffer | null;
+  /** Avertissements de démarrage (noms de variables seulement), journalisés par `main.ts`. */
+  readonly warnings: readonly string[];
   /** URL de `raijin_bench` (utilisateur `raijin_bench`) : jamais journalisée. */
   readonly databaseUrl: string;
   /** URL Redis (utilisateur ACL `raijin-bench`) ; `null` en dev/test sans Redis : repli en mémoire, jobs coupés. */
@@ -175,6 +183,20 @@ export function loadBenchConfig(env: Env): BenchConfig {
   const trustProxy = parseInteger(read(env, 'TRUST_PROXY'), 0, 0, 5);
   if (trustProxy === null) problems.push('TRUST_PROXY doit être un entier de 0 à 5');
 
+  // En-tête secret de Traefik (docs/SECURITY.md §17) : absent = désactivé (avertissement en production).
+  const warnings: string[] = [];
+  const edgeSecret = read(env, 'EDGE_SHARED_SECRET');
+  let edgeDigest: Buffer | null = null;
+  if (edgeSecret === undefined) {
+    if (isProduction) warnings.push('EDGE_SHARED_SECRET absent : en-tête X-Raijin-Edge non exigé (requêtes hors Traefik acceptées)');
+  } else if (edgeSecret.length > 256 || !/^[\x21-\x7e]+$/.test(edgeSecret)) {
+    problems.push('EDGE_SHARED_SECRET doit être en ASCII visible, sans espace, 256 caractères au plus (openssl rand -hex 32)');
+  } else if (isProduction && (edgeSecret.length < 32 || looksFake(edgeSecret))) {
+    problems.push('EDGE_SHARED_SECRET doit compter au moins 32 caractères et ne pas être factice');
+  } else {
+    edgeDigest = edgeSecretDigest(edgeSecret);
+  }
+
   // Base : BENCH_DATABASE_URL (CLI Prisma du banc) ou DATABASE_URL (imposée par le compose du conteneur).
   const databaseUrl = secret(read(env, 'BENCH_DATABASE_URL') ? 'BENCH_DATABASE_URL' : 'DATABASE_URL', DEV_DATABASE_URL);
   if (databaseUrl !== undefined) {
@@ -292,6 +314,8 @@ export function loadBenchConfig(env: Env): BenchConfig {
     isProduction,
     port,
     trustProxy,
+    edgeSecretDigest: edgeDigest,
+    warnings,
     databaseUrl,
     redisUrl,
     bullmqPrefix: BENCH_BULLMQ_PREFIX,

@@ -7,6 +7,7 @@ export * from './lib/http/bench-exception.filter';
 export * from './lib/http/bench-throttler';
 export * from './lib/http/decorators';
 export * from './lib/http/setup-bench-app';
+export * from './lib/http/edge-guard';
 export * from './lib/http/zod.pipe';
 export * from './lib/security/redact';
 export * from './lib/redis/bench-redis';
