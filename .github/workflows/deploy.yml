@@ -10,6 +10,10 @@ name: Déploiement
 # Aucune clé capable de déployer la production n'est dans GitHub. Aucun registre d'images ni identifiant GitHub
 # d'écriture sur le VPS.
 #
+# Interrupteur du dev : variable GitHub DEPLOY_DEV_AUTO (Settings → Secrets and variables → Actions → Variables).
+#   absente ou ≠ 1 → AUCUN déploiement du dev (ni automatique, ni « Run workflow ») : valeur par défaut, par prudence ;
+#   1              → chaque push sur dev (CI verte) est déployé sur le VPS. À mettre à 1 par l'utilisateur après
+#                    l'installation du VPS (docs/DEPLOY.md C5), à remettre à 0 pour suspendre (docs/SECURITY.md).
 # workflow_run : GitHub exécute la version de CE fichier présente sur main ; « Run workflow » exécute celle de la
 # branche choisie. Une version modifiée sur dev ne peut ni lire de clé de production (il n'y en a pas), ni produire un
 # jeton OIDC accepté par le VPS (workflow_ref …@refs/heads/main exigé).
@@ -35,13 +39,16 @@ permissions:
 jobs:
   dev:
     name: déploiement dev
+    # Interrupteur DEPLOY_DEV_AUTO : absent = désactivé (voir en tête).
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.env == 'dev' && github.ref == 'refs/heads/dev') || (
-        github.event_name == 'workflow_run' &&
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        github.event.workflow_run.head_branch == 'dev'
+      vars.DEPLOY_DEV_AUTO == '1' && (
+        (github.event_name == 'workflow_dispatch' && inputs.env == 'dev' && github.ref == 'refs/heads/dev') || (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          github.event.workflow_run.head_branch == 'dev'
+        )
       )
     runs-on: ubuntu-latest
     permissions:

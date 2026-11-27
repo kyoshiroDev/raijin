@@ -256,6 +256,72 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
 - **Risque résiduel** : un verdict reste une estimation fondée sur des sources tierces (indisponibles ou
   manipulables), ce que l'interface rappelle.
 
+### 17. Déploiement continu (chaîne de livraison GitHub → VPS)
+- **Modèle** (`.github/workflows/deploy.yml`, `docs/DEPLOY.md` partie C) :
+  - push sur `dev`, CI verte → job « dev » : images construites dans GitHub Actions, archive envoyée par SSH à
+    `deploy-dev@VPS`, contrôlée puis **déployée automatiquement** sur l'environnement dev du VPS partagé
+    (MyTradingCoach, XMR Trader, production Raijin) ;
+  - fusion dans `main` (faite par l'utilisateur), CI verte → job « prod » : archive seulement **déposée**
+    (clé `prod-depot`, incapable de déployer), avec un jeton OIDC GitHub prouvant qu'elle vient de `deploy.yml`
+    sur `refs/heads/main`, à ce commit, avec cette empreinte ; **activation manuelle par l'utilisateur sur le
+    VPS** (`deploy-gate.sh --approve <commit>`), après contrôle par `git ls-remote` (clé de lecture seule) que le
+    commit est la tête de `main`.
+- **Décision de l'utilisateur (2026-11-26)** : « à chaque push ou merge on déploie automatiquement sur dev ou
+  prod ». Mise en œuvre : **dev automatique**, **prod déposée automatiquement puis activée manuellement sur le
+  VPS** (choix de sécurité de l'orchestrateur, non contesté par l'utilisateur) : aucune clé capable de démarrer
+  la production n'est dans GitHub. Le déploiement automatique du dev est **désactivé par défaut** (variable
+  GitHub `DEPLOY_DEV_AUTO` absente) et activé par l'utilisateur (`DEPLOY_DEV_AUTO=1`) après l'installation du VPS.
+- **Risques** :
+  - **GitHub Free, dépôt privé** : pas de règles d'environnement ; tout workflow poussé sur **n'importe quelle
+    branche** lit tous les secrets du dépôt (`DEPLOY_SSH_KEY_DEV`, `DEPOT_SSH_KEY_PROD`, `DEPLOY_KNOWN_HOSTS`) et
+    « Run workflow » exécute la version de `deploy.yml` de la branche choisie ;
+  - **les agents Claude poussent sur `dev`** : une fois `deploy.yml` sur `main` et `DEPLOY_DEV_AUTO=1`, chaque
+    push d'agent s'exécute sur le VPS, alors que CLAUDE.md §7 interdit aux agents toute commande sur le VPS ;
+    un code malveillant ou erroné (dépendance compromise, erreur d'agent) tournerait dans le dev ;
+  - l'accès à Docker équivaut à root sur un VPS partagé ; un conteneur du dev mal confiné pourrait toucher MTC,
+    XMR Trader ou la prod ;
+  - réseau d'entrée du dev (option B par défaut, `docs/DEPLOY.md` C2) : le dev partage le réseau Traefik de la
+    prod et de MTC, et peut joindre leurs conteneurs exposés sans passer par Traefik.
+- **Parades** :
+  - **porte à commande forcée** : chaque clé de GitHub ne lance que `deploy-gate.sh <env>` (`restrict,command=`
+    dans `authorized_keys`), copie **figée** dans `/opt/raijin-deploy` (root) : une livraison ne peut modifier ni
+    ses contrôles ni ses scripts ; variables `RAIJIN_*` effacées dans une session SSH ; un déploiement à la fois
+    (verrou global) ;
+  - **politique `infra/lib/deploy_policy.py`** (rejouée par `release.sh` avant chaque `up` / `run`) : archive
+    (fichiers ordinaires, ni lien, ni `..`, ni `.env`), images (étiquettes `raijin(-dev)/<image>:<commit>`, aucun
+    label `traefik.*`, aucun `VOLUME`, utilisateur non root), configuration Compose **résolue** une seule fois sous
+    `env -i` (ni privilège, ni port publié, ni montage de l'hôte ou du socket Docker, ni `cap_add`, `network_mode`,
+    `extra_hosts`, `dns`, `env_file`, `include`, `extends`, `label_file` ; aucun réseau externe autre que le
+    réseau d'entrée ; Postgres / Redis jamais sur ce réseau ; en option B, jamais un réseau `raijin-…` comme
+    réseau d'entrée ; routeurs `Host(`…`)` stricts limités aux noms du dev ; `priority` ≤ 1000) ;
+  - **utilisateurs séparés hors du groupe `docker`** : `deploy-dev` et `deploy-prod`, mots de passe verrouillés ;
+    `deploy-dev` ne lit rien de `/srv/raijin/prod` (vérifié avant chaque déploiement du dev) ;
+  - **`docker-priv.sh`** (root par sudo, environnement imposé par sudoers) : seul accès à Docker, sous-commandes
+    fixes (`sync-init`, `import`, `deploy`, `recover`, `status`), appelant vérifié, images recontrôlées puis sortie
+    de `docker load` comparée à la liste attendue ;
+  - **ressources plafonnées** par conteneur (`mem_limit` ≤ 1 Go sans swap, `cpus` ≤ 1, `pids_limit` ≤ 500,
+    journaux bornés, `no-new-privileges`, `cap_drop: ALL` pour les images du projet) : le dev ne peut pas affamer MTC ni la prod ;
+  - **isolement des secrets** : secrets d'application seulement sur le VPS (`/srv/raijin/<env>/env/`, 600, un
+    utilisateur par environnement), valeurs distinctes dev / prod, Stripe live refusé en dev ; aucune clé capable
+    de **démarrer** la prod dans GitHub ; jeton OIDC `…@refs/heads/main` exigé pour un dépôt de prod ;
+    `permissions: contents: read` ;
+  - **interrupteur** `DEPLOY_DEV_AUTO` (variable GitHub, absente = désactivé, `0` = suspendu) pour le flux normal ;
+    **arrêt sûr** côté VPS : commenter la ligne de `~deploy-dev/.ssh/authorized_keys` (efficace même contre un
+    workflow modifié sur `dev`) ;
+  - réseau d'entrée : option B sans modification du conteneur Traefik de MTC (PROMPT §7), option A (réseau
+    `raijin-dev-edge` dédié) disponible sur décision de l'utilisateur.
+- **Tests** : `infra/ci/test-deploy-policy.sh` (configurations réelles prod, dev option B et option A acceptées ;
+  livraisons dangereuses, réseaux `raijin-…` en option B, Postgres / Redis sur le réseau d'entrée, jeton OIDC forgé
+  refusés), `infra/ci/test-dev-env.sh` et `check-stack-dev.sh` (livraison par la porte, retour automatique, Traefik
+  inchangé, Postgres / Redis de la prod injoignables depuis le dev), `infra/ci/test-vps-setup.sh`.
+- **Risque résiduel** : **tout push sur `dev` s'exécute sur le VPS** quand `DEPLOY_DEV_AUTO=1` (y compris ceux des
+  agents), confiné aux noms, réseaux, volumes et ressources du dev ; l'interrupteur GitHub ne résiste pas à un
+  workflow modifié sur une branche (secrets lisibles sous GitHub Free) : seul l'arrêt côté VPS le fait ; en
+  option B, le code du dev joint directement l'API, l'app, la landing et le banc de la prod ainsi que les
+  conteneurs de MTC présents sur le réseau Traefik (contournement de la basicAuth du banc et des limites Traefik,
+  `X-Forwarded-For` forgeable : menace 12), les contrôles propres de l'API et du banc (sessions, CSRF, rôles,
+  quotas) s'appliquant toujours ; une faille de Docker ou du noyau permettrait de sortir du confinement.
+
 ## Risques résiduels prioritaires (synthèse)
 
 1. Pas de CDN ni de protection volumétrique ; API joignable depuis le réseau Traefik partagé (IP forgeable).
@@ -263,6 +329,7 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
 3. CI : audit bloquant seulement à partir de `high` en production ; pas d'analyse des images (Trivy).
 4. `style-src 'unsafe-inline'` sur l'app et le banc.
 5. Webhooks et facturation jamais éprouvés contre le compte Stripe réel (« À brancher »).
+6. Déploiement continu : tout push sur `dev` s'exécute sur le VPS partagé quand `DEPLOY_DEV_AUTO=1` (menace 17).
 
 ## Dépendances (`pnpm audit`, `pnpm peers check`)
 

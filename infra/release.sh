@@ -47,6 +47,8 @@ APP_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" APP_DOMAIN)"
 API_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" API_DOMAIN)"
 LANDING_DOMAIN="$(env_get "$RAIJIN_ENV_FILE" LANDING_DOMAIN)"
 hosts="$APP_DOMAIN,$API_DOMAIN,$LANDING_DOMAIN"
+EDGE=()
+[[ "$env" == dev ]] && EDGE=(--edge "$(env_get "$RAIJIN_ENV_FILE" RAIJIN_DEV_EDGE)")
 if [[ "$env" == prod ]]; then
   bench_domain="$(env_get "$RAIJIN_ENV_FILE" BENCH_DOMAIN)"
   hosts+=",www.$LANDING_DOMAIN,${bench_domain:-banc.raijinshield.com}"
@@ -56,7 +58,7 @@ CLEAN_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Politique complète sur la configuration résolue (rejouée avant chaque up / run).
 check() {
   python3 "$POLICY" compose "$resolved" --name "$RAIJIN_NAME" --root "$pbase/infra-stable" --network "$TRAEFIK_NETWORK" \
-    --entrypoint "$ENTRYPOINT" --certresolver "$CERTRESOLVER" --tag "$tag" --hosts "$hosts" >/dev/null \
+    --entrypoint "$ENTRYPOINT" --certresolver "$CERTRESOLVER" --tag "$tag" --hosts "$hosts" "${EDGE[@]}" >/dev/null \
     || die "configuration résolue refusée par la politique : arrêt sans démarrer."
 }
 # docker compose sur la SEULE configuration résolue, environnement vidé, sans fichier .env.

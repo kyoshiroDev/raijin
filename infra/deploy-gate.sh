@@ -114,11 +114,13 @@ deliver() {
     bench_domain="$(env_get "$env_file" BENCH_DOMAIN)"
     hosts+=",www.$(env_get "$env_file" LANDING_DOMAIN),${bench_domain:-banc.raijinshield.com}"
   fi
-  local entrypoint
+  local entrypoint edge=()
   entrypoint="$(env_get "$env_file" TRAEFIK_ENTRYPOINT)"
+  # Dev : réseau d'entrée selon RAIJIN_DEV_EDGE (traefik-shared par défaut = option B, dedicated = option A, C2).
+  [[ "$env" == dev ]] && edge=(--edge "$(env_get "$env_file" RAIJIN_DEV_EDGE)")
   python3 "$POLICY" compose "$rel/compose.resolved.json" --name "$name" --root "$stable" \
     --network "$(env_get "$env_file" TRAEFIK_NETWORK)" --entrypoint "${entrypoint:-websecure}" \
-    --certresolver "$(env_get "$env_file" TRAEFIK_CERTRESOLVER)" --tag "$sha" --hosts "$hosts" \
+    --certresolver "$(env_get "$env_file" TRAEFIK_CERTRESOLVER)" --tag "$sha" --hosts "$hosts" "${edge[@]}" \
     || { rm -r -- "$rel"; refuse "configuration Compose refusée."; }
 
   # Scripts figés : signale (sans bloquer) une livraison dont les scripts diffèrent de ceux installés.

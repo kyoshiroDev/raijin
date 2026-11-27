@@ -15,12 +15,14 @@
 #      clé de lecture (seule clé privée qui va sur le VPS, pour « git ls-remote ») ;
 #   3. la copie par scp dans un dossier temporaire du VPS (supprimé à la fin), puis lance
 #      « sudo bash infra/vps-setup.sh --preview-apply » : aperçu, « Continuer ? (o/N) », puis application des blocs
-#      sûrs ; « docker network connect » sur Traefik reste toujours demandé. Un seul mot de passe sudo à taper ;
+#      sûrs (option B par défaut, RAIJIN_DEV_EDGE=traefik-shared : le conteneur Traefik n'est pas modifié). Un seul
+#      mot de passe sudo à taper ;
 #   4. enregistre l'empreinte SSH du VPS (~/.ssh/raijin-known-hosts) après l'avoir comparée à celle lue sur le VPS ;
 #   5. affiche la liste numérotée des secrets et variables GitHub, avec les commandes gh prêtes à copier (aucune clé
 #      affichée), et propose de les lancer.
-# L'adresse du VPS n'est écrite dans aucun fichier du dépôt. Rien n'est fait sur MTC, XMR Trader ni Traefik
-# (hors « docker network connect », après confirmation).
+# L'adresse du VPS n'est écrite dans aucun fichier du dépôt. Rien n'est fait sur MTC, XMR Trader ni Traefik (l'option
+# A, « docker network connect » sur Traefik, n'existe que si tu la choisis toi-même : vps-setup.sh --dev-edge
+# dedicated, docs/DEPLOY.md C2).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -171,6 +173,9 @@ if [[ "$SSH_USER" != greg || "$PORT" != 22 ]]; then
   printf '  8. Seulement si différents des défauts : gh variable set DEPLOY_PORT --repo %s --body %s\n' "$REPO" "$PORT"
 fi
 printf '  Facultatif : gh variable set GA4_MEASUREMENT_ID / GOOGLE_SITE_VERIFICATION (valeurs publiques de la landing).\n'
+# Interrupteur du déploiement automatique du dev (deploy.yml) : jamais activé par ce script, c'est ta décision.
+printf '  Déploiement automatique du dev (désactivé tant que la variable est absente) : quand le .env du dev est rempli,\n'
+printf '    gh variable set DEPLOY_DEV_AUTO --repo %s --body 1     (0 pour suspendre ; docs/DEPLOY.md C5, docs/SECURITY.md)\n' "$REPO"
 
 if ((!CHECK)) && command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
   printf '\n'

@@ -104,8 +104,10 @@ dev_pass="$(rand_hex)" dev_redis="$(rand_hex)" dev_pg="$(rand_hex)" dev_db="$(ra
 for v in "$dev_pass" "$dev_redis" "$dev_pg" "$dev_db" "$dev_bench_db"; do echo "::add-mask::$v"; done
 {
   echo "RAIJIN_NAME=raijin-dev"
-  # Réseau d'entrée propre au dev (rejoint par le Traefik factice dans test-dev-env.sh), jamais celui de la prod.
-  echo "TRAEFIK_NETWORK=raijin-dev-edge"
+  # Réseau d'entrée du dev, option B (défaut, docs/DEPLOY.md C2) : le réseau du Traefik factice, comme la prod ;
+  # le conteneur Traefik n'est pas modifié (aucun « docker network connect »).
+  echo "RAIJIN_DEV_EDGE=traefik-shared"
+  echo "TRAEFIK_NETWORK=traefik-ci"
   echo "TRAEFIK_ENTRYPOINT=websecure"
   echo "TRAEFIK_CERTRESOLVER=ci"
   echo "LANDING_DOMAIN=landing-dev.raijinshield.com"

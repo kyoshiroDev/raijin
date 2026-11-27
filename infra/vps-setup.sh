@@ -19,7 +19,8 @@
 #   --check            (défaut) aucune écriture, aucune commande qui modifie le système.
 #   --apply            exécute, avec une confirmation (o/N) avant chaque bloc.
 #   --yes-safe         avec --apply : applique sans question les blocs non destructifs ; demande TOUJOURS pour
-#                      « docker network connect » sur Traefik, le retrait d'un groupe et les unités systemd.
+#                      le retrait d'un groupe, les unités systemd et (option A seulement) « docker network connect »
+#                      sur Traefik.
 #   --preview-apply    aperçu (--check), puis « Continuer ? (o/N) », puis --apply --yes-safe (une seule session sudo).
 # Options :
 #   --repo <compte>/<dépôt>     DEPLOY_GITHUB_REPOSITORY / DEPLOY_GIT_REMOTE de la prod (valeurs publiques).
@@ -27,6 +28,12 @@
 #   --dev-key / --prod-key <f>  clés publiques (.pub) de GitHub Actions (dev, dépôt de la prod).
 #   --readonly-key <f>          clé PRIVÉE de lecture du dépôt (Deploy key sans écriture) pour « git ls-remote ».
 #   --traefik <conteneur>       nom du conteneur Traefik si la détection automatique échoue.
+#   --dev-edge <mode>           réseau d'entrée du dev (RAIJIN_DEV_EDGE, docs/DEPLOY.md C2) :
+#                                 traefik-shared (défaut, option B) : le dev rejoint le réseau du Traefik existant,
+#                                   comme la prod ; le conteneur Traefik (créé par MTC) n'est PAS modifié ;
+#                                 dedicated (option A) : réseau raijin-dev-edge propre au dev, que Traefik rejoint par
+#                                   « docker network connect » (modifie le conteneur de MTC : ta décision explicite).
+#                               Sans l'option : valeur déjà présente dans /srv/raijin/dev/env/.env, sinon traefik-shared.
 #
 # Garanties : idempotent (relançable), ne supprime rien (une version remplacée est gardée dans
 # /var/lib/raijin-deploy/sauvegardes/), ne touche qu'à ce qui s'appelle raijin* / deploy-dev / deploy-prod ; jamais de
@@ -60,9 +67,9 @@ GITHUB_ED25519_FP='SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU'
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 MODE=check YES_SAFE=0 PREVIEW_APPLY=0
-REPO='' KEYS_DIR='' DEV_KEY='' PROD_KEY='' RO_KEY='' TRAEFIK=''
+REPO='' KEYS_DIR='' DEV_KEY='' PROD_KEY='' RO_KEY='' TRAEFIK='' DEV_EDGE_OPT=''
 
-usage() { sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { printf '\nERREUR : %s\n' "$*" >&2; exit 1; }
 
 while (($#)); do
@@ -77,6 +84,7 @@ while (($#)); do
     --prod-key) PROD_KEY="${2:-}"; shift ;;
     --readonly-key) RO_KEY="${2:-}"; shift ;;
     --traefik) TRAEFIK="${2:-}"; shift ;;
+    --dev-edge) DEV_EDGE_OPT="${2:-}"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "option inconnue : $1 (--help)" ;;
   esac
@@ -86,6 +94,8 @@ done
 [[ $EUID -eq 0 ]] || die "lance ce script avec sudo : sudo bash $0 ${MODE:+--$MODE}"
 [[ -z "$REPO" || "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "--repo attendu sous la forme compte/depot."
 [[ -z "$TRAEFIK" || "$TRAEFIK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "--traefik : nom de conteneur invalide."
+[[ -z "$DEV_EDGE_OPT" || "$DEV_EDGE_OPT" == traefik-shared || "$DEV_EDGE_OPT" == dedicated ]] \
+  || die "--dev-edge : traefik-shared (option B, défaut) ou dedicated (option A)."
 if [[ -z "$KEYS_DIR" && -d "$SCRIPT_DIR/../keys" ]]; then KEYS_DIR="$SCRIPT_DIR/../keys"; fi
 if [[ -n "$KEYS_DIR" ]]; then
   [[ -d "$KEYS_DIR" ]] || die "--keys : dossier introuvable."
@@ -196,6 +206,7 @@ detect_docker() {
   fi
   [[ -n "$TRAEFIK" ]] && docker inspect "$TRAEFIK" >/dev/null 2>&1 || { TRAEFIK=''; return 0; }
   local nets args
+  TRAEFIK_NETS_ALL="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$TRAEFIK" | tr ' ' '\n')"
   nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$TRAEFIK" | tr ' ' '\n' \
     | grep -v -x -e "$DEV_EDGE" -e '' -e bridge -e host || true)"
   if [[ $(printf '%s\n' "$nets" | grep -c .) -eq 1 ]]; then
@@ -214,7 +225,13 @@ detect_docker() {
     | sed -E 's/--certificatesresolvers\.([A-Za-z0-9_-]+)\./\1/' | sort -u || true)"
   [[ $(printf '%s\n' "$TRAEFIK_CR" | grep -c .) -eq 1 ]] || TRAEFIK_CR=''
 }
-TRAEFIK_CANDIDATES='' TRAEFIK_NETS=''
+TRAEFIK_CANDIDATES='' TRAEFIK_NETS='' TRAEFIK_NETS_ALL=''
+# Mode du réseau d'entrée du dev (C2) : --dev-edge, sinon le .env du dev, sinon traefik-shared (option B).
+dev_edge_mode() {
+  local v="$DEV_EDGE_OPT"
+  [[ -n "$v" ]] || v="$(env_value "$BASE/dev/env/.env" RAIJIN_DEV_EDGE)"
+  [[ "$v" == dedicated ]] && echo dedicated || echo traefik-shared
+}
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Blocs
@@ -435,7 +452,10 @@ tpl_env_dev() {
 # Raijin Shield — dev (dev.raijinshield.com) : docs/ENV.md « Dev (VPS) ». Créé par infra/vps-setup.sh.
 # Aucune valeur commune avec la prod (les mots de passe sont générés par le script).
 RAIJIN_NAME=raijin-dev
-TRAEFIK_NETWORK=raijin-dev-edge
+# Réseau d'entrée (docs/DEPLOY.md C2) : traefik-shared (option B, réseau du Traefik existant, le même que la prod)
+# ou dedicated (option A, TRAEFIK_NETWORK=raijin-dev-edge rejoint par Traefik).
+RAIJIN_DEV_EDGE=
+TRAEFIK_NETWORK=
 TRAEFIK_ENTRYPOINT=
 TRAEFIK_CERTRESOLVER=
 LANDING_DOMAIN=landing-dev.raijinshield.com
@@ -628,6 +648,22 @@ block_env() {
   f="$BASE/dev/env/.env"
   fill_pg "$f" raijin-dev-pgdata
   fill_env "$f" REDIS_PASSWORD:hex
+  local mode; mode="$(dev_edge_mode)"
+  fill_public "$f" RAIJIN_DEV_EDGE "$mode" "réseau d'entrée du dev, C2"
+  if [[ "$mode" == dedicated ]]; then
+    fill_public "$f" TRAEFIK_NETWORK "$DEV_EDGE" "option A : réseau propre au dev"
+  else
+    fill_public "$f" TRAEFIK_NETWORK "$TRAEFIK_NET" "option B : même réseau Traefik que la prod"
+  fi
+  if [[ -n "$DEV_EDGE_OPT" && -n "$(env_value "$f" RAIJIN_DEV_EDGE)" && "$(env_value "$f" RAIJIN_DEV_EDGE)" != "$DEV_EDGE_OPT" ]]; then
+    warn "--dev-edge $DEV_EDGE_OPT mais RAIJIN_DEV_EDGE=$(env_value "$f" RAIJIN_DEV_EDGE) dans $f : rien n'est changé, modifie le fichier toi-même (et TRAEFIK_NETWORK, C2)."
+  fi
+  local dnet; dnet="$(env_value "$f" TRAEFIK_NETWORK)"
+  if [[ "$mode" == traefik-shared && "$dnet" == raijin* ]]; then
+    warn "$f : TRAEFIK_NETWORK=$dnet incompatible avec l'option B : mets le réseau du Traefik de la prod${TRAEFIK_NET:+ ($TRAEFIK_NET)} (C2)."
+  elif [[ "$mode" == dedicated && -n "$dnet" && "$dnet" != raijin-dev-* ]]; then
+    warn "$f : TRAEFIK_NETWORK=$dnet incompatible avec l'option A : mets $DEV_EDGE (C2)."
+  fi
   fill_public "$f" TRAEFIK_ENTRYPOINT "$TRAEFIK_EP" "même entrypoint que la prod"
   fill_public "$f" TRAEFIK_CERTRESOLVER "$TRAEFIK_CR" "même certresolver que la prod"
   if [[ -z "$(env_value "$f" DEV_BASIC_AUTH_USERS)" ]]; then
@@ -732,11 +768,15 @@ block_keys() {
 
 # --- Docker : réseau d'entrée du dev (C2) -----------------------------------------------------------------------------
 block_network() {
+  if [[ "$(dev_edge_mode)" != dedicated ]]; then
+    info "option B (RAIJIN_DEV_EDGE=traefik-shared) : aucun réseau à créer, le dev rejoint le réseau du Traefik existant."
+    return 0
+  fi
   ((DOCKER_OK)) || { todo "Docker indisponible : réseau $DEV_EDGE à créer plus tard (relance le script)."; return 0; }
   if docker network inspect "$DEV_EDGE" >/dev/null 2>&1; then ok "réseau Docker $DEV_EDGE"
   else act "créer le réseau Docker $DEV_EDGE (propre au dev)" docker network create "$DEV_EDGE"; fi
 }
-block_traefik() { # toujours demandé : touche au conteneur Traefik de MTC (sans changer sa configuration)
+block_traefik() { # constats ; option A seulement : « docker network connect » sur le Traefik de MTC (toujours demandé)
   ((DOCKER_OK)) || return 0
   if [[ -z "$TRAEFIK" ]]; then
     if [[ -n "$TRAEFIK_CANDIDATES" ]]; then todo "plusieurs conteneurs Traefik ($(printf '%s ' $TRAEFIK_CANDIDATES)) : relance avec --traefik <nom>."
@@ -747,12 +787,19 @@ block_traefik() { # toujours demandé : touche au conteneur Traefik de MTC (sans
   [[ -n "$TRAEFIK_EP" ]] || todo "entrypoint HTTPS non détecté (configuration en fichier ?) : renseigne TRAEFIK_ENTRYPOINT (A2) dans les deux .env."
   [[ -n "$TRAEFIK_CR" ]] || todo "certresolver non détecté : renseigne TRAEFIK_CERTRESOLVER (A2) dans les deux .env."
   [[ -n "$TRAEFIK_NET" ]] || todo "réseau de Traefik à choisir : renseigne TRAEFIK_NETWORK (A2) dans $BASE/prod/env/.env."
+  if [[ "$(dev_edge_mode)" != dedicated ]]; then
+    ok "option B : le conteneur Traefik ($TRAEFIK) n'est pas modifié ; le dev utilise ${TRAEFIK_NET:-son réseau (à choisir)}"
+    if printf '%s\n' "$TRAEFIK_NETS_ALL" | grep -qx "$DEV_EDGE"; then
+      info "Traefik est encore relié à $DEV_EDGE (option A d'une installation précédente) : rien n'est retiré automatiquement (C2)."
+    fi
+    return 0
+  fi
   if docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$TRAEFIK" | tr ' ' '\n' | grep -qx "$DEV_EDGE"; then
     ok "Traefik ($TRAEFIK) relié à $DEV_EDGE"
   elif ! docker network inspect "$DEV_EDGE" >/dev/null 2>&1 && ((!DRY)); then
     printf '  [passé]    réseau %s absent\n' "$DEV_EDGE"
   else
-    act "docker network connect $DEV_EDGE $TRAEFIK (ne change rien à sa configuration ; à refaire si Traefik est recréé)" \
+    act "option A : docker network connect $DEV_EDGE $TRAEFIK (modifie le conteneur Traefik de MTC, ta décision ; à refaire si Traefik est recréé)" \
       docker network connect "$DEV_EDGE" "$TRAEFIK"
   fi
 }
@@ -858,7 +905,7 @@ report_env() {
   for line in \
     "prod/env/.env|TRAEFIK_NETWORK TRAEFIK_ENTRYPOINT TRAEFIK_CERTRESOLVER DEPLOY_GITHUB_REPOSITORY DEPLOY_GIT_REMOTE WATCHDOG_ALERT_EMAIL|BACKUP_RCLONE_REMOTE GA4_MEASUREMENT_ID GOOGLE_SITE_VERIFICATION BENCH_BASIC_AUTH_USERS" \
     "prod/env/.env.api|RESEND_API_KEY HELIUS_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_PRO_MONTHLY STRIPE_PRICE_PRO_YEARLY|GA4_PROPERTY_ID GOOGLE_SERVICE_ACCOUNT_JSON SEARCH_CONSOLE_SITE_URL SENTRY_DSN_API" \
-    "dev/env/.env|TRAEFIK_ENTRYPOINT TRAEFIK_CERTRESOLVER DEV_BASIC_AUTH_USERS|" \
+    "dev/env/.env|TRAEFIK_NETWORK TRAEFIK_ENTRYPOINT TRAEFIK_CERTRESOLVER DEV_BASIC_AUTH_USERS|" \
     "dev/env/.env.api||HELIUS_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_PRO_MONTHLY STRIPE_PRICE_PRO_YEARLY SENTRY_DSN_API"; do
     f="$BASE/${line%%|*}"
     local req="${line#*|}"; opt="${req#*|}"; req="${req%%|*}"
@@ -907,8 +954,8 @@ run_all() {
   run_block "Règles sudo (C2, C6)" safe block_sudoers
   run_block "Fichiers de variables (C3)" safe block_env
   run_block "Clés SSH et GitHub (C5)" safe block_keys
-  run_block "Réseau Docker du dev (C2)" safe block_network
-  run_block "Traefik rejoint le réseau du dev (C2, toujours demandé)" ask block_traefik
+  run_block "Réseau d'entrée du dev (C2, option $(dev_edge_mode))" safe block_network
+  run_block "Traefik et réseau du dev (C2 ; option A : toujours demandé)" ask block_traefik
   run_block "Sauvegardes et veille systemd (C3, toujours demandé)" ask block_systemd
   run_block "Vérifications (C2, C5)" safe block_verify
   report_env

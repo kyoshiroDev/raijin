@@ -26,6 +26,49 @@ Les noms de variables suivent `docs/ENV.md`.
 | `COOKIE_SECRET` | `openssl rand -base64 32` | apps/api | [ ] |
 | `TOTP_ENCRYPTION_KEY` | `openssl rand -base64 32` | apps/api | [ ] |
 | `VAPID_PRIVATE_KEY` (+ `VAPID_PUBLIC_KEY`) | `npx web-push generate-vapid-keys` | apps/api | [ ] |
+| `IP_HASH_SECRET` | `openssl rand -base64 48` | apps/api (empreintes d'IP HMAC) | [ ] |
+
+## Déploiement continu : secrets GitHub (docs/DEPLOY.md C5)
+
+Page exacte : dépôt `raijin` sur GitHub → **Settings → Secrets and variables → Actions → onglet « Secrets » →
+New repository secret** (`https://github.com/<compte>/raijin/settings/secrets/actions`). `bash infra/vps-install.sh`
+génère les clés dans `~/.ssh` (600) et propose les commandes `gh secret set` (la clé n'est jamais affichée :
+`gh` lit le fichier). Rappel GitHub Free : tout workflow de n'importe quelle branche lit ces secrets
+(`docs/SECURITY.md` §17) ; aucun ne permet de démarrer la production.
+
+| Secret | Où le trouver / le générer | Utilisé par | Créé par l'utilisateur |
+|---|---|---|---|
+| `DEPLOY_SSH_KEY_DEV` | clé **privée** `~/.ssh/raijin-deploy-dev` (générée par `bash infra/vps-install.sh`, sinon `ssh-keygen -t ed25519 -N '' -C github-raijin-deploy-dev -f ~/.ssh/raijin-deploy-dev`) ; `gh secret set DEPLOY_SSH_KEY_DEV --repo <compte>/raijin < ~/.ssh/raijin-deploy-dev`. Clé publique dans `~deploy-dev/.ssh/authorized_keys` (commande forcée `deploy-gate.sh dev`, posée par `infra/vps-setup.sh`) | `.github/workflows/deploy.yml`, job « dev » → `deploy-dev@VPS` | [ ] |
+| `DEPOT_SSH_KEY_PROD` | clé **privée** `~/.ssh/raijin-depot-prod` (même générateur, `-C github-raijin-depot-prod`) ; `gh secret set DEPOT_SSH_KEY_PROD --repo <compte>/raijin < ~/.ssh/raijin-depot-prod`. Clé publique dans `~deploy-prod/.ssh/authorized_keys` (commande forcée `deploy-gate.sh prod-depot` : **dépôt seulement**) | `deploy.yml`, job « prod » → `deploy-prod@VPS` | [ ] |
+| `DEPLOY_KNOWN_HOSTS` | `~/.ssh/raijin-known-hosts` : `ssh-keyscan -t ed25519 <IP du VPS>`, empreinte comparée à `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` sur le VPS (fait par `vps-install.sh`) ; `gh secret set DEPLOY_KNOWN_HOSTS --repo <compte>/raijin < ~/.ssh/raijin-known-hosts` (pas vraiment secret, mais épinglé) | `deploy.yml`, jobs « dev » et « prod » (`StrictHostKeyChecking=yes`) | [ ] |
+| ancien `DEPLOY_SSH_KEY_PROD` | à **supprimer** s'il existe : `gh secret delete DEPLOY_SSH_KEY_PROD --repo <compte>/raijin` | plus rien (aucune clé de déploiement de prod dans GitHub) | [ ] supprimé |
+
+Variables GitHub associées (onglet **« Variables »**, non secrètes) : `DEPLOY_HOST` (IPv4 du VPS, obligatoire),
+`DEPLOY_DEV_AUTO` (interrupteur du déploiement automatique du dev : absente = désactivé ; `1` après l'installation
+du VPS, `0` pour suspendre), `DEPLOY_USER_DEV` / `DEPLOY_USER_PROD` / `DEPLOY_PORT` si différents des défauts.
+Après création : supprime les clés privées du PC (`shred -u ~/.ssh/raijin-deploy-dev ~/.ssh/raijin-depot-prod
+~/.ssh/raijin-github-readonly`), C5 étape 7.
+
+## Déploiement continu : secrets sur le VPS (docs/DEPLOY.md C2, C3, C5)
+
+Fichiers `/srv/raijin/<env>/env/` en 600, lisibles par `deploy-dev` ou `deploy-prod` seul ; valeurs **distinctes**
+entre dev et prod. Édition : `sudo -u deploy-prod nano /srv/raijin/prod/env/.env` (ou `deploy-dev`).
+
+| Variable / fichier | Où la trouver / la générer | Utilisé par | Fait |
+|---|---|---|---|
+| Clé de lecture du dépôt `~deploy-prod/.ssh/github_readonly` | clé **privée** `~/.ssh/raijin-github-readonly` (générée par `vps-install.sh`, copiée sur le VPS par `vps-setup.sh --readonly-key`) ; la clé publique va dans GitHub → **Settings → Deploy keys → Add deploy key**, titre `vps-raijin-lecture`, **sans** « Allow write access » | `deploy-gate.sh --approve` (`git ls-remote` : le commit doit être la tête de `main`) | [ ] |
+| `DEV_BASIC_AUTH_USERS` (`/srv/raijin/dev/env/.env`) | demandé au clavier par `sudo bash infra/vps-setup.sh --apply` (haché bcrypt, jamais affiché), ou `htpasswd -nBC 12 <utilisateur>` (paquet `apache2-utils`), collé **entre apostrophes** (le hash contient des `$`). Mot de passe distinct de celui du banc | Traefik, middleware `raijin-dev-auth` devant app, landing, API et Mailpit du dev (`infra/docker-compose.env-dev.yml`) ; exigé par `infra/deploy.sh --env dev` | [ ] |
+| `BENCH_BASIC_AUTH_USERS` (`/srv/raijin/prod/env/.env`) | `htpasswd -nBC 12 <utilisateur>`, **entre apostrophes** ; mot de passe distinct de celui du dev | Traefik devant `banc.raijinshield.com` (`infra/docker-compose.yml`, profil `bench`) ; exigé par `infra/deploy.sh --bench` (docs/DEPLOY.md A14) | [ ] |
+| `POSTGRES_SUPERUSER_PASSWORD`, `RAIJIN_DB_PASSWORD`, `BENCH_DB_PASSWORD`, `REDIS_PASSWORD` (prod et dev), `REDIS_BENCH_PASSWORD` (prod) | **générés sur le VPS** par `infra/vps-setup.sh` (`openssl rand -hex 32`, jamais affichés) ; à la main : `openssl rand -hex 32`, une valeur par variable | Postgres, Redis, `raijin-api`, `raijin-bench-api`, `infra/deploy.sh` (contrôle ≥ 24 caractères) | [ ] vérifié |
+| `JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `IP_HASH_SECRET`, `TOTP_ENCRYPTION_KEY`, `VAPID_PRIVATE_KEY` (`.env.api` prod et dev) | **générés sur le VPS** par `infra/vps-setup.sh` (une paire VAPID par environnement) | `raijin-api` prod et dev | [ ] vérifié |
+| `BENCH_SESSION_SECRET` (`/srv/raijin/prod/env/.env.bench-api`) | `openssl rand -base64 48` | `raijin-bench-api` (sessions, CSRF) | [ ] |
+| `BENCH_TOTP_ENCRYPTION_KEY` (idem) | `openssl rand -base64 32` | `raijin-bench-api` (TOTP) | [ ] |
+| `BENCH_VAPID_PRIVATE_KEY` (+ `BENCH_VAPID_PUBLIC_KEY`) (idem) | `pnpm exec web-push generate-vapid-keys --json` (paire propre au banc) | `raijin-bench-api` (push) | [ ] |
+| `BENCH_JUP_API_KEY` (idem, facultatif) | https://portal.jup.ag → clé propre au banc (vide = débit public) | `raijin-bench-api` (scan porté) | [ ] |
+| `BENCH_RESEND_API_KEY` (idem, si `BENCH_MAIL_TRANSPORT=resend`) | https://resend.com/api-keys → clé propre au banc, droit « Sending access » seul — service pas encore créé | `raijin-bench-api` (alertes e-mail) | [ ] |
+| Clés B2 et mots de passe du remote rclone chiffré (`~/.config/rclone/rclone.conf` de root) | https://secure.backblaze.com/app_keys.htm → clé limitée au bucket `raijin-backups-…` ; `sudo rclone config` (docs/DEPLOY.md A9) ; recopier les deux mots de passe `crypt` dans ton gestionnaire — service pas encore créé | `infra/backup.sh` (copie hors site, `BACKUP_RCLONE_REMOTE`) | [ ] |
+
+Bot Telegram : pas encore développé (aucune variable dans `docs/ENV.md`) ; ses secrets seront ajoutés ici avec lui.
 
 > **2026-11-26** : `HELIUS_API_KEY` copiée par l'utilisateur ; `BENCH_HELIUS_API_KEY` copiée (clé « raijin-banc-de-test »).
 

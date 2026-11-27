@@ -526,8 +526,12 @@ Modèle de `/srv/raijin/dev/env/.env` (valeurs **factices**) :
 ```dotenv
 # Préfixe de tous les noms Docker du dev (conteneurs, images, routeurs Traefik, réseau, volumes) : ne pas changer
 RAIJIN_NAME=raijin-dev
-# Réseau d'entrée PROPRE au dev, rejoint par Traefik (docs/DEPLOY.md C2) ; jamais celui de la production
-TRAEFIK_NETWORK=raijin-dev-edge
+# Réseau d'entrée du dev (docs/DEPLOY.md C2, ta décision) :
+#   traefik-shared (défaut, option B) : TRAEFIK_NETWORK = réseau du Traefik existant, le MÊME que la prod (A2) ;
+#     le conteneur Traefik (créé par MTC) n'est pas modifié ;
+#   dedicated (option A) : TRAEFIK_NETWORK=raijin-dev-edge, rejoint par Traefik (docker network connect).
+RAIJIN_DEV_EDGE=traefik-shared
+TRAEFIK_NETWORK=traefik_factice
 # Entrypoint et certresolver : les MÊMES valeurs que la production (docs/DEPLOY.md A2)
 TRAEFIK_ENTRYPOINT=websecure
 TRAEFIK_CERTRESOLVER=letsencrypt

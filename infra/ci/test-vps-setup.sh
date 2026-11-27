@@ -83,7 +83,11 @@ done
 [[ "$(val /srv/raijin/dev/env/.env REDIS_PASSWORD)" != "$(val /srv/raijin/prod/env/.env REDIS_PASSWORD)" ]] || fail "secret commun dev/prod"
 [[ "$(val /srv/raijin/prod/env/.env DEPLOY_GIT_REMOTE)" == git@github.com:test-owner/raijin.git ]] || fail "DEPLOY_GIT_REMOTE"
 [[ -z "$(val /srv/raijin/dev/env/.env DEV_BASIC_AUTH_USERS)" ]] || fail "basicAuth sans terminal"
-grep -q 'Traefik rejoint' /tmp/apply1.log || fail "bloc Traefik absent"
+grep -q 'Traefik et réseau du dev' /tmp/apply1.log || fail "bloc Traefik absent"
+grep -q 'option traefik-shared' /tmp/apply1.log || fail "option B (traefik-shared) non choisie par défaut"
+grep -q 'docker network connect' /tmp/apply1.log && fail "option B : docker network connect proposé"
+[[ "$(val /srv/raijin/dev/env/.env RAIJIN_DEV_EDGE)" == traefik-shared ]] || fail "RAIJIN_DEV_EDGE par défaut ≠ traefik-shared"
+[[ -z "$(val /srv/raijin/dev/env/.env TRAEFIK_NETWORK)" ]] || fail "dev TRAEFIK_NETWORK rempli sans Traefik détecté"
 grep -q 'Docker absent ou arrêté' /tmp/apply1.log || fail "repli Docker"
 grep -q 'DEV_BASIC_AUTH_USERS' /tmp/apply1.log || fail "basicAuth non signalée"
 

@@ -720,11 +720,13 @@ dans aucun fichier du dépôt) et l'utilisateur SSH (défaut `greg`), puis :
 2. copie par `scp` une archive (scripts figés de `infra/`, clés publiques, clé de lecture du dépôt) dans un dossier
    temporaire du VPS, supprimé à la fin ;
 3. lance sur le VPS `sudo bash infra/vps-setup.sh --preview-apply` : aperçu complet, « Continuer ? (o/N) », puis
-   application sans question des blocs non destructifs ; `docker network connect` sur Traefik, le retrait d'un groupe
-   et les unités systemd restent **toujours demandés** ;
+   application sans question des blocs non destructifs ; le retrait d'un groupe et les unités systemd restent
+   **toujours demandés**. Réseau d'entrée du dev : option B par défaut (C2), **aucune** modification du conteneur
+   Traefik ; `docker network connect` n'est proposé (et toujours demandé) qu'avec `--dev-edge dedicated` (option A) ;
 4. enregistre l'empreinte du VPS (`~/.ssh/raijin-known-hosts`) après l'avoir comparée à celle lue sur le VPS ;
 5. affiche la liste numérotée des secrets et variables GitHub avec les commandes `gh secret set … < ~/.ssh/raijin-…`
-   et `gh variable set DEPLOY_HOST` prêtes à copier (aucune clé affichée), et propose de les lancer.
+   et `gh variable set DEPLOY_HOST` prêtes à copier (aucune clé affichée), et propose de les lancer. Il rappelle
+   l'interrupteur `DEPLOY_DEV_AUTO` (C5), qu'il n'active **jamais** lui-même.
 
 Ce que fait `infra/vps-setup.sh` (relançable sans casse, ne supprime rien : une version remplacée est gardée dans
 `/var/lib/raijin-deploy/sauvegardes/`) : paquets (`python3-yaml`, `apache2-utils`…), utilisateurs `deploy-dev` /
@@ -732,7 +734,7 @@ Ce que fait `infra/vps-setup.sh` (relançable sans casse, ne supprime rien : une
 validées par `visudo -cf`, modèles `/srv/raijin/<env>/env/.env*` en 600 (repris de la partie A s'ils existent),
 **secrets générés sur le VPS** (Postgres, Redis, JWT, cookies, TOTP, empreinte IP, paires VAPID dev et prod) sans
 jamais les afficher, mot de passe basicAuth du dev demandé au clavier, `authorized_keys` à commande forcée, clé de
-lecture GitHub, réseau `raijin-dev-edge`, détection du Traefik (réseau, entrypoint, certresolver, en lecture seule),
+lecture GitHub, réseau d'entrée du dev (`RAIJIN_DEV_EDGE`, C2), détection du Traefik (réseau, entrypoint, certresolver, en lecture seule),
 vérifications `passwd -S`, `sshd -T`, isolement de `deploy-dev` et `git ls-remote`. Il termine par un résumé « fait /
 déjà en place / reste à faire » et la liste des variables à remplir toi-même (noms seulement : Helius, Resend,
 Stripe, Google…).
@@ -749,10 +751,10 @@ La procédure manuelle ci-dessous (C0 à C10) reste la référence.
 
 | | dev | prod |
 |---|---|---|
-| Déclencheur | push sur `dev`, **après CI verte** : déploiement **automatique** | push sur `main` (fusion de la PR `dev → main`, faite par toi), **après CI verte** : archive **déposée** sur le VPS, puis **activée par toi** (une commande, C6) |
+| Déclencheur | push sur `dev`, **après CI verte** : déploiement **automatique** si la variable GitHub `DEPLOY_DEV_AUTO` vaut `1` (absente = désactivé, C5) | push sur `main` (fusion de la PR `dev → main`, faite par toi), **après CI verte** : archive **déposée** sur le VPS, puis **activée par toi** (une commande, C6) |
 | Noms | `dev.raijinshield.com` (app), `api-dev.raijinshield.com`, `landing-dev.raijinshield.com` | `app.`, `api.`, `raijinshield.com` + `www`, `banc.` |
 | Projet Compose | `raijin-dev` (conteneurs, images, routeurs, réseaux, volumes `raijin-dev-…`) | `raijin` (inchangé) |
-| Réseau d'entrée | `raijin-dev-edge`, propre au dev, rejoint par Traefik (C2) | celui de Traefik (A2) |
+| Réseau d'entrée | `RAIJIN_DEV_EDGE` (C2) : option B `traefik-shared` (défaut) = celui de Traefik, comme la prod ; option A `dedicated` = `raijin-dev-edge` rejoint par Traefik | celui de Traefik (A2) |
 | Postgres / Redis | propres au dev (`raijin-dev-postgres`, `raijin-dev-redis`, volumes `raijin-dev-pgdata` / `-redisdata`) | ceux de la partie A |
 | Accès | mot de passe Traefik (basicAuth) partout, sauf `robots.txt`, la santé, le webhook Stripe et les images OG d'`api-dev` | public |
 | Indexation | `X-Robots-Tag: noindex, nofollow` et `robots.txt` `Disallow: /` partout | normale |
@@ -817,8 +819,10 @@ Choix et raisons :
 
 > Limite à connaître : l'accès à Docker équivaut à un accès root sur le VPS. Les contrôles réduisent ce qu'une
 > livraison du dev peut faire (elle reste confinée à ses noms, ses réseaux et ses ressources), mais **quiconque peut
-> pousser sur `dev` fait tourner son code sur le VPS** : garde les droits d'écriture du dépôt pour toi seul. Les images
-> de production, elles, ne viennent que de `deploy.yml` sur `main` (jeton OIDC) et ne démarrent qu'après ton activation.
+> pousser sur `dev` fait tourner son code sur le VPS** (y compris les agents Claude, qui poussent sur `dev`) : garde
+> les droits d'écriture du dépôt pour toi seul, et n'active `DEPLOY_DEV_AUTO=1` qu'en connaissance de cause (C5,
+> `docs/SECURITY.md` §17). Les images de production, elles, ne viennent que de `deploy.yml` sur `main` (jeton OIDC) et
+> ne démarrent qu'après ton activation.
 
 ## C1. Prérequis sur le VPS
 
@@ -874,19 +878,44 @@ sudo sshd -T | grep -iE '^(acceptenv|permituserenvironment|allowusers|allowgroup
 #   si allowusers / allowgroups existe : y ajouter deploy-dev et deploy-prod, puis sudo sshd -t && sudo systemctl reload ssh
 ```
 
-**Réseau d'entrée du dev** : les conteneurs exposés du dev ne rejoignent **pas** le réseau de Traefik partagé avec la
-prod et les autres projets, mais un réseau à eux, que Traefik rejoint en plus des siens :
+**Réseau d'entrée du dev** (`RAIJIN_DEV_EDGE` dans `/srv/raijin/dev/env/.env`) : **ta décision**. Le conteneur
+Traefik a été créé par MyTradingCoach, et PROMPT §7 interdit de toucher à MTC ; deux options, la B est le défaut :
+
+| | Option B : `RAIJIN_DEV_EDGE=traefik-shared` (**défaut**) | Option A : `RAIJIN_DEV_EDGE=dedicated` |
+|---|---|---|
+| Principe | les conteneurs exposés du dev (`raijin-dev-api`, `-web`, `-landing`, `-mailpit`) rejoignent le **même réseau Traefik externe que la prod** (`TRAEFIK_NETWORK` = valeur de A2) | réseau `raijin-dev-edge` propre au dev, que Traefik rejoint en plus des siens |
+| Conteneur Traefik de MTC | **jamais modifié** (aucune commande sur lui) | modifié à chaud : `docker network connect raijin-dev-edge <traefik>` (sans toucher à ses fichiers) |
+| Ce que le dev peut joindre directement | l'API, l'app, la landing et le banc de la prod **et** les conteneurs de MTC / XMR Trader présents sur ce réseau (sans passer par Traefik) | rien d'autre que Traefik |
+| Ce qui reste isolé | Postgres et Redis de la prod (réseau interne `raijin-internal`, jamais sur le réseau d'entrée : refusé par la porte), secrets de la prod (`deploy-dev` ne lit rien de `/srv/raijin/prod`), volumes, noms, routeurs Traefik (`Host(`…-dev…`)` seulement) | idem |
+| Fragilité | aucune : rien à refaire si Traefik est recréé | si Traefik est **recréé** (mise à jour de MTC), la connexion disparaît : le dev répond 404/502 jusqu'à ce que tu relances `docker network connect` |
+| Risque | un code malveillant poussé sur `dev` peut appeler l'API de la prod **sans Traefik** : il contourne la basicAuth du banc, les limites Traefik, et peut forger `X-Forwarded-For` (l'API fait confiance à 1 saut, `TRUST_PROXY=1`) donc fausser le comptage par IP. Il reste soumis aux contrôles propres de l'API (sessions, CSRF, rôles, quotas par compte) et du banc (session propriétaire, CSRF). Même exposition que celle déjà acceptée pour MTC sur ce réseau | toucher un conteneur qui n'est pas à Raijin (décision de l'utilisateur à consigner dans `docs/PROGRESS.md`) |
+
+Option B (défaut, rien à faire sur Traefik) : dans `/srv/raijin/dev/env/.env`,
+
+```dotenv
+RAIJIN_DEV_EDGE=traefik-shared
+TRAEFIK_NETWORK=<réseau de Traefik trouvé en A2, le même que la prod>
+```
+
+`infra/vps-setup.sh` les remplit ainsi par défaut. Les contrôles (`infra/deploy.sh`, `infra/lib/deploy_policy.py`,
+rejoués par `release.sh` avant chaque `up`) refusent en option B tout réseau `raijin-…` (interne de la prod ou du dev)
+comme réseau d'entrée, tout réseau externe autre que `TRAEFIK_NETWORK`, et Postgres / Redis sur ce réseau.
+
+Option A (seulement si tu la choisis, après avoir noté ta décision) : `sudo bash infra/vps-setup.sh --apply
+--dev-edge dedicated` (demande toujours confirmation), ou à la main :
 
 ```bash
 docker network create raijin-dev-edge
-docker network connect raijin-dev-edge <conteneur-traefik>     # nom trouvé en A2 ; ne change rien à sa configuration
+docker network connect raijin-dev-edge <conteneur-traefik>     # nom trouvé en A2 ; modifie le conteneur de MTC
 docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' <conteneur-traefik>   # raijin-dev-edge listé
+# puis dans /srv/raijin/dev/env/.env : RAIJIN_DEV_EDGE=dedicated et TRAEFIK_NETWORK=raijin-dev-edge
 ```
 
-Ainsi le dev ne peut joindre ni l'API de la prod, ni les conteneurs de MTC ou de XMR Trader. Compromis : cette connexion
-est faite à chaud, sans toucher aux fichiers de MTC ; si le conteneur Traefik est **recréé** (mise à jour de MTC), elle
-disparaît et le dev répond 404 ou 502 (la prod n'est pas concernée) : relance la commande `docker network connect`. Le
-déploiement du dev échoue proprement (contrôle de routage) tant qu'elle manque.
+En option A, le déploiement du dev échoue proprement (contrôle de routage) tant que Traefik n'a pas rejoint le réseau.
+Revenir de A à B : remets `RAIJIN_DEV_EDGE=traefik-shared` et `TRAEFIK_NETWORK=<réseau de A2>`, redéploie le dev ;
+`docker network disconnect raijin-dev-edge <traefik>` reste à faire par toi (aucun script ne le fait). Tests : option B
+en CI de bout en bout (`infra/ci/test-dev-env.sh`, `check-stack-dev.sh` : Traefik inchangé, Postgres / Redis de la
+prod injoignables), options A et B et leurs refus dans `infra/ci/test-deploy-policy.sh`.
 
 ## C3. Fichiers de variables
 
@@ -899,7 +928,8 @@ sudo install -o deploy-prod -g deploy-prod -m 600 /opt/raijin/infra/.env.api    
 sudo install -o deploy-prod -g deploy-prod -m 600 /opt/raijin/infra/.env.bench-api /srv/raijin/prod/env/.env.bench-api   # si le banc tourne
 # (sinon : crée-les avec « sudo -u deploy-prod nano /srv/raijin/prod/env/.env », modèle docs/ENV.md « Production (VPS) »)
 
-# Dev : nouveaux fichiers, valeurs propres au dev (modèle docs/ENV.md « Dev (VPS) », TRAEFIK_NETWORK=raijin-dev-edge)
+# Dev : nouveaux fichiers, valeurs propres au dev (modèle docs/ENV.md « Dev (VPS) » ; RAIJIN_DEV_EDGE et
+# TRAEFIK_NETWORK selon l'option choisie en C2 : par défaut traefik-shared et le réseau de Traefik de la prod)
 sudo -u deploy-dev nano /srv/raijin/dev/env/.env
 sudo -u deploy-dev nano /srv/raijin/dev/env/.env.api
 sudo chmod 600 /srv/raijin/dev/env/.env* /srv/raijin/prod/env/.env*
@@ -996,6 +1026,7 @@ ls -l /opt/raijin-deploy/infra /opt/raijin-deploy/infra/lib     # tout appartien
    | Secrets | `DEPOT_SSH_KEY_PROD` | contenu de `~/raijin-depot-prod` (clé privée, dépôt seulement) |
    | Secrets | `DEPLOY_KNOWN_HOSTS` | contenu de `~/raijin-known-hosts` |
    | Variables | `DEPLOY_HOST` | **obligatoire** : IPv4 du VPS |
+   | Variables | `DEPLOY_DEV_AUTO` | interrupteur du déploiement du dev : **absente = désactivé** (défaut, par prudence) ; `1` = chaque push sur `dev` (CI verte) est déployé ; `0` = suspendu. À mettre à `1` par toi **après** l'installation du VPS (C6 étape 4) : `gh variable set DEPLOY_DEV_AUTO --body 1` |
    | Variables | `GA4_MEASUREMENT_ID`, `GOOGLE_SITE_VERIFICATION` | facultatives, valeurs publiques de la landing de prod |
    | Variables | `DEPLOY_USER_DEV`, `DEPLOY_USER_PROD`, `DEPLOY_PORT` | seulement si différents de `deploy-dev`, `deploy-prod` et `22` |
 
@@ -1037,8 +1068,12 @@ clé de production dans GitHub, jeton OIDC d'une autre branche refusé).
    `alias raijin-approve='sudo -u deploy-prod /opt/raijin-deploy/infra/deploy-gate.sh --approve'`.
    (Pour l'utiliser sans droits sudo complets, une seule règle suffit, via `sudo visudo -f /etc/sudoers.d/raijin` :
    `<ton-utilisateur> ALL=(deploy-prod) NOPASSWD: /opt/raijin-deploy/infra/deploy-gate.sh --approve *`.)
-4. Dev : GitHub → **Actions → Déploiement → Run workflow** → branche `dev`, environnement `dev`. Ensuite, chaque push
-   sur `dev` déploie le dev automatiquement.
+4. Dev : active l'interrupteur (`gh variable set DEPLOY_DEV_AUTO --repo <compte>/raijin --body 1`, ou Settings →
+   Secrets and variables → Actions → Variables), puis GitHub → **Actions → Déploiement → Run workflow** → branche
+   `dev`, environnement `dev`. Ensuite, chaque push sur `dev` déploie le dev automatiquement. Pour **suspendre** :
+   `gh variable set DEPLOY_DEV_AUTO --body 0` (ou supprime la variable). Cet interrupteur arrête le flux normal ; il
+   ne protège pas d'un workflow modifié et poussé sur `dev` (qui peut lire `DEPLOY_SSH_KEY_DEV`) : l'arrêt **sûr** se
+   fait sur le VPS, en commentant la ligne de `~deploy-dev/.ssh/authorized_keys` (`docs/SECURITY.md` §17).
 5. Suivi sur le VPS :
    ```bash
    sudo -u deploy-dev ls -t /srv/raijin/dev/logs | head -3       # journaux des derniers déploiements

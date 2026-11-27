@@ -21,7 +21,11 @@
 #                                         limités aux deux modèles du dépôt
 #   resolve  <brut.json> <résolu.json>    retire build et x-* du rendu (la config livrée ne construit jamais rien)
 #   compose  <résolu.json> --name … --root … --network … --entrypoint … --certresolver … --tag … --hosts a,b
-#                                         politique complète de la configuration résolue
+#            [--edge traefik-shared|dedicated]
+#                                         politique complète de la configuration résolue ; --edge (dev seulement,
+#                                         RAIJIN_DEV_EDGE, docs/DEPLOY.md C2) : traefik-shared (défaut, option B) = le
+#                                         dev rejoint le réseau du Traefik existant (jamais un réseau raijin-…) ;
+#                                         dedicated (option A) = réseau d'entrée propre au dev raijin-dev-…
 #   loaded   <attendues>                  (sortie de `docker load` sur l'entrée) : exactement les étiquettes attendues
 #   copyin   <source> <dest> <max> <uid>  copie racine sûre d'un fichier de l'utilisateur (sans lien, propriétaire)
 #   thirdparty <résolu.json>              images tierces (épinglées par empreinte) à télécharger avant `--pull never`
@@ -93,6 +97,10 @@ COMPOSE_FILES = ('docker-compose.yml', 'docker-compose.env-dev.yml')
 FILE_KEYS = ('include', 'extends', 'label_file', 'env_file')
 RULE_RE = re.compile(r'^Host\(`([a-z0-9.-]+)`\)((?:\s*&&\s*(?:Path|PathPrefix)\(`/[A-Za-z0-9_./-]*`\))*)$')
 DEV_HOST_RE = re.compile(r'^(dev|[a-z0-9-]+-dev)\.[a-z0-9.-]+$')
+# RAIJIN_DEV_EDGE (docs/DEPLOY.md C2) : option B (défaut) ou option A.
+DEV_EDGES = ('traefik-shared', 'dedicated')
+NETWORK_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
+DATA_IMAGE = re.compile(r'^(postgres|redis):')
 
 errors = []
 
@@ -605,6 +613,7 @@ def cmd_compose(argv):
     p.add_argument('config')
     for opt in ('--name', '--root', '--network', '--entrypoint', '--certresolver', '--tag', '--hosts'):
         p.add_argument(opt, required=True)
+    p.add_argument('--edge', default='')
     a = p.parse_args(argv)
     a.root = os.path.realpath(a.root)
     a.hosts = {h.strip().lower() for h in a.hosts.split(',') if h.strip()}
@@ -615,14 +624,27 @@ def cmd_compose(argv):
     if not re.fullmatch(r'[0-9a-f]{40}|deployed', a.tag):
         fail('étiquette attendue : commit complet')
         return finish('compose')
+    edge = a.edge or 'traefik-shared'
+    if edge not in DEV_EDGES:
+        fail('RAIJIN_DEV_EDGE : traefik-shared ou dedicated attendu (docs/DEPLOY.md C2)')
+        return finish('compose')
+    if not NETWORK_RE.fullmatch(a.network):
+        fail('réseau d\'entrée : nom invalide')
+        return finish('compose')
     if name == 'raijin-dev':
         for h in a.hosts:
             if not DEV_HOST_RE.match(h):
                 fail('nom de domaine du dev sans « dev. » ni « -dev. »')
-        if not prefixed(a.network, name):
-            fail('réseau d\'entrée du dev : raijin-dev-… exigé (docs/DEPLOY.md C2)')
-    elif a.network.lower().startswith('raijin-dev-'):
-        fail('la production ne peut pas utiliser le réseau d\'entrée du dev')
+        if edge == 'dedicated' and not prefixed(a.network, name):
+            fail('réseau d\'entrée du dev (option A, dedicated) : raijin-dev-… exigé (docs/DEPLOY.md C2)')
+        if edge == 'traefik-shared' and a.network.lower().startswith('raijin'):
+            # Option B : le réseau du Traefik existant, jamais un réseau de Raijin (interne de la prod ou du dev).
+            fail('réseau d\'entrée du dev (option B, traefik-shared) : réseau du Traefik existant attendu, '
+                 'jamais un réseau raijin-… (docs/DEPLOY.md C2)')
+    elif a.edge:
+        fail('--edge ne concerne que le dev')
+    elif a.network.lower().startswith('raijin'):
+        fail('la production ne peut pas utiliser un réseau raijin-… comme réseau d\'entrée')
     raw = open(a.config).read()
     # Aucune interpolation possible au démarrage : chaque « $ » de la configuration résolue doit être échappé (« $$ »).
     if '$' in raw.replace('$$', ''):
@@ -717,6 +739,10 @@ def cmd_compose(argv):
         for net in nets:
             if net not in networks:
                 fail(f'{svc} : réseau non déclaré')
+            elif networks[net].get('external') and DATA_IMAGE.match(image):
+                # Postgres et Redis restent sur le réseau interne du projet : jamais sur le réseau du Traefik, partagé
+                # avec les autres projets (et avec le dev en option B).
+                fail(f'{svc} : base de données ou cache sur le réseau d\'entrée refusé')
         labels = s.get('labels') or {}
         if isinstance(labels, list):
             labels = dict(item.split('=', 1) if '=' in item else (item, '') for item in labels)

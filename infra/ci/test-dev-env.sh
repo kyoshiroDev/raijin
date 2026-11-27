@@ -5,6 +5,7 @@
 # Images : celles de la prod (déjà construites) réétiquetées raijin-dev/<image>:<commit>.
 #   1. refus attendus de la porte (mauvais environnement, commande inconnue, commit invalide, étiquette étrangère) ;
 #   2. premier déploiement dev → succès, version en service ;
+#   (réseau d'entrée : option B, RAIJIN_DEV_EDGE=traefik-shared, Traefik jamais modifié : docs/DEPLOY.md C2) ;
 #   3. deuxième livraison volontairement cassée (santé de l'API inaccessible par Traefik) → échec, retour
 #      automatique à la version 1, toujours en service.
 set -euo pipefail
@@ -45,9 +46,13 @@ bundle() {
   rm -r -- "$d"
 }
 
-# Réseau d'entrée du dev, rejoint par Traefik (sur le VPS : docs/DEPLOY.md C2) ; la prod reste sur traefik-ci.
-docker network inspect raijin-dev-edge >/dev/null 2>&1 || docker network create raijin-dev-edge >/dev/null
-docker network connect raijin-dev-edge traefik-ci 2>/dev/null || true
+# Réseau d'entrée du dev : option B (RAIJIN_DEV_EDGE=traefik-shared, défaut, docs/DEPLOY.md C2), le réseau du
+# Traefik factice (traefik-ci), comme la prod. Le conteneur Traefik n'est PAS modifié : ses réseaux sont relevés
+# avant et comparés après les déploiements (sur le VPS, c'est le Traefik de MTC).
+traefik_nets() { docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' traefik-ci; }
+traefik_before="$(traefik_nets)"
+grep -qx 'RAIJIN_DEV_EDGE=traefik-shared' "$RAIJIN_DEPLOY_BASE/dev/env/.env" && grep -qx 'TRAEFIK_NETWORK=traefik-ci' "$RAIJIN_DEPLOY_BASE/dev/env/.env" \
+  && ok "dev en option B (traefik-shared, réseau traefik-ci)" || ko "fichier du dev : option B attendue (fake-env.sh)"
 
 sha1="$(git rev-parse HEAD)"
 mkdir -p "$work/v1"
@@ -158,6 +163,8 @@ done
 want="$(docker image inspect -f '{{.Id}}' "raijin-dev/api:$sha1")"
 got="$(docker inspect -f '{{.Image}}' raijin-dev-api)"
 [[ "$want" == "$got" ]] && ok "raijin-dev-api tourne sur l'image de la version 1" || ko "raijin-dev-api : image inattendue"
+[[ "$(traefik_nets)" == "$traefik_before" ]] && ok "option B : réseaux du conteneur Traefik inchangés ($traefik_before)" \
+  || ko "option B : réseaux de Traefik modifiés ($traefik_before → $(traefik_nets))"
 
 chmod 750 "$RAIJIN_DEPLOY_BASE/prod"
 [[ -d "$RAIJIN_DEPLOY_BASE/incoming/prod" ]] && chmod 750 "$RAIJIN_DEPLOY_BASE/incoming/prod"

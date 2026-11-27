@@ -104,8 +104,22 @@ if [[ "$RAIJIN_ENV" == dev ]]; then
     host="$(env_get "$RAIJIN_ENV_FILE" "$key" | tr '[:upper:]' '[:lower:]')"
     [[ "$host" =~ ^(dev|[a-z0-9-]+-dev)\.[a-z0-9.-]+$ ]] || die "$key : nom du dev attendu (dev.… ou …-dev.…)."
   done
-  [[ "$(env_get "$RAIJIN_ENV_FILE" TRAEFIK_NETWORK)" == raijin-dev-* ]] \
-    || die "TRAEFIK_NETWORK : réseau d'entrée propre au dev attendu (raijin-dev-edge, docs/DEPLOY.md C2)."
+  # Réseau d'entrée (docs/DEPLOY.md C2) : RAIJIN_DEV_EDGE=traefik-shared (défaut, option B) → réseau du Traefik
+  # existant, comme la prod, sans toucher au conteneur Traefik ; dedicated (option A) → réseau raijin-dev-… propre au
+  # dev, que Traefik doit avoir rejoint (« docker network connect », décision de l'utilisateur).
+  dev_edge="$(env_get "$RAIJIN_ENV_FILE" RAIJIN_DEV_EDGE)"; dev_edge="${dev_edge:-traefik-shared}"
+  dev_net="$(env_get "$RAIJIN_ENV_FILE" TRAEFIK_NETWORK)"
+  case "$dev_edge" in
+    traefik-shared)
+      [[ "$dev_net" != raijin* ]] \
+        || die "TRAEFIK_NETWORK : avec RAIJIN_DEV_EDGE=traefik-shared, réseau du Traefik existant attendu (le même que la prod), jamais raijin-… (docs/DEPLOY.md C2)." ;;
+    dedicated)
+      [[ "$dev_net" == raijin-dev-* ]] \
+        || die "TRAEFIK_NETWORK : avec RAIJIN_DEV_EDGE=dedicated, réseau propre au dev attendu (raijin-dev-edge, docs/DEPLOY.md C2)." ;;
+    *) die "RAIJIN_DEV_EDGE : traefik-shared ou dedicated attendu (docs/DEPLOY.md C2)." ;;
+  esac
+  log "réseau d'entrée du dev : $dev_net (RAIJIN_DEV_EDGE=$dev_edge)."
+  unset dev_edge dev_net
 fi
 
 TRAEFIK_NETWORK="$(env_get "$RAIJIN_ENV_FILE" TRAEFIK_NETWORK)"

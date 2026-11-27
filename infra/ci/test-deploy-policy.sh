@@ -5,7 +5,10 @@
 # autre projet, domaine d'un autre site, règle Traefik avec « || » ou casse modifiée, priority, options non listées,
 # tableau de bord Traefik, pull_policy, étiquette d'image, build, ressources ou journalisation manquantes,
 # extra_hosts / dns, env_file de la prod) ; archive avec lien, « .. », chemin absolu ou .env ; image avec label
-# traefik.*, VOLUME ou root ; jeton OIDC (signature, audience, branche, commit, expiration).
+# traefik.*, VOLUME ou root ; jeton OIDC (signature, audience, branche, commit, expiration). Réseau d'entrée du dev
+# (RAIJIN_DEV_EDGE, docs/DEPLOY.md C2) : option B (traefik-shared, défaut : réseau du Traefik de la prod) et option A
+# (dedicated : raijin-dev-edge) acceptées ; réseaux raijin-… en option B, réseau de la prod en option A, Postgres ou
+# Redis sur le réseau d'entrée, valeur inconnue : refusés.
 # Sans démon Docker (seul `docker compose config` est utilisé). Job « infra » de ci.yml ; aussi en local.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -32,10 +35,13 @@ RAIJIN_DB_PASSWORD=$fill
 BENCH_DB_PASSWORD=$fill
 REDIS_PASSWORD=$fill
 EOF
+# Dev, option B (défaut) : même réseau Traefik que la prod (traefik-ci), aucun réseau propre au dev.
 sed -e 's/^LANDING_DOMAIN=.*/LANDING_DOMAIN=landing-dev.raijinshield.com/' -e 's/^APP_DOMAIN=.*/APP_DOMAIN=dev.raijinshield.com/' \
-  -e 's/^API_DOMAIN=.*/API_DOMAIN=api-dev.raijinshield.com/' -e 's/^TRAEFIK_NETWORK=.*/TRAEFIK_NETWORK=raijin-dev-edge/' \
-  "$work/prod.env" >"$work/dev.env"
-printf "RAIJIN_NAME=raijin-dev\nDEV_BASIC_AUTH_USERS='ci:\$apr1\$remplissage'\n" >>"$work/dev.env"
+  -e 's/^API_DOMAIN=.*/API_DOMAIN=api-dev.raijinshield.com/' "$work/prod.env" >"$work/dev.env"
+printf "RAIJIN_NAME=raijin-dev\nRAIJIN_DEV_EDGE=traefik-shared\nDEV_BASIC_AUTH_USERS='ci:\$apr1\$remplissage'\n" >>"$work/dev.env"
+# devenv <nom> <réseau> <mode> : variante du fichier du dev (réseau d'entrée et RAIJIN_DEV_EDGE).
+devenv() { sed -e "s/^TRAEFIK_NETWORK=.*/TRAEFIK_NETWORK=$2/" -e "s/^RAIJIN_DEV_EDGE=.*/RAIJIN_DEV_EDGE=$3/" "$work/dev.env" >"$work/$1.env"; }
+devenv deva raijin-dev-edge dedicated
 mkdir -p "$work/envdir/prod" "$work/envdir/dev"
 : >"$work/envdir/prod/.env.api"; : >"$work/envdir/prod/.env.bench-api"; : >"$work/envdir/dev/.env.api"
 prod_hosts=raijinshield.com,www.raijinshield.com,app.raijinshield.com,api.raijinshield.com,banc.raijinshield.com
@@ -46,19 +52,21 @@ render() {
   local env="$1" extra_flag=() files=(-f "$infra/docker-compose.yml") name=raijin profiles=(--profile tools --profile bench)
   shift
   [[ "${1:-}" == --no-interpolate ]] && { extra_flag=(--no-interpolate); shift; }
-  [[ "$env" == dev ]] && { files+=(-f "$infra/docker-compose.env-dev.yml"); name=raijin-dev; profiles=(--profile tools); }
+  local envfile="$env"
+  [[ "$env" == dev ]] && { files+=(-f "$infra/docker-compose.env-dev.yml"); name=raijin-dev; profiles=(--profile tools); envfile="${DEV_ENVFILE:-dev}"; }
   for extra in "$@"; do files+=(-f "$extra"); done
   env -i PATH="$CLEAN_PATH" HOME="$HOME" RAIJIN_NAME="$name" RAIJIN_TAG="$sha" \
     RAIJIN_API_ENV_FILE="$work/envdir/$env/.env.api" RAIJIN_BENCH_API_ENV_FILE="$work/envdir/$env/.env.bench-api" \
-    docker compose -p "$name" --env-file "$work/$env.env" --project-directory "$infra" "${files[@]}" "${profiles[@]}" \
+    docker compose -p "$name" --env-file "$work/$envfile.env" --project-directory "$infra" "${files[@]}" "${profiles[@]}" \
     config --format json "${extra_flag[@]}"
 }
-# policy_compose <env> <résolu.json> [hôtes] [réseau]
+# policy_compose <env> <résolu.json> [hôtes] [réseau] [mode] : comme la porte (dev : --edge = RAIJIN_DEV_EDGE ;
+# défauts du dev surchargeables par DEV_NET et DEV_EDGE_MODE, comme le fichier choisi par DEV_ENVFILE).
 policy_compose() {
-  local env="$1" file="$2" name=raijin hosts="$prod_hosts" net=traefik-ci
-  [[ "$env" == dev ]] && { name=raijin-dev hosts="$dev_hosts" net=raijin-dev-edge; }
+  local env="$1" file="$2" name=raijin hosts="$prod_hosts" net=traefik-ci edge=()
+  [[ "$env" == dev ]] && { name=raijin-dev hosts="$dev_hosts" net="${DEV_NET:-traefik-ci}"; edge=(--edge "${5:-${DEV_EDGE_MODE:-traefik-shared}}"); }
   python3 "$policy" compose "$file" --name "$name" --root "$infra" --network "${4:-$net}" --entrypoint websecure \
-    --certresolver ci --tag "$sha" --hosts "${3:-$hosts}"
+    --certresolver ci --tag "$sha" --hosts "${3:-$hosts}" "${edge[@]}"
 }
 # judge <env> [overlay…] : envfiles + resolve + compose, comme la porte.
 judge() {
@@ -88,6 +96,24 @@ overlay() { printf '%s\n' "$2" >"$work/$1.yml"; echo "$work/$1.yml"; }
 echo "== Configurations réelles"
 accept prod
 accept dev
+echo "== Réseau d'entrée du dev (RAIJIN_DEV_EDGE, docs/DEPLOY.md C2)"
+if judge dev; then ok "accepté : option B (traefik-shared, réseau du Traefik de la prod, Traefik non modifié)"; else ko "option B refusée à tort : $(head -c 400 "$work/out")"; fi
+if DEV_ENVFILE=deva DEV_NET=raijin-dev-edge DEV_EDGE_MODE=dedicated judge dev; then ok "accepté : option A (dedicated, raijin-dev-edge)"
+else ko "option A refusée à tort : $(head -c 400 "$work/out")"; fi
+devenv bprodint raijin-internal traefik-shared
+DEV_ENVFILE=bprodint DEV_NET=raijin-internal judge dev && ko "option B sur le réseau interne de la prod accepté" \
+  || ok "refusé : option B sur raijin-internal (Postgres et Redis de la prod) ($(head -n 1 "$work/out"))"
+devenv bdevedge raijin-dev-edge traefik-shared
+DEV_ENVFILE=bdevedge DEV_NET=raijin-dev-edge judge dev && ko "option B sur un réseau raijin-dev-… accepté" \
+  || ok "refusé : option B sur un réseau raijin-… ($(head -n 1 "$work/out"))"
+devenv aprod traefik-ci dedicated
+DEV_ENVFILE=aprod DEV_EDGE_MODE=dedicated judge dev && ko "option A sur le réseau Traefik de la prod accepté" \
+  || ok "refusé : option A sur le réseau Traefik de la prod ($(head -n 1 "$work/out"))"
+DEV_EDGE_MODE=autre judge dev && ko "RAIJIN_DEV_EDGE inconnu accepté" || ok "refusé : RAIJIN_DEV_EDGE inconnu ($(head -n 1 "$work/out"))"
+reject "option B : Postgres du dev sur le réseau du Traefik" dev "$(overlay pgedge 'services: {raijin-postgres: {networks: [raijin-internal, traefik]}}')"
+reject "option B : Redis du dev sur le réseau du Traefik" dev "$(overlay redisedge 'services: {raijin-redis: {networks: [raijin-internal, traefik]}}')"
+reject "option B : réseau interne de la prod ajouté au dev" dev "$(overlay prodnet 'services: {raijin-api: {networks: [raijin-internal, traefik, prodint]}}
+networks: {prodint: {external: true, name: raijin-internal}}')"
 
 echo "== Livraisons dangereuses (dev)"
 reject "privileged" dev "$(overlay privileged 'services: {raijin-web: {privileged: true}}')"
@@ -166,7 +192,13 @@ render dev >"$work/raw2.json" 2>/dev/null
 policy_compose dev "$work/raw2.json" >"$work/out" 2>&1 && ko "config avec build acceptée" || ok "refusé : build dans la config livrée"
 policy_compose dev "$work/res.json" "app.raijinshield.com,api-dev.raijinshield.com,landing-dev.raijinshield.com" >"$work/out" 2>&1 \
   && ko "dev : nom sans « dev » accepté" || ok "refusé : nom du dev sans « dev. » / « -dev. »"
-policy_compose dev "$work/res.json" "" traefik-ci >"$work/out" 2>&1 && ko "dev sur le réseau de la prod accepté" || ok "refusé : dev sur le réseau Traefik de la prod"
+policy_compose dev "$work/res.json" "" raijin-dev-edge >"$work/out" 2>&1 && ko "réseau d'entrée différent de la config accepté" || ok "refusé : réseau d'entrée différent de celui de la configuration"
+judge prod >/dev/null && cp "$work/res.json" "$work/prodres.json"
+judge dev >/dev/null
+python3 "$policy" compose "$work/prodres.json" --name raijin --root "$infra" --network traefik-ci --entrypoint websecure --certresolver ci \
+  --tag "$sha" --hosts "$prod_hosts" --edge traefik-shared >"$work/out" 2>&1 && ko "prod avec --edge acceptée" || ok "refusé : --edge pour la production"
+python3 "$policy" compose "$work/prodres.json" --name raijin --root "$infra" --network traefik-ci --entrypoint websecure --certresolver ci \
+  --tag "$sha" --hosts "$prod_hosts" >"$work/out" 2>&1 && ok "contre-épreuve : la même config de prod sans --edge est acceptée" || ko "config de prod refusée sans --edge : $(head -n 1 "$work/out")"
 
 echo "== Archive livrée"
 mkdir -p "$work/b"

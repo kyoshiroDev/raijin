@@ -47,21 +47,42 @@ published="$(docker ps --filter name=raijin- --format '{{.Names}} {{.Ports}}' | 
 [[ -z "$published" ]] && ok "aucun port publié (prod et dev)" || ko "ports publiés : $published"
 
 echo "== Cloisonnement"
+# Réseau d'entrée du dev (docs/DEPLOY.md C2) : option B (traefik-shared, défaut de la CI) = traefik-ci, comme la prod ;
+# option A (dedicated) = raijin-dev-edge. Dans les deux cas, jamais le réseau interne de la prod.
+edge_mode="$(sed -n 's/^RAIJIN_DEV_EDGE=//p' "${RAIJIN_DEPLOY_BASE:-${RUNNER_TEMP:-/tmp}/raijin-deploy}/dev/env/.env" 2>/dev/null | tail -n 1)"
+edge_mode="${edge_mode:-traefik-shared}"
+edge_net=traefik-ci
+[[ "$edge_mode" == dedicated ]] && edge_net=raijin-dev-edge
 for c in raijin-dev-api raijin-dev-web raijin-dev-landing raijin-dev-mailpit; do
   nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c")"
-  if [[ "$nets" != *traefik-ci* && "$nets" != *"raijin-internal "* && "$nets" == *raijin-dev-edge* ]]; then
-    ok "$c : réseaux $nets (ni Traefik de la prod, ni réseau interne de la prod)"
+  if [[ " $nets" != *" raijin-internal "* && " $nets" == *" $edge_net "* ]] \
+     && { [[ "$edge_mode" != dedicated ]] || [[ " $nets" != *" traefik-ci "* ]]; }; then
+    ok "$c : réseaux $nets(option $edge_mode ; jamais le réseau interne de la prod)"
   else
-    ko "$c : réseaux inattendus ($nets)"
+    ko "$c : réseaux inattendus ($nets, option $edge_mode)"
   fi
 done
-# L'API dev ne joint pas l'API de la prod (aucun réseau commun).
+# Postgres et Redis de la prod : injoignables depuis le dev (réseau interne de la prod seulement).
+for target in raijin-postgres:5432 raijin-redis:6379; do
+  ip="$(docker inspect -f '{{with index .NetworkSettings.Networks "raijin-internal"}}{{.IPAddress}}{{end}}' "${target%%:*}")"
+  if [[ -n "$ip" ]] && docker exec raijin-dev-api node -e "const s=require('net').connect(${target##*:},'$ip');s.setTimeout(4000);s.on('connect',()=>process.exit(0));s.on('timeout',()=>process.exit(1));s.on('error',()=>process.exit(1))"; then
+    ko "l'API dev joint ${target%%:*} de la prod ($ip)"
+  else
+    ok "l'API dev ne joint pas ${target%%:*} de la prod"
+  fi
+done
 prod_api_ip="$(docker inspect -f '{{with index .NetworkSettings.Networks "traefik-ci"}}{{.IPAddress}}{{end}}' raijin-api)"
 if docker exec raijin-dev-api node -e "fetch('http://$prod_api_ip:3000/api/v1/health',{signal:AbortSignal.timeout(4000)}).then(()=>process.exit(0),()=>process.exit(1))"; then
-  ko "l'API dev joint l'API de la prod ($prod_api_ip)"
+  if [[ "$edge_mode" == dedicated ]]; then ko "option A : l'API dev joint l'API de la prod ($prod_api_ip)"
+  else ok "option B : l'API de la prod est joignable depuis le dev (risque résiduel documenté, docs/SECURITY.md §17)"; fi
 else
-  ok "l'API dev ne joint pas l'API de la prod"
+  if [[ "$edge_mode" == dedicated ]]; then ok "option A : l'API dev ne joint pas l'API de la prod"
+  else ok "option B : l'API de la prod n'est pas joignable depuis le dev"; fi
 fi
+# Nom de service partagé sur le réseau d'entrée (option B) : la prod résout toujours SON Postgres et SON Redis.
+prod_pg_ip="$(docker inspect -f '{{with index .NetworkSettings.Networks "raijin-internal"}}{{.IPAddress}}{{end}}' raijin-postgres)"
+seen="$(docker exec raijin-api getent hosts raijin-postgres | awk '{print $1}' | sort -u | tr '\n' ' ')"
+[[ -n "$prod_pg_ip" && "$seen" == "$prod_pg_ip " ]] && ok "prod : raijin-postgres résolu vers le Postgres de la prod seul" || ko "prod : raijin-postgres résolu vers $seen (prod : $prod_pg_ip)"
 nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' raijin-dev-postgres)"
 [[ "$nets" == "raijin-dev-internal " ]] && ok "raijin-dev-postgres : réseau interne dev seul" || ko "raijin-dev-postgres : réseaux $nets"
 [[ "$(docker network inspect -f '{{.Internal}}' raijin-dev-internal)" == true ]] && ok "raijin-dev-internal sans accès extérieur" || ko "raijin-dev-internal n'est pas interne"
