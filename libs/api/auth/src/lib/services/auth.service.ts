@@ -65,7 +65,7 @@ export class AuthService {
     const emailNormalized = normalizeEmail(input.email);
     const passwordHash = await this.passwords.hash(input.password);
     // Plafond d'e-mails par adresse (compté aussi pour une adresse libre : même coût).
-    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized);
+    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized, client.ip);
     const existing = await this.prisma.user.findUnique({ where: { emailNormalized } });
     if (existing) {
       if (mailAllowed) await this.notifyExistingAccount(existing, client);
@@ -124,14 +124,18 @@ export class AuthService {
   }
 
   /** Renvoi de l'e-mail de vérification (session ou adresse fournie), réponse neutre. */
-  async resendVerification(sessionUserId: string | null, email: string | undefined): Promise<string> {
+  async resendVerification(
+    sessionUserId: string | null,
+    email: string | undefined,
+    client: ClientInfo | null = null,
+  ): Promise<string> {
     const user = sessionUserId
       ? await this.prisma.user.findUnique({ where: { id: sessionUserId } })
       : email
         ? await this.prisma.user.findUnique({ where: { emailNormalized: normalizeEmail(email) } })
         : null;
     const target = user?.emailNormalized ?? (email ? normalizeEmail(email) : null);
-    const mailAllowed = target ? await this.attempts.allowAuthEmail(target) : false;
+    const mailAllowed = target ? await this.attempts.allowAuthEmail(target, client?.ip ?? null) : false;
     if (user && !user.emailVerifiedAt && mailAllowed) {
       const token = await this.tokens.issue(user.id, 'EMAIL_VERIFY', this.config.auth.emailVerifyTtlMs);
       this.dispatch('vérification', this.mail.sendEmailVerification(user.email, token));
@@ -262,7 +266,7 @@ export class AuthService {
 
   async requestMagicLink(input: MagicLinkRequest, client: ClientInfo): Promise<string> {
     const emailNormalized = normalizeEmail(input.email);
-    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized);
+    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized, client.ip);
     const user = await this.prisma.user.findUnique({ where: { emailNormalized } });
     if (user && mailAllowed) {
       const token = await this.tokens.issue(
@@ -301,7 +305,7 @@ export class AuthService {
 
   async forgotPassword(email: string, client: ClientInfo): Promise<string> {
     const emailNormalized = normalizeEmail(email);
-    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized);
+    const mailAllowed = await this.attempts.allowAuthEmail(emailNormalized, client.ip);
     const user = await this.prisma.user.findUnique({ where: { emailNormalized } });
     if (user && mailAllowed) {
       const token = await this.tokens.issue(user.id, 'PASSWORD_RESET', this.config.auth.passwordResetTtlMs);

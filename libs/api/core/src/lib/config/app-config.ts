@@ -54,7 +54,7 @@ export interface AppConfig {
   readonly trustProxy: number | false;
   /**
    * Secret partagé avec Traefik (`EDGE_SHARED_SECRET`) : si défini, toute requête sans en-tête `X-Raijin-Edge` valide
-   * reçoit 403 (sauf santé et `internal/bot/*`) et `X-Forwarded-For` n'est pris en compte qu'avec cet en-tête
+   * reçoit 403 (sauf santé) et `X-Forwarded-For` n'est pris en compte qu'avec cet en-tête
    * (docs/SECURITY.md §17). `null` : contrôle désactivé (local, tests, dev ; avertissement en production).
    */
   readonly edgeSharedSecret: string | null;

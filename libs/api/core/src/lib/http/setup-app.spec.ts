@@ -21,6 +21,11 @@ class FakeHealthController {
   health() {
     return { ok: true };
   }
+
+  @Get('ip')
+  ip(@Req() req: Request) {
+    return { ip: req.ip ?? null };
+  }
 }
 
 @Controller('internal/bot')
@@ -254,11 +259,17 @@ describe('setupApp : en-tête secret de Traefik (EDGE_SHARED_SECRET, X-Raijin-Ed
     await request(app.getHttpServer()).get('/api/v1/healthx').expect(403);
   });
 
-  it('préfixe /api/v1/internal/bot/ exempté, mais X-Forwarded-For ignoré sans en-tête valide', async () => {
-    const res = await request(app.getHttpServer()).get('/api/v1/internal/bot/ping').set('X-Forwarded-For', forwarded).expect(200);
+  it('aucune exemption /api/v1/internal/bot/ (audit 5) : 403 sans en-tête, 200 avec le bon', async () => {
+    await request(app.getHttpServer()).get('/api/v1/internal/bot/ping').expect(403);
+    await request(app.getHttpServer()).get('/API/V1/INTERNAL/BOT/ping').expect(403);
+    await request(app.getHttpServer()).get('/api/v1/internal/bot/ping').set('X-Raijin-Edge', 'faux').expect(403);
+    await request(app.getHttpServer()).get('/api/v1/internal/bot/ping').set('x-raijin-edge', secret).expect(200);
+  });
+
+  it('sous-chemin de santé exempté, mais X-Forwarded-For ignoré sans en-tête valide', async () => {
+    const res = await request(app.getHttpServer()).get('/api/v1/health/ip').set('X-Forwarded-For', forwarded).expect(200);
     expect(res.body.ip).not.toBe(forwarded);
     expect(res.body.ip).toMatch(/127\.0\.0\.1|::1/);
-    await request(app.getHttpServer()).get('/api/v1/internal/botx').expect(403);
   });
 
   it('X-Forwarded-For ignoré sans en-tête valide (IP = socket) : aucune falsification possible', async () => {
@@ -266,7 +277,7 @@ describe('setupApp : en-tête secret de Traefik (EDGE_SHARED_SECRET, X-Raijin-Ed
     expect(res.status).toBe(200);
     // Contrôle direct sur une route exemptée qui renvoie l'IP.
     const bot = await request(app.getHttpServer())
-      .get('/api/v1/internal/bot/ping')
+      .get('/api/v1/health/ip')
       .set('X-Raijin-Edge', 'faux')
       .set('X-Forwarded-For', forwarded)
       .set('Forwarded', `for=${forwarded}`)

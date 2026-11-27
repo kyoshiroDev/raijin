@@ -89,12 +89,18 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   inscription, renvoi, lien magique et mot de passe oublié répondent 202 neutre ; `@AuthThrottle` renforcé sur
   l'auth et la 2FA ; 2FA admin TOTP bloquée après 5 essais, compteur incrémenté avant vérification (I1 phase
   6 bis) ; jetons e-mail hachés, à usage unique, invalidant les précédents (`auth-token.service.ts`) ; banc :
-  verrou par empreinte d'IP 5 / 15 min + global 50, aucune inscription.
+  verrou par empreinte d'IP 5 / 15 min + global 50, aucune inscription ; e-mails d'authentification (inscription
+  d'une adresse existante, renvoi, lien magique, mot de passe oublié) plafonnés à 5 par paire adresse + IP et 20 par
+  adresse, par heure (`allowAuthEmail`, audit 5) : une demande refusée par le plafond de sa paire n'entame pas le
+  plafond global, si bien qu'une IP seule ne peut pas bloquer les envois à la victime.
 - **Tests** : `login-attempts.service.spec.ts`, `auth.service.spec.ts`, `session.service.spec.ts`
   (`AuthTokenService`), `admin-security.e2e.spec.ts` (rafale 2FA), `auth.e2e.spec.ts`.
 - **Risque résiduel** : un tiers peut verrouiller un compte en connaissant son e-mail (accès de secours : lien
   magique) et le verrouillage reste une faible source d'énumération, atténuée par le throttling ; si Redis
-  tombe, les compteurs passent en mémoire (correct en mono-instance seulement).
+  tombe, les compteurs passent en mémoire (correct en mono-instance seulement) ; un tiers disposant d'au moins 4 IP
+  (5 envois chacune, sous les limites par IP de `@AuthThrottle`) peut encore épuiser le plafond global de 20 e-mails
+  d'une adresse et bloquer pendant 1 h ses liens magiques, réinitialisations et renvois (la connexion par mot de
+  passe reste possible ; la réponse neutre ne révèle pas le blocage).
 
 ### 5. Abus des quotas et des crédits Helius
 - **Parades** : quotas par jour (anonyme 3, Gratuit 5, essai 50 ; scan de wallet Pro 20 / essai 10) réservés
@@ -205,7 +211,7 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   `X-Forwarded-*` reçus de clients non approuvés (comportement par défaut) ; avec `EDGE_SHARED_SECRET`,
   `X-Forwarded-*` n'est pris en compte que si l'en-tête `X-Raijin-Edge` de Traefik est valide (§17).
 - **Tests** : `app-config.spec.ts` (TRUST_PROXY requis et borné, EDGE_SHARED_SECRET), `throttler.spec.ts`,
-  `setup-app.spec.ts` (403 sans en-tête ou avec un mauvais, 200 avec le bon, santé et `internal/bot` exemptés,
+  `setup-app.spec.ts` (403 sans en-tête ou avec un mauvais, 200 avec le bon, santé seule exemptée, `internal/bot` refusé,
   `X-Forwarded-For` ignoré sans en-tête valide, contrôle désactivé sans variable).
 - **Risque résiduel** (`docs/DEPLOY.md` §464-467, M7 phase 8) : un conteneur du réseau Traefik partagé avec
   MyTradingCoach peut joindre l'API sans passer par Traefik et forger `X-Forwarded-For` (contournement des
@@ -285,7 +291,13 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   - l'accès à Docker équivaut à root sur un VPS partagé ; un conteneur du dev mal confiné pourrait toucher MTC,
     XMR Trader ou la prod ;
   - réseau d'entrée du dev (option B par défaut, `docs/DEPLOY.md` C2) : le dev partage le réseau Traefik de la
-    prod et de MTC, et peut joindre leurs conteneurs exposés sans passer par Traefik.
+    prod et de MTC, et peut joindre leurs conteneurs exposés sans passer par Traefik ;
+  - **fuite d'`EDGE_SHARED_SECRET` par le Traefik de MTC** (audit 5) : la valeur de
+    `customRequestHeaders.X-Raijin-Edge` est en clair dans la configuration dynamique de Traefik ; elle est lisible
+    depuis tout conteneur relié à Traefik si celui-ci a `--api.insecure` (port 8080) ou une `--api` publiée par un
+    routeur `api@internal` sans middleware, et écrite dans ses journaux avec `--log.level=DEBUG`/`TRACE` ou
+    `--accesslog.fields.headers.defaultmode=keep` / `names.X-Raijin-Edge=keep`. Un conteneur du dev qui la lit
+    contournerait le 403 de `raijin-api` et du banc de la prod.
 - **Parades** :
   - **porte à commande forcée** : chaque clé de GitHub ne lance que `deploy-gate.sh <env>` (`restrict,command=`
     dans `authorized_keys`), copie **figée** dans `/opt/raijin-deploy` (root) : une livraison ne peut modifier ni
@@ -325,8 +337,9 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     GitHub), que Traefik pose dans l'en-tête `X-Raijin-Edge` ; dans `raijin-api`, premier middleware
     (`libs/api/core/src/lib/http/edge-guard.ts`, monté par `setupApp` avant les parseurs et le webhook Stripe) :
     sans en-tête valide (comparaison à temps constant des empreintes SHA-256), **403 `FORBIDDEN` neutre**, sauf
-    `/api/v1/health…` (healthchecks Docker et Traefik) et le préfixe `/api/v1/internal/bot/…` (jeton de service du
-    bot) ; sans en-tête valide, `X-Forwarded-*`, `X-Real-IP` et `Forwarded` sont supprimés, donc **`trust proxy` ne
+    `/api/v1/health…` (healthchecks Docker et Traefik) ; l'exemption du préfixe `/api/v1/internal/bot/…` a été
+    retirée (audit 5 : aucune route bot sur cette branche, toute route future sous ce préfixe aurait été joignable sans
+    Traefik) et sera réintroduite avec la route du bot et son jeton de service ; sans en-tête valide, `X-Forwarded-*`, `X-Real-IP` et `Forwarded` sont supprimés, donc **`trust proxy` ne
     s'applique qu'aux requêtes venues de Traefik** (rate limiting, verrouillage, plafond de l'espace admin, empreinte
     anonyme, audit) ; l'en-tête est retiré de la requête (jamais journalisé ni renvoyé). Variable absente en
     production : démarrage autorisé avec avertissement (déploiement existant non cassé). Même règle pour
@@ -337,10 +350,21 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
     CI) ; `deploy_policy.py` exige en prod 64 hex sur l'en-tête **et** dans l'environnement des deux conteneurs, et
     l'en-tête sur chaque routeur vers eux ; en dev, valeur vide obligatoire (Traefik retire l'en-tête) ;
     `infra/deploy.sh` fait les mêmes contrôles. Aucun message ne cite la valeur ;
+  - **Traefik qui exposerait l'en-tête** (condition (b) de l'option B, `docs/DEPLOY.md` C2) : contrôle en lecture
+    seule `deploy_policy.py traefik-exposure` (arguments, variables `TRAEFIK_*` équivalentes, fichier de configuration
+    statique monté lu sur l'hôte, labels des routeurs vers `api@internal` ; seuls des noms sont affichés, jamais une
+    valeur, les variables de Traefik contenant des clés de MTC) : `api.insecure`, `log.level` DEBUG/TRACE, en-têtes
+    gardés au journal d'accès, routeur `api@internal` sans middleware. `infra/vps-setup.sh` : avertissement et
+    **option B refusée** (réseau de référence non écrit) ; `release.sh` et `infra/deploy.sh` : **dev refusé** (contrôle
+    impossible = refus), **prod : avertissement**. Traefik n'est **jamais modifié** : le changement (retirer
+    `--api.insecure`, `--log.level=INFO`, en-têtes en `drop`/`redact`, `basicAuth` sur le routeur) touche MTC et reste
+    la décision de l'utilisateur ; ensuite, régénérer `EDGE_SHARED_SECRET`. Tests : `infra/ci/test-vps-setup.sh`
+    étape 6 (Traefik factices exposés → refus, Traefik propre → option B) ;
   - **limites par compte** en plus des limites par IP : verrouillage par adresse à la connexion
     (`AUTH_LOCKOUT_*`, existant), compteur par compte des codes 2FA admin (existant), et plafond de **5 e-mails
-    d'authentification par adresse et par heure** (inscription d'une adresse existante, renvoi de vérification, lien
-    magique, mot de passe oublié ; réponse neutre inchangée, `LoginAttemptsService.allowAuthEmail`) ;
+    d'authentification par paire adresse + IP et par heure**, et de **20 par adresse** toutes IP confondues
+    (inscription d'une adresse existante, renvoi de vérification, lien magique, mot de passe oublié ; réponse neutre
+    inchangée, `LoginAttemptsService.allowAuthEmail`, risque résiduel au §4) ;
   - **Mailpit du dev** (magic links, réinitialisations) : réseau interne du dev seulement, jamais joignable depuis
     le réseau partagé, interface et API protégées par Mailpit (`MP_UI_AUTH`, mot de passe du dev), lecture par
     tunnel SSH.
@@ -360,7 +384,7 @@ conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc
   workflow modifié sur une branche (secrets lisibles sous GitHub Free) : seul l'arrêt côté VPS le fait ; en
   option B, le code du dev joint directement l'API, l'app, la landing et le banc de la prod ainsi que les
   conteneurs de MTC présents sur le réseau Traefik (contournement de la basicAuth du banc et des limites Traefik),
-  mais, une fois `EDGE_SHARED_SECRET` posé, l'API et le banc lui répondent **403** (hors santé et `internal/bot`) et
+  mais, une fois `EDGE_SHARED_SECRET` posé, l'API et le banc lui répondent **403** (hors santé) et
   `X-Forwarded-For` n'y est plus forgeable ; sans la variable (avertissement au démarrage), ces contournements
   restent possibles, les contrôles propres de l'API et du banc (sessions, CSRF, rôles, quotas) s'appliquant toujours ; une faille de Docker ou du noyau permettrait de sortir du confinement.
 

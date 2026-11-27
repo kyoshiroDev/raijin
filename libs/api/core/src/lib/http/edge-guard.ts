@@ -17,12 +17,13 @@ const PREFIX = '/api/v1';
  * - `/api/v1/health` et `/api/v1/health/…` : healthcheck Docker (`fetch http://127.0.0.1:3000/api/v1/health`,
  *   infra/docker/Dockerfile) et healthcheck du load balancer Traefik (`loadbalancer.healthcheck.path`), qui
  *   n'appliquent pas les middlewares Traefik ; aucune donnée sensible ;
- * - `/api/v1/internal/bot/…` : appels internes du bot Telegram (réseau Docker interne, sans Traefik), protégés par
- *   leur propre jeton de service. Exemption **par préfixe**, indépendante de l'existence de ces routes.
+ * Aucune autre exemption (audit 5) : l'exemption `/api/v1/internal/bot/…` (appels internes du bot Telegram, sans
+ * Traefik) sera réintroduite **avec** la route du bot et son jeton de service, jamais par avance (toute route future
+ * sous un préfixe exempté serait joignable sans Traefik).
  * Comparaison insensible à la casse (le routeur Express l'est aussi), sur le chemin brut (sans requête).
  */
-export const EDGE_EXEMPT_EXACT: readonly string[] = [`${PREFIX}/health`, `${PREFIX}/internal/bot`];
-export const EDGE_EXEMPT_PREFIXES: readonly string[] = [`${PREFIX}/health/`, `${PREFIX}/internal/bot/`];
+export const EDGE_EXEMPT_EXACT: readonly string[] = [`${PREFIX}/health`];
+export const EDGE_EXEMPT_PREFIXES: readonly string[] = [`${PREFIX}/health/`];
 
 /** En-têtes de transfert ignorés (supprimés) quand l'en-tête secret est absent ou faux. */
 const FORWARDING_HEADERS = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'forwarded'];

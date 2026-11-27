@@ -85,9 +85,10 @@ export class AuthController {
   async resendVerification(
     @Body(new ZodValidationPipe(resendVerificationRequestSchema)) body: ResendVerificationRequest,
     @Req() req: Request,
+    @Client() client: ClientInfo,
   ): Promise<MessageResponse> {
     const userId = this.accessTokens.fromRequest(req)?.sub ?? null;
-    return { message: await this.auth.resendVerification(userId, body.email) };
+    return { message: await this.auth.resendVerification(userId, body.email, client) };
   }
 
   @Post('login')

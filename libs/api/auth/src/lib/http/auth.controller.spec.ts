@@ -294,7 +294,7 @@ describe('AuthController (HTTP, cookies, CSRF, garde)', () => {
 
     auth.resendVerification.mockResolvedValue(NEUTRAL_MESSAGES.resend);
     await request(server()).post('/api/v1/auth/verify-email/resend').set(headers).send({ email: 'a@b.fr' }).expect(202);
-    expect(auth.resendVerification).toHaveBeenCalledWith(null, 'a@b.fr');
+    expect(auth.resendVerification).toHaveBeenCalledWith(null, 'a@b.fr', expect.objectContaining({ ip: expect.any(String) }));
 
     auth.forgotPassword.mockResolvedValue(NEUTRAL_MESSAGES.forgot);
     const forgot = await request(server()).post('/api/v1/auth/password/forgot').set(headers).send({ email: 'a@b.fr' }).expect(202);

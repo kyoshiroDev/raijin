@@ -1,5 +1,7 @@
 import { testConfig } from '@raijin/api-core';
 import {
+  AUTH_EMAIL_MAX_PER_SOURCE,
+  AUTH_EMAIL_MAX_PER_WINDOW,
   INCREMENT_WITH_TTL_SCRIPT,
   LoginAttemptsService,
   MemoryAttemptStore,
@@ -31,6 +33,30 @@ describe('LoginAttemptsService', () => {
     await expect(service.reserve('a@b.fr')).resolves.toEqual({ attempt: 3, locked: false, lockedNow: true });
     await expect(service.reserve('a@b.fr')).resolves.toEqual({ attempt: 4, locked: true, lockedNow: false });
     await expect(service.isLocked('a@b.fr')).resolves.toBe(true);
+    service.onModuleDestroy();
+  });
+
+  it('e-mails d’authentification : une IP n’épuise que sa part, le plafond global par adresse reste borné', async () => {
+    const service = new LoginAttemptsService(config, new MemoryAttemptStore());
+    const allow = async (email: string, ip: string | null, times: number): Promise<boolean[]> => {
+      const results: boolean[] = [];
+      for (let i = 0; i < times; i++) results.push(await service.allowAuthEmail(email, ip));
+      return results;
+    };
+    // Un tiers sur une seule IP : bloqué après sa part, même en insistant longuement.
+    expect(await allow('v@b.fr', '203.0.113.9', AUTH_EMAIL_MAX_PER_SOURCE)).toEqual(Array(AUTH_EMAIL_MAX_PER_SOURCE).fill(true));
+    expect(await allow('v@b.fr', '203.0.113.9', 50)).toEqual(Array(50).fill(false));
+    // Les refus de sa paire n'entament pas le plafond global : la victime, depuis son IP, reçoit toujours ses liens.
+    expect(await allow('v@b.fr', '198.51.100.7', AUTH_EMAIL_MAX_PER_SOURCE)).toEqual(Array(AUTH_EMAIL_MAX_PER_SOURCE).fill(true));
+    // Autre adresse depuis l'IP bloquée : indépendante.
+    await expect(service.allowAuthEmail('autre@b.fr', '203.0.113.9')).resolves.toBe(true);
+    // Plafond global : IP tournantes, au plus AUTH_EMAIL_MAX_PER_WINDOW envois par adresse et par heure.
+    const flood: boolean[] = [];
+    for (let i = 0; i < AUTH_EMAIL_MAX_PER_WINDOW + 5; i++) flood.push(await service.allowAuthEmail('w@b.fr', `192.0.2.${i}`));
+    expect(flood.filter(Boolean)).toHaveLength(AUTH_EMAIL_MAX_PER_WINDOW);
+    // IP inconnue (action admin) : seul le plafond global s'applique, déjà atteint ici.
+    await expect(service.allowAuthEmail('w@b.fr', null)).resolves.toBe(false);
+    await expect(service.allowAuthEmail('x@b.fr', null)).resolves.toBe(true);
     service.onModuleDestroy();
   });
 

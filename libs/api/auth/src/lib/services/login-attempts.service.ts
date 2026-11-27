@@ -87,11 +87,16 @@ export class RedisAttemptStore implements AttemptStore {
 }
 
 /**
- * Plafond **par adresse** des e-mails d'authentification (lien magique, réinitialisation, vérification), en plus des
- * limites par IP : au plus `AUTH_EMAIL_MAX_PER_WINDOW` envois par adresse et par heure, tous types confondus. Au-delà,
- * la réponse reste identique (neutre) mais rien n'est envoyé : une IP tournante ne peut pas inonder une boîte.
+ * Plafonds des e-mails d'authentification (lien magique, réinitialisation, vérification), en plus des limites par
+ * IP, tous types confondus, sur une fenêtre d'une heure (audit 5) :
+ * - `AUTH_EMAIL_MAX_PER_SOURCE` envois par **paire adresse + IP** : une seule IP ne peut épuiser que sa part ;
+ * - `AUTH_EMAIL_MAX_PER_WINDOW` envois par **adresse**, toutes IP confondues : une IP tournante ne peut pas inonder
+ *   une boîte. Une demande refusée par le plafond de sa paire n'entame pas ce plafond global.
+ * Au-delà, la réponse reste identique (neutre) mais rien n'est envoyé. Risque résiduel (docs/SECURITY.md §4) : un
+ * tiers disposant de plusieurs IP peut encore épuiser le plafond global et bloquer les envois à la victime pendant 1 h.
  */
-export const AUTH_EMAIL_MAX_PER_WINDOW = 5;
+export const AUTH_EMAIL_MAX_PER_SOURCE = 5;
+export const AUTH_EMAIL_MAX_PER_WINDOW = 20;
 export const AUTH_EMAIL_WINDOW_MS = 3_600_000;
 
 /**
@@ -164,11 +169,18 @@ export class LoginAttemptsService implements OnModuleDestroy {
   }
 
   /**
-   * Compte un e-mail d'authentification pour l'adresse (HMAC, jamais en clair) ; faux au-delà du plafond. Appelé
+   * Compte un e-mail d'authentification pour l'adresse (HMAC, jamais en clair) ; faux au-delà d'un plafond. Appelé
    * aussi pour les adresses sans compte, pour que le coût de la requête ne révèle pas l'existence du compte.
+   * `ip` nul (action d'un admin, IP inconnue) : seul le plafond global s'applique.
    */
-  async allowAuthEmail(emailNormalized: string): Promise<boolean> {
-    const key = `rj:auth-mail:${hmac(this.config.auth.cookieSecret, `mail:${emailNormalized}`)}`;
+  async allowAuthEmail(emailNormalized: string, ip: string | null): Promise<boolean> {
+    const secret = this.config.auth.cookieSecret;
+    if (ip) {
+      const pairKey = `rj:auth-mail-ip:${hmac(secret, `mail-ip:${emailNormalized}\n${ip}`)}`;
+      const pair = await this.run((store) => store.increment(pairKey, AUTH_EMAIL_WINDOW_MS));
+      if (pair > AUTH_EMAIL_MAX_PER_SOURCE) return false;
+    }
+    const key = `rj:auth-mail:${hmac(secret, `mail:${emailNormalized}`)}`;
     const count = await this.run((store) => store.increment(key, AUTH_EMAIL_WINDOW_MS));
     return count <= AUTH_EMAIL_MAX_PER_WINDOW;
   }
