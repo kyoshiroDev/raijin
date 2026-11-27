@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { type AdminKpi } from '@raijin/shared-contracts';
 import { RjChart } from './chart/chart';
-import { buildChartConfig, horizontalLabelChars, readChartTheme, wrapCategoryLabel, summarizeChart, timeSeriesToChart, type RjChartDataset, type RjChartTheme } from './chart/chart-config';
+import { buildChartConfig, horizontalChartMinHeight, horizontalLabelChars, readChartTheme, wrapCategoryLabel, summarizeChart, timeSeriesToChart, type RjChartDataset, type RjChartTheme } from './chart/chart-config';
 import { RJ_CHART_LOADER } from './chart/chart-loader';
 import { RjDataTable, resolveRowLink, type RjTableColumn } from './data-table';
 import { breakSegments } from './break-text';
@@ -464,5 +464,29 @@ describe('lisibilité à 320 px (aucune troncature)', () => {
     expect(config.data.labels).toEqual([['(direct ou', 'inconnu)'], ['google']]);
     const title = (config.options?.plugins?.tooltip?.callbacks as { title: (items: { dataIndex: number; label: string }[]) => string }).title;
     expect(title([{ dataIndex: 0, label: '(direct ou,inconnu)' }])).toBe('(direct ou inconnu)');
+  });
+
+  it('entonnoir horizontal : 6 étapes toutes affichées (autoSkip coupé), hauteur suffisante à 320 et 390 px', () => {
+    const steps = ['Visites', 'Analyse démo', 'Inscription', 'E-mail vérifié', 'Essai', 'Pro'];
+    for (const width of [288, 358]) {
+      const config = buildChartConfig(
+        { type: 'bar', horizontal: true, width, unit: 'count', labels: steps, datasets: [{ label: 'Personnes', data: [120, 60, 30, 20, 10, 5], tone: 'primary' }] },
+        THEME,
+        true,
+      );
+      const y = (config.options?.scales as Record<string, { ticks: { autoSkip: boolean; maxTicksLimit?: number } }>)['y'];
+      expect(y?.ticks.autoSkip).toBe(false);
+      expect(y?.ticks.maxTicksLimit).toBeUndefined();
+      const labels = config.data.labels as string[][];
+      expect(labels).toHaveLength(6);
+      // Aucun caractère perdu : chaque libellé recomposé est identique à l'original.
+      expect(labels.map((lines) => lines.join(' '))).toEqual(steps);
+      // Au moins 32 px par étape + l'axe : plus que les 192 px du cadre « sm ».
+      expect(horizontalChartMinHeight(steps, width)).toBeGreaterThanOrEqual(6 * 32 + 40);
+      expect(horizontalChartMinHeight(steps, width)).toBeGreaterThan(192);
+    }
+    // Graphiques verticaux (axe du temps) : graduations toujours espacées automatiquement.
+    const line = buildChartConfig({ type: 'line', labels: ['a', 'b'], datasets: [{ label: 'x', data: [1, 2], tone: 'primary' }], unit: 'count', width: 288 }, THEME, true);
+    expect((line.options?.scales as Record<string, { ticks: { autoSkip: boolean } }>)['x']?.ticks.autoSkip).toBe(true);
   });
 });

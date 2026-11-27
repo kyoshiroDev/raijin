@@ -21,6 +21,7 @@ import { NO_VALUE, formatMetric } from '../format';
 import {
   buildChartConfig,
   categoryTickLimit,
+  horizontalChartMinHeight,
   readChartTheme,
   summarizeChart,
   type RjChartDataset,
@@ -101,7 +102,7 @@ interface LegendItem {
           }
         </ul>
       }
-      <div #frame [class]="'relative min-w-0 ' + heightClass()">
+      <div #frame [class]="'relative min-w-0 ' + heightClass()" [style.min-height.px]="minHeight()">
         <canvas #canvas role="img" [attr.aria-label]="ariaLabel()" class="block size-full">{{ ariaLabel() }}</canvas>
         @if (state() === 'loading') {
           <rj-skeleton shape="block" class="absolute inset-0" />
@@ -188,6 +189,10 @@ export class RjChart {
   private readonly tickBucket = computed(() => categoryTickLimit(this.width()));
 
   protected readonly heightClass = computed(() => HEIGHTS[this.height()]);
+  /** Barres horizontales : hauteur suffisante pour afficher chaque catégorie (aucun libellé masqué). */
+  protected readonly minHeight = computed(() =>
+    this.type() === 'bar' && this.horizontal() ? horizontalChartMinHeight(this.labels(), this.width()) : null,
+  );
 
   protected readonly ariaLabel = computed(
     () =>

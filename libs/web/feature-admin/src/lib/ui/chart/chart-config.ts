@@ -136,6 +136,20 @@ export function horizontalLabelChars(width: number | undefined): number {
   return 28;
 }
 
+/**
+ * Hauteur minimale (px) d'un graphique à barres horizontales : chaque catégorie garde la place de son libellé
+ * découpé (interligne 1,2 de Chart.js + marge) et d'une barre lisible, plus l'axe des valeurs. Avec
+ * `autoSkip: false`, aucun libellé n'est masqué (6 étapes de l'entonnoir toutes visibles à 320 px).
+ */
+export function horizontalChartMinHeight(labels: readonly string[], width: number | undefined, labelSize = 12): number {
+  const chars = horizontalLabelChars(width);
+  const rows = labels.reduce((sum, label) => {
+    const lines = wrapCategoryLabel(label, chars).length;
+    return sum + Math.max(32, Math.ceil(lines * labelSize * 1.2) + 14);
+  }, 0);
+  return rows + 40;
+}
+
 /** Configuration Chart.js complète, thémée par les tokens. Pure : testée sans canvas. */
 export function buildChartConfig(input: RjChartInput, theme: RjChartTheme, reducedMotion: boolean): ChartConfiguration {
   const format = (value: number | null) => formatMetric(value, input.unit, { currency: input.currency });
@@ -248,7 +262,9 @@ export function buildChartConfig(input: RjChartInput, theme: RjChartTheme, reduc
       color: theme.inkMuted,
       font: tickFont,
       maxRotation: 0,
-      autoSkip: true,
+      // Barres horizontales : chaque catégorie est une étape ou une source à lire, jamais masquée (la hauteur
+      // du cadre suit `horizontalChartMinHeight`). Axe du temps des graphiques verticaux : graduations espacées.
+      autoSkip: !horizontal,
       autoSkipPadding: 8,
       maxTicksLimit: horizontal ? undefined : categoryTickLimit(input.width),
     },
