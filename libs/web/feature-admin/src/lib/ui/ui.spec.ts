@@ -5,6 +5,7 @@ import { RjChart } from './chart/chart';
 import { buildChartConfig, horizontalLabelChars, readChartTheme, wrapCategoryLabel, summarizeChart, timeSeriesToChart, type RjChartDataset, type RjChartTheme } from './chart/chart-config';
 import { RJ_CHART_LOADER } from './chart/chart-loader';
 import { RjDataTable, resolveRowLink, type RjTableColumn } from './data-table';
+import { breakSegments } from './break-text';
 import { provideRouter } from '@angular/router';
 import { describeChange, formatChange, formatMetric } from './format';
 import { RjAdminFilters } from './filters';
@@ -309,7 +310,13 @@ describe('lisibilité à 320 px (aucune troncature)', () => {
     const cards = (fixture.nativeElement as HTMLElement).querySelector('[data-rj-cards]') as HTMLElement;
     const title = cards.querySelector('[data-rj-card-title]') as HTMLElement;
     expect(title.textContent?.trim()).toBe('e2e-responsive-mwvcin0123456789@exemple-tres-long.fr');
-    expect(title.className).toContain('wrap-anywhere');
+    // Retour à la ligne seulement après les séparateurs (`<wbr>` après `@`, `.`, `-`) : jamais en plein mot.
+    expect(title.className).toContain('wrap-break-word');
+    expect(title.className).not.toContain('wrap-anywhere');
+    expect(Array.from(title.querySelectorAll('[data-rj-break-text] > span')).map((span) => span.textContent)).toEqual([
+      'e2e-', 'responsive-', 'mwvcin0123456789@', 'exemple-', 'tres-', 'long.', 'fr',
+    ]);
+    expect(title.querySelectorAll('wbr').length).toBe(7);
     const values = Array.from(cards.querySelectorAll<HTMLElement>('[data-rj-card-value]'));
     expect(values.map((value) => value.textContent?.trim())).toEqual(['Pro · Abonnement', 'E-mail non vérifié']);
     for (const element of [title, ...values]) {
@@ -365,6 +372,47 @@ describe('lisibilité à 320 px (aucune troncature)', () => {
     expect(classes(more)).toContain('md:hidden');
     expect(more.querySelector('summary')?.textContent?.trim()).toBe('Plus de détails');
     expect(Array.from(more.querySelectorAll('[data-rj-card-value]')).map((dd) => dd.textContent?.trim())).toEqual(['Non éligible', 'newsletter-novembre']);
+  });
+
+  it('rj-break-text : points de coupure après les séparateurs, texte intact, aucune coupure en plein mot', () => {
+    expect(breakSegments('/tarifs/faq')).toEqual(['/', 'tarifs/', 'faq']);
+    expect(breakSegments('https://raijin.example/guides/rug-pull')).toEqual(['https:/', '/', 'raijin.', 'example/', 'guides/', 'rug-', 'pull']);
+    expect(breakSegments('a.b@mailinator.com')).toEqual(['a.', 'b@', 'mailinator.', 'com']);
+    expect(breakSegments('')).toEqual([]);
+    for (const value of ['/tarifs/faq', 'x--y..z', 'e2e-ecran-admin-pending-mwwa9dwb1ok49z@mailinator.com']) {
+      expect(breakSegments(value).join('')).toBe(value);
+    }
+  });
+
+  it('rj-data-table : la cellule titre du tableau bureau coupe aux séparateurs, jamais « anywhere »', async () => {
+    interface Row { path: string; clicks: number }
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(RjDataTable<Row>);
+    fixture.componentRef.setInput('caption', 'Pages principales');
+    fixture.componentRef.setInput('columns', [
+      { key: 'path', label: 'Page', value: (row: Row) => row.path, primary: true },
+      { key: 'clicks', label: 'Clics', value: (row: Row) => row.clicks, unit: 'count' },
+    ]);
+    fixture.componentRef.setInput('rows', [{ path: '/tarifs/faq', clicks: 3 }]);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.innerHTML).not.toContain('wrap-anywhere');
+    const th = host.querySelector('tbody th') as HTMLElement;
+    expect(th.className).toContain('wrap-break-word');
+    expect(th.textContent?.trim()).toBe('/tarifs/faq');
+    expect(Array.from(th.querySelectorAll('[data-rj-break-text] > span')).map((span) => span.textContent)).toEqual(['/', 'tarifs/', 'faq']);
+  });
+
+  it('rj-admin-filters layout="grid" : grille pleine largeur à colonnes auto-fit, toujours alignée en haut', async () => {
+    const fixture = TestBed.createComponent(RjAdminFilters);
+    fixture.componentRef.setInput('layout', 'grid');
+    await fixture.whenStable();
+    const row = (fixture.nativeElement as HTMLElement).querySelector('[data-rj-filters-row]') as HTMLElement;
+    expect(row.className).toContain('lg:grid');
+    expect(row.className).toContain('w-full');
+    expect(row.className).toContain('grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]');
+    expect(row.className).toContain('items-start');
+    expect(row.className).not.toContain('items-end');
   });
 
   it('rj-admin-filters : rangée alignée en haut (une aide sous un champ ne décale pas les autres)', async () => {

@@ -23,7 +23,7 @@ import { AdminApi, createAdminReport, toClientError, type AdminUserListParams } 
 import { RjBottomSheet, RjButton, RjIcon, RjInputField, RjToastService } from '@raijin/web-ui';
 import { adminScreen } from '../../shell/admin-screens';
 import { RjAdminAlert } from '../../ui/alert';
-import { NO_VALUE, RjAdminFilters, RjAdminPageHeader, RjAdminPanel, RjDataTable, formatLongDay, formatMetric, type RjRowLink, type RjTableColumn } from '../../ui';
+import { NO_VALUE, RjBreakText, RjAdminFilters, RjAdminPageHeader, RjAdminPanel, RjDataTable, formatLongDay, formatMetric, type RjRowLink, type RjTableColumn } from '../../ui';
 import { RjAdminReportState } from '../shared/page-helpers';
 
 const TRIAL_LABELS: Readonly<Record<TrialStatus, string>> = { none: 'Jamais', active: 'En cours', ended: 'Terminé', ineligible: 'Non éligible' };
@@ -60,7 +60,7 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
  */
 @Component({
   selector: 'rj-admin-users-page',
-  imports: [RjAdminPageHeader, RjAdminFilters, RjAdminPanel, RjDataTable, RjAdminReportState, RjBottomSheet, RjButton, RjIcon, RjInputField, RjAdminAlert],
+  imports: [RjBreakText, RjAdminPageHeader, RjAdminFilters, RjAdminPanel, RjDataTable, RjAdminReportState, RjBottomSheet, RjButton, RjIcon, RjInputField, RjAdminAlert],
   template: `
     <div class="flex flex-col gap-4 md:gap-6">
       <rj-admin-page-header [title]="screen.title" [description]="screen.description" />
@@ -69,8 +69,8 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
           <rj-input-field class="min-w-0 flex-1" label="Recherche par e-mail" type="search" inputmode="email" enterkeyhint="search" [(value)]="searchText" [error]="searchError()" hint="3 caractères au moins" />
           <button type="submit" rjButton="secondary" icon="filter" class="mt-7 shrink-0">Chercher</button>
         </form>
-        <rj-admin-filters title="Filtrer les comptes" [activeCount]="activeFilters()">
-          <label class="flex min-w-0 flex-col gap-1 lg:w-44">
+        <rj-admin-filters title="Filtrer les comptes" layout="grid" [activeCount]="activeFilters()">
+          <label class="flex min-w-0 flex-col gap-1">
             <span class="text-label font-semibold text-ink-muted">Plan</span>
             <select [class]="selectClass" (change)="setFilter('plan', $event)">
               <option value="" [selected]="!filters().plan">Tous</option>
@@ -79,7 +79,7 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
               }
             </select>
           </label>
-          <label class="flex min-w-0 flex-col gap-1 lg:w-44">
+          <label class="flex min-w-0 flex-col gap-1">
             <span class="text-label font-semibold text-ink-muted">Essai</span>
             <select [class]="selectClass" (change)="setFilter('trialStatus', $event)">
               <option value="" [selected]="!filters().trialStatus">Tous</option>
@@ -88,7 +88,7 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
               }
             </select>
           </label>
-          <label class="flex min-w-0 flex-col gap-1 lg:w-44">
+          <label class="flex min-w-0 flex-col gap-1">
             <span class="text-label font-semibold text-ink-muted">Statut</span>
             <select [class]="selectClass" (change)="setFilter('status', $event)">
               <option value="" [selected]="!filters().status">Tous</option>
@@ -97,17 +97,17 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
               }
             </select>
           </label>
-          <label class="flex min-w-0 flex-col gap-1 lg:w-44">
+          <label class="flex min-w-0 flex-col gap-1">
             <span class="text-label font-semibold text-ink-muted">Source UTM</span>
             <input [class]="selectClass" type="text" maxlength="100" [value]="filters().source ?? ''" (change)="setFilter('source', $event)" />
             <!-- Indication dans le libellé (pas d'id : le contenu des filtres est rendu deux fois, bureau et bottom sheet). -->
             <span class="text-label text-ink-muted wrap-break-word" data-filter-hint>« (direct) » pour les comptes sans source</span>
           </label>
-          <label class="flex min-w-0 flex-col gap-1 lg:w-44">
+          <label class="flex min-w-0 flex-col gap-1">
             <span class="text-label font-semibold text-ink-muted">Inscrit depuis</span>
             <input [class]="selectClass" type="date" [value]="filters().signupFrom ?? ''" (change)="setFilter('signupFrom', $event)" />
           </label>
-          <label class="flex min-w-0 flex-col gap-1 lg:w-44">
+          <label class="flex min-w-0 flex-col gap-1">
             <span class="text-label font-semibold text-ink-muted">Inscrit jusqu’au</span>
             <input [class]="selectClass" type="date" [value]="filters().signupTo ?? ''" (change)="setFilter('signupTo', $event)" />
           </label>
@@ -166,7 +166,7 @@ const dateTime = (iso: string | null) => (iso ? new Intl.DateTimeFormat('fr-FR',
             <h3 class="font-display text-body font-semibold text-ink">Attribution</h3>
             <dl class="grid grid-cols-1 gap-1 text-body-sm sm:grid-cols-2">
               @for (item of attribution(user); track item.label) {
-                <div class="flex min-w-0 gap-2"><dt class="shrink-0 text-ink-muted">{{ item.label }}</dt><dd class="min-w-0 text-ink wrap-anywhere">{{ item.value }}</dd></div>
+                <div class="flex min-w-0 gap-2"><dt class="shrink-0 text-ink-muted">{{ item.label }}</dt><dd class="min-w-0 text-ink wrap-break-word"><rj-break-text [text]="item.value" /></dd></div>
               }
             </dl>
           </section>

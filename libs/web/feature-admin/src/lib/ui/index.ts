@@ -9,6 +9,7 @@ export * from './layout';
 export * from './period-select';
 export * from './filters';
 export * from './service-state';
+export * from './break-text';
 export * from './data-table';
 export * from './chart/chart';
 export * from './chart/chart-config';

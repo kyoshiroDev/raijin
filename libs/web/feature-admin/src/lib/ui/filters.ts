@@ -8,6 +8,9 @@ import { RjBottomSheet, RjButton, desktopViewport } from '@raijin/web-ui';
  * « Filtres » ouvre un bottom sheet avec le même contenu (appliqué en direct, bouton « Voir les résultats »
  * pour refermer). Le sélecteur de période reste hors des filtres, toujours visible.
  *
+ * `layout="grid"` : la rangée occupe toute la largeur (colonnes égales `auto-fit`, au moins 10rem), pour les écrans
+ * à nombreux filtres ; `inline` (défaut) : champs à leur largeur, à la suite.
+ *
  * `<rj-admin-filters [activeCount]="filtresActifs()"> <label>…</label> <select>…</select> </rj-admin-filters>`
  */
 @Component({
@@ -16,7 +19,7 @@ import { RjBottomSheet, RjButton, desktopViewport } from '@raijin/web-ui';
   template: `
     <ng-template #content><ng-content /></ng-template>
     @if (desktop() !== false) {
-      <div class="hidden flex-wrap items-start gap-3 lg:flex" data-rj-filters-row>
+      <div [class]="rowClass()" data-rj-filters-row [attr.data-rj-filters-layout]="layout()">
         <ng-container *ngTemplateOutlet="content" />
       </div>
     }
@@ -40,8 +43,15 @@ export class RjAdminFilters {
   readonly description = input('');
   /** Nombre de filtres différents de la valeur par défaut, affiché dans le bouton mobile. */
   readonly activeCount = input(0);
+  /** `inline` : champs à leur largeur ; `grid` : grille pleine largeur à colonnes égales. */
+  readonly layout = input<'inline' | 'grid'>('inline');
 
   protected readonly desktop = desktopViewport();
   protected readonly open = signal(false);
+  protected readonly rowClass = computed(() =>
+    this.layout() === 'grid'
+      ? 'hidden w-full grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] items-start gap-3 lg:grid'
+      : 'hidden flex-wrap items-start gap-3 lg:flex',
+  );
   protected readonly buttonLabel = computed(() => (this.activeCount() > 0 ? `Filtres (${this.activeCount()})` : 'Filtres'));
 }

@@ -217,6 +217,22 @@ describe('Utilisateurs', () => {
     expect(mobile.filter((element) => cut.test(element.className)).map((element) => element.textContent?.trim())).toEqual([]);
   });
 
+  it('e-mails coupés seulement après « @ » et les « . », filtres en grille pleine largeur dès 1024 px', async () => {
+    const kit = await open('/admin/utilisateurs');
+    kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);
+    await flush(kit.harness);
+    const page = root(kit);
+    expect(page.innerHTML).not.toContain('wrap-anywhere');
+    const title = page.querySelector('[data-rj-card-title]') as HTMLElement;
+    expect(title.className).toContain('wrap-break-word');
+    expect(title.querySelector('[data-rj-break-text]')).not.toBeNull();
+    const row = page.querySelector('[data-rj-filters-row]');
+    if (row) {
+      expect(row.getAttribute('data-rj-filters-layout')).toBe('grid');
+      expect(Array.from(row.querySelectorAll('label')).some((label) => label.className.includes('lg:w-44'))).toBe(false);
+    }
+  });
+
   it('filtre « Source UTM » : indication en texte d’aide lisible en entier, pas en placeholder rogné', async () => {
     const kit = await open('/admin/utilisateurs');
     kit.ctrl.expectOne(`${API}/admin/users`).flush(ADMIN_USER_PAGE_FIXTURE);

@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { type MetricUnit } from '@raijin/shared-contracts';
 import { RjIcon } from '@raijin/web-ui';
 import { AdminIcons } from './admin-icons';
+import { RjBreakText } from './break-text';
 import { formatMetric } from './format';
 
 /** Colonne de `rj-data-table`. Les textes sont affichés par interpolation (jamais en HTML) : données externes sûres. */
@@ -72,7 +73,8 @@ interface Row {
  * - de 768 à 1279 px : les mêmes cartes en grille de 2 colonnes, toutes les colonnes visibles ;
  * - à partir de 1280 px : tableau dense (chiffres alignés à droite), sans hauteur maximale (aucune ligne coupée :
  *   la pagination « Afficher plus » de l'écran limite la longueur), défilement horizontal seulement en dernier
- *   recours. Aucun texte tronqué : tout est renvoyé à la ligne, lisible sans survol.
+ *   recours. Aucun texte tronqué : tout est renvoyé à la ligne, lisible sans survol ; la cellule titre (URL,
+ *   e-mail) ne passe à la ligne qu'après ses séparateurs (`rj-break-text`).
  * `rowLink` rend la ligne cliquable (lien sur la cellule titre, cible ≥ 44 px) : `'/admin/x'` ou
  * `{ path: '/admin/utilisateurs', queryParams: { fiche: id } }`.
  *
@@ -80,7 +82,7 @@ interface Row {
  */
 @Component({
   selector: 'rj-data-table',
-  imports: [RouterLink, RjIcon],
+  imports: [RouterLink, RjIcon, RjBreakText],
   template: `
     @if (view().length === 0) {
       <p class="rounded-md border border-dashed border-line px-4 py-6 text-center text-body-sm text-ink-muted">{{ emptyText() }}</p>
@@ -113,13 +115,13 @@ interface Row {
               <tr class="border-b border-line align-top transition-colors duration-150 ease-raijin last:border-b-0 hover:bg-surface-raised">
                 @for (cell of row.cells; track cell.key; let first = $first) {
                   @if (first) {
-                    <th scope="row" class="px-3 py-2.5 font-medium text-ink wrap-anywhere" [class.text-right]="cell.end">
+                    <th scope="row" class="px-3 py-2.5 font-medium text-ink wrap-break-word" [class.text-right]="cell.end">
                       @if (row.link) {
                         <a [routerLink]="row.link.path" [queryParams]="row.link.queryParams" class="-my-2.5 flex min-h-11 items-center gap-1 rounded-sm hover:text-thunder-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring">
-                          <span class="min-w-0" [class.tabular]="cell.mono">{{ cell.text }}</span>
+                          <span class="min-w-0" [class.tabular]="cell.mono"><rj-break-text [text]="cell.text" /></span>
                         </a>
                       } @else {
-                        <span class="block" [class.tabular]="cell.mono">{{ cell.text }}</span>
+                        <span class="block" [class.tabular]="cell.mono"><rj-break-text [text]="cell.text" /></span>
                       }
                     </th>
                   } @else {
@@ -143,12 +145,12 @@ interface Row {
                 [queryParams]="row.link.queryParams"
                 class="flex min-h-11 items-center gap-2 border-b border-line px-3 py-2.5 font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
               >
-                <span class="min-w-0 flex-1 wrap-anywhere" data-rj-card-title [class.tabular]="row.primary.mono">{{ row.primary.text }}</span>
+                <span class="min-w-0 flex-1 wrap-break-word" data-rj-card-title [class.tabular]="row.primary.mono"><rj-break-text [text]="row.primary.text" /></span>
                 <rj-icon [name]="chevron" [size]="16" class="text-ink-muted" />
               </a>
             } @else {
-              <p class="border-b border-line px-3 py-2.5 font-medium text-ink wrap-anywhere" data-rj-card-title [class.tabular]="row.primary.mono">
-                {{ row.primary.text }}
+              <p class="border-b border-line px-3 py-2.5 font-medium text-ink wrap-break-word" data-rj-card-title [class.tabular]="row.primary.mono">
+                <rj-break-text [text]="row.primary.text" />
               </p>
             }
             <dl class="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2.5">
