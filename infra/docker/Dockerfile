@@ -20,7 +20,7 @@
 # .github/dependabot.yml) puisse proposer leurs mises à jour.
 
 # ---------------------------------------------------------------------------------------------------
-FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS base
+FROM node:26.13.1-bookworm-slim@sha256:0042e17d232a87a2cd485be1da7900fca4d10a4ad11b29e9285da1d2e54798c9 AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     CI=true \
@@ -94,7 +94,7 @@ RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
  && rm -f main.js cli.js
 
 # ---------------------------------------------------------------------------------------------------
-FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS api
+FROM node:26.13.1-bookworm-slim@sha256:0042e17d232a87a2cd485be1da7900fca4d10a4ad11b29e9285da1d2e54798c9 AS api
 ENV NODE_ENV=production \
     API_PORT=3000 \
     WEB_INDEX_HTML_PATH=/app/web/index.html
@@ -128,7 +128,7 @@ RUN node -e "const p=require('/tmp/root-package.json');const v=(p.devDependencie
  && ls node_modules/@prisma/engines | grep -q '^schema-engine-' \
  && npm cache clean --force
 
-FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS migrate-runtime
+FROM node:26.13.1-bookworm-slim@sha256:0042e17d232a87a2cd485be1da7900fca4d10a4ad11b29e9285da1d2e54798c9 AS migrate-runtime
 ENV NODE_ENV=production \
     CHECKPOINT_DISABLE=1 \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
@@ -197,7 +197,7 @@ RUN --mount=type=cache,id=raijin-pnpm-store,target=/pnpm/store \
  && node /usr/local/bin/check-externals.cjs /app/dist/apps/raijin-banc-de-test-api $(ls ./*.js | sed 's|^\./||') \
  && rm -f ./*.js
 
-FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS bench-api
+FROM node:26.13.1-bookworm-slim@sha256:0042e17d232a87a2cd485be1da7900fca4d10a4ad11b29e9285da1d2e54798c9 AS bench-api
 ENV NODE_ENV=production \
     API_PORT=3000
 WORKDIR /app
