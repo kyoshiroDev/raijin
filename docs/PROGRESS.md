@@ -9,7 +9,7 @@
 
 - ~~`.env.example`~~ : fait (créé par toi, commité `2289dc9`).
 
-## Statut : phase 10 — Relecture finale et livraison — corrections après le 3e refus (exception accordée par l'utilisateur) — en cours (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
+## Statut : phase 10 — Relecture finale et livraison — VALIDÉE (tour 9), PR ouverte vers main (phases 1 à 9 terminées ; 8 ter reportée faute de comptes)
 
 ## Compréhension et plan (10 lignes)
 1. Raijin Shield : SaaS anti-rug pour memecoins Solana ; on colle un mint, on obtient Sain / Prudence / Danger, sourcé et déterministe.
@@ -453,3 +453,4 @@
 - Tour 7 de la relecture finale (`9e28d50`) : **REFUSÉ** (2 points : mots collés sur la landing livrée — CGU, confidentialité, comment ça marche ; audit à consigner pour `a10220e` et `9e28d50`). Corrections en cours.
 - **Audit 7 (security-reviewer) sur `a10220e`, `9e28d50`** : 0 critique, 0 important, 2 mineurs acceptés en l'état (perte d'e-mail journalisée `BILLING_MAIL_LOST` si le retrait du marqueur échoue → à surveiller ; double e-mail possible si un rejeu arrive après la purge du jobId BullMQ, 24 h / 1 000 jobs) ; point 2 du tour 7 clos.
 - Tour 8 de la relecture finale (`73394a1`) : **REFUSÉ** (1 point : tags Nx absents sur `web-e2e`). Correction en cours.
+- Tour 9 de la relecture finale (`82ff11c`) : **VALIDÉ**. PR `dev → main` ouverte par l'orchestrateur (jamais fusionnée par lui).
