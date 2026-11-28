@@ -34,3 +34,11 @@ f98641096a2f2de94c9e94b785f2d24eb3436976:libs/api/core/src/lib/throttler/throttl
 b76ed83b5cbcf0f199de7f23ace202287e68355e:infra/ci/check-stack-dev.sh:generic-api-key:173
 b76ed83b5cbcf0f199de7f23ace202287e68355e:tools/env/env-tool.test.mjs:stripe-access-token:12
 b76ed83b5cbcf0f199de7f23ace202287e68355e:tools/env/env-tool.test.mjs:generic-api-key:11
+# 04d75d4 (2026-11-28), relu : docs/REVIEW.md ligne 47 citait deux valeurs factices de tests (clé Stripe de test
+# des specs de billing, sentinelle d'env-tool.test.mjs déjà ignorée en b76ed83) ; texte reformulé au commit suivant.
+04d75d41db4b31e58148821a868d682e0effe61c:docs/REVIEW.md:stripe-access-token:47
+# Relevés sur l'historique complet le 2026-11-28, relus : adresses publiques de mint Solana (« tokenAddress ») de la
+# fixture DexScreener du radar, et clé factice FAKE_KEY du test du client HTTP porté du banc.
+6644a0478a73cf5159522ae6892d39f2c7ba18b3:libs/api/solana/src/fixtures/dexscreener/radar-profiles.json:generic-api-key:185
+6644a0478a73cf5159522ae6892d39f2c7ba18b3:libs/api/solana/src/fixtures/dexscreener/radar-profiles.json:generic-api-key:191
+f688b2a205d0eef2553f9b5577853963a36773f3:libs/bench/engine/src/ported/http_client.spec.ts:generic-api-key:12
