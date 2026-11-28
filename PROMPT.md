@@ -204,7 +204,7 @@ Contrôles, chacun avec un statut (ok / attention / danger / indisponible) et **
 - **Auth** : e-mail + mot de passe (argon2id), vérification d'e-mail, mot de passe oublié, et **lien magique** en option, tout ça via Resend. Sessions en **cookies httpOnly, Secure, SameSite=Lax** : access token court + refresh token avec rotation et révocation. Pas de token dans le localStorage.
 - **Plans** (prix modifiables dans la config, pas en dur) :
   - **Gratuit** : 5 analyses/jour, 3 tokens suivis, alertes par e-mail seulement.
-  - **Pro** (9,90 €/mois ou 99 €/an) : analyses illimitées, 50 suivis, push + e-mail, scan de wallet, historique 90 jours.
+  - **Pro** (14,90 € TTC/mois ou 149 € TTC/an) : analyses illimitées, 50 suivis, push + e-mail, scan de wallet, historique 90 jours.
 - **Essai Pro de 7 jours sans carte bancaire (« reverse trial »)** :
   - À la **vérification de l'e-mail**, l'utilisateur passe automatiquement en Pro pendant 7 jours (`trialStartedAt`, `trialEndsAt` dans `User`). Aucune carte demandée, et **Stripe n'est pas utilisé pour l'essai** : tout se gère dans notre base.
   - **Quotas pendant l'essai** : toutes les fonctions Pro, mais analyses plafonnées à 50/jour (au lieu d'illimitées) pour protéger le quota Helius. Valeurs en configuration.

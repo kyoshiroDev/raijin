@@ -1,0 +1,50 @@
+---
+import Container from '../components/Container.astro';
+import CtaFinal from '../components/CtaFinal.astro';
+import Icon from '../components/Icon.astro';
+import PageIntro from '../components/PageIntro.astro';
+import Base from '../layouts/Base.astro';
+import { pageCrumbs } from '../lib/breadcrumbs';
+import { getGuides, guidePath } from '../lib/collections';
+import { STATIC_PAGES } from '../lib/pages';
+import { breadcrumbLd } from '../lib/seo';
+
+const page = STATIC_PAGES.guides;
+const crumbs = pageCrumbs('guides');
+const guides = await getGuides();
+const dateFormat = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeZone: 'UTC' });
+---
+
+<Base title={page.title} description={page.description} path={page.path} og={page.og} jsonLd={[breadcrumbLd(crumbs)]}>
+  <PageIntro
+    crumbs={crumbs}
+    title="Guides"
+    lead="Comprendre les pièges des memecoins Solana et savoir les repérer soi-même, avec des faits et des sources."
+  />
+  <Container class="py-10 md:py-14">
+    <ul class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {
+        guides.map((guide) => (
+          <li>
+            <article class="relative flex h-full flex-col rounded-lg border border-line bg-surface p-4 transition-colors hover:border-ink-muted md:p-6">
+              <Icon name="book" class="text-thunder-ink" />
+              <h2 class="mt-3 font-display text-h3 font-bold text-ink">
+                <a href={guidePath(guide.id)} class="flex min-h-11 items-center after:absolute after:inset-0 after:rounded-lg">
+                  {guide.data.title}
+                </a>
+              </h2>
+              <p class="mt-2 text-body-sm text-ink-muted">{guide.data.description}</p>
+              <p class="mt-auto pt-4 text-label text-ink-muted">
+                <time datetime={guide.data.updatedAt.toISOString()}>{dateFormat.format(guide.data.updatedAt)}</time> ·{' '}
+                {guide.data.readingMinutes} min de lecture
+              </p>
+            </article>
+          </li>
+        ))
+      }
+    </ul>
+    <div class="mt-12">
+      <CtaFinal emplacement="guide" />
+    </div>
+  </Container>
+</Base>

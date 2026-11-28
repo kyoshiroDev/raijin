@@ -1,0 +1,39 @@
+# Dependabot : mises à jour des actions GitHub épinglées par SHA (sécurité de la chaîne d'approvisionnement).
+# Les PR ciblent `dev` (jamais `main`) et sont relues comme toute autre modification.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
+  # Images Docker de production (FROM de infra/docker/Dockerfile, images de infra/docker-compose.yml), épinglées
+  # par digest : Dependabot propose le nouveau digest ou la nouvelle version (phase 8, audit M1).
+  - package-ecosystem: docker
+    directory: /infra/docker
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Paris
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore(infra)
+  - package-ecosystem: docker-compose
+    directory: /infra
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Paris
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore(infra)

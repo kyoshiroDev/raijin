@@ -1,0 +1,14 @@
+{
+  "name": "@raijin/bench-verdicts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "tslib": "^2.3.0",
+    "@raijin/shared-contracts": "0.0.1",
+    "@raijin/shared-risk-engine": "0.0.1",
+    "zod": "^4.6.7"
+  }
+}

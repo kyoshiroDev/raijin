@@ -1,0 +1,26 @@
+{
+  "name": "@raijin/api-alerts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/swagger": "^11.4.8",
+    "@raijin/api-analysis": "*",
+    "@raijin/api-auth": "*",
+    "@raijin/api-core": "*",
+    "@raijin/api-notifications": "*",
+    "@raijin/api-prisma": "*",
+    "@raijin/api-solana": "*",
+    "@raijin/shared-contracts": "*",
+    "@raijin/shared-risk-engine": "*",
+    "bullmq": "^6.7.8",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "tslib": "^2.3.0",
+    "zod": "^4.6.7"
+  }
+}

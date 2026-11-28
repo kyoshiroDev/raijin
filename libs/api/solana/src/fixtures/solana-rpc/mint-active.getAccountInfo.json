@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-11-22T03:21:14.744Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": {
+      "context": {
+        "apiVersion": "4.4.0",
+        "slot": 472388158
+      },
+      "value": {
+        "data": {
+          "parsed": {
+            "info": {
+              "decimals": 9,
+              "freezeAuthority": null,
+              "isInitialized": true,
+              "mintAuthority": "644tv6RKk8MYQmYyTbm22YRTL25ZTMXJGVGA52GCsPp1",
+              "supply": "14142135623630"
+            },
+            "type": "mint"
+          },
+          "program": "spl-token-2022",
+          "space": 82
+        },
+        "executable": false,
+        "lamports": 1066800,
+        "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "rentEpoch": 18446744073709552000,
+        "space": 82
+      }
+    },
+    "id": 1
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "DAS par lot (PYUSD absent : métadonnées via l’extension Token-2022).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAssetBatch",
+    "params": {
+      "ids": [
+        "9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRew"
+      ]
+    }
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": [
+      {
+        "interface": "FungibleToken",
+        "id": "9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRew",
+        "content": {
+          "metadata": {
+            "name": "Raijin Fixture Safe",
+            "symbol": "RFSAFE"
+          }
+        },
+        "authorities": [],
+        "creators": [],
+        "mutable": false,
+        "burnt": false
+      }
+    ]
+  }
+}

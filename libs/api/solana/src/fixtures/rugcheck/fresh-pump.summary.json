@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-11-22T03:21:08.277Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump/report/summary",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "tokenType": "",
+    "risks": [
+      {
+        "name": "Creator history of rugged tokens",
+        "value": "",
+        "description": "Creator has a history of rugging tokens.",
+        "score": 12000,
+        "level": "danger"
+      }
+    ],
+    "score": 12001,
+    "score_normalised": 53,
+    "lpLockedPct": 100
+  }
+}

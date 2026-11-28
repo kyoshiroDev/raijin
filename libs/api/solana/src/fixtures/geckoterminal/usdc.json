@@ -1,0 +1,514 @@
+{
+  "recordedAt": "2026-11-22T03:20:21.758Z",
+  "source": "geckoterminal",
+  "request": {
+    "method": "GET",
+    "path": "/networks/solana/tokens/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/pools",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "data": [
+      {
+        "id": "solana_Ajx72ydLkFTh8HYjUhfjvvAxRqhf1KpAfakJMq8bu8Bu",
+        "type": "pool",
+        "attributes": {
+          "address": "Ajx72ydLkFTh8HYjUhfjvvAxRqhf1KpAfakJMq8bu8Bu",
+          "name": "CHAINLINK / USDC",
+          "pool_created_at": "2026-11-20T15:44:00Z",
+          "reserve_in_usd": "8467745567.3206",
+          "base_token_price_usd": "8.496652776"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_FHihF9Zd7F1fbnhCATmetwH5cMJhiKSradLxECzPxYRX",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_CaWw5KT1jvMfZtRYbTTcfZsuJ8qVVH5wrN57YB4CTuL9",
+        "type": "pool",
+        "attributes": {
+          "address": "CaWw5KT1jvMfZtRYbTTcfZsuJ8qVVH5wrN57YB4CTuL9",
+          "name": "QNT / USDC",
+          "pool_created_at": "2026-11-05T08:22:05Z",
+          "reserve_in_usd": "4327519677.7761",
+          "base_token_price_usd": "206.6147317686"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_ByycyPZ928EN7vuFAfPN8kjWiP1kwY8yj9dyo7sNMLYF",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_GxqrF78HK7QGq5gdEFhfDb878dakbKWDMy8eDcXaBPTt",
+        "type": "pool",
+        "attributes": {
+          "address": "GxqrF78HK7QGq5gdEFhfDb878dakbKWDMy8eDcXaBPTt",
+          "name": "TAO / USDC",
+          "pool_created_at": "2026-11-19T05:22:16Z",
+          "reserve_in_usd": "4054481438.7538",
+          "base_token_price_usd": "193.9141273168"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_6MYABnkKB3eoWfmFmG5yHJG43Wa6jF6N7abNzM8RXfyh",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+        "type": "pool",
+        "attributes": {
+          "address": "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+          "name": "SOL / USDC",
+          "pool_created_at": "2023-07-05T14:34:02Z",
+          "reserve_in_usd": "16646070.8154",
+          "base_token_price_usd": "69.3001401382"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_So11111111111111111111111111111111111111112",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_3viz8aecKVMtiT6Z13Y9mNSGYNbcHunDaCagVXBeWeXk",
+        "type": "pool",
+        "attributes": {
+          "address": "3viz8aecKVMtiT6Z13Y9mNSGYNbcHunDaCagVXBeWeXk",
+          "name": "SPCX / USDC",
+          "pool_created_at": "2026-11-16T04:10:31Z",
+          "reserve_in_usd": "2923059260.9308",
+          "base_token_price_usd": "139.9199904618"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_AoY1QDCr3YcQv7LDWQgMkdPhVRcPNUMsc7UXT3YmwALv",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_2Vb9CCytb76gdBoqfZBXvLR43hVhbhNEw4SZRFam2b9n",
+        "type": "pool",
+        "attributes": {
+          "address": "2Vb9CCytb76gdBoqfZBXvLR43hVhbhNEw4SZRFam2b9n",
+          "name": "MOVR / USDC",
+          "pool_created_at": "2026-10-01T16:47:18Z",
+          "reserve_in_usd": "3163651898.6518",
+          "base_token_price_usd": "3.1928013479"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_3DrmQ144kzEx5ntNWbjGfH3D8NhGw2KeCNUCeUGUHM9C",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_7kicg9MgZCLP5a2JbLWJxDschmF5b8AjptmrF7ZhNuQ8",
+        "type": "pool",
+        "attributes": {
+          "address": "7kicg9MgZCLP5a2JbLWJxDschmF5b8AjptmrF7ZhNuQ8",
+          "name": "ORE / USDC",
+          "pool_created_at": "2026-10-24T16:01:51Z",
+          "reserve_in_usd": "2931142851.5441",
+          "base_token_price_usd": "139.2721556661"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_BoEg9qv1zZ6Y2WrpD1u6hnUdXsCjY19SonDTibLD2niH",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_BXsWsZe4VUquBNbL3q765Ya8quJyN8Ehqmeb8EJ1ctUp",
+        "type": "pool",
+        "attributes": {
+          "address": "BXsWsZe4VUquBNbL3q765Ya8quJyN8Ehqmeb8EJ1ctUp",
+          "name": "AAVE / USDC",
+          "pool_created_at": "2026-09-30T20:05:18Z",
+          "reserve_in_usd": "3299579378.3171",
+          "base_token_price_usd": "157.4466373607"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_83kw8RbTvD3192wYPfb9D3msgV2ABoEnD4hEZrUDyyVh",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_8EA4X4qBCZQWs7iei1BkfEcRRTZizkR8YpkpqLaBLM4X",
+        "type": "pool",
+        "attributes": {
+          "address": "8EA4X4qBCZQWs7iei1BkfEcRRTZizkR8YpkpqLaBLM4X",
+          "name": "TAO / USDC",
+          "pool_created_at": "2026-06-18T10:48:00Z",
+          "reserve_in_usd": "4969396071.2132",
+          "base_token_price_usd": "238.899624396"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_AcAmkPV1piWjt4MQZGLUSZ8eyfngcUjpMEbGXe4k2zMr",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_H3SM6CLqshdPYh2zbzXoxfix8VjbackxFHChLV3eFBdX",
+        "type": "pool",
+        "attributes": {
+          "address": "H3SM6CLqshdPYh2zbzXoxfix8VjbackxFHChLV3eFBdX",
+          "name": "OKB / USDC",
+          "pool_created_at": "2026-10-06T16:31:53Z",
+          "reserve_in_usd": "2850677895.6038",
+          "base_token_price_usd": "135.9695410573"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_dua97SHysCojDUSerEJCVnHxUsmVQ8i7twrmuujctAq",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_EUKEANUN7w12v7trTn42FZGnahu5F8MHZF1R2ohf5ajU",
+        "type": "pool",
+        "attributes": {
+          "address": "EUKEANUN7w12v7trTn42FZGnahu5F8MHZF1R2ohf5ajU",
+          "name": "MORPHO / USDC",
+          "pool_created_at": "2026-09-21T16:20:16Z",
+          "reserve_in_usd": "2705016680.9609",
+          "base_token_price_usd": "2.7346101944"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_Gcjh6Z2EiA8sV7SyaY5cCyzkPYLcrVDWUHgefu2BV4ck",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_7QDQPV3rKZxVCL9H3w7bpHkSsUFssWRAYHqPpoY11BH",
+        "type": "pool",
+        "attributes": {
+          "address": "7QDQPV3rKZxVCL9H3w7bpHkSsUFssWRAYHqPpoY11BH",
+          "name": "TAO / USDC",
+          "pool_created_at": "2026-07-11T14:13:10Z",
+          "reserve_in_usd": "4418001292.3815",
+          "base_token_price_usd": "212.6238001874"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_CYjwXHjBpYU34yD7LSyAcYLdRpypWTHyBUKE6kxUvoLm",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_21Yiq2GfhzWSsywqosdevpRqmNqE7PVsn81iMqFbywmn",
+        "type": "pool",
+        "attributes": {
+          "address": "21Yiq2GfhzWSsywqosdevpRqmNqE7PVsn81iMqFbywmn",
+          "name": "Misak-Nasa / USDC",
+          "pool_created_at": "2026-06-04T11:13:41Z",
+          "reserve_in_usd": "3667125057.1945",
+          "base_token_price_usd": "0.003697396197"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_4oJA2gFkAKoCM5E9qjYWhBqN7aKg7umtUgqmC4JWRavQ",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_Eocz7H8FZVBHiwG9EXzZqgn6Nia3msn1Rs3ugyADF1zi",
+        "type": "pool",
+        "attributes": {
+          "address": "Eocz7H8FZVBHiwG9EXzZqgn6Nia3msn1Rs3ugyADF1zi",
+          "name": "SOL / USDC",
+          "pool_created_at": "2026-10-23T05:46:04Z",
+          "reserve_in_usd": "2164750871.6567",
+          "base_token_price_usd": "104.2394968357"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_AyiQP43hqPXRfJNH1kcRVS7jq1AjbCqXK2E4jxmWVP5u",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_3Wt1bEBuWVLDpmMh46KFdBMC7SwnHerNi5XuY3nqH5qy",
+        "type": "pool",
+        "attributes": {
+          "address": "3Wt1bEBuWVLDpmMh46KFdBMC7SwnHerNi5XuY3nqH5qy",
+          "name": "CAKE / USDC",
+          "pool_created_at": "2026-09-20T22:34:16Z",
+          "reserve_in_usd": "2524047679.9759",
+          "base_token_price_usd": "2.5519751929"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2Syibr4EcKieM4f717yzSLMS92iJZYL4mYhAW5anxRZK",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_9owPSmjfjQpHLSZYQDn6qkj2sVzi1QkwkDkwU3btnEoL",
+        "type": "pool",
+        "attributes": {
+          "address": "9owPSmjfjQpHLSZYQDn6qkj2sVzi1QkwkDkwU3btnEoL",
+          "name": "PENDLE / USDC",
+          "pool_created_at": "2026-10-16T15:08:25Z",
+          "reserve_in_usd": "2117200959.5564",
+          "base_token_price_usd": "2.122097447"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2cWnZTGudu8EZ6J7D95YC2CUxunG7Mcu1mLsfsDR9Jam",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_HSMUvHoMmNYVXdho1iQUZQkw5GfAqCcrxvW2jUZHAvsy",
+        "type": "pool",
+        "attributes": {
+          "address": "HSMUvHoMmNYVXdho1iQUZQkw5GfAqCcrxvW2jUZHAvsy",
+          "name": "MRVLX / USDC",
+          "pool_created_at": "2026-05-29T10:39:34Z",
+          "reserve_in_usd": "4173856551.1972",
+          "base_token_price_usd": "201.5801606811"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_3mFtp8EqhXpKohNFzH9s2CmoYSFwrboDmso54MA8wRju",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_EfScKUs1WW1TPyhMUbDpQxbzMhuwqyPf6RNfbLgcKKxu",
+        "type": "pool",
+        "attributes": {
+          "address": "EfScKUs1WW1TPyhMUbDpQxbzMhuwqyPf6RNfbLgcKKxu",
+          "name": "ZRO / USDC",
+          "pool_created_at": "2026-10-19T20:20:04Z",
+          "reserve_in_usd": "1881472290.7213",
+          "base_token_price_usd": "1.888510772"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_FK8rddNbxkfs8vBf5p18QMhEGgwJdVLkX7ByriNBDxhN",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_4EwUy1Rt1nTC7iZDHdQvwNX6taXWL4k47jJfuQLjKn4M",
+        "type": "pool",
+        "attributes": {
+          "address": "4EwUy1Rt1nTC7iZDHdQvwNX6taXWL4k47jJfuQLjKn4M",
+          "name": "STELLAR / USDC",
+          "pool_created_at": "2026-11-21T09:31:17Z",
+          "reserve_in_usd": "1223137700.2375",
+          "base_token_price_usd": "0.1242273365"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_XLMDQxbNqPqMgpxjZmqpw5WrB76A9YjKvrGUv2uAe9J",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_DGmFqbZvtXovsGsh5rRbjhWMoLL7AweHbQEbBjmKcB4D",
+        "type": "pool",
+        "attributes": {
+          "address": "DGmFqbZvtXovsGsh5rRbjhWMoLL7AweHbQEbBjmKcB4D",
+          "name": "HYPE / USDC",
+          "pool_created_at": "2026-11-09T03:07:52Z",
+          "reserve_in_usd": "1569906890.0496",
+          "base_token_price_usd": "74.8693001865"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_Bs76TnPYCwruhMRYL7RJ6oJzrKo7PiqJQSmqBiyRqPPS",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

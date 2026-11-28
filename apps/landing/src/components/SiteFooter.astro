@@ -1,0 +1,54 @@
+---
+import ManageCookiesButton from './consent/ManageCookiesButton.astro';
+import { DISCLAIMER } from '../lib/content';
+import { LEGAL_LINKS, NAV_LINKS } from '../lib/pages';
+
+interface Props {
+  /** Bannière de consentement présente (identifiant GA4 configuré). */
+  consent: boolean;
+}
+
+const { consent } = Astro.props;
+const year = new Date().getFullYear();
+const link = 'inline-flex min-h-11 min-w-11 items-center text-body-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline';
+---
+
+<footer class="border-t border-line bg-surface pb-safe">
+  <div class="mx-auto max-w-reading space-y-6 px-4 py-10 md:px-6 lg:px-8">
+    <div class="grid gap-6 sm:grid-cols-2">
+      <nav aria-label="Pages">
+        <p class="text-label font-semibold uppercase text-ink-muted">Raijin Shield</p>
+        <ul class="mt-2 grid grid-cols-2 gap-x-6">
+          {
+            NAV_LINKS.map((item) => (
+              <li>
+                <a href={item.path} class={link} data-track={item.path === '/tarifs' ? 'voir_tarifs' : undefined}>
+                  {item.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+      <nav aria-label="Informations légales">
+        <p class="text-label font-semibold uppercase text-ink-muted">Informations légales</p>
+        <ul class="mt-2 flex flex-col">
+          {
+            LEGAL_LINKS.map((item) => (
+              <li>
+                <a href={item.path} class={link}>
+                  {item.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </div>
+    <p class="text-body-sm text-ink" data-disclaimer>{DISCLAIMER}</p>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <p class="text-body-sm text-ink-muted">© {year} Raijin Shield</p>
+      {consent && <ManageCookiesButton />}
+    </div>
+  </div>
+</footer>

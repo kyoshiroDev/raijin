@@ -1,0 +1,107 @@
+{
+  "recordedAt": "2026-11-22T03:21:25.276Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi/report",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "mint": "BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi",
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "creator": "644tv6RKk8MYQmYyTbm22YRTL25ZTMXJGVGA52GCsPp1",
+    "creatorBalance": 0,
+    "token": {
+      "mintAuthority": "644tv6RKk8MYQmYyTbm22YRTL25ZTMXJGVGA52GCsPp1",
+      "supply": 14142135623630,
+      "decimals": 9,
+      "isInitialized": true,
+      "freezeAuthority": null
+    },
+    "token_extensions": null,
+    "tokenMeta": {
+      "name": "",
+      "symbol": "",
+      "uri": "",
+      "mutable": false,
+      "updateAuthority": "11111111111111111111111111111111"
+    },
+    "topHolders": [],
+    "freezeAuthority": null,
+    "mintAuthority": {
+      "lamports": 2179320,
+      "owner": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+      "data": [
+        "8ZptBBGxbbz8AACZ3C95q2fIeIRKlWgkxoEzbm2AlgQaPVa19yxsxQmdZgabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABiBr5baSRo/IvnE4B2bK9r7UH+qPfWu83Jn73PxT8sdSZesnZbxB3iIU1zTKXiEf6YX3iPVTFIG/3L1imVj+AOXbjgWBN/DsKiOqt1NXfXkitw9NcZLOpcM8G6eSRjf0dX8L4U02FNekNP6uLJ4c1444s5vAHLIWIHaxJZJ9vOr8yYPi43AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADKnfD+////////////////AAAAAAAAAAAAADZiDwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        "base64"
+      ],
+      "executable": false,
+      "rentEpoch": null,
+      "space": 0
+    },
+    "risks": [
+      {
+        "name": "Mint Authority still enabled",
+        "value": "",
+        "description": "More tokens can be minted by the owner",
+        "score": 50000,
+        "level": "danger"
+      },
+      {
+        "name": "Low Liquidity",
+        "value": "$0.00",
+        "description": "Low amount of liquidity in the token pool",
+        "score": 3000,
+        "level": "danger"
+      },
+      {
+        "name": "Missing file metadata",
+        "value": "",
+        "description": "No file metadata found associated to this token",
+        "score": 500,
+        "level": "warn"
+      }
+    ],
+    "score": 53501,
+    "score_normalised": 72,
+    "fileMeta": null,
+    "lockerOwners": {},
+    "lockers": {},
+    "lockerScanStatus": "none",
+    "markets": null,
+    "totalMarketLiquidity": 0,
+    "totalStableLiquidity": 0,
+    "totalLPProviders": 0,
+    "totalHolders": 0,
+    "price": 0,
+    "rugged": false,
+    "tokenType": "",
+    "transferFee": {
+      "pct": 0,
+      "maxAmount": 0,
+      "authority": "11111111111111111111111111111111"
+    },
+    "knownAccounts": {
+      "644tv6RKk8MYQmYyTbm22YRTL25ZTMXJGVGA52GCsPp1": {
+        "name": "Creator",
+        "type": "CREATOR"
+      },
+      "CJGMCBagYjcyh1CacqewFZLSRPFbqBbPTgEaTcZksaW3": {
+        "name": "Printr Stake Pool",
+        "type": "LOCKER"
+      }
+    },
+    "events": [],
+    "verification": null,
+    "validation": {
+      "validated": false
+    },
+    "graphInsidersDetected": 0,
+    "insiderNetworks": null,
+    "detectedAt": "2026-11-22T03:18:33.145348704Z",
+    "creatorTokens": null,
+    "launchpad": null,
+    "deployPlatform": "unknown"
+  }
+}

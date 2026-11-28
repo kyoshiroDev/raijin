@@ -1,0 +1,28 @@
+---
+import { VERDICT_LABELS, type Verdict } from '@raijin/shared-contracts';
+import Icon from './Icon.astro';
+
+/** Verdict : toujours icône + mot + couleur (BRAND.md), jamais la couleur seule. */
+interface Props {
+  verdict: Verdict;
+  size?: 'md' | 'lg';
+}
+
+const { verdict, size = 'md' } = Astro.props;
+const tone = {
+  safe: 'border-safe text-safe',
+  warn: 'border-warn text-warn',
+  danger: 'border-danger text-danger',
+}[verdict];
+---
+
+<span
+  class:list={[
+    'inline-flex items-center gap-2 rounded-sm border bg-surface font-display font-bold',
+    tone,
+    size === 'lg' ? 'px-4 py-2 text-h2' : 'px-3 py-1 text-body',
+  ]}
+>
+  <Icon name={verdict} size={size === 'lg' ? 28 : 18} />
+  {VERDICT_LABELS[verdict]}
+</span>

@@ -1,0 +1,61 @@
+# Minimal overrides. `supabase config push` only writes the properties declared here;
+# everything else on the remote project is left unchanged.
+
+project_id = "raijin"
+
+[auth]
+site_url = "https://raijin.vercel.app"
+additional_redirect_urls = ["https://raijin.vercel.app", "https://raijin.vercel.app/auth/reset", "http://localhost:4200", "http://localhost:4200/auth/reset"]
+# Private app: no public sign-ups. Create/invite users from the dashboard.
+# (Do NOT set auth.email.enabled = false: that would disable the email provider, i.e. password sign-in.)
+enable_signup = false
+# Email + password sign-in: strong passwords only.
+minimum_password_length = 12
+# One of: "", "letters_digits", "lower_upper_letters_digits", "lower_upper_letters_digits_symbols".
+password_requirements = "lower_upper_letters_digits_symbols"
+
+[auth.email]
+enable_confirmations = true
+# Changing the password of a session older than 24 h requires reauthentication (nonce).
+secure_password_change = true
+
+[functions.scan-tokens]
+# Called by pg_cron with an x-cron-secret header checked in constant time.
+verify_jwt = false
+
+[functions.enrich-tokens]
+# Called by pg_cron (1 min after each scan) with the same x-cron-secret header, checked in constant time.
+# No user JWT exists for a cron call, hence verify_jwt = false; without a valid secret the function answers 401.
+verify_jwt = false
+
+[functions.label-outcomes]
+# Called every 2 minutes at odd minutes by pg_cron ('1-59/2 * * * *', supabase/sql/schedule_label.sql, lab-v2) with the
+# same x-cron-secret header, checked in constant time (401 otherwise, POST only): labels + backtest candle capture
+# (detections and events), ≤ 5 GeckoTerminal requests per call, stop at the first 429. No user JWT: the caller is
+# pg_net. Deploy with --no-verify-jwt.
+verify_jwt = false
+
+[functions.paper-engine]
+# Paper trading engine (simulation only), called by pg_cron at odd minutes ('1-59/2 * * * *') with the same
+# x-cron-secret header, checked in constant time (401 otherwise, POST only). No user JWT: the caller is pg_net.
+# Deploy with --no-verify-jwt.
+verify_jwt = false
+
+[functions.backtest-run]
+# Strategy laboratory worker (simulation only), called by pg_cron every minute ('* * * * *',
+# supabase/sql/schedule_backtest.sql) with the same x-cron-secret header, checked in constant time (401 otherwise, POST
+# only). No user JWT: the caller is pg_net. Users queue runs through the RPC backtest_request_run(), never by calling
+# this function. lab-v2: when no run is active it advances the incremental event scanner (token_snapshots →
+# backtest_events, Postgres only, no external call). Deploy with --no-verify-jwt.
+verify_jwt = false
+
+[functions.send-test-push]
+# Called by the signed-in app: the gateway verifies the JWT, the function re-reads the caller with auth.getUser().
+verify_jwt = true
+
+[functions.wallet-study-collect]
+# feat/wallet-study (OFFLINE STUDY: no alert, no trading, no wallet). Called every minute by pg_cron
+# (supabase/sql/schedule_wallet_study.sql) with the same x-cron-secret header, checked in constant time (401 otherwise,
+# POST only). No user JWT: the caller is pg_net. Reads Helius getTransactionsForAddress with the secret HELIUS_API_KEY
+# (never logged / echoed), hard stop at 600 000 credits. Deploy with --no-verify-jwt.
+verify_jwt = false

@@ -1,0 +1,126 @@
+---
+import LegalPage from '../components/LegalPage.astro';
+import LegalTodo from '../components/LegalTodo.astro';
+import { EDITOR } from '../lib/legal';
+import { DISCLAIMER } from '../lib/content';
+import { PRICING } from '../lib/pricing';
+
+const { free, pro, trialDays, trialAnalysesPerDay, anonAnalysesPerDay } = PRICING;
+---
+
+<LegalPage
+  page="cgu"
+  title="Conditions générales d'utilisation et de vente"
+  lead="Les règles d'utilisation de Raijin Shield (CGU) et les conditions de l'abonnement Pro (CGV)."
+>
+  <h2>1. Objet</h2>
+  <p>
+    Les présentes conditions encadrent l'utilisation du site raijinshield.com et de l'application Raijin Shield
+    (ci-après « Raijin »), éditées par {EDITOR.name}, {EDITOR.legalForm.toLowerCase()} exerçant sous le nom commercial
+    « {EDITOR.tradeName} », SIRET <span class="whitespace-nowrap">{EDITOR.siret}</span>, {EDITOR.address} (voir les{' '}
+    <a href="/mentions-legales">mentions légales</a>). Créer un
+    compte ou souscrire un abonnement vaut acceptation de ces conditions.
+  </p>
+
+  <h2>2. Le service</h2>
+  <p>
+    Raijin analyse des tokens de la blockchain Solana à partir de données publiques (RPC Solana, DexScreener,
+    GeckoTerminal, devis Jupiter, RugCheck) et donne un verdict Sain, Prudence ou Danger selon des règles publiées sur
+    la page <a href="/comment-ca-marche">Comment ça marche</a>. Raijin fonctionne en lecture seule : il ne se connecte à
+    aucun wallet et ne signe ni n'exécute aucune transaction.
+  </p>
+  <p><strong>{DISCLAIMER}</strong></p>
+  <p>
+    Les analyses décrivent un risque technique à un instant donné. Elles peuvent être incomplètes (source
+    indisponible) et ne garantissent ni la sécurité d'un token ni son évolution. Tu restes seul responsable de tes
+    décisions.
+  </p>
+
+  <h2>3. Compte</h2>
+  <ul>
+    <li>Sans compte : {anonAnalysesPerDay} analyses par jour, limitées par adresse IP.</li>
+    <li>
+      Le compte se crée avec une adresse e-mail valide et un mot de passe. Tu es responsable de la confidentialité de
+      tes identifiants.
+    </li>
+    <li>
+      Tu peux exporter tes données ou supprimer ton compte à tout moment depuis l'app (Compte). La suppression est
+      définitive.
+    </li>
+    <li>
+      Sont interdits : l'usage automatisé abusif, le contournement des quotas, la revente des analyses et toute
+      tentative d'atteinte à la sécurité du service. Un compte qui ne respecte pas ces règles peut être suspendu.
+    </li>
+  </ul>
+
+  <h2>4. Plans</h2>
+  <ul>
+    <li><strong>Gratuit</strong> : {free.lines.join(', ').toLowerCase()}.</li>
+    <li>
+      <strong>Pro</strong> : {pro.lines.join(', ').toLowerCase()}. Prix : {pro.monthly} par mois ou {pro.yearly} par
+      an, toutes taxes comprises.
+    </li>
+  </ul>
+  <p>Les prix en vigueur sont ceux affichés sur la page <a href="/tarifs">Tarifs</a> au moment de la souscription.</p>
+
+  <h2>5. Essai Pro sans carte bancaire</h2>
+  <p>
+    À la confirmation de ton adresse e-mail, ton compte passe en Pro pendant {trialDays} jours, gratuitement et sans
+    moyen de paiement{trialAnalysesPerDay !== null && `, avec ${trialAnalysesPerDay} analyses par jour`}. Un seul essai
+    est accordé par personne : les adresses e-mail jetables et les essais multiples depuis le même appareil sont
+    refusés. À la fin de l'essai, le compte repasse en Gratuit automatiquement, sans prélèvement ; les suivis au-delà
+    de la limite du plan Gratuit sont mis en pause, pas supprimés.
+  </p>
+
+  <h2>6. Abonnement et paiement (CGV)</h2>
+  <ul>
+    <li>
+      Le paiement est traité par Stripe (Stripe Payments Europe, Ltd.). Raijin ne voit ni ne conserve tes numéros de
+      carte.
+    </li>
+    <li>
+      L'abonnement est reconduit automatiquement à chaque échéance (mois ou année) jusqu'à résiliation. Une facture est
+      envoyée par e-mail à chaque paiement.
+    </li>
+    <li>
+      Résiliation : à tout moment, depuis l'app (Compte puis Abonnement, portail Stripe). Pro reste actif jusqu'à la fin
+      de la période payée, sans nouveau prélèvement.
+    </li>
+    <li>
+      En cas d'échec de paiement, tu es prévenu par e-mail ; sans régularisation, le compte repasse en Gratuit.
+    </li>
+  </ul>
+
+  <h3>Droit de rétractation</h3>
+  <p>
+    Si tu es un consommateur, tu disposes de 14 jours à compter de la souscription pour te rétracter, sans motif
+    (article L221-18 du Code de la consommation), en écrivant à l'adresse de contact&nbsp;:{' '}
+    <a href={`mailto:${EDITOR.contactEmail}`}>{EDITOR.contactEmail}</a>. Si tu as demandé à
+    profiter de Pro immédiatement, un montant proportionnel à la période déjà fournie peut être retenu (article
+    L221-25).
+  </p>
+
+  <h2>7. Disponibilité et responsabilité</h2>
+  <p>
+    Raijin fait ses meilleurs efforts pour assurer la disponibilité du service, sans garantie d'absence
+    d'interruption (maintenance, panne d'une source de données). La responsabilité de l'éditeur ne peut être engagée
+    pour une décision prise sur la base d'une analyse, ni pour une perte liée à un actif numérique.
+  </p>
+
+  <h2>8. Données personnelles</h2>
+  <p>Voir la <a href="/confidentialite">politique de confidentialité</a>.</p>
+
+  <h2>9. Modification des conditions</h2>
+  <p>
+    Ces conditions peuvent évoluer. Tu es prévenu par e-mail de tout changement important au moins 30 jours avant son
+    entrée en vigueur ; tu peux alors résilier ton abonnement.
+  </p>
+
+  <h2>10. Litiges et médiation</h2>
+  <p>
+    Ces conditions sont soumises au droit français. En cas de litige, écris d'abord au contact de l'éditeur&nbsp;:{' '}
+    <a href={`mailto:${EDITOR.contactEmail}`}>{EDITOR.contactEmail}</a>. Si aucune solution n'est trouvée, tu peux recourir
+    gratuitement au médiateur de la consommation&nbsp;:{' '}
+    <LegalTodo />.
+  </p>
+</LegalPage>

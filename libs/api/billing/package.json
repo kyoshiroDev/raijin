@@ -1,0 +1,23 @@
+{
+  "name": "@raijin/api-billing",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/swagger": "^11.4.8",
+    "@nestjs/throttler": "^6.8.0",
+    "@raijin/api-alerts": "*",
+    "@raijin/api-auth": "*",
+    "@raijin/api-core": "*",
+    "@raijin/api-notifications": "*",
+    "@raijin/api-prisma": "*",
+    "@raijin/shared-contracts": "*",
+    "express": "^5.2.1",
+    "stripe": "~23.2.0",
+    "tslib": "^2.3.0",
+    "zod": "^4.6.7"
+  }
+}

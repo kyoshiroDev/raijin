@@ -1,0 +1,26 @@
+{
+  "recordedAt": "2026-11-22T03:20:11.634Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263/report/summary",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "tokenType": "",
+    "risks": [
+      {
+        "name": "Mutable metadata",
+        "value": "",
+        "description": "Token metadata can be changed by the owner",
+        "score": 100,
+        "level": "warn"
+      }
+    ],
+    "score": 101,
+    "score_normalised": 7,
+    "lpLockedPct": 22.49556290462971
+  }
+}

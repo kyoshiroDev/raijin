@@ -1,0 +1,51 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Construit d'après la doc Helius getAsset (aucune clé disponible à l'enregistrement) ; valeurs reprises du rapport RugCheck réel (tokenMeta).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAsset",
+    "params": {
+      "id": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+    }
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": "1",
+    "result": {
+      "interface": "FungibleToken",
+      "id": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "content": {
+        "$schema": "https://schema.metaplex.com/nft1.0.json",
+        "json_uri": "https://arweave.net/QPC6FYdUn-3V8ytFNuoCS85S2tHAuiDblh6u3CIZLsw",
+        "files": [],
+        "metadata": {
+          "name": "Bonk",
+          "symbol": "Bonk",
+          "token_standard": "Fungible"
+        },
+        "links": {}
+      },
+      "authorities": [
+        {
+          "address": "9AhKqLR67hwapvG8SA2JFXaCshXc9nALJjpKaHZrsbkw",
+          "scopes": [
+            "full"
+          ]
+        }
+      ],
+      "creators": [],
+      "mutable": true,
+      "burnt": false,
+      "token_info": {
+        "supply": 8799428872597798057,
+        "decimals": 5,
+        "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "mint_authority": null,
+        "freeze_authority": null
+      }
+    }
+  }
+}

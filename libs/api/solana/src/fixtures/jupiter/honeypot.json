@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-11-22T03:21:47.824Z",
+  "source": "jupiter",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "1",
+      "slippageBps": "500"
+    }
+  },
+  "status": 400,
+  "body": {
+    "error": "The token 3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa is not tradable",
+    "errorCode": "TOKEN_NOT_TRADABLE"
+  }
+}

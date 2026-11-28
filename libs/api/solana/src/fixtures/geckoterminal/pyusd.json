@@ -1,0 +1,514 @@
+{
+  "recordedAt": "2026-11-22T03:20:40.080Z",
+  "source": "geckoterminal",
+  "request": {
+    "method": "GET",
+    "path": "/networks/solana/tokens/2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo/pools",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "data": [
+      {
+        "id": "solana_9tXiuRRw7kbejLhZXtxDxYs2REe43uH2e7k1kocgdM9B",
+        "type": "pool",
+        "attributes": {
+          "address": "9tXiuRRw7kbejLhZXtxDxYs2REe43uH2e7k1kocgdM9B",
+          "name": "PYUSD / USDC",
+          "pool_created_at": "2024-05-29T03:06:00Z",
+          "reserve_in_usd": "17584416.7115",
+          "base_token_price_usd": "0.9999402223"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_9R9nmGDRdLLwWjc9raRjaRoZZNXiXQBEPGFRj6SfSkPQ",
+        "type": "pool",
+        "attributes": {
+          "address": "9R9nmGDRdLLwWjc9raRjaRoZZNXiXQBEPGFRj6SfSkPQ",
+          "name": "PYUSD / PRIME",
+          "pool_created_at": "2026-06-03T11:20:00Z",
+          "reserve_in_usd": "9594750.2392",
+          "base_token_price_usd": "1.0003057896"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_3b8X44fLF9ooXaUm3hhSgjpmVs6rZZ3pPoGnGahc3Uu7",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_FXPopoKVLHeXonysHMEonZZJ4nsUdFqr4RpFuAvLUvFB",
+        "type": "pool",
+        "attributes": {
+          "address": "FXPopoKVLHeXonysHMEonZZJ4nsUdFqr4RpFuAvLUvFB",
+          "name": "USDe / PYUSD",
+          "pool_created_at": "2024-07-31T18:30:00Z",
+          "reserve_in_usd": "2142080.5849",
+          "base_token_price_usd": "0.9831127529"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_9Vh6fqJjDkqSTZ8bDXseVxGb2yQEMkEhhtte2anQCHSf",
+        "type": "pool",
+        "attributes": {
+          "address": "9Vh6fqJjDkqSTZ8bDXseVxGb2yQEMkEhhtte2anQCHSf",
+          "name": "PYUSD / SOL",
+          "pool_created_at": "2024-06-25T16:46:00Z",
+          "reserve_in_usd": "32932.1412",
+          "base_token_price_usd": "1.0005134902"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_So11111111111111111111111111111111111111112",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_H6fxtvWLFYSJ66mPJqoz7cg6tk32Pcgc9vXrywu4LEWk",
+        "type": "pool",
+        "attributes": {
+          "address": "H6fxtvWLFYSJ66mPJqoz7cg6tk32Pcgc9vXrywu4LEWk",
+          "name": "PYUSD / USDC",
+          "pool_created_at": "2024-06-26T22:50:00Z",
+          "reserve_in_usd": "9765.9843",
+          "base_token_price_usd": "0.9999859113"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_4wRT4yYS3k5yysMuABGvNp3Kg5R43c3dxLPv8fvEn29N",
+        "type": "pool",
+        "attributes": {
+          "address": "4wRT4yYS3k5yysMuABGvNp3Kg5R43c3dxLPv8fvEn29N",
+          "name": "PYUSD / Fartcoin",
+          "pool_created_at": "2024-12-19T08:11:23Z",
+          "reserve_in_usd": "9822.8542",
+          "base_token_price_usd": "0.9958646036"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_9a4gMDahreaNtwNFbFNHuifgNxVjbHeCuHJr1j6TobkG",
+        "type": "pool",
+        "attributes": {
+          "address": "9a4gMDahreaNtwNFbFNHuifgNxVjbHeCuHJr1j6TobkG",
+          "name": "PYUSD / USDC",
+          "pool_created_at": "2026-10-04T17:39:02Z",
+          "reserve_in_usd": "1768.3372",
+          "base_token_price_usd": "0.9996773416"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_AJZFPpLZRXAFHDRUy6nPHnFom6RxhW3jJ797femR6mS8",
+        "type": "pool",
+        "attributes": {
+          "address": "AJZFPpLZRXAFHDRUy6nPHnFom6RxhW3jJ797femR6mS8",
+          "name": "PYUSD / USDC",
+          "pool_created_at": "2025-03-28T03:42:01Z",
+          "reserve_in_usd": "7494.8125",
+          "base_token_price_usd": "1.001040823"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_GVJfHJsvrsWZmVj2JVQ3KyY1n7azyi8Z2FdBPxucUe58",
+        "type": "pool",
+        "attributes": {
+          "address": "GVJfHJsvrsWZmVj2JVQ3KyY1n7azyi8Z2FdBPxucUe58",
+          "name": "PYUSD / USDC",
+          "pool_created_at": "2026-04-17T18:01:44Z",
+          "reserve_in_usd": null,
+          "base_token_price_usd": "0.9998320609"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_39GrsozbzM9Sg1U7EDnEtQ69fsVF3pmVtmV2DGDAQQJ5",
+        "type": "pool",
+        "attributes": {
+          "address": "39GrsozbzM9Sg1U7EDnEtQ69fsVF3pmVtmV2DGDAQQJ5",
+          "name": "PYUSD / USDT",
+          "pool_created_at": "2024-06-07T02:34:00Z",
+          "reserve_in_usd": "802.7713",
+          "base_token_price_usd": "1.0007018334"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_ECod6BDYQ5YmjXGPTr3uRXWRtvdPhC9kctwJavywbEMP",
+        "type": "pool",
+        "attributes": {
+          "address": "ECod6BDYQ5YmjXGPTr3uRXWRtvdPhC9kctwJavywbEMP",
+          "name": "PYUSD / SPX",
+          "pool_created_at": "2024-12-19T23:54:44Z",
+          "reserve_in_usd": "3650.5638",
+          "base_token_price_usd": "1.0028397009"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_93LFgDE4gPfrUfuhnEYkhX7Fc5vcus7SKeMyj2TsSU4n",
+        "type": "pool",
+        "attributes": {
+          "address": "93LFgDE4gPfrUfuhnEYkhX7Fc5vcus7SKeMyj2TsSU4n",
+          "name": "PYUSD / Y1",
+          "pool_created_at": "2026-04-20T03:40:00Z",
+          "reserve_in_usd": "1241.6176",
+          "base_token_price_usd": "0.9965993819"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_4EksNGQ7WiaPPQLtxTuwMbXa9NyV6ZsDXhBdw1ERzfRr",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_6Wfzz7Xczn4pciH4LnvF79r34htiWpTXNPCFz4jWZpi3",
+        "type": "pool",
+        "attributes": {
+          "address": "6Wfzz7Xczn4pciH4LnvF79r34htiWpTXNPCFz4jWZpi3",
+          "name": "PYUSD / SOL",
+          "pool_created_at": "2024-07-30T09:04:00Z",
+          "reserve_in_usd": "1285.5434",
+          "base_token_price_usd": "1.0014929372"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_So11111111111111111111111111111111111111112",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_8EFhHk1PcRsLdhqj38qL1pJ8cfrB2W2uoYUZMkdFJiCw",
+        "type": "pool",
+        "attributes": {
+          "address": "8EFhHk1PcRsLdhqj38qL1pJ8cfrB2W2uoYUZMkdFJiCw",
+          "name": "LAN / PYUSD",
+          "pool_created_at": "2026-07-05T15:57:24Z",
+          "reserve_in_usd": "3225135.8232",
+          "base_token_price_usd": "0.004154002515"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_LanY52xPRrirYgjn1TfUtYBftXJ7gz7SwFfbNykDZVU",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_6dxiAg9cfJvvY8NWhzZwaqHJDyjj5TFsCN9AZgawkzzi",
+        "type": "pool",
+        "attributes": {
+          "address": "6dxiAg9cfJvvY8NWhzZwaqHJDyjj5TFsCN9AZgawkzzi",
+          "name": "PYUSD / fPHX",
+          "pool_created_at": "2024-08-09T23:31:57Z",
+          "reserve_in_usd": "925.3684",
+          "base_token_price_usd": "0.9991986154"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_6gx6Ph2ek73kF6EWDrG4GQ54pcLJB6CYpATuRyxKXumo",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_DKxWaBAJw6rD2NZjYSzG3f4S5wBRm1rbPPNDxPiP2R8P",
+        "type": "pool",
+        "attributes": {
+          "address": "DKxWaBAJw6rD2NZjYSzG3f4S5wBRm1rbPPNDxPiP2R8P",
+          "name": "PYUSD / PbP",
+          "pool_created_at": "2024-07-01T14:36:00Z",
+          "reserve_in_usd": "557.1344",
+          "base_token_price_usd": "0.9972800705"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_3f7wfg9yHLtGKvy75MmqsVT1ueTFoqyySQbusrX1YAQ4",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_JDELdNKDVFQqAodu79QcgnYbZJA8H3HXKxLQ7MzxByZb",
+        "type": "pool",
+        "attributes": {
+          "address": "JDELdNKDVFQqAodu79QcgnYbZJA8H3HXKxLQ7MzxByZb",
+          "name": "KMNO / PYUSD",
+          "pool_created_at": "2024-08-19T14:32:00Z",
+          "reserve_in_usd": "5690.8584",
+          "base_token_price_usd": "0.02294879105"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_B3ojKKgbKpY6FVwCU37JWP21HJdZ67m9AmBqXST5VUs9",
+        "type": "pool",
+        "attributes": {
+          "address": "B3ojKKgbKpY6FVwCU37JWP21HJdZ67m9AmBqXST5VUs9",
+          "name": "PYUSD / DAI",
+          "pool_created_at": "2026-06-07T17:57:00Z",
+          "reserve_in_usd": "91415.886",
+          "base_token_price_usd": "1.0017666301"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_DaiZqErCJGz4Faic55zWHHWAd6L3KS3zkMe6ifiQ24Je",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_EYMwW3Y7k37G9e3Hfks7KCFv8r5Sict7fBCYLz3vvusQ",
+        "type": "pool",
+        "attributes": {
+          "address": "EYMwW3Y7k37G9e3Hfks7KCFv8r5Sict7fBCYLz3vvusQ",
+          "name": "PYUSD / JitoSOL",
+          "pool_created_at": "2024-11-30T00:42:00Z",
+          "reserve_in_usd": "4075.2948",
+          "base_token_price_usd": "0.9957394847"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+              "type": "token"
+            }
+          }
+        }
+      },
+      {
+        "id": "solana_75UU1q9ou5F9ur668ZivAq5XqzXETsodsqKQty1PtcU5",
+        "type": "pool",
+        "attributes": {
+          "address": "75UU1q9ou5F9ur668ZivAq5XqzXETsodsqKQty1PtcU5",
+          "name": "PYUSD / LEGIT",
+          "pool_created_at": "2025-05-13T06:57:22Z",
+          "reserve_in_usd": "244.2829",
+          "base_token_price_usd": "0.9976547488"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_5rSP1W2Jkir4Qy1M6rEYXFFi5HgbhrkVTajimrVgpump",
+              "type": "token"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

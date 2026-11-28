@@ -1,0 +1,437 @@
+#!/usr/bin/env bash
+# Contrôles de la porte de déploiement (infra/lib/deploy_policy.py), rendus comme sur le VPS (env -i, fichier de
+# l'environnement, configuration résolue) : configurations réelles prod et dev ACCEPTÉES ; livraisons dangereuses
+# REFUSÉES (privilège, port, montage de l'hôte ou du socket Docker y compris par interpolation, réseau ou volume d'un
+# autre projet, domaine d'un autre site, règle Traefik avec « || » ou casse modifiée, priority, options non listées,
+# tableau de bord Traefik, pull_policy, étiquette d'image, build, ressources ou journalisation manquantes,
+# extra_hosts / dns, env_file de la prod) ; archive avec lien, « .. », chemin absolu ou .env ; image avec label
+# traefik.*, VOLUME ou root ; jeton OIDC (signature, audience, branche, commit, expiration). Réseau d'entrée du dev
+# (RAIJIN_DEV_EDGE, docs/DEPLOY.md C2) : option B (traefik-shared, défaut : réseau du Traefik de la prod) et option A
+# (dedicated : raijin-dev-edge) acceptées ; réseaux raijin-… en option B, réseau de la prod en option A, Postgres ou
+# Redis sur le réseau d'entrée, valeur inconnue : refusés.
+# Sans démon Docker (seul `docker compose config` est utilisé). Job « infra » de ci.yml ; aussi en local.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+policy="$PWD/infra/lib/deploy_policy.py"
+infra="$PWD/infra"
+work="$(mktemp -d)"
+trap 'rm -r -- "$work"' EXIT
+failures=0
+ok() { printf '  ok   %s\n' "$*"; }
+ko() { printf '::error::%s\n' "$*"; failures=$((failures + 1)); }
+sha="$(printf '%040d' 7 | tr 0 a)"
+CLEAN_PATH="$PATH"
+
+fill="remplissage-$(openssl rand -hex 16)"
+cat >"$work/prod.env" <<EOF
+TRAEFIK_NETWORK=traefik-ci
+TRAEFIK_ENTRYPOINT=websecure
+TRAEFIK_CERTRESOLVER=ci
+LANDING_DOMAIN=raijinshield.com
+APP_DOMAIN=app.raijinshield.com
+API_DOMAIN=api.raijinshield.com
+POSTGRES_SUPERUSER_PASSWORD=$fill
+RAIJIN_DB_PASSWORD=$fill
+BENCH_DB_PASSWORD=$fill
+REDIS_PASSWORD=$fill
+EDGE_SHARED_SECRET=$(openssl rand -hex 32)
+EOF
+# Dev, option B (défaut) : même réseau Traefik que la prod (traefik-ci), aucun réseau propre au dev.
+sed -e 's/^LANDING_DOMAIN=.*/LANDING_DOMAIN=landing-dev.raijinshield.com/' -e 's/^APP_DOMAIN=.*/APP_DOMAIN=dev.raijinshield.com/' \
+  -e 's/^API_DOMAIN=.*/API_DOMAIN=api-dev.raijinshield.com/' -e '/^EDGE_SHARED_SECRET=/d' "$work/prod.env" >"$work/dev.env"
+printf "RAIJIN_NAME=raijin-dev\nRAIJIN_DEV_EDGE=traefik-shared\nDEV_BASIC_AUTH_USERS='ci:\$apr1\$remplissage'\n" >>"$work/dev.env"
+# devenv <nom> <réseau> <mode> : variante du fichier du dev (réseau d'entrée et RAIJIN_DEV_EDGE).
+devenv() { sed -e "s/^TRAEFIK_NETWORK=.*/TRAEFIK_NETWORK=$2/" -e "s/^RAIJIN_DEV_EDGE=.*/RAIJIN_DEV_EDGE=$3/" "$work/dev.env" >"$work/$1.env"; }
+devenv deva raijin-dev-edge dedicated
+mkdir -p "$work/envdir/prod" "$work/envdir/dev"
+: >"$work/envdir/prod/.env.api"; : >"$work/envdir/prod/.env.bench-api"; : >"$work/envdir/dev/.env.api"
+prod_hosts=raijinshield.com,www.raijinshield.com,app.raijinshield.com,api.raijinshield.com,banc.raijinshield.com
+dev_hosts=landing-dev.raijinshield.com,dev.raijinshield.com,api-dev.raijinshield.com
+
+# render <env> [--no-interpolate] [fichier supplémentaire…] : comme deploy-gate.sh (env -i, liste blanche).
+render() {
+  local env="$1" extra_flag=() files=(-f "$infra/docker-compose.yml") name=raijin profiles=(--profile tools --profile bench)
+  shift
+  [[ "${1:-}" == --no-interpolate ]] && { extra_flag=(--no-interpolate); shift; }
+  local envfile="$env"
+  [[ "$env" == dev ]] && { files+=(-f "$infra/docker-compose.env-dev.yml"); name=raijin-dev; profiles=(--profile tools); envfile="${DEV_ENVFILE:-dev}"; }
+  for extra in "$@"; do files+=(-f "$extra"); done
+  env -i PATH="$CLEAN_PATH" HOME="$HOME" RAIJIN_NAME="$name" RAIJIN_TAG="$sha" \
+    RAIJIN_API_ENV_FILE="$work/envdir/$env/.env.api" RAIJIN_BENCH_API_ENV_FILE="$work/envdir/$env/.env.bench-api" \
+    docker compose -p "$name" --env-file "$work/$envfile.env" --project-directory "$infra" "${files[@]}" "${profiles[@]}" \
+    config --format json "${extra_flag[@]}"
+}
+# policy_compose <env> <résolu.json> [hôtes] [réseau] [mode] : comme la porte (dev : --edge = RAIJIN_DEV_EDGE ;
+# défauts du dev surchargeables par DEV_NET et DEV_EDGE_MODE, comme le fichier choisi par DEV_ENVFILE).
+policy_compose() {
+  local env="$1" file="$2" name=raijin hosts="$prod_hosts" net=traefik-ci edge=()
+  [[ "$env" == dev ]] && { name=raijin-dev hosts="$dev_hosts" net="${DEV_NET:-traefik-ci}"
+    edge=(--edge "${5:-${DEV_EDGE_MODE:-traefik-shared}}" --traefik-network "${DEV_REF-traefik-ci}"); }
+  python3 "$policy" compose "$file" --name "$name" --root "$infra" --network "${4:-$net}" --entrypoint websecure \
+    --certresolver ci --tag "$sha" --hosts "${3:-$hosts}" "${edge[@]}"
+}
+# judge <env> [overlay…] : envfiles + resolve + compose, comme la porte.
+judge() {
+  local env="$1"
+  shift
+  rm -f "$work/raw.json" "$work/res.json"
+  # Pré-contrôle des YAML livrés (comme la porte) : fichiers réels, puis chaque surcouche à la place du fichier dev.
+  python3 "$policy" yamlcheck "$infra" >"$work/out" 2>&1 || return 1
+  local o yd
+  for o in "$@"; do
+    yd="$(mktemp -d -p "$work")"
+    cp "$o" "$yd/docker-compose.env-dev.yml"
+    python3 "$policy" yamlcheck "$yd" >"$work/out" 2>&1 || return 1
+  done
+  render "$env" --no-interpolate "$@" 2>/dev/null | python3 "$policy" envfiles "$infra" >"$work/out" 2>&1 || return 1
+  render "$env" "$@" >"$work/raw.json" 2>"$work/out" || return 1
+  python3 "$policy" resolve "$work/raw.json" "$work/res.json" >/dev/null
+  policy_compose "$env" "$work/res.json" >"$work/out" 2>&1
+}
+accept() { if judge "$@"; then ok "accepté : $1 (configuration réelle)"; else ko "refusé à tort : $1 $(tr '\n' ' ' <"$work/out" | head -c 400)"; fi; }
+reject() {
+  local label="$1"; shift
+  if judge "$@"; then ko "accepté à tort : $label"; else ok "refusé : $label ($(head -n 1 "$work/out"))"; fi
+}
+overlay() { printf '%s\n' "$2" >"$work/$1.yml"; echo "$work/$1.yml"; }
+
+echo "== Configurations réelles"
+accept prod
+accept dev
+echo "== Réseau d'entrée du dev (RAIJIN_DEV_EDGE, docs/DEPLOY.md C2)"
+if judge dev; then ok "accepté : option B (traefik-shared, réseau du Traefik de la prod, Traefik non modifié)"; else ko "option B refusée à tort : $(head -c 400 "$work/out")"; fi
+if DEV_ENVFILE=deva DEV_NET=raijin-dev-edge DEV_EDGE_MODE=dedicated judge dev; then ok "accepté : option A (dedicated, raijin-dev-edge)"
+else ko "option A refusée à tort : $(head -c 400 "$work/out")"; fi
+devenv bprodint raijin-internal traefik-shared
+DEV_ENVFILE=bprodint DEV_NET=raijin-internal judge dev && ko "option B sur le réseau interne de la prod accepté" \
+  || ok "refusé : option B sur raijin-internal (Postgres et Redis de la prod) ($(head -n 1 "$work/out"))"
+devenv bdevedge raijin-dev-edge traefik-shared
+DEV_ENVFILE=bdevedge DEV_NET=raijin-dev-edge judge dev && ko "option B sur un réseau raijin-dev-… accepté" \
+  || ok "refusé : option B sur un réseau raijin-… ($(head -n 1 "$work/out"))"
+devenv aprod traefik-ci dedicated
+DEV_ENVFILE=aprod DEV_EDGE_MODE=dedicated judge dev && ko "option A sur le réseau Traefik de la prod accepté" \
+  || ok "refusé : option A sur le réseau Traefik de la prod ($(head -n 1 "$work/out"))"
+DEV_EDGE_MODE=autre judge dev && ko "RAIJIN_DEV_EDGE inconnu accepté" || ok "refusé : RAIJIN_DEV_EDGE inconnu ($(head -n 1 "$work/out"))"
+devenv bother autre-reseau traefik-shared
+DEV_ENVFILE=bother DEV_NET=autre-reseau judge dev && ko "option B sur un réseau autre que celui du Traefik de référence accepté" \
+  || ok "refusé : option B sur un réseau existant autre que le réseau de référence ($(head -n 1 "$work/out"))"
+DEV_REF='' judge dev && ko "option B sans réseau de référence accepté" || ok "refusé : option B sans réseau de référence (/var/lib/raijin-deploy/traefik-network)"
+reject "réseau du projet nommé raijin-dev-edge" dev "$(overlay netedge 'services: {raijin-api: {networks: [raijin-internal, traefik, x]}}
+networks: {x: {name: raijin-dev-edge, internal: true}}')"
+reject "réseau du projet au nom du réseau d'entrée" dev "$(overlay netentry 'services: {raijin-api: {networks: [raijin-internal, traefik, x]}}
+networks: {x: {name: traefik-ci, internal: true}}')"
+reject "Mailpit sur le réseau du Traefik" dev "$(overlay mpedge 'services: {raijin-mailpit: {networks: [raijin-internal, traefik]}}')"
+reject "Mailpit sans MP_UI_AUTH" dev "$(overlay mpauth 'services: {raijin-mailpit: {environment: {MP_UI_AUTH: ""}}}')"
+reject "Mailpit routé par Traefik (labels)" dev "$(overlay mplab 'services: {raijin-mailpit: {labels: ["traefik.enable=true"]}}')"
+reject "option B : Postgres du dev sur le réseau du Traefik" dev "$(overlay pgedge 'services: {raijin-postgres: {networks: [raijin-internal, traefik]}}')"
+reject "option B : Redis du dev sur le réseau du Traefik" dev "$(overlay redisedge 'services: {raijin-redis: {networks: [raijin-internal, traefik]}}')"
+reject "option B : réseau interne de la prod ajouté au dev" dev "$(overlay prodnet 'services: {raijin-api: {networks: [raijin-internal, traefik, prodint]}}
+networks: {prodint: {external: true, name: raijin-internal}}')"
+
+echo "== En-tête X-Raijin-Edge (docs/SECURITY.md §17 : API et banc de la prod injoignables en direct)"
+grep -v '^EDGE_SHARED_SECRET=' "$work/prod.env" >"$work/noedge.env"
+cp "$work/noedge.env" "$work/badedge.env"; echo 'EDGE_SHARED_SECRET=trop-court' >>"$work/badedge.env"
+for e in noedge badedge; do
+  cp "$work/$e.env" "$work/prod-$e.env"
+  if (cp "$work/prod.env" "$work/prod.bak" && cp "$work/prod-$e.env" "$work/prod.env" && judge prod); then ko "prod sans EDGE_SHARED_SECRET valide ($e) acceptée"
+  else ok "refusé : prod sans EDGE_SHARED_SECRET valide ($e) ($(head -n 1 "$work/out"))"; fi
+  cp "$work/prod.bak" "$work/prod.env"
+done
+grep -q 'EDGE_SHARED_SECRET=[0-9a-f]\{64\}' "$work/prod.env" && ! grep -qF "$(sed -n 's/^EDGE_SHARED_SECRET=//p' "$work/prod.env")" "$work/out" \
+  && ok "valeur de EDGE_SHARED_SECRET absente des messages" || ko "EDGE_SHARED_SECRET affiché ou absent"
+reject "prod : routeur de l'API sans l'en-tête X-Raijin-Edge" prod "$(overlay edgemw 'services: {raijin-api: {labels: ["traefik.http.routers.raijin-api.middlewares=raijin-api-ratelimit,raijin-api-compress"]}}')"
+reject "prod : EDGE_SHARED_SECRET retiré du conteneur de l'API" prod "$(overlay edgeenv 'services: {raijin-api: {environment: {EDGE_SHARED_SECRET: ""}}}')"
+cp "$work/dev.env" "$work/devedge.env"; sed -n '/^EDGE_SHARED_SECRET=/p' "$work/prod.env" >>"$work/devedge.env"
+DEV_ENVFILE=devedge judge dev && ko "dev avec le secret X-Raijin-Edge de la prod accepté" \
+  || ok "refusé : EDGE_SHARED_SECRET dans le dev ($(head -n 1 "$work/out"))"
+
+echo "== Livraisons dangereuses (dev)"
+reject "privileged" dev "$(overlay privileged 'services: {raijin-web: {privileged: true}}')"
+reject "port publié" dev "$(overlay ports 'services: {raijin-web: {ports: ["8080:8080"]}}')"
+reject "montage de / (hôte)" dev "$(overlay bind 'services: {raijin-web: {volumes: ["/:/host:ro"]}}')"
+reject "socket Docker" dev "$(overlay sock 'services: {raijin-api: {volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]}}')"
+reject "socket Docker par interpolation (variable du fichier d'env)" dev \
+  "$(overlay sockvar 'services: {raijin-web: {volumes: [{type: bind, source: "${TRAEFIK_ENTRYPOINT:+/}var/run/docker.sock", target: /s, read_only: true}]}}')"
+reject "cap_add" dev "$(overlay capadd 'services: {raijin-api: {cap_add: [SYS_ADMIN]}}')"
+reject "network_mode host" dev "$(overlay nethost 'services: {raijin-web: {network_mode: host, networks: !reset null}}')"
+reject "extra_hosts" dev "$(overlay xhosts 'services: {raijin-web: {extra_hosts: ["db:10.0.0.1"]}}')"
+reject "dns" dev "$(overlay dns 'services: {raijin-web: {dns: [1.1.1.1]}}')"
+reject "domaine de la prod depuis le dev" dev "$(overlay hijack 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.rule=Host(`app.raijinshield.com`)"]}}')"
+reject "règle avec ||" dev "$(overlay or 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.rule=Host(`dev.raijinshield.com`) || PathPrefix(`/`)"]}}')"
+reject "règle avec !" dev "$(overlay not 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.rule=Host(`dev.raijinshield.com`) && !Path(`/x`)"]}}')"
+reject "hôte en majuscules" dev "$(overlay case1 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.rule=Host(`APP.RAIJINSHIELD.COM`)"]}}')"
+reject "matcher en minuscules (host)" dev "$(overlay case2 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.rule=host(`app.raijinshield.com`)"]}}')"
+reject "clé Traefik en majuscules" dev "$(overlay case3 'services: {raijin-web: {labels: ["TRAEFIK.http.routers.raijin-x.rule=Host(`app.raijinshield.com`)"]}}')"
+reject "priority 99999" dev "$(overlay prio 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.priority=99999"]}}')"
+reject "option de routeur non listée" dev "$(overlay ropt 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.observability.accesslogs=false"]}}')"
+reject "domaine d'un autre site" dev "$(overlay mtc 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-x.rule=Host(`mytradingcoach.example`)"]}}')"
+reject "HostRegexp" dev "$(overlay regexp 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-x.rule=HostRegexp(`.+`)"]}}')"
+reject "tableau de bord Traefik (api@internal)" dev "$(overlay dash 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-dev-web.service=api@internal"]}}')"
+reject "routeur au nom de la prod" dev "$(overlay prodname 'services: {raijin-web: {labels: ["traefik.http.routers.raijin-web.rule=Host(`dev.raijinshield.com`)"]}}')"
+reject "middleware forwardAuth" dev "$(overlay fwd 'services: {raijin-web: {labels: ["traefik.http.middlewares.raijin-dev-fa.forwardauth.address=http://x"]}}')"
+reject "redirection vers un autre site" dev "$(overlay redir 'services: {raijin-web: {labels: ["traefik.http.middlewares.raijin-dev-r.redirectregex.replacement=https://evil.example/"]}}')"
+reject "service vers une URL" dev "$(overlay url 'services: {raijin-web: {labels: ["traefik.http.services.raijin-dev-web.loadbalancer.server.url=http://mtc:3000"]}}')"
+reject "routeur TCP" dev "$(overlay tcp 'services: {raijin-web: {labels: ["traefik.tcp.routers.raijin-dev-t.rule=HostSNI(`*`)"]}}')"
+reject "volume de la prod" dev "$(overlay vol 'volumes: {raijin-pgdata: {name: raijin-pgdata}}')"
+reject "volume externe" dev "$(overlay volext 'services: {raijin-web: {volumes: ["x:/data"]}}
+volumes: {x: {external: true, name: mtc-data}}')"
+reject "volume local monté sur l'hôte" dev "$(overlay voldrv 'volumes: {raijin-pgdata: {driver_opts: {type: none, o: bind, device: /}}}')"
+reject "réseau d'un autre projet" dev "$(overlay net 'services: {raijin-api: {networks: [mtc]}}
+networks: {mtc: {external: true, name: mtc-internal}}')"
+reject "réseau interne non préfixé" dev "$(overlay netname 'networks: {raijin-internal: {name: autre-reseau}}')"
+reject "image étrangère" dev "$(overlay img 'services: {raijin-web: {image: "traefik:v3.6"}}')"
+reject "image d'un autre environnement" dev "$(overlay img2 "services: {raijin-web: {image: \"raijin/web:$sha\"}}")"
+reject "étiquette latest au lieu du commit" dev "$(overlay tag 'services: {raijin-web: {image: "raijin-dev/web:latest"}}')"
+reject "pull_policy always" dev "$(overlay pull 'services: {raijin-web: {pull_policy: always}}')"
+reject "conteneur au nom de la prod" dev "$(overlay cname 'services: {raijin-web: {container_name: raijin-web}}')"
+reject "sans no-new-privileges" dev "$(overlay nnp 'services: {raijin-web: {security_opt: !override []}}')"
+reject "seccomp désactivé" dev "$(overlay seccomp 'services: {raijin-web: {security_opt: ["seccomp=unconfined"]}}')"
+reject "sans mem_limit" dev "$(overlay mem 'services: {raijin-web: {mem_limit: !reset null, memswap_limit: !reset null}}')"
+reject "mem_limit de 8 Go" dev "$(overlay mem8 'services: {raijin-web: {mem_limit: 8g, memswap_limit: 8g}}')"
+reject "sans pids_limit" dev "$(overlay pids 'services: {raijin-web: {pids_limit: !reset null}}')"
+reject "journalisation syslog" dev "$(overlay logdrv 'services: {raijin-web: {logging: {driver: syslog, options: !reset {}}}}')"
+reject "journaux sans plafond" dev "$(overlay logsize 'services: {raijin-web: {logging: {driver: json-file, options: {max-size: 2g}}}}')"
+reject "env_file de la prod depuis le dev" dev "$(overlay envf "services: {raijin-web: {env_file: [\"$work/envdir/prod/.env.api\"]}}")"
+reject "env_file relatif hors modèle" dev "$(overlay envrel "services: {raijin-web: {env_file: [{path: ../../prod/env/.env.api, required: false}]}}")"
+reject "extends vers la config résolue de la prod" dev "$(overlay ext 'services: {raijin-web: {extends: {file: /srv/raijin/prod/current/compose.resolved.json, service: raijin-api}}}')"
+reject "include avec env_file de la prod" dev "$(overlay inc 'include: [{path: ./x.yml, env_file: /srv/raijin/prod/env/.env.api}]')"
+reject "label_file" dev "$(overlay lf 'services: {raijin-web: {label_file: /srv/raijin/prod/env/.env}}')"
+reject "clé extends échappée (\\u0065)" dev "$(overlay extesc 'services:
+  raijin-web:
+    "ext\u0065nds": {file: /srv/raijin/prod/env/x.yml, service: raijin-api}')"
+reject "sans cpus" dev "$(overlay cpus 'services: {raijin-web: {cpus: !reset null}}')"
+reject "cpus 4" dev "$(overlay cpus4 'services: {raijin-web: {cpus: 4}}')"
+reject "shm_size 2 Go" dev "$(overlay shm 'services: {raijin-postgres: {shm_size: 2g}}')"
+reject "regex de redirection modifiée" dev "$(overlay rx 'services: {raijin-landing: {labels: ["traefik.http.middlewares.raijin-dev-www-redirect.redirectregex.regex=^https?://(.*)$"]}}')"
+reject "secret lu sur le VPS" dev "$(overlay sec "services: {raijin-web: {secrets: [s]}}
+secrets: {s: {file: /etc/hostname}}")"
+
+echo "== Configuration résolue"
+judge dev >/dev/null
+# Rendu sous env -i : une variable de l'environnement de l'appelant n'est jamais interpolée.
+APP_URL=x render dev "$(overlay sockenv 'services: {raijin-web: {volumes: [{type: bind, source: "${APP_URL:+/}var/run/docker.sock", target: /s, read_only: true}]}}')" 2>/dev/null \
+  | grep -q '"source": *"/var/run/docker.sock"' && ko "variable de l'appelant interpolée (env -i inopérant)" || ok "variable de l'appelant ignorée (env -i)"
+python3 - "$work/res.json" "$work/lone.json" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))
+c['services']['raijin-web']['environment'] = {'X': '${APP_URL}'}
+json.dump(c, open(sys.argv[2], 'w'))
+PY
+policy_compose dev "$work/lone.json" >"$work/out" 2>&1 && ko "« \$ » non échappé accepté" || ok "refusé : variable non résolue dans la config ($(head -n 1 "$work/out"))"
+render dev >"$work/raw2.json" 2>/dev/null
+policy_compose dev "$work/raw2.json" >"$work/out" 2>&1 && ko "config avec build acceptée" || ok "refusé : build dans la config livrée"
+policy_compose dev "$work/res.json" "app.raijinshield.com,api-dev.raijinshield.com,landing-dev.raijinshield.com" >"$work/out" 2>&1 \
+  && ko "dev : nom sans « dev » accepté" || ok "refusé : nom du dev sans « dev. » / « -dev. »"
+policy_compose dev "$work/res.json" "" raijin-dev-edge >"$work/out" 2>&1 && ko "réseau d'entrée différent de la config accepté" || ok "refusé : réseau d'entrée différent de celui de la configuration"
+judge prod >/dev/null && cp "$work/res.json" "$work/prodres.json"
+judge dev >/dev/null
+python3 "$policy" compose "$work/prodres.json" --name raijin --root "$infra" --network traefik-ci --entrypoint websecure --certresolver ci \
+  --tag "$sha" --hosts "$prod_hosts" --edge traefik-shared >"$work/out" 2>&1 && ko "prod avec --edge acceptée" || ok "refusé : --edge pour la production"
+python3 "$policy" compose "$work/prodres.json" --name raijin --root "$infra" --network traefik-ci --entrypoint websecure --certresolver ci \
+  --tag "$sha" --hosts "$prod_hosts" >"$work/out" 2>&1 && ok "contre-épreuve : la même config de prod sans --edge est acceptée" || ko "config de prod refusée sans --edge : $(head -n 1 "$work/out")"
+
+echo "== Archive livrée"
+mkdir -p "$work/b"
+python3 - "$work/b" <<'PY'
+import io, os, sys, tarfile
+d = sys.argv[1]
+def make(name, members):
+    with tarfile.open(os.path.join(d, name), 'w') as t:
+        for m in members:
+            t.addfile(*m)
+def f(n, data=b'x'):
+    ti = tarfile.TarInfo(n); ti.size = len(data); return (ti, io.BytesIO(data))
+def link(n, target, kind=tarfile.SYMTYPE):
+    ti = tarfile.TarInfo(n); ti.type = kind; ti.linkname = target; return (ti,)
+make('ok.tar', [f('infra/docker-compose.yml', b'services: {}\n'), f('images.tar.gz')])
+make('symlink.tar', [link('infra', '/etc'), f('infra/docker-compose.yml'), f('images.tar.gz')])
+make('dotdot.tar', [f('infra/../../evil'), f('images.tar.gz')])
+make('abs.tar', [f('/tmp/evil'), f('images.tar.gz')])
+make('extra.tar', [f('infra/docker-compose.yml'), f('images.tar.gz'), f('autre/fichier')])
+make('hardlink.tar', [f('infra/docker-compose.yml'), f('images.tar.gz'), link('infra/x', 'infra/docker-compose.yml', tarfile.LNKTYPE)])
+make('dotenv.tar', [f('infra/docker-compose.yml'), f('infra/.env', b'COMPOSE_PROFILES=bench\n'), f('images.tar.gz')])
+PY
+bundle_case() {
+  local want="$1" file="$2" label="$3" dest got
+  dest="$(mktemp -d -p "$work")"
+  if python3 "$policy" bundle "$work/b/$file" "$dest" >"$work/out" 2>&1; then got=ok; else got=refus; fi
+  if [[ "$got" == "$want" ]]; then ok "archive $label : $got"; else ko "archive $label : $got au lieu de $want ($(head -n 1 "$work/out"))"; fi
+}
+bundle_case ok ok.tar "conforme"
+bundle_case refus symlink.tar "avec lien symbolique"
+bundle_case refus dotdot.tar "avec « .. »"
+bundle_case refus abs.tar "avec chemin absolu"
+bundle_case refus extra.tar "avec fichier hors infra/"
+bundle_case refus hardlink.tar "avec lien physique"
+bundle_case refus dotenv.tar "avec fichier .env"
+
+echo "== Images (docker save : étiquettes, structure, configuration)"
+python3 - "$work/b" "$sha" <<'PY'
+import gzip, hashlib, io, json, os, sys, tarfile
+d, sha = sys.argv[1], sys.argv[2]
+def save(name, tags, labels=None, volumes=None, user='node', extra=None, oci=None, cfg_size=None, manifest_size=None, skip_cfg=False,
+         oci_type='application/vnd.oci.image.config.v1+json', attestation=False):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode='w') as t:
+        def add(n, obj=None, raw=None):
+            data = raw if raw is not None else json.dumps(obj).encode()
+            ti = tarfile.TarInfo(n); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
+        cfg = json.dumps({'architecture': 'amd64', 'os': 'linux', 'config': {'Labels': labels or {}, 'Volumes': volumes, 'User': user}}).encode()
+        if cfg_size:
+            cfg += b' ' * cfg_size
+        cdig = hashlib.sha256(cfg).hexdigest()
+        if not skip_cfg:
+            add(f'blobs/sha256/{cdig}', raw=cfg)
+        if oci is not None:
+            # index.json → manifeste OCI → config (éventuellement une AUTRE config que celle de manifest.json)
+            ocfg = json.dumps({'architecture': 'amd64', 'os': 'linux', 'config': {'Labels': oci, 'User': 'node'}}).encode()
+            odig = hashlib.sha256(ocfg).hexdigest()
+            add(f'blobs/sha256/{odig}', raw=ocfg)
+            man = json.dumps({'schemaVersion': 2, 'config': {'mediaType': oci_type, 'digest': f'sha256:{odig}'}, 'layers': []}).encode()
+            mdig = hashlib.sha256(man).hexdigest()
+            add(f'blobs/sha256/{mdig}', raw=man)
+            descs = [{'digest': f'sha256:{mdig}'}]
+            if attestation:
+                # Comme BuildKit : index d'image = manifeste d'image + manifeste d'attestation dont la config est de type
+                # image OCI, plateforme unknown/unknown, sans utilisateur ni commande (non exécutable).
+                att = json.dumps(attestation if isinstance(attestation, dict) else {'architecture': 'unknown', 'os': 'unknown', 'config': {}, 'rootfs': {'type': 'layers', 'diff_ids': []}}).encode()
+                adig = hashlib.sha256(att).hexdigest()
+                add(f'blobs/sha256/{adig}', raw=att)
+                aman = json.dumps({'schemaVersion': 2, 'config': {'mediaType': 'application/vnd.oci.image.config.v1+json', 'digest': f'sha256:{adig}'}, 'layers': []}).encode()
+                amdig = hashlib.sha256(aman).hexdigest()
+                add(f'blobs/sha256/{amdig}', raw=aman)
+                descs.append({'digest': f'sha256:{amdig}', 'annotations': {'vnd.docker.reference.type': 'attestation-manifest'}})
+            sub = json.dumps({'schemaVersion': 2, 'manifests': descs}).encode()
+            sdig = hashlib.sha256(sub).hexdigest()
+            add(f'blobs/sha256/{sdig}', raw=sub)
+            add('index.json', {'schemaVersion': 2, 'manifests': [{'digest': f'sha256:{sdig}', 'annotations': {'io.containerd.image.name': f'docker.io/{tags[0]}'}}]})
+        for e in (extra or []):
+            e(t, add)
+        m = [{'Config': f'blobs/sha256/{cdig}', 'RepoTags': tags, 'Layers': []}]
+        if manifest_size:
+            add('manifest.json', raw=json.dumps(m).encode() + b' ' * manifest_size)
+        else:
+            add('manifest.json', m)
+    with gzip.open(os.path.join(d, name), 'wb') as g:
+        g.write(buf.getvalue())
+ok = [f'raijin-dev/api:{sha}', f'raijin-dev/web:{sha}']
+save('img-ok.tar.gz', ok, labels={'org.opencontainers.image.title': 'x', 'com.docker.compose.project': 'raijin-dev'}, oci={})
+save('img-traefik.tar.gz', [f'raijin-dev/api:{sha}', 'traefik:v3.6'])
+save('img-prod.tar.gz', [f'raijin/api:{sha}'])
+save('img-latest.tar.gz', ['raijin-dev/api:latest'])
+save('img-label.tar.gz', ok, labels={'traefik.http.routers.raijin-dev-x.rule': 'Host(`app.raijinshield.com`)'})
+save('img-label-case.tar.gz', ok, labels={'Traefik.Enable': 'true'})
+save('img-volume.tar.gz', ok, volumes={'/data': {}})
+save('img-root.tar.gz', ok, user='')
+save('img-oci-label.tar.gz', ok, oci={'traefik.enable': 'true'})
+save('img-attestation.tar.gz', ok, oci={}, attestation=True)
+save('img-fake-attestation.tar.gz', ok, oci={}, attestation={'architecture': 'unknown', 'os': 'unknown', 'config': {'User': 'root', 'Cmd': ['sh']}})
+save('img-numeric-user.tar.gz', ok, user='1000:1000')
+save('img-root-uid.tar.gz', ok, user='0:0')
+save('img-oci-docker-type.tar.gz', ok, oci={'traefik.enable': 'true'}, oci_type='application/vnd.docker.container.image.v1+json')
+save('img-big-config.tar.gz', ok, cfg_size=3 * 1024 * 1024)   # > 2 Mio : lue quand même (plus de budget)
+save('img-huge-manifest.tar.gz', ok, manifest_size=5 * 1024 * 1024)
+save('img-no-config.tar.gz', ok, skip_cfg=True)
+def pad_then_second_manifest(t, add):
+    for i in range(40):
+        add(f'blobs/sha256/{i:064x}', raw=b'x' * (2 * 1024 * 1024 + 1))
+    add('manifest.json', [{'Config': 'blobs/sha256/x', 'RepoTags': ['traefik:v3.6'], 'Layers': []}])
+save('img-dup-manifest.tar.gz', ok, extra=[pad_then_second_manifest])
+def hardlink(t, add):
+    ti = tarfile.TarInfo('repositories'); ti.type = tarfile.LNKTYPE; ti.linkname = 'manifest.json'; t.addfile(ti)
+save('img-hardlink.tar.gz', ok, extra=[hardlink])
+def symlink(t, add):
+    ti = tarfile.TarInfo('blobs/sha256/lien'); ti.type = tarfile.SYMTYPE; ti.linkname = '/etc/shadow'; t.addfile(ti)
+save('img-symlink.tar.gz', ok, extra=[symlink])
+PY
+image_case() {
+  local want="$1" file="$2" label="$3" got
+  if python3 "$policy" images "$work/b/$file" raijin-dev "$sha" "$work/expected" >"$work/out" 2>&1; then got=ok; else got=refus; fi
+  if [[ "$got" == "$want" ]]; then ok "images $label : $got"; else ko "images $label : $got au lieu de $want ($(head -n 1 "$work/out"))"; fi
+}
+image_case ok img-ok.tar.gz "raijin-dev/*:<commit> (index OCI suivi)"
+image_case refus img-traefik.tar.gz "avec traefik:v3.6"
+image_case refus img-prod.tar.gz "de la prod (raijin/*)"
+image_case refus img-latest.tar.gz "« latest » au lieu du commit"
+image_case refus img-label.tar.gz "avec LABEL traefik.* (routeur caché dans l'image)"
+image_case refus img-label-case.tar.gz "avec LABEL Traefik.* (casse)"
+image_case refus img-volume.tar.gz "avec VOLUME"
+image_case refus img-root.tar.gz "sans USER (root)"
+image_case refus img-oci-label.tar.gz "config de l'index OCI avec label traefik.*"
+image_case ok img-attestation.tar.gz "index BuildKit avec manifeste d'attestation (unknown/unknown, sans USER)"
+image_case refus img-fake-attestation.tar.gz "fausse attestation exécutable (Cmd, USER root)"
+image_case ok img-numeric-user.tar.gz "USER 1000:1000"
+image_case refus img-root-uid.tar.gz "USER 0:0"
+image_case refus img-oci-docker-type.tar.gz "config de type Docker via l'index avec label traefik.*"
+image_case ok img-big-config.tar.gz "config de 3 Mio lue en entier"
+image_case refus img-huge-manifest.tar.gz "manifest.json au-delà du plafond"
+image_case refus img-no-config.tar.gz "Config référencée absente"
+image_case refus img-dup-manifest.tar.gz "2e manifest.json après 80 Mio de remplissage"
+image_case refus img-hardlink.tar.gz "lien physique dans l'archive"
+image_case refus img-symlink.tar.gz "lien symbolique dans l'archive"
+python3 "$policy" images "$work/b/img-ok.tar.gz" raijin-dev "$sha" "$work/expected" >/dev/null
+printf 'Loaded image: raijin-dev/api:%s\nLoaded image: raijin-dev/web:%s\n' "$sha" "$sha" | python3 "$policy" loaded "$work/expected" >/dev/null \
+  && ok "docker load : sortie conforme acceptée" || ko "docker load : sortie conforme refusée"
+printf 'Loaded image: raijin-dev/api:%s\nLoaded image: traefik:v3.6\n' "$sha" | python3 "$policy" loaded "$work/expected" >/dev/null 2>&1 \
+  && ko "docker load : étiquette en trop acceptée" || ok "docker load : étiquette en trop refusée"
+printf 'Loaded image ID: sha256:%064d\n' 0 | python3 "$policy" loaded "$work/expected" >/dev/null 2>&1 \
+  && ko "docker load : image sans étiquette acceptée" || ok "docker load : image sans étiquette refusée"
+
+echo "== Jeton OIDC (clé RSA de test, jamais celle de GitHub)"
+openssl genrsa -out "$work/k.pem" 2048 2>/dev/null
+openssl genrsa -out "$work/k2.pem" 2048 2>/dev/null
+python3 - "$work" <<'PY'
+import base64, json, subprocess, sys
+w = sys.argv[1]
+mod = subprocess.check_output(['openssl', 'rsa', '-in', f'{w}/k.pem', '-noout', '-modulus'], text=True).strip().split('=')[1]
+n = bytes.fromhex(mod)
+u = lambda b: base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+json.dump({'keys': [{'kty': 'RSA', 'kid': 'ci', 'n': u(n), 'e': u((65537).to_bytes(3, 'big'))}]}, open(f'{w}/jwks.json', 'w'))
+PY
+# jwt <fichier clé> <revendications JSON>
+jwt() {
+  local h p s
+  h="$(printf '{"alg":"RS256","kid":"ci","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')"
+  p="$(printf '%s' "$2" | base64 -w0 | tr '+/' '-_' | tr -d '=')"
+  s="$(printf '%s.%s' "$h" "$p" | openssl dgst -sha256 -sign "$1" -binary | base64 -w0 | tr '+/' '-_' | tr -d '=')"
+  printf '%s.%s.%s' "$h" "$p" "$s"
+}
+now="$(date +%s)"
+claims() {  # claims <aud> <workflow_ref> <sha> <exp>
+  printf '{"iss":"https://token.actions.githubusercontent.com","aud":"%s","repository":"ci/raijin","ref":"refs/heads/main","workflow_ref":"%s","sha":"%s","exp":%s,"iat":%s,"run_id":"1"}' \
+    "$1" "$2" "$3" "$4" "$now"
+}
+good_ref="ci/raijin/.github/workflows/deploy.yml@refs/heads/main"
+oidc_case() {
+  local want="$1" token="$2" label="$3" got
+  if python3 "$policy" oidc "$token" --jwks "$work/jwks.json" --aud "raijin-depot-prod:abc" --repo ci/raijin --sha "$sha" >"$work/out" 2>&1; then got=ok; else got=refus; fi
+  if [[ "$got" == "$want" ]]; then ok "oidc $label : $got"; else ko "oidc $label : $got au lieu de $want ($(tail -n 1 "$work/out"))"; fi
+}
+oidc_case ok "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "$good_ref" "$sha" $((now + 300)))")" "jeton conforme"
+oidc_case refus "$(jwt "$work/k2.pem" "$(claims raijin-depot-prod:abc "$good_ref" "$sha" $((now + 300)))")" "signé par une autre clé"
+oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:autre "$good_ref" "$sha" $((now + 300)))")" "autre archive (audience)"
+oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "ci/raijin/.github/workflows/deploy.yml@refs/heads/dev" "$sha" $((now + 300)))")" "workflow de la branche dev"
+oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "$good_ref" "$(printf '%040d' 1)" $((now + 300)))")" "autre commit"
+oidc_case refus "$(jwt "$work/k.pem" "$(claims raijin-depot-prod:abc "$good_ref" "$sha" $((now - 3600)))")" "expiré"
+
+# Traefik qui exposerait X-Raijin-Edge (docs/SECURITY.md §17) : entrée JSON (comme `docker inspect`), code 3 = refus.
+hidden="hebergeur-$(openssl rand -hex 16)"
+expo_case() {  # expo_case <ok|refus> <JSON> <libellé>
+  local got=ok
+  printf '%s' "$2" | python3 -I "$policy" traefik-exposure - >"$work/out" 2>&1 || got=refus
+  grep -qF "$hidden" "$work/out" && ko "traefik-exposure $3 : valeur affichée"
+  if [[ "$got" == "$1" ]]; then ok "traefik-exposure $3 : $got"; else ko "traefik-exposure $3 : $got au lieu de $1 ($(head -c 200 "$work/out"))"; fi
+}
+tx() { printf '{"inspect":[{"Args":%s,"Config":{"Env":%s}}],"labels":%s}' "$1" "${2:-[]}" "${3:-[]}"; }
+expo_case refus "$(tx '["--api.insecure=true"]' "[\"OVH_APPLICATION_SECRET=$hidden\"]")" "api.insecure"
+expo_case refus "$(tx '["--api.insecure"]')" "api.insecure sans valeur"
+expo_case refus "$(tx '["--log.level", "debug"]')" "log.level debug (argument séparé)"
+expo_case refus "$(tx '[]' '["TRAEFIK_LOG_LEVEL=TRACE"]')" "TRAEFIK_LOG_LEVEL=TRACE"
+expo_case refus "$(tx '[]' '["TRAEFIK_API_INSECURE=true"]')" "TRAEFIK_API_INSECURE"
+expo_case refus "$(tx '["--accesslog.fields.headers.names.X-Raijin-Edge=keep"]')" "en-tête gardé au journal d'accès"
+expo_case refus "$(tx '["--api=true"]' '[]' '[{"traefik.http.routers.d.service":"api@internal"}]')" "routeur api@internal sans middleware"
+expo_case ok "$(tx '["--api=true","--log.level=INFO"]' '[]' '[{"traefik.http.routers.d.service":"api@internal","traefik.http.routers.d.middlewares":"auth"}]')" "routeur api@internal protégé"
+expo_case ok "$(tx '["--api.insecure=false","--log.level=WARN","--entrypoints.web.forwardedheaders.insecure=true","--accesslog.fields.headers.defaultmode=drop"]' "[\"OVH_APPLICATION_SECRET=$hidden\"]")" "Traefik propre"
+
+if (( failures > 0 )); then echo "$failures contrôle(s) en échec."; exit 1; fi
+echo "Politique de déploiement : tous les contrôles sont verts."

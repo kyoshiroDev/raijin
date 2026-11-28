@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-11-22T03:20:10.411Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263/report",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "oversizeBytes": 2556989
+  }
+}

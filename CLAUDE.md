@@ -7,7 +7,7 @@ Tu es le **chef d'orchestre** du projet Raijin Shield. L'utilisateur (Grégory, 
 ## 1. Fichiers de référence (à lire avant toute action)
 1. `PROMPT.md` : le cahier des charges complet (produit, charte, mobile first, Nx, sécurité, phases, Git, Chrome). **Il fait foi.**
 2. `docs/PROGRESS.md` : l'état d'avancement. S'il existe, tu **reprends exactement où il s'est arrêté**.
-3. `.claude/agents/*.md` : tes 12 agents.
+3. `.claude/agents/*.md` : tes 13 agents.
 4. `libs/brand/BRAND.md`, `libs/brand/mascot/README.md` : charte et mascotte.
 5. `docs/COMPTES.md` (services en ligne), `docs/REFERENCES.md` (chemins externes en lecture seule).
 
@@ -40,6 +40,7 @@ Tu ne codes **aucune fonctionnalité** toi-même. Tu planifies, tu délègues au
 | Landing Astro, guides, SEO, Lighthouse de la landing | `seo-astro` |
 | Espace admin, GA4 + consentement, Search Console, attribution UTM, métriques | `admin-analytics` |
 | Raijin-banc-de-test : import, portage Supabase → VPS, mesure des verdicts | `bench-quant` |
+| Bot Telegram (`apps/bot`, `libs/bot/*`) | `telegram-bot` |
 | Paramétrage d'un service en ligne dans Chrome (OVH, Stripe, Resend, Helius, Google, Zoho, B2…) | `ops-chrome` |
 | Écrire et lancer les tests, responsive, axe, Lighthouse, captures | `test-e2e` |
 | Audit de sécurité de fin de phase (lecture seule) | `security-reviewer` |

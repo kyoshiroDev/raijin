@@ -1,0 +1,37 @@
+{
+  "id": "evt_fixture_invoice_paid",
+  "object": "event",
+  "api_version": "2026-11-18.endive",
+  "created": 1795000000,
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "invoice.paid",
+  "data": {
+    "object": {
+      "id": "in_fixture_0001",
+      "object": "invoice",
+      "customer": "cus_fixture_0001",
+      "currency": "eur",
+      "amount_due": 1490,
+      "amount_paid": 1490,
+      "status": "paid",
+      "number": "FIXTURE-0001",
+      "hosted_invoice_url": null,
+      "period_end": 1794990000,
+      "livemode": false,
+      "parent": {
+        "type": "subscription_details",
+        "subscription_details": {
+          "subscription": "sub_fixture_0001",
+          "metadata": {
+            "userId": "00000000-0000-7000-8000-000000000001"
+          }
+        }
+      }
+    }
+  }
+}

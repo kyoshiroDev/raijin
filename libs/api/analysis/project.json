@@ -1,0 +1,38 @@
+{
+  "name": "api-analysis",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/analysis/src",
+  "projectType": "library",
+  "tags": [
+    "scope:api",
+    "type:feature"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/api/analysis",
+        "tsConfig": "libs/api/analysis/tsconfig.lib.json",
+        "packageJson": "libs/api/analysis/package.json",
+        "main": "libs/api/analysis/src/index.ts",
+        "assets": [
+          "libs/api/analysis/*.md"
+        ]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "libs/api/analysis",
+        "commands": [
+          "tsc --noEmit -p tsconfig.lib.json",
+          "tsc --noEmit -p tsconfig.spec.json"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

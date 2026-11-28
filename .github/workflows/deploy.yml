@@ -1,0 +1,165 @@
+name: Déploiement
+
+# Déploiement continu (docs/DEPLOY.md, partie C) :
+#   push sur dev  → CI verte → job « dev »  : images construites ici, archive envoyée par SSH, déployée par la commande
+#                   forcée du VPS (infra/deploy-gate.sh dev, copie figée) : contrôles, migrations, santé, retour auto.
+#   push sur main → CI verte → job « prod » : archive seulement DÉPOSÉE sur le VPS (clé « prod-depot », incapable de
+#                   déployer), avec un jeton OIDC GitHub qui prouve qu'elle vient de CE fichier sur main, à ce commit,
+#                   avec cette empreinte. La mise en service est faite par l'utilisateur sur le VPS
+#                   (deploy-gate.sh --approve <commit>, après contrôle que le commit est la tête de main).
+# Aucune clé capable de déployer la production n'est dans GitHub. Aucun registre d'images ni identifiant GitHub
+# d'écriture sur le VPS.
+#
+# Interrupteur du dev : variable GitHub DEPLOY_DEV_AUTO (Settings → Secrets and variables → Actions → Variables).
+#   absente ou ≠ 1 → AUCUN déploiement du dev (ni automatique, ni « Run workflow ») : valeur par défaut, par prudence ;
+#   1              → chaque push sur dev (CI verte) est déployé sur le VPS. À mettre à 1 par l'utilisateur après
+#                    l'installation du VPS (docs/DEPLOY.md C5), à remettre à 0 pour suspendre (docs/SECURITY.md).
+# workflow_run : GitHub exécute la version de CE fichier présente sur main ; « Run workflow » exécute celle de la
+# branche choisie. Une version modifiée sur dev ne peut ni lire de clé de production (il n'y en a pas), ni produire un
+# jeton OIDC accepté par le VPS (workflow_ref …@refs/heads/main exigé).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [dev, main]
+  # Redéploiement manuel : « Run workflow » sur la branche dev (env dev) ou main (env prod : dépôt seulement).
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environnement (dev depuis la branche dev, prod depuis main)
+        type: choice
+        options: ['dev', 'prod']
+        default: 'dev'
+
+# Minimales et explicites : lecture du code seulement (régler aussi Settings → Actions → General → Workflow
+# permissions sur « Read repository contents », docs/DEPLOY.md C5).
+permissions:
+  contents: read
+
+jobs:
+  dev:
+    name: déploiement dev
+    # Interrupteur DEPLOY_DEV_AUTO : absent = désactivé (voir en tête).
+    if: >-
+      vars.DEPLOY_DEV_AUTO == '1' && (
+        (github.event_name == 'workflow_dispatch' && inputs.env == 'dev' && github.ref == 'refs/heads/dev') || (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          github.event.workflow_run.head_branch == 'dev'
+        )
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Un déploiement dev à la fois, jamais annulé en cours (migrations) ; seul le plus récent attend.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    # Au-delà, le VPS termine quand même (exécution détachée) : docs/DEPLOY.md C7.
+    timeout-minutes: 60
+    env:
+      DEPLOY_ENV: dev
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER_DEV || 'deploy-dev' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+
+      - name: Build des images et archive (raijin-dev/*)
+        run: infra/ci/build-bundle.sh dev
+
+      - name: Clé SSH (dev)
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY_DEV }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          KEY_NAME: DEPLOY_SSH_KEY_DEV
+        run: infra/ci/ssh-setup.sh
+
+      - name: Livraison et déploiement sur le VPS (dev)
+        run: |
+          set -euo pipefail
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::variable DEPLOY_HOST absente (Settings → Secrets and variables → Actions → Variables, docs/DEPLOY.md C5)."; exit 1; }
+          ssh -F none -p "$DEPLOY_PORT" -i "$RUNNER_TEMP/ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o ConnectTimeout=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy dev $SHA" < "$RUNNER_TEMP/livraison/bundle.tar"
+
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/ssh"
+
+  prod:
+    name: dépôt de la production (activation manuelle sur le VPS)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.env == 'prod' && github.ref == 'refs/heads/main') || (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Jeton OIDC signé par GitHub (preuve d'origine de l'archive, vérifiée par le VPS). Aucun droit d'écriture.
+      id-token: write
+    concurrency:
+      group: depot-prod
+      cancel-in-progress: false
+    timeout-minutes: 60
+    env:
+      DEPLOY_ENV: prod
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER_PROD || 'deploy-prod' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+
+      - name: Build des images et archive (raijin/*)
+        env:
+          GA4_ID: ${{ vars.GA4_MEASUREMENT_ID }}
+          SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+        run: infra/ci/build-bundle.sh prod
+
+      - name: Clé SSH (dépôt prod, ne peut que déposer)
+        env:
+          KEY: ${{ secrets.DEPOT_SSH_KEY_PROD }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          KEY_NAME: DEPOT_SSH_KEY_PROD
+        run: infra/ci/ssh-setup.sh
+
+      # Audience = empreinte SHA-256 de l'archive : le VPS refuse toute autre archive avec ce jeton.
+      - name: Dépôt sur le VPS (jeton OIDC + archive)
+        run: |
+          set -euo pipefail
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::variable DEPLOY_HOST absente (docs/DEPLOY.md C5)."; exit 1; }
+          bundle="$RUNNER_TEMP/livraison/bundle.tar"
+          hash="$(sha256sum "$bundle" | awk '{print $1}')"
+          jwt="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=raijin-depot-prod:${hash}" | jq -r .value)"
+          echo "::add-mask::$jwt"
+          { printf '%s\n' "$jwt"; cat "$bundle"; } | ssh -F none -p "$DEPLOY_PORT" -i "$RUNNER_TEMP/ssh/deploy_key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" -o ServerAliveInterval=30 -o ConnectTimeout=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "depose prod $SHA"
+          {
+            echo "### Production en attente d'activation"
+            echo ""
+            echo "Commit \`$SHA\` déposé sur le VPS. Pour le mettre en service, sur le VPS :"
+            echo ""
+            echo "\`sudo -u deploy-prod /opt/raijin-deploy/infra/deploy-gate.sh --approve $SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/ssh"

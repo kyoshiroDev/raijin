@@ -1,0 +1,778 @@
+{
+  "recordedAt": "2026-11-22T03:23:15.492Z",
+  "source": "dexscreener",
+  "request": {
+    "method": "GET",
+    "path": "/token-pairs/v1/solana/2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+    "params": {}
+  },
+  "status": 200,
+  "body": [
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "9tXiuRRw7kbejLhZXtxDxYs2REe43uH2e7k1kocgdM9B",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "1.00004570",
+      "priceUsd": "1.000045",
+      "liquidity": {
+        "base": 10650361,
+        "quote": 6939489,
+        "usd": 17590337.83
+      },
+      "pairCreatedAt": 1739746605000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "9Vh6fqJjDkqSTZ8bDXseVxGb2yQEMkEhhtte2anQCHSf",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01439",
+      "priceUsd": "0.9966",
+      "liquidity": {
+        "base": 608.8772,
+        "quote": 466.1798,
+        "usd": 32894.46
+      },
+      "pairCreatedAt": 1739746642000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "H6fxtvWLFYSJ66mPJqoz7cg6tk32Pcgc9vXrywu4LEWk",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.9999",
+      "priceUsd": "0.9999",
+      "liquidity": {
+        "base": 5328.5465,
+        "quote": 4434.4989,
+        "usd": 9762.71
+      },
+      "pairCreatedAt": 1723738040000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "AJZFPpLZRXAFHDRUy6nPHnFom6RxhW3jJ797femR6mS8",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.9998",
+      "priceUsd": "0.9998",
+      "liquidity": {
+        "base": 5118.03693,
+        "quote": 2460.5879,
+        "usd": 7578.1
+      },
+      "pairCreatedAt": 1772156429000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "39GrsozbzM9Sg1U7EDnEtQ69fsVF3pmVtmV2DGDAQQJ5",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.001998",
+      "priceUsd": "1.0019",
+      "liquidity": {
+        "base": 146.8387,
+        "quote": 656.2278,
+        "usd": 803.36
+      },
+      "pairCreatedAt": 1739746605000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "6Wfzz7Xczn4pciH4LnvF79r34htiWpTXNPCFz4jWZpi3",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01439",
+      "priceUsd": "0.9972",
+      "liquidity": {
+        "base": 340.4757,
+        "quote": 13.6367,
+        "usd": 1284.03
+      },
+      "pairCreatedAt": 1739746693000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "JDQ9GDphXV5ENDrAQtRFvT98m3JwsVJJk8BYHoX8uTAg",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01438",
+      "priceUsd": "0.9990",
+      "liquidity": {
+        "base": 4.5125,
+        "quote": 0.07475,
+        "usd": 9.69
+      },
+      "pairCreatedAt": 1739806115000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "5kpAuVbptv8YpDjfJwSgDkjiCfYY6UnJKNhvdf69cize",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01435",
+      "priceUsd": "0.9967",
+      "liquidity": {
+        "base": 2.8248,
+        "quote": 0.04046,
+        "usd": 5.62
+      },
+      "pairCreatedAt": 1739820260000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "F4BZdcfHmMackKVK9QPZjTDwuTnwPLZ8jnjnfEMfYbLN",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01439",
+      "priceUsd": "0.9964",
+      "liquidity": {
+        "base": 0.5087,
+        "quote": 0.007827,
+        "usd": 1.04
+      },
+      "pairCreatedAt": 1792445417000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "2VcdwGRHwddZ4ThSbaPoxKkHQFjbYqtFSBTSGPTuLNri",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01417",
+      "priceUsd": "1.0010",
+      "liquidity": {
+        "base": 0.8639,
+        "quote": 0.01297,
+        "usd": 1.78
+      },
+      "pairCreatedAt": 1792626507000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "4QSVrVZkX3oqrLHF2sGuuS3DTfwbyMzmz1wCZDBNX1XR",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01419",
+      "priceUsd": "1.0020",
+      "liquidity": {
+        "base": 1.8943,
+        "quote": 0.02614,
+        "usd": 3.74
+      },
+      "pairCreatedAt": 1739772311000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "XJ2bcRkEqTBujnoefdWAY4hX4dQiPYUcxvQehzErD5w",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01443",
+      "priceUsd": "0.9992",
+      "liquidity": {
+        "base": 0.3037,
+        "quote": 0.01488,
+        "usd": 1.33
+      },
+      "pairCreatedAt": 1794849322000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "A4kmX42veq6WujxSLXGRDNkpZkn7m9TTAzCS9r6iUTTz",
+      "labels": [
+        "DYN2"
+      ],
+      "baseToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "quoteToken": {
+        "address": "35iKyUi9z82V3MbAx8v1z4T8KBUALabbHP49cAWTjups",
+        "name": "PaN KItCHeN",
+        "symbol": "ChɘN"
+      },
+      "priceNative": "267793.5942",
+      "pairCreatedAt": 1795251024000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "FXPopoKVLHeXonysHMEonZZJ4nsUdFqr4RpFuAvLUvFB",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT",
+        "name": "USDe",
+        "symbol": "USDe"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.9991",
+      "priceUsd": "0.9990",
+      "liquidity": {
+        "base": 1604640,
+        "quote": 564831,
+        "usd": 2167792.97
+      },
+      "pairCreatedAt": 1739747820000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "4wRT4yYS3k5yysMuABGvNp3Kg5R43c3dxLPv8fvEn29N",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+        "name": "Fartcoin ",
+        "symbol": "Fartcoin "
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.07716",
+      "priceUsd": "0.07714",
+      "liquidity": {
+        "base": 63871,
+        "quote": 4926.5933,
+        "usd": 9853.41
+      },
+      "pairCreatedAt": 1734595883000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "JDELdNKDVFQqAodu79QcgnYbZJA8H3HXKxLQ7MzxByZb",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+        "name": "Kamino",
+        "symbol": "KMNO"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.02295",
+      "priceUsd": "0.02295",
+      "liquidity": {
+        "base": 246566,
+        "quote": 29.05771,
+        "usd": 5689.18
+      },
+      "pairCreatedAt": 1739746605000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "ECod6BDYQ5YmjXGPTr3uRXWRtvdPhC9kctwJavywbEMP",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+        "name": "SPX6900 (Wormhole)",
+        "symbol": "SPX"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.2779",
+      "priceUsd": "0.2778",
+      "liquidity": {
+        "base": 6544.7596,
+        "quote": 1818.7858,
+        "usd": 3637.22
+      },
+      "pairCreatedAt": 1734652484000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "9R9nmGDRdLLwWjc9raRjaRoZZNXiXQBEPGFRj6SfSkPQ",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "3b8X44fLF9ooXaUm3hhSgjpmVs6rZZ3pPoGnGahc3Uu7",
+        "name": "PRIME",
+        "symbol": "PRIME"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "1.07118",
+      "priceUsd": "1.071",
+      "liquidity": {
+        "base": 947780,
+        "quote": 8590551,
+        "usd": 9604315.34
+      },
+      "pairCreatedAt": 1780487585000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "EYMwW3Y7k37G9e3Hfks7KCFv8r5Sict7fBCYLz3vvusQ",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+        "name": "Jito Staked SOL",
+        "symbol": "JitoSOL"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "91.5459",
+      "priceUsd": "91.55",
+      "liquidity": {
+        "base": 42.9901,
+        "quote": 165.7594,
+        "usd": 4101.53
+      },
+      "pairCreatedAt": 1739746648000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "DKxWaBAJw6rD2NZjYSzG3f4S5wBRm1rbPPNDxPiP2R8P",
+      "labels": [
+        "CPMM"
+      ],
+      "baseToken": {
+        "address": "3f7wfg9yHLtGKvy75MmqsVT1ueTFoqyySQbusrX1YAQ4",
+        "name": "Pixel by Pixel",
+        "symbol": "PbP"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.0002942",
+      "priceUsd": "0.0002941",
+      "liquidity": {
+        "base": 948464,
+        "quote": 279.04707,
+        "usd": 558
+      },
+      "pairCreatedAt": 1719844353000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "fluxbeam",
+      "pairAddress": "8S756wnsRqxZqMGSw7d5XveYk4ePjogTdYDV7XbesZGR",
+      "baseToken": {
+        "address": "CgNePAbb19MEoCPL2azxHqUtrugsiyiL4ZJbaHgnSKM8",
+        "name": "Fost",
+        "symbol": "FO$T"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.0003407",
+      "priceUsd": "0.0003406",
+      "liquidity": {
+        "base": 138202,
+        "quote": 47.09327,
+        "usd": 94.16
+      },
+      "pairCreatedAt": 1746256200000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "6dxiAg9cfJvvY8NWhzZwaqHJDyjj5TFsCN9AZgawkzzi",
+      "labels": [
+        "CPMM"
+      ],
+      "baseToken": {
+        "address": "6gx6Ph2ek73kF6EWDrG4GQ54pcLJB6CYpATuRyxKXumo",
+        "name": "FillmorePHX",
+        "symbol": "fPHX"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.00001229",
+      "priceUsd": "0.00001228",
+      "liquidity": {
+        "base": 37687114,
+        "quote": 463.2232,
+        "usd": 926.3
+      },
+      "pairCreatedAt": 1723246317000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "75UU1q9ou5F9ur668ZivAq5XqzXETsodsqKQty1PtcU5",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "5rSP1W2Jkir4Qy1M6rEYXFFi5HgbhrkVTajimrVgpump",
+        "name": "LEGIT",
+        "symbol": "LEGIT"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.00001159",
+      "priceUsd": "0.00001159",
+      "liquidity": {
+        "base": 10487721,
+        "quote": 126.1457,
+        "usd": 247.73
+      },
+      "pairCreatedAt": 1747119855000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "987gcVhQunk7FxQxu46UXtG7p8M7J85tW69zLWisr5UY",
+      "labels": [
+        "CPMM"
+      ],
+      "baseToken": {
+        "address": "FLipGw3hYtHLEDjvdJXvSbD71mLhtEjQKBXecnCRYKyk",
+        "name": "FlipSwitch",
+        "symbol": "FSWITCH"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.000007228",
+      "priceUsd": "0.000007227",
+      "liquidity": {
+        "base": 5744337,
+        "quote": 41.5252,
+        "usd": 83.03
+      },
+      "pairCreatedAt": 1757855241000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "93LFgDE4gPfrUfuhnEYkhX7Fc5vcus7SKeMyj2TsSU4n",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "4EksNGQ7WiaPPQLtxTuwMbXa9NyV6ZsDXhBdw1ERzfRr",
+        "name": "YIELD-1",
+        "symbol": "Y1"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.9663",
+      "priceUsd": "0.9662",
+      "liquidity": {
+        "base": 1081.1107,
+        "quote": 216.5615,
+        "usd": 1261.14
+      },
+      "pairCreatedAt": 1776658343000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "9xz3L19hf34Z6m1FrvfXJ2XUdWud3dWRkSMrPbzL6KPX",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+        "name": "OFFICIAL TRUMP",
+        "symbol": "TRUMP"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.8739",
+      "priceUsd": "0.8738",
+      "liquidity": {
+        "base": 8.7882,
+        "quote": 7.888,
+        "usd": 15.56
+      },
+      "pairCreatedAt": 1746677017000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "CWkf12XoQ31FENPy5x1mpn6GJk1m9ujYBVzQpvmbSESb",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "7AL5rfx4Jf1DLFzZpQEPHkmR9BJjpcmWwne1f9xqfmTu",
+        "name": "Degen Unit",
+        "symbol": "DGU"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "93.3087",
+      "priceUsd": "93.29",
+      "pairCreatedAt": 1776311712000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "9tpNq7QpxeEcBs4ghFkmHAaFgSitf2E1k6fP3oWDDvNp",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+        "name": "Jito Staked SOL",
+        "symbol": "JitoSOL"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "90.9749",
+      "priceUsd": "90.96",
+      "liquidity": {
+        "base": 0.2196,
+        "quote": 20.4786,
+        "usd": 40.45
+      },
+      "pairCreatedAt": 1739747378000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "45rpNrcdp9VmAiQEpifgyt9VCuaKn3WwsR2mtq5pSmBA",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+        "name": "Marinade staked SOL (mSOL)",
+        "symbol": "mSOL"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "98.3833",
+      "priceUsd": "98.38",
+      "liquidity": {
+        "base": 0.03711,
+        "quote": 3.7559,
+        "usd": 7.4
+      },
+      "pairCreatedAt": 1739813128000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "EMMzwDq3G4Aya1GFpEYhxDRUsGEWECaFfsr47UxK1VjE",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6",
+        "name": "Helium Mobile",
+        "symbol": "MOBILE"
+      },
+      "quoteToken": {
+        "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+        "name": "PayPal USD",
+        "symbol": "PYUSD"
+      },
+      "priceNative": "0.00003022",
+      "priceUsd": "0.00003022",
+      "liquidity": {
+        "base": 26179,
+        "quote": 0.7958,
+        "usd": 1.58
+      },
+      "pairCreatedAt": 1743958069000
+    }
+  ]
+}

@@ -1,0 +1,424 @@
+# SECURITY — Raijin Shield
+
+Menaces, parades en place et risques résiduels pour Raijin (app, API, landing) et le Raijin-banc-de-test
+(PROMPT.md §8). Chaque parade renvoie au fichier ou au mécanisme qui la porte et au test qui la vérifie ; une
+parade absente est écrite comme risque résiduel. Sources : code du dépôt au 2026-11-24 et audits du
+`security-reviewer` consignés dans `docs/PROGRESS.md` (sections « Sécurité » des phases 1 à 9). Détails de
+conception : `docs/ARCHITECTURE.md` (§8 auth, §9 Solana, §14 admin, §17 banc), déploiement : `docs/DEPLOY.md`.
+
+## Principes
+
+- **Lecture seule** : aucune signature, aucun swap, aucune garde de clé privée, aucune commission. Le scan de
+  wallet ne lit que des comptes publics ; la page `/wallet` refuse une phrase de récupération collée.
+- **Données externes hostiles** : noms, symboles, URLs de métadonnées et réponses des sources (Helius,
+  DexScreener, GeckoTerminal, Jupiter, RugCheck) sont validés par Zod, nettoyés et échappés ; aucune image de
+  token n'est stockée ni affichée en v1 (`libs/shared/contracts/src/lib/analysis/token.ts`).
+- **Secrets côté serveur seulement**, par variables d'environnement de `raijin-api` et `raijin-bench-api` ; le
+  front de l'app et celui du banc n'ont aucune clé (la clé publiable Stripe n'est pas utilisée).
+- **Un seul contrat** front/back (`libs/shared/contracts`) : la validation est la même des deux côtés.
+
+## Menaces et parades
+
+### 1. XSS via les métadonnées de tokens (et autres données affichées)
+- **Parades** :
+  - Nettoyage des textes non fiables (caractères de contrôle, invisibles, contrôles bidirectionnels « Trojan
+    Source », longueur bornée) : `libs/shared/util/src/lib/untrusted-text.ts`, appliqué à la collecte
+    (`libs/api/solana/src/lib/collect/facts-collector.ts`, `rugcheck-digest.ts`) et avant validation côté front
+    (`libs/web/data-access/src/lib/analysis/analysis-shape.ts`, mineur m2 phase 3).
+  - URLs externes en `https` absolu, hôte en liste blanche, sans identifiants ni port ni barre oblique inverse :
+    `libs/shared/util/src/lib/external-url.ts` (`isAllowedHttpsUrl`), utilisé par
+    `libs/web/feature-analyse/src/lib/analysis/check-display.ts` ; liens Phantom/Solflare du wallet en liste
+    blanche exacte ; banc : `apps/raijin-banc-de-test/src/app/shared/utils/safe-url.ts`.
+  - Rendu Angular échappé par défaut : aucun `innerHTML` ni `bypassSecurityTrust*` dans `apps/web`,
+    `libs/web` et `apps/raijin-banc-de-test` (vérifié par recherche). Landing : `set:html` réservé aux SVG
+    internes (`RaiMascot.astro`, `Icon.astro`), JSON-LD échappé.
+  - Pages HTML produites par l'API : `escapeHtml` des balises OG de `/t/<mint>`
+    (`libs/api/analysis/src/lib/share/share-page.service.ts`), image OG par satori (pas de HTML), e-mails
+    échappés (`libs/api/notifications/src/lib/templates/*`).
+  - CSP stricte posée par Traefik (`infra/docker-compose.yml`, labels `*-headers`) : `script-src 'self'` pour
+    l'app et le banc, `default-src 'none'` (Helmet) pour l'API, `object-src 'none'`, `frame-ancestors 'none'`.
+- **Tests** : `untrusted-text.spec.ts`, `external-url.spec.ts` (libs/shared/util), `share-page.service.spec.ts`
+  (« nom et symbole hostiles : aucune balise injectée »), `check-display.spec.ts`, `analysis-result.spec.ts`,
+  `apps/web-e2e/src/analysis.flow.spec.ts` ; job CI `images` (`infra/ci/check-stack.sh`) pour les en-têtes.
+- **Risque résiduel** : `style-src 'unsafe-inline'` sur l'app et le banc (styles de composants injectés par
+  Angular ; un nonce casserait le cache du service worker, décision phase 8). Une injection CSS reste donc
+  possible si un échappement manquait ; `script-src` reste strict.
+
+### 2. CSRF
+- **Parades** : jeton double-submit signé `nonce.HMAC(COOKIE_SECRET, nonce.sid)` lié à la session, en en-tête
+  `X-CSRF-Token`, gardé **en mémoire** côté front (pas de cookie lisible inter-sous-domaines) :
+  `libs/api/core/src/lib/security/csrf.ts` (`CsrfGuard`, global), `libs/web/data-access` (intercepteur) ; cookies
+  `SameSite=Lax` ; CORS limité à `CORS_ORIGINS` (HTTPS imposé en prod, `app-config.ts`). Webhook Stripe seul
+  exempté (`@SkipCsrf`, protégé par signature). Banc : CSRF `rjb_*` signé lié à la session
+  (`libs/bench/core/src/lib/auth/csrf.ts`). Jeton anonyme refusé avec une session (M2 phase 2).
+- **Tests** : `libs/api/core/src/lib/security/security.spec.ts` (jeton lié à sa session, autre secret refusé),
+  `libs/web/data-access/src/lib/auth/csrf-token.spec.ts`, `apps/api-e2e/src/api/auth.e2e.spec.ts`,
+  `libs/bench/core/src/lib/auth/auth.e2e.spec.ts`.
+- **Risque résiduel** : le POST d'analyse anonyme exige aussi le jeton (dispense refusée en phase 3) ; aucun
+  connu au-delà d'une XSS (qui pourrait lire le jeton en mémoire, voir menace 1).
+
+### 3. Vol ou fixation de session
+- **Parades** : cookies `HttpOnly`, `Secure` (imposé en prod), `SameSite=Lax`, tous préfixés `__Host-` en mode
+  Secure (`__Host-rj_at`, `__Host-rj_rt`, `__Host-rj_csrf` : `Path=/`, aucun `Domain`, donc non déposables par un
+  sous-domaine comme `dev.raijinshield.com`) (`libs/api/core/src/lib/security/cookies.ts`) ; `POST /auth/refresh`
+  refuse (401 `AUTH_SESSION_EXPIRED` + effacement) un en-tête `Cookie` qui répète le nom du refresh, et exige que
+  le refresh appartienne à la session (`sid`) de l'access signé quand il est présent, sans consommer ni révoquer
+  le refresh d'une autre session (`auth.controller.ts`, `SessionService.rotate`) ; migration : l'ancien
+  `__Secure-rj_rt` (`Path=/api/v1/auth`) est accepté une dernière fois, seulement lié à un `__Host-rj_at` signé de
+  la même session, et seulement jusqu'à `LEGACY_REFRESH_COOKIE_UNTIL` (ISO 8601 ; défaut 2026-11-26 +
+  `JWT_REFRESH_TTL`, soit 2026-12-26 avec 30 j), puis expiré à chaque pose de session ; il est aussi effacé avec
+  `Domain=<domaine parent de APP_URL>` (jamais déduit d'un en-tête) sur `/api/v1/auth`, `/api/v1/auth/refresh` et
+  `/`, et `GET /auth/session` ne compte un refresh que s'il s'agit de `__Host-rj_rt` ou de l'ancien cookie avec
+  un `sid` signé (pas de boucle 401 sur un cookie injecté). **À faire après la date limite** : retirer
+  `LEGACY_SECURE_REFRESH_COOKIE`, `legacyRefreshUntil` et la lecture de l'ancien nom (`cookies.ts`,
+  `auth.controller.ts`, `app-config.ts`) en gardant l'effacement quelques semaines ; access JWT 15 min ;
+  refresh **opaque haché** en base, rotation à chaque usage, réutilisation hors délai de grâce = révocation de
+  toute la famille + audit (`libs/api/auth/src/lib/services/session.service.ts`) ; déconnexion globale au
+  changement ou à la réinitialisation du mot de passe, abonnements push supprimés (`49c8904`) ; suspension
+  coupe les sessions ; sessions admin 30 min d'inactivité / 8 h max (`admin-session.ts`) ; banc 2 h / 12 h.
+- **Tests** : `session.service.spec.ts` (rotation, réutilisation, course, suspension, sid différent),
+  `security.spec.ts` (attributs des cookies, nom répété, ancien nom), `auth.controller.spec.ts` (double cookie,
+  sid différent, migration depuis `__Secure-rj_rt`), `auth.e2e.spec.ts`, `admin-security.e2e.spec.ts`.
+- **Risque résiduel** : réutilisation d'un refresh tolérée < 10 s (onglets concurrents, 409 sans révocation) ;
+  pas de liaison de session à l'appareil ou à l'IP.
+
+### 4. Brute force et énumération de comptes
+- **Parades** : argon2id (`libs/server/security/src/lib/password.ts`) ; verrouillage après échecs avec
+  **tentative réservée avant la vérification** (Lua INCR + PEXPIRE atomiques, clé jamais en clair, n3 phase 9) :
+  `libs/api/auth/src/lib/services/login-attempts.service.ts` ; réponse identique avant/après argon2 (I1 phase 2) ;
+  inscription, renvoi, lien magique et mot de passe oublié répondent 202 neutre ; `@AuthThrottle` renforcé sur
+  l'auth et la 2FA ; 2FA admin TOTP bloquée après 5 essais, compteur incrémenté avant vérification (I1 phase
+  6 bis) ; jetons e-mail hachés, à usage unique, invalidant les précédents (`auth-token.service.ts`) ; banc :
+  verrou par empreinte d'IP 5 / 15 min + global 50, aucune inscription ; e-mails d'authentification (inscription
+  d'une adresse existante, renvoi, lien magique, mot de passe oublié) plafonnés à 5 par paire adresse + IP et 20 par
+  adresse, par heure (`allowAuthEmail`, audit 5) : une demande refusée par le plafond de sa paire n'entame pas le
+  plafond global, si bien qu'une IP seule ne peut pas bloquer les envois à la victime.
+- **Tests** : `login-attempts.service.spec.ts`, `auth.service.spec.ts`, `session.service.spec.ts`
+  (`AuthTokenService`), `admin-security.e2e.spec.ts` (rafale 2FA), `auth.e2e.spec.ts`.
+- **Risque résiduel** : un tiers peut verrouiller un compte en connaissant son e-mail (accès de secours : lien
+  magique) et le verrouillage reste une faible source d'énumération, atténuée par le throttling ; si Redis
+  tombe, les compteurs passent en mémoire (correct en mono-instance seulement) ; un tiers disposant d'au moins 4 IP
+  (5 envois chacune, sous les limites par IP de `@AuthThrottle`) peut encore épuiser le plafond global de 20 e-mails
+  d'une adresse et bloquer pendant 1 h ses liens magiques, réinitialisations et renvois (la connexion par mot de
+  passe reste possible ; la réponse neutre ne révèle pas le blocage).
+
+### 5. Abus des quotas et des crédits Helius
+- **Parades** : quotas par jour (anonyme 3, Gratuit 5, essai 50 ; scan de wallet Pro 20 / essai 10) réservés
+  atomiquement puis remboursés en cas d'échec, avec **plafond quotidien de remboursements**
+  (`libs/api/analysis/src/lib/quota/quota.service.ts`) ; identité anonyme = HMAC (`IP_HASH_SECRET`, obligatoire
+  en prod) d'une IP regroupée en **/64 pour IPv6** (`libs/api/core/src/lib/security/ip-bucket.ts`, `ip-hash.ts`) ;
+  budget de crédits Helius par voie (`analysis`, `watch`, `wallet`) en Lua (`redis-credit-budget.ts`), décompté
+  à chaque tentative ; `getMint` (1 crédit) avant la collecte ; compte > 2 Mo arrêté tôt (N1 phase 3) ; cache
+  60/300 s, déduplication et verrou par mint ; file de débit et disjoncteur (`upstream-gate.ts`) ; banc : budget
+  propre 10 000 crédits/jour, préfixe Redis `raijin-bench:`, ACL Redis séparées.
+- **Tests** : `quota.service.spec.ts`, `redis-credit-budget.spec.ts`, `upstream-gate.spec.ts`,
+  `throttler.spec.ts` (IPv6 /64), `apps/api-e2e/src/api/analysis.e2e.spec.ts`, `wallet.e2e.spec.ts`.
+- **Risque résiduel** : le budget Helius est un plafond **global** ; un attaquant disposant de nombreuses IPv4
+  ou /64 peut l'épuiser et dégrader l'analyse pour tous jusqu'au lendemain (pas de captcha ni de preuve de
+  travail). Sans clé Helius, repli sur le RPC public plus limité.
+
+### 6. Webhooks Stripe falsifiés ou rejoués
+- **Parades** : corps brut + `Stripe.webhooks.constructEvent` avec tolérance d'horodatage, signature bornée
+  (`libs/api/billing/src/lib/provider/stripe-billing.provider.ts`) ; événement du mode réel refusé en mode
+  test ; idempotence par `StripeEvent` dans la transaction, `lastEventAt` contre le désordre, abonnement relu
+  chez Stripe (`billing-webhook.service.ts`) ; `FakeBillingProvider` et rejeu de fixtures refusés en prod.
+- **Tests** : `billing-webhook.service.spec.ts` (signature absente/fausse, corps modifié, trop ancien, rejeu,
+  ordre inverse), `billing-http.spec.ts`, `apps/api-e2e/src/api/billing.e2e.spec.ts`.
+- **Risque résiduel** : jamais testé contre le compte Stripe réel (compte non branché, « À brancher ») ; la
+  compromission de `STRIPE_WEBHOOK_SECRET` permettrait de forger des événements, mais l'état est relu chez Stripe.
+
+### 7. Injection SQL
+- **Parades** : Prisma paramétré partout (aucun `$queryRawUnsafe`/`$executeRawUnsafe` hors code généré) ; seul
+  `Prisma.raw` : noms de table/colonne issus d'une liste de règles codée en dur
+  (`libs/api/alerts/src/lib/purge/purge.service.ts`) ; banc : client `BenchDb` compilé en SQL paramétré,
+  identifiants filtrés par `^[a-z_][a-z0-9_]{0,62}$` (`libs/bench/engine/src/db/bench-db.ts`) ; entrées
+  validées par Zod (`zod-validation.pipe.ts`) ; rôles Postgres séparés `raijin`/`raijin_bench`, CONNECT retiré
+  à PUBLIC (`infra/postgres/init`).
+- **Tests** : tests de `libs/bench/engine` et `libs/bench/prisma` (isolement raijin ↔ raijin_bench), tests des
+  pipes et contrats Zod ; job CI `images`.
+- **Risque résiduel** : faible ; aucun test dédié aux charges d'injection sur `BenchDb`.
+
+### 8. SSRF vers les sources externes
+- **Parades** : URLs de base des sources fixées par la configuration, jamais issues d'une donnée reçue ; appel
+  durci `requestJson` (`redirect: 'error'`, délai par appel, taille de réponse bornée, signal global) :
+  `libs/api/solana/src/lib/core/http.ts` ; mints validés en base58 (y compris le mint résolu d'une paire) ;
+  aucune URL de métadonnées n'est récupérée (pas d'image) ; endpoints Web Push limités à 4 services connus et
+  revalidés avant chaque envoi (`libs/server/push/src/lib/web-push.sender.ts`, `PUSH_SERVICE_HOSTS`) ; la
+  landing redirige vers l'app au lieu d'appeler l'API.
+- **Tests** : `libs/api/solana/src/lib/core/http.spec.ts` (redirect error, délai, flux interrompu), tests de
+  `libs/server/push`, `apps/api-e2e/src/api/watches.e2e.spec.ts`.
+- **Risque résiduel** : le code porté du banc (`libs/bench/engine`) passe par `runtimeFetch`
+  (`ported/runtime-fetch.ts`, enveloppé par `@raijin/bench-solana` pour le recul sur 429) et n'a pas le même
+  durcissement uniforme que `requestJson` (redirections, taille) ; URLs toujours codées en dur.
+
+### 9. Fuite de secrets
+- **Parades** : `.gitignore` (`.env`, `.env.*`, `!.env.example`, `.secrets/`) ; `.env.example` à valeurs
+  factices ; configuration validée au démarrage, secrets absents, factices ou < longueur minimale **refusés en
+  prod** (`libs/api/core/src/lib/config/app-config.ts`, idem `libs/bench/core/src/lib/config`) ; journaux
+  expurgés (`libs/server/security/src/lib/redact.ts`, `safeErrorMessage`, mot de passe Redis masqué) ;
+  erreurs `{code, message}` sans stack en prod (`api-exception.filter.ts`) ; Swagger en dev seulement ; secret
+  TOTP chiffré AES-256-GCM (`secret-box.ts`), codes de secours HMAC ; mots de passe Postgres/Redis par fichiers,
+  pgpass en tmpfs (m3 phase 8 bis) ; sauvegardes chiffrées (rclone crypt, `infra/backup.sh`) ; URL Supabase
+  saisie masquée et jamais écrite (`infra/bench-migrate.sh`) ; CI sans secret GitHub (valeurs éphémères).
+- **Scan de secrets en CI** : job `secrets` de `.github/workflows/ci.yml`, gitleaks v8.30.1 (image officielle
+  épinglée par digest, sans réseau, sortie expurgée) sur les commits du push ou de la PR, historique complet si
+  la base est inconnue ; bloquant. Exceptions : `.gitleaks.toml` (règles par défaut + adresses Solana publiques
+  en base58) et `.gitleaksignore` (empreintes des faux positifs connus de l'historique : clés factices des
+  tests, mots de passe Redis d'exemple, jeton JWT forgé du test du banc, exemple `curl` de `docs/BENCH.md`).
+- **Tests** : `app-config.spec.ts`, `redact.spec.ts` (api-core et server-security), `throttler.spec.ts`
+  (mot de passe jamais journalisé) ; audit phase 1 : aucun secret dans l'historique ; scan gitleaks de
+  l'historique local complet (190 commits, 2026-11-24) : seulement des faux positifs, mis en exception.
+- **Risque résiduel** : gitleaks ne repère que des motifs connus (un secret sans forme reconnaissable passe) ;
+  une valeur ajoutée à `.gitleaksignore` doit être relue ; qui lit `infra/.env.api` sur le VPS obtient tout
+  (clé de chiffrement TOTP comprise) : la protection repose sur l'accès au VPS.
+
+### 10. Accès à l'espace admin
+- **Parades** : rôle relu en base, `AdminGuard` + `@AdminRoute` ; non-admin et anonyme reçoivent un **404**
+  identique sur toutes les variantes de `admin/*`, débit compté avant l'espace admin, `no-store` homogène
+  (n1/n2 phase 9) : `libs/api/auth/src/lib/admin-security/admin-area.middleware.ts`, `admin.guard.ts` ; 2FA TOTP
+  obligatoire (RFC 6238, 10 codes de secours), confirmation par mot de passe à l'enrôlement ; actions auditées
+  (`AuditLog`, purge `AUDIT_LOG_RETENTION_DAYS`) ; création d'admin par CLI seulement (`admin-cli.ts`) ; chunk
+  `/admin` chargé en différé derrière une garde (`apps/web/src/app/admin-area.guard.ts`).
+- **Tests** : `admin-area.http.spec.ts`, `admin.guard.spec.ts`, `apps/web/src/app/admin-area.guard.spec.ts`,
+  `apps/api-e2e/src/api/admin-security.e2e.spec.ts`, `admin-analytics.e2e.spec.ts`, `apps/web-e2e` (admin.flow).
+- **Limite de débit propre à l'espace admin** : `AdminAreaMiddleware`
+  (`libs/api/auth/src/lib/admin-security/admin-area.middleware.ts:37`) s'exécute avant la garde globale du
+  throttler ; il compte donc lui-même chaque requête sur `admin/*` (`RATE_LIMIT_PER_MINUTE` par préfixe d'IP,
+  IPv6 regroupée en /64, fenêtre de 60 s, compteur `admin-area` du stockage du throttler) **avant** de lire le
+  jeton et la base. Au-delà, il répond 404 `NOT_FOUND` sans lecture en base, **y compris à un admin légitime**,
+  jusqu'à la fin de la fenêtre de 60 s. Raison (audit 6 bis n2) : sans ce compteur, un jeton USER ou une rafale
+  anonyme déclencherait une lecture en base par requête sans limite ; et répondre 429 au lieu de 404
+  révélerait que les routes admin existent.
+- **Risque résiduel** : l'admin est servi par la même API publique (pas de restriction réseau ni d'IP) ; un
+  admin qui partage son préfixe d'IP avec un client bruyant (NAT, même /64) peut recevoir des 404 pendant 60 s.
+
+### 11. Accès au banc (Raijin-banc-de-test)
+- **Parades** : `banc.raijinshield.com` derrière **basicAuth Traefik** (`raijin-bench-auth`, en-tête retiré),
+  puis compte propriétaire unique : argon2id + TOTP ou code de secours, sessions 2 h / 12 h, CSRF signé,
+  aucune inscription, CLI `create-owner`/`set-password`/`reset-2fa` (`libs/bench/core/src/lib/auth/*`) ; config
+  refusée en prod si secret absent ou factice ; débit Traefik 10 req/s ; `X-Robots-Tag: noindex` ; base
+  `raijin_bench` et ACL Redis séparées ; aucune clé dans le front du banc ; mode ombre (push, e-mail,
+  auto-paper coupés).
+- **Tests** : `libs/bench/core/src/lib/auth/auth.e2e.spec.ts`, `apps/raijin-banc-de-test-e2e` (24/24, 0 appel
+  réseau), job CI `images` (401 sans basicAuth, ACL Redis dans les deux sens, noindex).
+- **Risque résiduel** : la valeur `BENCH_BASIC_AUTH_USERS` est fournie par l'utilisateur ; vide, la première
+  barrière disparaît (le compte propriétaire reste exigé).
+
+### 12. IP falsifiée derrière Traefik (`X-Forwarded-For`)
+- **Parades** : `TRUST_PROXY` **obligatoire en prod** et égal au nombre exact de proxys (1, Traefik seul : le
+  front reste même origine, nginx ne proxifie rien), `app.set('trust proxy', …)`
+  (`libs/api/core/src/lib/http/setup-app.ts`, `app-config.ts`, I2 phase 2) ; Traefik remplace les
+  `X-Forwarded-*` reçus de clients non approuvés (comportement par défaut) ; avec `EDGE_SHARED_SECRET`,
+  `X-Forwarded-*` n'est pris en compte que si l'en-tête `X-Raijin-Edge` de Traefik est valide (§17).
+- **Tests** : `app-config.spec.ts` (TRUST_PROXY requis et borné, EDGE_SHARED_SECRET), `throttler.spec.ts`,
+  `setup-app.spec.ts` (403 sans en-tête ou avec un mauvais, 200 avec le bon, santé seule exemptée, `internal/bot` refusé,
+  `X-Forwarded-For` ignoré sans en-tête valide, contrôle désactivé sans variable).
+- **Risque résiduel** (`docs/DEPLOY.md` §464-467, M7 phase 8) : un conteneur du réseau Traefik partagé avec
+  MyTradingCoach peut joindre l'API sans passer par Traefik et forger `X-Forwarded-For` (contournement des
+  limites par IP, pas d'accès aux comptes) ; si l'instance Traefik existante a `forwardedHeaders.insecure`, ou
+  si un CDN est ajouté sans ajuster `TRUST_PROXY` et `trustedIPs`, l'en-tête devient falsifiable. Ce contournement
+  direct est fermé dès que `EDGE_SHARED_SECRET` est posé (§17).
+
+### 13. Chaîne d'approvisionnement
+- **Parades** : `pnpm install --frozen-lockfile` en CI ; scripts d'installation refusés par défaut, chaque
+  paquet tranché dans `allowBuilds` (`pnpm-workspace.yaml`) ; `overrides` de sécurité justifiés ; actions GitHub
+  épinglées par SHA + Dependabot (`.github/dependabot.yml`, M2 phase 1) ; aucune dépendance téléchargée au
+  runtime (liste des domaines jetables copiée dans le dépôt) ; contrôle des modules externes de l'image
+  (`infra/docker/check-externals.cjs`) ; **`pnpm audit --prod --audit-level=high` bloquant** dans le job
+  `verifier` de la CI (section « Dépendances ») ; scan de secrets gitleaks (menace 9).
+- **Tests** : CI (install figée, audit des dépendances de production, build des images) ; audits de phase.
+- **Risque résiduel** : les vulnérabilités **modérées et basses** de production ne bloquent pas la CI (relevées
+  aux audits de phase) ; les dépendances de développement ne sont pas auditées en CI (3 alertes modérées
+  d'outillage justifiées ci-dessous) ; l'analyse des images (Trivy, M9 phase 8) n'est pas une étape de CI.
+
+### 14. Déni de service
+- **Parades** : throttler NestJS global (Redis, repli mémoire) et renforcé sur l'auth et l'analyse anonyme
+  (`libs/api/core/src/lib/throttler/throttler.ts`) ; débit Traefik 20 req/s (rafale 60) par IP sur l'API ;
+  corps JSON borné (`setup-app.ts`) ; délais et tailles bornés vers les sources ; arrêt du scan de wallet à
+  15 s ; limites mémoire/CPU par conteneur (`mem_limit`, pour protéger MTC) ; Redis `noeviction`,
+  `maxmemory 200mb` ; healthchecks et veille (`infra/watchdog.sh`, timers systemd) ; mode maintenance 503.
+- **Tests** : `throttler.spec.ts`, `http.spec.ts`, `wallet.e2e.spec.ts`, job CI `images` (démarrage complet).
+- **Risque résiduel** : pas de CDN ni de protection volumétrique devant Traefik (M7, hors v1) : une attaque
+  réseau saturerait le VPS partagé avec MyTradingCoach ; épuisement du budget Helius (menace 5).
+
+### 15. Données personnelles (RGPD)
+- **Parades** : export JSON et suppression du compte (`libs/api/users/src/lib/users.controller.ts`,
+  `users.service.ts`) avec résiliation Stripe immédiate et suppression du client Stripe, 503 sans suppression si
+  Stripe échoue (I1 phase 6, `account-billing-closer.ts`) ; IP jamais stockée en clair (HMAC) ; adresse de wallet
+  **jamais persistée** ni journalisée, cache Redis ≤ 10 min sous clé HMAC sans adresse en clair, jamais dans
+  l'URL (`libs/api/wallet`) ; rétentions : analyses et événements 90 j, `TrialFingerprint` 90 j, `AuditLog`
+  purgé, purge conditionnée à l'agrégation (`purge.service.ts`) ; GA4 en Consent Mode v2 basique, **aucune
+  requête Google avant accord** (bannière CNIL, landing) ; polices auto-hébergées ; attribution en
+  `sessionStorage` de premier niveau, mentionnée dans la politique de confidentialité.
+- **Tests** : `apps/api-e2e/src/api/auth.e2e.spec.ts` (export, suppression), `wallet.e2e.spec.ts`,
+  `apps/web-e2e` (landing.consent), `apps/landing/src/lib/analytics/analytics.spec.ts`, tests de purge
+  (`libs/api/alerts`).
+- **Risque résiduel** : `TrialClaim` (HMAC de l'e-mail normalisé) gardé 24 mois après suppression, pour
+  l'unicité de l'essai (décision phase 6, à mentionner dans la politique) ; mentions légales « À compléter »
+  par l'utilisateur ; sauvegardes hors site gardées 30 j (une suppression n'y est effective qu'après ce délai).
+
+### 16. Produit et contenus
+- **Parades** : aucune fonction de signature ni de swap ; liens vers les tokens en `jup.ag/tokens/<mint>`
+  (m5 phase 8 bis) ; mention « pas un conseil en investissement » sur analyse, `/t`, wallet, abonnement,
+  e-mails et landing ; jamais « Sain » si les autorités sont inconnues ou si ≥ 3 contrôles sont indisponibles
+  (`docs/SCORING.md`).
+- **Tests** : contrôle de textes de la phase 9 (T11), tests du moteur `risk-engine`.
+- **Risque résiduel** : un verdict reste une estimation fondée sur des sources tierces (indisponibles ou
+  manipulables), ce que l'interface rappelle.
+
+### 17. Déploiement continu (chaîne de livraison GitHub → VPS)
+- **Modèle** (`.github/workflows/deploy.yml`, `docs/DEPLOY.md` partie C) :
+  - push sur `dev`, CI verte → job « dev » : images construites dans GitHub Actions, archive envoyée par SSH à
+    `deploy-dev@VPS`, contrôlée puis **déployée automatiquement** sur l'environnement dev du VPS partagé
+    (MyTradingCoach, XMR Trader, production Raijin) ;
+  - fusion dans `main` (faite par l'utilisateur), CI verte → job « prod » : archive seulement **déposée**
+    (clé `prod-depot`, incapable de déployer), avec un jeton OIDC GitHub prouvant qu'elle vient de `deploy.yml`
+    sur `refs/heads/main`, à ce commit, avec cette empreinte ; **activation manuelle par l'utilisateur sur le
+    VPS** (`deploy-gate.sh --approve <commit>`), après contrôle par `git ls-remote` (clé de lecture seule) que le
+    commit est la tête de `main`.
+- **Décision de l'utilisateur (2026-11-26)** : « à chaque push ou merge on déploie automatiquement sur dev ou
+  prod ». Mise en œuvre : **dev automatique**, **prod déposée automatiquement puis activée manuellement sur le
+  VPS** (choix de sécurité de l'orchestrateur, non contesté par l'utilisateur) : aucune clé capable de démarrer
+  la production n'est dans GitHub. Le déploiement automatique du dev est **désactivé par défaut** (variable
+  GitHub `DEPLOY_DEV_AUTO` absente) et activé par l'utilisateur (`DEPLOY_DEV_AUTO=1`) après l'installation du VPS.
+- **Risques** :
+  - **GitHub Free, dépôt privé** : pas de règles d'environnement ; tout workflow poussé sur **n'importe quelle
+    branche** lit tous les secrets du dépôt (`DEPLOY_SSH_KEY_DEV`, `DEPOT_SSH_KEY_PROD`, `DEPLOY_KNOWN_HOSTS`) et
+    « Run workflow » exécute la version de `deploy.yml` de la branche choisie ;
+  - **les agents Claude poussent sur `dev`** : une fois `deploy.yml` sur `main` et `DEPLOY_DEV_AUTO=1`, chaque
+    push d'agent s'exécute sur le VPS, alors que CLAUDE.md §7 interdit aux agents toute commande sur le VPS ;
+    un code malveillant ou erroné (dépendance compromise, erreur d'agent) tournerait dans le dev ;
+  - l'accès à Docker équivaut à root sur un VPS partagé ; un conteneur du dev mal confiné pourrait toucher MTC,
+    XMR Trader ou la prod ;
+  - réseau d'entrée du dev (option B par défaut, `docs/DEPLOY.md` C2) : le dev partage le réseau Traefik de la
+    prod et de MTC, et peut joindre leurs conteneurs exposés sans passer par Traefik ;
+  - **fuite d'`EDGE_SHARED_SECRET` par le Traefik de MTC** (audit 5) : la valeur de
+    `customRequestHeaders.X-Raijin-Edge` est en clair dans la configuration dynamique de Traefik ; elle est lisible
+    depuis tout conteneur relié à Traefik si celui-ci a `--api.insecure` (port 8080) ou une `--api` publiée par un
+    routeur `api@internal` sans middleware, et écrite dans ses journaux avec `--log.level=DEBUG`/`TRACE` ou
+    `--accesslog.fields.headers.defaultmode=keep` / `names.X-Raijin-Edge=keep`. Un conteneur du dev qui la lit
+    contournerait le 403 de `raijin-api` et du banc de la prod.
+- **Parades** :
+  - **porte à commande forcée** : chaque clé de GitHub ne lance que `deploy-gate.sh <env>` (`restrict,command=`
+    dans `authorized_keys`), copie **figée** dans `/opt/raijin-deploy` (root) : une livraison ne peut modifier ni
+    ses contrôles ni ses scripts ; variables `RAIJIN_*` effacées dans une session SSH ; un déploiement à la fois
+    (verrou global) ;
+  - **politique `infra/lib/deploy_policy.py`** (rejouée par `release.sh` avant chaque `up` / `run`) : archive
+    (fichiers ordinaires, ni lien, ni `..`, ni `.env`), images (étiquettes `raijin(-dev)/<image>:<commit>`, aucun
+    label `traefik.*`, aucun `VOLUME`, utilisateur non root), configuration Compose **résolue** une seule fois sous
+    `env -i` (ni privilège, ni port publié, ni montage de l'hôte ou du socket Docker, ni `cap_add`, `network_mode`,
+    `extra_hosts`, `dns`, `env_file`, `include`, `extends`, `label_file` ; aucun réseau externe autre que le
+    réseau d'entrée ; aucun réseau du projet au nom du réseau d'entrée ou de `raijin-dev-edge` ; Postgres, Redis et
+    Mailpit jamais sur un tel réseau (selon son nom) ni routés par Traefik ; Mailpit sans `MP_UI_AUTH` refusé ;
+    en option B, réseau d'entrée **égal** au réseau de référence écrit par root
+    (`/var/lib/raijin-deploy/traefik-network`), jamais un réseau `raijin-…` ; routeurs `Host(`…`)` stricts
+    limités aux noms du dev ; `priority` ≤ 1000) ;
+  - **utilisateurs séparés hors du groupe `docker`** : `deploy-dev` et `deploy-prod`, mots de passe verrouillés ;
+    `deploy-dev` ne lit rien de `/srv/raijin/prod` (vérifié avant chaque déploiement du dev) ; le `.env` du dev
+    (réseau d'entrée, domaines, mot de passe) appartient à root en 640 : `deploy-dev` le lit sans pouvoir le
+    modifier (la porte et `release.sh` refusent sinon) ;
+  - **`docker-priv.sh`** (root par sudo, environnement imposé par sudoers) : seul accès à Docker, sous-commandes
+    fixes (`sync-init`, `import`, `deploy`, `recover`, `status`), appelant vérifié, images recontrôlées puis sortie
+    de `docker load` comparée à la liste attendue ;
+  - **ressources plafonnées** par conteneur (`mem_limit` ≤ 1 Go sans swap, `cpus` ≤ 1, `pids_limit` ≤ 500,
+    journaux bornés, `no-new-privileges`, `cap_drop: ALL` pour les images du projet) : le dev ne peut pas affamer MTC ni la prod ;
+  - **isolement des secrets** : secrets d'application seulement sur le VPS (`/srv/raijin/<env>/env/`, 600, un
+    utilisateur par environnement), valeurs distinctes dev / prod, Stripe live refusé en dev ; aucune clé capable
+    de **démarrer** la prod dans GitHub ; jeton OIDC `…@refs/heads/main` exigé pour un dépôt de prod ;
+    `permissions: contents: read` ;
+  - **interrupteur** `DEPLOY_DEV_AUTO` (variable GitHub, absente = désactivé, `0` = suspendu) pour le flux normal ;
+    **arrêt sûr** côté VPS : commenter la ligne de `~deploy-dev/.ssh/authorized_keys` (efficace même contre un
+    workflow modifié sur `dev`) ;
+  - réseau d'entrée : **option B retenue** (relecteur final, `docs/PROGRESS.md`), sans modification du conteneur
+    Traefik de MTC (PROMPT §7) ; option A (réseau `raijin-dev-edge` dédié) jamais appliquée par un script sans le
+    drapeau `--dev-edge dedicated` **et** la phrase « option A » tapée au terminal (`infra/vps-setup.sh`) ; Traefik
+    relié au réseau vérifié ;
+  - **en-tête secret de Traefik** (condition (a) de l'option B) : `EDGE_SHARED_SECRET` (généré sur le VPS, jamais dans
+    GitHub), que Traefik pose dans l'en-tête `X-Raijin-Edge` ; dans `raijin-api`, premier middleware
+    (`libs/api/core/src/lib/http/edge-guard.ts`, monté par `setupApp` avant les parseurs et le webhook Stripe) :
+    sans en-tête valide (comparaison à temps constant des empreintes SHA-256), **403 `FORBIDDEN` neutre**, sauf
+    `/api/v1/health…` (healthchecks Docker et Traefik) ; l'exemption du préfixe `/api/v1/internal/bot/…` a été
+    retirée (audit 5 : aucune route bot sur cette branche, toute route future sous ce préfixe aurait été joignable sans
+    Traefik) et sera réintroduite avec la route du bot et son jeton de service ; sans en-tête valide, `X-Forwarded-*`, `X-Real-IP` et `Forwarded` sont supprimés, donc **`trust proxy` ne
+    s'applique qu'aux requêtes venues de Traefik** (rate limiting, verrouillage, plafond de l'espace admin, empreinte
+    anonyme, audit) ; l'en-tête est retiré de la requête (jamais journalisé ni renvoyé). Variable absente en
+    production : démarrage autorisé avec avertissement (déploiement existant non cassé). Même règle pour
+    `raijin-bench-api` (docs/BENCH.md). Le partage `/t/<mint>` et les images OG passent par Traefik : servis.
+    Côté infrastructure : middlewares `headers.customRequestHeaders.X-Raijin-Edge=${EDGE_SHARED_SECRET}` sur
+    `raijin-api-headers`, `raijin-share-headers` et `raijin-bench-api-headers` (`infra/docker-compose.yml`), valeur
+    interpolée depuis `/srv/raijin/prod/env/.env` (généré par `infra/vps-setup.sh`, 600, jamais affiché ; masqué en
+    CI) ; `deploy_policy.py` exige en prod 64 hex sur l'en-tête **et** dans l'environnement des deux conteneurs, et
+    l'en-tête sur chaque routeur vers eux ; en dev, valeur vide obligatoire (Traefik retire l'en-tête) ;
+    `infra/deploy.sh` fait les mêmes contrôles. Aucun message ne cite la valeur ;
+  - **Traefik qui exposerait l'en-tête** (condition (b) de l'option B, `docs/DEPLOY.md` C2) : contrôle en lecture
+    seule `deploy_policy.py traefik-exposure` (arguments, variables `TRAEFIK_*` équivalentes, fichier de configuration
+    statique monté lu sur l'hôte, labels des routeurs vers `api@internal` ; seuls des noms sont affichés, jamais une
+    valeur, les variables de Traefik contenant des clés de MTC) : `api.insecure`, `log.level` DEBUG/TRACE, en-têtes
+    gardés au journal d'accès, routeur `api@internal` sans middleware. `infra/vps-setup.sh` : avertissement et
+    **option B refusée** (réseau de référence non écrit) ; `release.sh` et `infra/deploy.sh` : **dev refusé** (contrôle
+    impossible = refus), **prod : avertissement**. Traefik n'est **jamais modifié** : le changement (retirer
+    `--api.insecure`, `--log.level=INFO`, en-têtes en `drop`/`redact`, `basicAuth` sur le routeur) touche MTC et reste
+    la décision de l'utilisateur ; ensuite, régénérer `EDGE_SHARED_SECRET`. Tests : `infra/ci/test-vps-setup.sh`
+    étape 6 (Traefik factices exposés → refus, Traefik propre → option B) ;
+  - **limites par compte** en plus des limites par IP : verrouillage par adresse à la connexion
+    (`AUTH_LOCKOUT_*`, existant), compteur par compte des codes 2FA admin (existant), et plafond de **5 e-mails
+    d'authentification par paire adresse + IP et par heure**, et de **20 par adresse** toutes IP confondues
+    (inscription d'une adresse existante, renvoi de vérification, lien magique, mot de passe oublié ; réponse neutre
+    inchangée, `LoginAttemptsService.allowAuthEmail`, risque résiduel au §4) ;
+  - **Mailpit du dev** (magic links, réinitialisations) : réseau interne du dev seulement, jamais joignable depuis
+    le réseau partagé, interface et API protégées par Mailpit (`MP_UI_AUTH`, mot de passe du dev), lecture par
+    tunnel SSH.
+- **Tests** : `infra/ci/test-deploy-policy.sh` (configurations réelles prod, dev option B et option A acceptées ;
+  livraisons dangereuses, réseaux `raijin-…` en option B, Postgres / Redis sur le réseau d'entrée, jeton OIDC forgé
+  refusés ; prod sans `EDGE_SHARED_SECRET` valide, routeur sans l'en-tête, secret retiré du conteneur, secret dans le
+  dev : refusés), `infra/ci/test-dev-env.sh` et `check-stack-dev.sh` (livraison par la porte, retour automatique,
+  Traefik inchangé, Postgres / Redis de la prod injoignables depuis le dev ; appel direct depuis `raijin-dev-api` vers
+  `raijin-api` et `raijin-bench-api` de la prod → 403, avec ou sans faux en-tête ; même chemin via le Traefik factice
+  → 200 pour l'API, 401 sans session pour le banc, jamais 403), `infra/ci/test-vps-setup.sh` (secret généré, jamais
+  affiché, absent du dev ; option A refusée sans confirmation).
+- **Risque résiduel de l'option B** : le dev partage le réseau du Traefik avec les conteneurs de MTC / XMR Trader et
+  peut les joindre sans passer par Traefik (et réciproquement) : risque **déjà accepté pour la prod**, qui est sur le
+  même réseau ; l'API et le banc de la prod n'y sont plus joignables en direct (403).
+- **Risque résiduel** : **tout push sur `dev` s'exécute sur le VPS** quand `DEPLOY_DEV_AUTO=1` (y compris ceux des
+  agents), confiné aux noms, réseaux, volumes et ressources du dev ; l'interrupteur GitHub ne résiste pas à un
+  workflow modifié sur une branche (secrets lisibles sous GitHub Free) : seul l'arrêt côté VPS le fait ; en
+  option B, le code du dev joint directement l'API, l'app, la landing et le banc de la prod ainsi que les
+  conteneurs de MTC présents sur le réseau Traefik (contournement de la basicAuth du banc et des limites Traefik),
+  mais, une fois `EDGE_SHARED_SECRET` posé, l'API et le banc lui répondent **403** (hors santé) et
+  `X-Forwarded-For` n'y est plus forgeable ; sans la variable (avertissement au démarrage), ces contournements
+  restent possibles, les contrôles propres de l'API et du banc (sessions, CSRF, rôles, quotas) s'appliquant toujours ; une faille de Docker ou du noyau permettrait de sortir du confinement.
+
+## Risques résiduels prioritaires (synthèse)
+
+1. Pas de CDN ni de protection volumétrique ; API joignable depuis le réseau Traefik partagé (IP forgeable).
+2. Budget Helius global épuisable par un attaquant à nombreuses IP (dégradation de l'analyse pour tous).
+3. CI : audit bloquant seulement à partir de `high` en production ; pas d'analyse des images (Trivy).
+4. `style-src 'unsafe-inline'` sur l'app et le banc.
+5. Webhooks et facturation jamais éprouvés contre le compte Stripe réel (« À brancher »).
+6. Déploiement continu : tout push sur `dev` s'exécute sur le VPS partagé quand `DEPLOY_DEV_AUTO=1` (menace 17).
+
+## Dépendances (`pnpm audit`, `pnpm peers check`)
+
+Relevé du 2026-11-24 (phase 9, T2), Nx 24.0.6, pnpm 11.6.0.
+
+- `pnpm audit --prod` : **0 vulnérabilité** (critère de chaque audit de phase). En CI, `pnpm audit --prod
+  --audit-level=high` bloque le job `verifier` dès une vulnérabilité haute ou critique en production.
+- `pnpm audit` (dépendances de développement comprises) : 3 alertes **modérées**, toutes transitives d'outillage,
+  absentes des images de production (`dist/apps/*/package.json` générés ne les contiennent pas). Aucune n'est
+  corrigée en amont à ce jour (dernières versions de Nx, Jest, test-exclude et sockjs vérifiées) ; un `overrides`
+  imposerait une version majeure à des dépendances épinglées exactement par Nx. Décision : **justifiées, non
+  surchargées**, revues à chaque montée de Nx ou de Jest.
+
+| Alerte | Paquet (chemin) | Pourquoi elle ne s'applique pas |
+|---|---|---|
+| GHSA-w5hq-g745-h8pq (modérée) | `uuid` 8.3.2 via `@nx/webpack` → `webpack-dev-server` → `sockjs` | Le défaut touche `v3`/`v5`/`v6` appelées avec un tampon `buf` fourni ; `sockjs` n'appelle que `uuid.v4()` sans tampon. `webpack-dev-server` n'est jamais lancé (API servie par `@nx/js:node`, front par `@angular/build`). |
+| GHSA-3g3m-2fjr-6pw4 (modérée) | `glob` 10.5.0 / 13.0.7 via `jest-config`, `test-exclude` | Contournement de l'annulation par `AbortSignal` : Jest et la couverture n'utilisent pas de signal, sur des motifs écrits par le projet, en local et en CI. |
+| GHSA-g3hv-75wg-m249 (modérée) | `minimatch` 9.0.9 / 10.2.5 via `nx`, `@nx/devkit` (épinglé `10.2.5`), `glob` | Déni de service par des motifs construits par un attaquant : seuls les motifs de configuration du dépôt (`nx.json`, `project.json`, ESLint) sont évalués, jamais une entrée utilisateur. |
+
+Avertissements de dépendances pairs (`pnpm peers check`), tous d'outillage, sans effet à l'exécution :
+
+| Pair attendu | Installé | Demandé par | Décision |
+|---|---|---|---|
+| `@babel/core` ^7 | 8.0.5 (via `@angular/build` 22) | plugins `@babel/plugin-syntax-*` de `babel-preset-jest` | Jest utilise son propre `@babel/core` 7.29 (présent) ; le 8 sert uniquement à `@angular/build`. Rien à faire. |
+| `chokidar` ^4 / ^6 | 5.0.0 | `@angular-devkit/core` 19 (`@nestjs/schematics`) et 22 | Pair **optionnel** (mode surveillance des schematics) ; aucun schematic NestJS lancé en surveillance. |
+| `@emnapi/core`, `@emnapi/runtime` ^1.7.1 | 2.0.0-alpha.6 | `@napi-rs/wasm-runtime` 1.2.7 | Repli WebAssembly des binaires natifs, inutilisé sur linux-x64 (binaires natifs présents). |

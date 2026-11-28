@@ -1,0 +1,105 @@
+---
+import { APP_ROUTES, appHref } from '../lib/app-url';
+import { NAV_LINKS } from '../lib/pages';
+import Icon from './Icon.astro';
+import Logo from './Logo.astro';
+
+/**
+ * En-tête compact (PROMPT.md §3) : logo + menu sous 1024 px (`<details>` natif, aucun JS), navigation en ligne au-delà.
+ * Les liens vers l'app portent `data-app-link` (attribution ajoutée par le script de la page).
+ */
+interface Props {
+  /** Chemin courant, pour `aria-current`. */
+  current: string;
+}
+
+const { current } = Astro.props;
+const link =
+  'inline-flex min-h-11 items-center rounded-md px-3 text-body font-medium text-ink-muted transition-colors hover:text-ink aria-[current=page]:text-ink';
+const secondary =
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-line-strong px-4 text-body font-semibold text-ink transition-colors hover:border-ink-muted';
+---
+
+<header class="sticky top-0 z-40 border-b border-line bg-base pt-safe">
+  <div class="mx-auto flex h-16 max-w-reading items-center justify-between gap-4 px-4 md:px-6 lg:px-8">
+    <a href="/" class="inline-flex min-h-11 min-w-11 items-center rounded-md">
+      <Logo />
+      <span class="sr-only">Raijin Shield, accueil</span>
+    </a>
+
+    <nav aria-label="Navigation principale" class="hidden lg:block">
+      <ul class="flex items-center gap-1">
+        {
+          NAV_LINKS.map((item) => (
+            <li>
+              <a
+                href={item.path}
+                class={link}
+                aria-current={current === item.path ? 'page' : undefined}
+                data-track={item.path === '/tarifs' ? 'voir_tarifs' : undefined}
+              >
+                {item.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+
+    <div class="hidden items-center gap-2 lg:flex">
+      <a href={appHref(APP_ROUTES.connexion)} data-app-link class={link}>Connexion</a>
+      <a
+        href={appHref(APP_ROUTES.inscription)}
+        data-app-link
+        data-track="cta_essai_clic"
+        data-track-emplacement="header"
+        class={secondary}
+      >
+        Essayer gratuitement
+      </a>
+    </div>
+
+    <details class="menu-mobile lg:hidden">
+      <summary
+        class="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center gap-2 rounded-md border border-line-strong px-3 text-body font-medium text-ink"
+      >
+        <Icon name="menu" class="menu-open-icon" />
+        <Icon name="close" class="menu-close-icon" />
+        <span>Menu</span>
+      </summary>
+      <nav
+        aria-label="Menu"
+        class="absolute inset-x-0 top-full border-b border-line bg-surface px-4 pb-6 pt-2 shadow-card md:px-6"
+      >
+        <ul class="flex flex-col gap-1">
+          {
+            NAV_LINKS.map((item) => (
+              <li>
+                <a
+                  href={item.path}
+                  class={`${link} w-full`}
+                  aria-current={current === item.path ? 'page' : undefined}
+                  data-track={item.path === '/tarifs' ? 'voir_tarifs' : undefined}
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))
+          }
+          <li>
+            <a href={appHref(APP_ROUTES.connexion)} data-app-link class={`${link} w-full`}>Connexion</a>
+          </li>
+        </ul>
+        <a
+          href={appHref(APP_ROUTES.inscription)}
+          data-app-link
+          data-track="cta_essai_clic"
+          data-track-emplacement="header"
+          class={`${secondary} mt-4 w-full`}
+        >
+          Essayer gratuitement
+        </a>
+      </nav>
+    </details>
+  </div>
+</header>

@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-11-22T03:21:10.920Z",
+  "source": "jupiter",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+      "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "amount": "1000000",
+      "slippageBps": "500"
+    }
+  },
+  "status": 400,
+  "body": {
+    "error": "No routes found",
+    "errorCode": "NO_ROUTES_FOUND"
+  }
+}

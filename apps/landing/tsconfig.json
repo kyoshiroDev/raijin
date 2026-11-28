@@ -1,0 +1,12 @@
+{
+  "extends": "astro/tsconfigs/strictest",
+  "include": [".astro/types.d.ts", "src/**/*", "astro.config.mjs", "vitest.config.mts"],
+  "exclude": ["../../dist"],
+  "compilerOptions": {
+    "paths": {
+      "@raijin/shared-contracts": ["../../libs/shared/contracts/src/index.ts"],
+      "@raijin/shared-util": ["../../libs/shared/util/src/index.ts"],
+      "@raijin/shared-risk-engine": ["../../libs/shared/risk-engine/src/index.ts"]
+    }
+  }
+}

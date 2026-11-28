@@ -1,0 +1,21 @@
+---
+import type { CheckStatus } from '@raijin/shared-contracts';
+import Icon, { type IconName } from './Icon.astro';
+
+/** Icône de statut d'un contrôle, colorée ; le statut est toujours écrit à côté (jamais la couleur seule). */
+interface Props {
+  status: CheckStatus;
+  size?: number;
+}
+
+const { status, size = 20 } = Astro.props;
+const icon: Record<CheckStatus, IconName> = { ok: 'ok', warn: 'warn', danger: 'danger', unavailable: 'unavailable' };
+const tone: Record<CheckStatus, string> = {
+  ok: 'text-safe',
+  warn: 'text-warn',
+  danger: 'text-danger',
+  unavailable: 'text-ink-muted',
+};
+---
+
+<Icon name={icon[status]} size={size} class={tone[status]} />

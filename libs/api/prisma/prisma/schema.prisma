@@ -1,0 +1,550 @@
+// Schéma de la base Raijin (PROMPT.md §5, docs/ARCHITECTURE.md §8.1).
+// Client généré par : pnpm nx run api-prisma:prisma-generate (dans src/generated/, ignoré par Git).
+// Migrations versionnées dans prisma/migrations (pnpm nx run api-prisma:migrate-dev / migrate-deploy).
+// Conventions : identifiants UUID v7, dates en UTC, adresses IP jamais stockées en clair (ipHash).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums (alignés à l'identique sur @raijin/shared-contracts quand ils y existent)
+// ---------------------------------------------------------------------------
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+/// État de l'essai Pro 7 jours (phase 6). Exposé en minuscules par l'API (trialStatusSchema).
+enum TrialStatus {
+  NONE
+  ACTIVE
+  ENDED
+  INELIGIBLE
+}
+
+/// Jetons à usage unique envoyés par e-mail (stockés hachés SHA-256).
+enum AuthTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+  MAGIC_LINK
+}
+
+enum Verdict {
+  safe
+  warn
+  danger
+}
+
+/// Statut d'un suivi (contrat `watchStatusSchema`) : seuls les suivis actifs sont réanalysés et alertent.
+enum WatchStatus {
+  active
+  paused
+}
+
+/// Motif de pause (contrat `watchPauseReasonSchema`).
+enum WatchPauseReason {
+  user
+  plan_limit
+}
+
+/// Gravité d'un événement de suivi et de ses alertes (contrat `alertSeveritySchema`).
+enum AlertSeverity {
+  warn
+  danger
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+  PAUSED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+// ---------------------------------------------------------------------------
+// Utilisateurs et authentification
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String      @id @default(uuid(7)) @db.Uuid
+  /// E-mail saisi (minuscules, sans espaces) : adresse d'envoi.
+  email            String      @unique
+  /// E-mail normalisé anti-abus (alias +, points Gmail, googlemail.com) : un seul compte par boîte.
+  emailNormalized  String      @unique
+  /// Hash argon2id (format PHC).
+  passwordHash     String
+  emailVerifiedAt  DateTime?
+  passwordChangedAt DateTime?
+  termsAcceptedAt  DateTime
+  plan             Plan        @default(FREE)
+  role             Role        @default(USER)
+  trialStatus      TrialStatus @default(NONE)
+  trialStartedAt   DateTime?
+  trialEndsAt      DateTime?
+  stripeCustomerId String?     @unique
+  lastLoginAt      DateTime?
+  // Attribution (première visite, données externes bornées)
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  referrer         String?
+  landingPath      String?
+  /// Préférences de notification (contrat `notificationPreferencesSchema`, docs/ARCHITECTURE.md §11.5).
+  notifyEmailAlerts  Boolean   @default(true)
+  notifyPushAlerts   Boolean   @default(true)
+  notifyWeeklyDigest Boolean   @default(false)
+  /// E-mails d'essai J+1 et J-2 (préférence `trialEmails`) ; l'e-mail J0 part toujours.
+  notifyTrialEmails  Boolean   @default(true)
+  /// Dernier résumé hebdomadaire envoyé (idempotence du job du lundi).
+  weeklyDigestSentAt DateTime?
+  /// Idempotence des e-mails d'essai (posées avant l'envoi) et écran de fin d'essai vu (phase 6).
+  trialDay1MailAt      DateTime?
+  trialDayMinus2MailAt DateTime?
+  trialEndMailAt       DateTime?
+  trialEndScreenSeenAt DateTime?
+  /// Compte suspendu par un admin (phase 6 bis) : connexion, lien magique et refresh refusés (ACCOUNT_SUSPENDED).
+  suspendedAt          DateTime?
+  /// Pro offert par un admin (source de plan `gift`) jusqu'à cette date.
+  proGrantedUntil      DateTime?
+  /// Fin du Pro offert traitée par le job d'essai (limite de suivis, e-mail) : idempotence.
+  proGrantEndedAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  sessions          Session[]
+  authTokens        AuthToken[]
+  totpSecret        TotpSecret?
+  adminRecoveryCodes AdminRecoveryCode[]
+  subscriptions     Subscription[]
+  watches           Watch[]
+  alerts            Alert[]
+  pushSubscriptions PushSubscription[]
+  usageCounters     UsageCounter[]
+  productEvents     ProductEvent[]
+  auditLogs         AuditLog[]
+  trialFingerprints TrialFingerprint[]
+  trialClaims       TrialClaim[]
+  tokenAnalyses     TokenAnalysis[]
+
+  @@index([createdAt])
+  @@index([plan])
+  @@index([trialStatus, trialEndsAt])
+  @@index([suspendedAt])
+  @@index([proGrantedUntil])
+}
+
+/// Session = famille de refresh tokens. `id` est le `sid` de l'access token.
+/// Révoquer la session révoque toute la famille (déconnexion, réutilisation détectée, reset).
+model Session {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent  String?
+  ipHash     String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// Motif de révocation : logout, reuse, password_reset, password_change, account_deleted, suspended, admin_revoked.
+  revokedReason String?
+  /// Session admin (docs/ARCHITECTURE.md §14.3) : 2FA vérifiée sur cette session, dernière activité admin.
+  /// Expire après ADMIN_SESSION_IDLE_MINUTES d'inactivité ou ADMIN_SESSION_MAX_HOURS depuis la vérification.
+  adminVerifiedAt DateTime?
+  adminLastSeenAt DateTime?
+
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Refresh token opaque (32 octets), stocké haché SHA-256, rotation à chaque usage.
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  sessionId String    @db.Uuid
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  /// Renseigné lors de la rotation : un jeton déjà utilisé qui revient = vol, famille révoquée.
+  usedAt    DateTime?
+
+  @@index([sessionId])
+}
+
+/// Jetons e-mail (vérification, réinitialisation, lien magique) : hachés, usage unique, TTL.
+model AuthToken {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  userId       String        @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         AuthTokenType
+  tokenHash    String        @unique
+  /// Lien magique : chemin relatif de retour (validé par relativePathSchema).
+  redirectPath String?
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+/// Secret TOTP de la 2FA admin, chiffré (AES-256-GCM, TOTP_ENCRYPTION_KEY). Phase admin.
+model TotpSecret {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  userId          String    @unique @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Format : v1.<iv>.<tag>.<ciphertext> (base64url), AAD `totp:<userId>`.
+  secretEncrypted String
+  enabledAt       DateTime?
+  lastUsedStep    Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+/// Code de secours de la 2FA admin (10 par compte), HMAC-SHA256 (clé dérivée de TOTP_ENCRYPTION_KEY), usage unique.
+model AdminRecoveryCode {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// Empreinte anti-abus de l'essai Pro (hash uniquement, conservée après suppression du compte).
+model TrialFingerprint {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  hash      String
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([hash])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// Un essai Pro par e-mail normalisé (docs/ARCHITECTURE.md §13.6) : HMAC-SHA256(IP_HASH_SECRET, "trial-email:" + e-mail
+/// normalisé), jamais l'e-mail en clair. Survit à la suppression du compte (SetNull), purgé à TRIAL_CLAIM_RETENTION_DAYS.
+model TrialClaim {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  emailHash String   @unique
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Facturation (phase 6)
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id                   String             @id @default(uuid(7)) @db.Uuid
+  userId               String             @db.Uuid
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String             @unique
+  stripePriceId        String
+  status               SubscriptionStatus
+  interval             BillingInterval
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  /// Horodatage Stripe (`event.created`) du dernier événement appliqué : un événement plus ancien est ignoré.
+  lastEventAt          DateTime?
+  /// Dernière facture connue (reçu, échec de paiement).
+  latestInvoiceId      String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([userId, status])
+}
+
+/// Événements Stripe déjà traités (idempotence des webhooks).
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Analyses, suivis, alertes (phases 3 à 5)
+// ---------------------------------------------------------------------------
+
+/// Résultat d'analyse d'un token. Purgé après 90 jours (job de rétention).
+/// Une ligne par analyse fraîche (pas pour un résultat servi depuis le cache).
+model TokenAnalysis {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  mint          String
+  verdict       Verdict
+  score         Int?
+  /// `AnalysisCheck[]` du contrat (9 contrôles dans l'ordre).
+  checks        Json
+  /// Statut par source (`ok` / `error` / `skipped`, latence).
+  sources       Json
+  /// Version du moteur de verdict (`RISK_ENGINE_VERSION`).
+  engineVersion String   @default("0.0.0")
+  /// `RiskFacts` normalisés : rejouables par le banc sur une variante du moteur.
+  facts         Json?
+  /// Métadonnées du token (nom/symbole non fiables, nettoyés, sans image) : page publique.
+  token         Json?
+  /// Au moins un contrôle indisponible (résultat partiel).
+  degraded      Boolean  @default(false)
+  explanation   String?
+  /// Durée de l'analyse (collecte + moteur), en millisecondes.
+  durationMs    Int?
+  userId        String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([mint, createdAt])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// Suivi d'un mint par un utilisateur (docs/ARCHITECTURE.md §11.5). L'état réanalysé est par mint
+/// (`MintWatchState`), partagé entre tous les utilisateurs qui le suivent.
+model Watch {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  userId        String            @db.Uuid
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mint          String
+  status        WatchStatus       @default(active)
+  pausedReason  WatchPauseReason?
+  pausedAt      DateTime?
+  /// Recopiés à chaque passe complète (verdict) du mint.
+  lastVerdict   Verdict?
+  lastCheckedAt DateTime?
+  createdAt     DateTime          @default(now())
+
+  @@unique([userId, mint])
+  @@index([mint, status])
+  @@index([userId, status])
+}
+
+/// État de réanalyse d'un mint suivi (une ligne par mint, supprimée quand plus personne ne le suit).
+/// Seul le dernier instantané est gardé ; l'historique, ce sont les `WatchEvent`.
+model MintWatchState {
+  mint                String    @id
+  /// `WatchSnapshot` v1 (`@raijin/shared-contracts`) : groupes datés authorities, pool, holders, verdict.
+  snapshot            Json?
+  /// Métadonnées de la dernière analyse (non fiables, nettoyées) : e-mails et notifications.
+  token               Json?
+  /// Verrou optimiste : incrémenté à chaque écriture de l'instantané.
+  revision            Int       @default(0)
+  nextFastAt          DateTime  @default(now())
+  nextHoldersAt       DateTime  @default(now())
+  nextFullAt          DateTime  @default(now())
+  /// Dernière passe complète anticipée (au plus une par heure après un événement critique).
+  lastEarlyFullAt     DateTime?
+  /// 1 si au moins un suivi actif d'un compte Pro ou en essai (servi en premier sous budget).
+  priority            Int       @default(0)
+  consecutiveFailures Int       @default(0)
+  /// Code d'erreur seulement (jamais de message ni d'URL).
+  lastErrorCode       String?
+  /// Compte hors normes (TOKEN_UNANALYZABLE) : plus de passe complète.
+  unanalyzable        Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([nextFastAt])
+  @@index([nextHoldersAt])
+  @@index([nextFullAt])
+}
+
+/// Événement détecté sur un mint (`detectWatchEvents`), une seule fois grâce à `dedupeKey`.
+/// Purgé après RETENTION_DAYS (cascade sur les alertes).
+model WatchEvent {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  mint       String
+  /// `AlertType` du contrat.
+  type       String
+  severity   AlertSeverity
+  payload    Json
+  dedupeKey  String
+  detectedAt DateTime
+  createdAt  DateTime      @default(now())
+
+  alerts Alert[]
+
+  @@unique([mint, dedupeKey])
+  @@index([mint, type, detectedAt])
+  @@index([createdAt])
+}
+
+/// Alerte d'un utilisateur pour un événement d'un mint suivi (une seule par utilisateur et événement).
+model Alert {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId    String?       @db.Uuid
+  event      WatchEvent?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  mint       String
+  type       String
+  severity   AlertSeverity @default(warn)
+  payload    Json
+  /// Métadonnées du token au moment de l'alerte (non fiables, nettoyées).
+  token      Json?
+  readAt     DateTime?
+  /// Livraison réservée (`UPDATE … WHERE … IS NULL`) puis confirmée ; relâchée si l'envoi échoue.
+  emailedAt  DateTime?
+  pushedAt   DateTime?
+  /// E-mail non envoyé (préférence, plafond journalier, adresse non vérifiée) : jamais repris.
+  emailSkipped Boolean     @default(false)
+  createdAt  DateTime      @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([mint])
+  @@index([createdAt])
+}
+
+/// Abonnement push web (VAPID) d'un appareil. L'endpoint identifie l'appareil : jamais journalisé.
+model PushSubscription {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  lastSuccessAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+/// Compteur de quotas journaliers : par utilisateur (connecté) ou par IP hachée (anonyme).
+model UsageCounter {
+  id     String   @id @default(uuid(7)) @db.Uuid
+  userId String?  @db.Uuid
+  user   User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipHash String?
+  /// Type de quota (ex. analysis, wallet_scan).
+  kind   String
+  day    DateTime @db.Date
+  count  Int      @default(0)
+
+  @@unique([userId, kind, day])
+  @@unique([ipHash, kind, day])
+  @@index([day])
+}
+
+// ---------------------------------------------------------------------------
+// Mesure, exploitation, audit
+// ---------------------------------------------------------------------------
+
+model ProductEvent {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type       String
+  properties Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+model DailyMetric {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  date      DateTime @db.Date
+  key       String
+  value     Float
+  createdAt DateTime @default(now())
+
+  @@unique([date, key])
+  @@index([key, date])
+}
+
+model JobRun {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  job        String
+  startedAt  DateTime     @default(now())
+  finishedAt DateTime?
+  status     JobRunStatus @default(RUNNING)
+  /// Code d'erreur seulement (jamais de message).
+  error      String?
+  durationMs Int?
+  /// Compteurs de l'exécution (mints traités, crédits, événements, alertes, lignes purgées).
+  details    Json?
+
+  @@index([job, startedAt])
+  @@index([startedAt])
+}
+
+/// Journal d'audit (sécurité et admin). L'utilisateur supprimé devient null (journal conservé).
+model AuditLog {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorId   String?  @db.Uuid
+  /// Origine de l'action : user (le titulaire), admin (espace admin), cli (make-admin, admin-reset-2fa), system (job).
+  actorKind String   @default("user")
+  action    String
+  ipHash    String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([actorId])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+/// Alerte admin (docs/ARCHITECTURE.md §14.7) : job en échec répété, quota proche de sa limite. Une par incident.
+model AdminAlert {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  /// `job_failing` | `quota`.
+  kind       String
+  /// Job ou service concerné.
+  subject    String
+  /// `warn` | `danger`.
+  level      String
+  /// `job_failing:<job>:<id du premier échec>`, `quota:<service>:<jour>`.
+  dedupeKey  String    @unique
+  /// Compteurs et code d'erreur (jamais de secret, d'URL ni de donnée utilisateur).
+  details    Json
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime?
+  resolvedAt DateTime?
+
+  @@index([resolvedAt, createdAt])
+}

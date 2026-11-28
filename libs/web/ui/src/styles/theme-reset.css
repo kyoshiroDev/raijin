@@ -1,0 +1,12 @@
+/* Retire les palettes par défaut de Tailwind : seules les valeurs de libs/brand/tokens.css
+   existent (couleurs, polices, tailles de texte, rayons, ombres). Toute valeur hors charte
+   (ex. bg-red-500, rounded-xl, text-2xl) ne génère donc aucun style. */
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+}

@@ -1,0 +1,17 @@
+{
+  "name": "brand",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/brand",
+  "tags": ["scope:shared", "type:brand"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["{projectRoot}/**/*", "{workspaceRoot}/tools/scripts/check-brand-tokens.mjs"],
+      "options": {
+        "command": "node tools/scripts/check-brand-tokens.mjs"
+      }
+    }
+  }
+}

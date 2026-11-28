@@ -1,0 +1,67 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "500 tokens « mint actif » (autorité de mint active : Danger), sans prix.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenAccountsByOwner",
+    "params": [
+      "2Vm2knf2ywSNrKhQSgKTE3sUawpzs9GY32HYeDvA6W6N",
+      {
+        "programId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      },
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": [
+        {
+          "pubkey": "GXbvz6gU2Aqe8PDHW7JqeZ6jJbJaqhh3B9KVv3Zfb6xB",
+          "account": {
+            "data": {
+              "parsed": {
+                "info": {
+                  "isNative": false,
+                  "mint": "BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi",
+                  "owner": "2Vm2knf2ywSNrKhQSgKTE3sUawpzs9GY32HYeDvA6W6N",
+                  "state": "initialized",
+                  "tokenAmount": {
+                    "amount": "500000000000",
+                    "decimals": 9,
+                    "uiAmount": 500,
+                    "uiAmountString": "500"
+                  },
+                  "extensions": [
+                    {
+                      "extension": "immutableOwner"
+                    }
+                  ]
+                },
+                "type": "account"
+              },
+              "program": "spl-token-2022",
+              "space": 170
+            },
+            "executable": false,
+            "lamports": 2074080,
+            "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            "rentEpoch": 18446744073709552000,
+            "space": 170
+          }
+        }
+      ]
+    }
+  }
+}

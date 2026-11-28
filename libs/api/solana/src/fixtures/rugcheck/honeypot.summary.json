@@ -1,0 +1,33 @@
+{
+  "recordedAt": "2026-11-22T03:21:45.195Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa/report/summary",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "tokenType": "",
+    "risks": [
+      {
+        "name": "Freeze Authority still enabled",
+        "value": "",
+        "description": "Tokens can be frozen and prevented from trading",
+        "score": 25000,
+        "level": "danger"
+      },
+      {
+        "name": "Missing file metadata",
+        "value": "",
+        "description": "No file metadata found associated to this token",
+        "score": 500,
+        "level": "warn"
+      }
+    ],
+    "score": 25501,
+    "score_normalised": 63,
+    "lpLockedPct": 0
+  }
+}

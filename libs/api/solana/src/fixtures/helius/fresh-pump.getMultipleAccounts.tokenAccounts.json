@@ -1,0 +1,102 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Reconstruit à partir du topHolders réel de RugCheck (propriétaires).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "38WfiSBuqQF4XSdzziptraFG2KL9SEC7Vefd7tCh9zVe",
+        "JCTtPehXUcPXbow6ysPG9ahqQftxhUoXwkvNjSXYALSR",
+        "6wTbF5uFzMYAGSs9qTbq7UkzRopvTSwBxfWEUqC7KZCo"
+      ],
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472388101
+      },
+      "value": [
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+                "owner": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "999791829744143",
+                  "decimals": 6
+                }
+              },
+              "type": "account"
+            },
+            "program": "spl-token-2022",
+            "space": 170
+          },
+          "executable": false,
+          "lamports": 2074080,
+          "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "space": 170
+        },
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+                "owner": "HbPR3bpDR8WxsqgBu6QUAZcEXhUJrdChvBt7UWyz8M82",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "208170255857",
+                  "decimals": 6
+                }
+              },
+              "type": "account"
+            },
+            "program": "spl-token-2022",
+            "space": 170
+          },
+          "executable": false,
+          "lamports": 2074080,
+          "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "space": 170
+        },
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+                "owner": "G9ELzG3Gg6HsGmEK7xd3CWrany9haheuAiRt6jWL9D2M",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "0",
+                  "decimals": 6
+                }
+              },
+              "type": "account"
+            },
+            "program": "spl-token-2022",
+            "space": 170
+          },
+          "executable": false,
+          "lamports": 2074080,
+          "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "space": 170
+        }
+      ]
+    }
+  }
+}

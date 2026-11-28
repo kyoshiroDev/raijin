@@ -1,0 +1,760 @@
+{
+  "recordedAt": "2026-11-22T03:23:14.920Z",
+  "source": "dexscreener",
+  "request": {
+    "method": "GET",
+    "path": "/token-pairs/v1/solana/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "params": {}
+  },
+  "status": 200,
+  "body": [
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "DJNtGuBGEQiUCWE8F981M2C3ZghZt2XLD8f2sQdZ6rsZ",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01439",
+      "priceUsd": "0.9968",
+      "liquidity": {
+        "base": 121763,
+        "quote": 29936,
+        "usd": 2195066.34
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "4QU2NpRaqmKMvPSwVKQDeW4V6JFEKJdkzbzdauumD9qN",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01438",
+      "priceUsd": "0.9967",
+      "liquidity": {
+        "base": 10328,
+        "quote": 2804.6135,
+        "usd": 204570.88
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "AdmoAEv4VKu2nUwYt8Ps59SoPnF53yFxQgZD6sFwMZF5",
+      "labels": [
+        "DLMM Pro"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01438",
+      "priceUsd": "0.9967",
+      "liquidity": {
+        "base": 47631,
+        "quote": 747.182,
+        "usd": 99233.85
+      },
+      "pairCreatedAt": 1795277161000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002104",
+      "priceUsd": "1.0021",
+      "liquidity": {
+        "base": 27243,
+        "quote": 1816394,
+        "usd": 1843695.14
+      },
+      "pairCreatedAt": 1723699296000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "4fuUiYxTQ6QCrdSq9ouBYcTM7bqSwYTSyLueGZLTy4T4",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002001",
+      "priceUsd": "1.0020",
+      "liquidity": {
+        "base": 8170.7682,
+        "quote": 597501,
+        "usd": 605688.18
+      },
+      "pairCreatedAt": 1669603219000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "32D4zRxNc1EssbJieVHfPhZM3rH6CzfUPrWUuWxD9prG",
+      "labels": [
+        "DYN"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002003",
+      "priceUsd": "1.0020",
+      "liquidity": {
+        "base": 36148,
+        "quote": 385257,
+        "usd": 421478.32
+      },
+      "pairCreatedAt": 1703167204000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "ARwi1S4DaiTG5DX7S4M4ZsrXqpMD1MrTmbu9ue2tpmEq",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002001",
+      "priceUsd": "1.0020",
+      "liquidity": {
+        "base": 38496,
+        "quote": 204329,
+        "usd": 242902.97
+      },
+      "pairCreatedAt": 1706214035000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "Fpr8EzktEQKA2PMw2t4Pbo3iGCJbasUJ516gGpFmNpui",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.001999",
+      "priceUsd": "1.0019",
+      "liquidity": {
+        "base": 47483,
+        "quote": 52755,
+        "usd": 100333.89
+      },
+      "pairCreatedAt": 1795256924000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "F13xvvx45jVGd84ynK3c8T89UejQVxjCLtmHfPmAXAHP",
+      "labels": [
+        "v2"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.005722",
+      "priceUsd": "1.0057",
+      "liquidity": {
+        "base": 20637,
+        "quote": 24374,
+        "usd": 45130.54
+      },
+      "pairCreatedAt": 1669604057000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "3NeUgARDmFgnKtkJLqUcEUNCfknFCcGsFfMJCtx6bAgx",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002104",
+      "priceUsd": "1.0021",
+      "liquidity": {
+        "base": 17360,
+        "quote": 19354,
+        "usd": 36752.13
+      },
+      "pairCreatedAt": 1723699419000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "8VXj6uz61v8yAu7m9pVEYNYjJwjK7WfFbRCs3YyXY6Bb",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01438",
+      "priceUsd": "0.9966",
+      "liquidity": {
+        "base": 25.5047,
+        "quote": 0.9791,
+        "usd": 93.24
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "4nkJrNo9yEaGXqPKdB8PqJoyRZiVKzgRitqnrkx1Qotc",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.003094",
+      "priceUsd": "1.0030",
+      "liquidity": {
+        "base": 792.9603,
+        "quote": 1783.5212,
+        "usd": 2578.93
+      },
+      "pairCreatedAt": 1712432719000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "ELqXddRqcnRJXQnqZdPwBXEEBpQ6SEbCQrBe12wpHBU",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.001842",
+      "priceUsd": "1.0018",
+      "liquidity": {
+        "base": 406.7567,
+        "quote": 859.7779,
+        "usd": 1267.28
+      },
+      "pairCreatedAt": 1709683865000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "FX5UWkujjpU4yKB4yvKVEzG2Z8r2PLmLpyVmv12yqAUQ",
+      "labels": [
+        "v2"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002877",
+      "priceUsd": "1.0028",
+      "liquidity": {
+        "base": 1723.276,
+        "quote": 1968.9363,
+        "usd": 3697.17
+      },
+      "pairCreatedAt": 1669609619000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "FPPHjpjBk98pd5Z3xXQuDcrZdUdqfraCRJU8yvdT1ZKR",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002290",
+      "priceUsd": "1.0022",
+      "liquidity": {
+        "base": 218.2052,
+        "quote": 2255.04219,
+        "usd": 2473.74
+      },
+      "pairCreatedAt": 1703788397000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "orca",
+      "pairAddress": "CxF3jKhGrauHQjFk8L5XUkLTjmeLFqHUYHLCYYSautMC",
+      "labels": [
+        "wp"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002017",
+      "priceUsd": "1.0020",
+      "liquidity": {
+        "base": 139.1328,
+        "quote": 2028.7445,
+        "usd": 2168.15
+      },
+      "pairCreatedAt": 1674184768000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "8kvGYkeqDnb21b2BnSb9BMS2gJSfqF91EhpvAtzExCfM",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002126",
+      "priceUsd": "1.0021",
+      "liquidity": {
+        "base": 610.7296,
+        "quote": 999.1254,
+        "usd": 1611.15
+      },
+      "pairCreatedAt": 1712616388000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "4yTQ8Z4wCp6y7ca5ZkPBZ6haNLfXPUXjzVzbnvvqbQcn",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.01440",
+      "priceUsd": "0.9995",
+      "liquidity": {
+        "base": 23.4722,
+        "quote": 5.3019,
+        "usd": 391.36
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "4bg8UDLXEm4T6pCyoW7iUizAz9HMoxhTAtMquSXigFZu",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002304",
+      "priceUsd": "1.0023",
+      "liquidity": {
+        "base": 124.4288,
+        "quote": 453.8342,
+        "usd": 578.54
+      },
+      "pairCreatedAt": 1715973763000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "FcjjezXg8afwpVWxdVcXALLkqSXAAoGLuWaS6LmtNoZG",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002209",
+      "priceUsd": "1.0022",
+      "liquidity": {
+        "base": 378.5364,
+        "quote": 466.8527,
+        "usd": 846.22
+      },
+      "pairCreatedAt": 1717802485000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "uGv7HFB1cKuxoAb36g65BzK8UVorpAR7SfrkwDZRzdJ",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002223",
+      "priceUsd": "1.0022",
+      "liquidity": {
+        "base": 30.4468,
+        "quote": 64.05923,
+        "usd": 94.57
+      },
+      "pairCreatedAt": 1712653306000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "fluxbeam",
+      "pairAddress": "Ca9WmrAFEwPpC9Mzes5oQpKf2v3cciviYQ5KLGsRqUqs",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.001447",
+      "priceUsd": "1.0014",
+      "liquidity": {
+        "base": 115.3976,
+        "quote": 112.7604,
+        "usd": 228.32
+      },
+      "pairCreatedAt": 1701957077000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pancakeswap",
+      "pairAddress": "3M5vVLykKgNMr5FXucLKkRiyE5uq2msEfvD2haYH1rhw",
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+        "name": "Pudgy Penguins",
+        "symbol": "PENGU"
+      },
+      "priceNative": "239.4585",
+      "priceUsd": "1.0030",
+      "liquidity": {
+        "base": 0.2637,
+        "quote": 75621,
+        "usd": 317.04
+      }
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "4VMLhfwVcFL5iLph2dEqUofzy6qHmK13gSpPtN52bXFm",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.01195",
+      "priceUsd": "1.011",
+      "liquidity": {
+        "base": 21.7886,
+        "quote": 21.9538,
+        "usd": 44
+      },
+      "pairCreatedAt": 1713589112000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "4N41hUkrayX6duXJH8oYzybVpH3mcbG8TzoM14VXmTmh",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "quoteToken": {
+        "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        "name": "USDT",
+        "symbol": "USDT"
+      },
+      "priceNative": "1.002420",
+      "priceUsd": "1.0024",
+      "liquidity": {
+        "base": 23.5693,
+        "quote": 24.2976,
+        "usd": 47.92
+      },
+      "pairCreatedAt": 1712984304000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pumpswap",
+      "pairAddress": "B4Cp45PGifVM5FAXfh6AeV8QZ3eUNQnqGBw7KuC7MHnB",
+      "baseToken": {
+        "address": "DtcicPCKTKeAh7TDEzTym3hXeoHAoMiBdYJhMYxZpump",
+        "name": "Cartoon Money",
+        "symbol": "CBUCKS"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.003810",
+      "priceUsd": "0.003810",
+      "liquidity": {
+        "base": 28816385,
+        "quote": 108295,
+        "usd": 218110.29
+      },
+      "pairCreatedAt": 1791311393000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pumpswap",
+      "pairAddress": "7CNC9gGegzEfFK8fLXiYUhdtMEeFPQZoND56U1Mxhnor",
+      "baseToken": {
+        "address": "FVzqGqRmr4UH1Fif6dewmwbJ1p4YUZCu8dcw4Efopump",
+        "name": "Hogecoin",
+        "symbol": "HOGE"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.0008143",
+      "priceUsd": "0.0008143",
+      "liquidity": {
+        "base": 71384624,
+        "quote": 55048,
+        "usd": 113181.57
+      },
+      "pairCreatedAt": 1794725770000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "meteora",
+      "pairAddress": "6qz7THwQvcjF3HyDGLuKaLBUk6EyJKeZXZMWLAeiwfjd",
+      "labels": [
+        "DLMM"
+      ],
+      "baseToken": {
+        "address": "BPxxfRCXkUVhig4HS1Lh7kZqV6SPJhzfEk4x6fVBjPCy",
+        "name": "Backpack",
+        "symbol": "BP"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.8335",
+      "priceUsd": "0.8335",
+      "liquidity": {
+        "base": 2236150,
+        "quote": 721217,
+        "usd": 2585190.06
+      },
+      "pairCreatedAt": 1774269669000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "HnhpJPJgBG2KwniMTNW8cVBHvk1hFog3RC3kjnyc23tD",
+      "labels": [
+        "CLMM"
+      ],
+      "baseToken": {
+        "address": "CARDSccUMFKoPRZxt5vt3ksUbxEFEcnZ3H2pd3dKxYjp",
+        "name": "Collector Crypt",
+        "symbol": "CARDS"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.1532",
+      "priceUsd": "0.1532",
+      "liquidity": {
+        "base": 14601365,
+        "quote": 1016060,
+        "usd": 3254304.82
+      },
+      "pairCreatedAt": 1756493686000
+    },
+    {
+      "chainId": "solana",
+      "dexId": "pumpswap",
+      "pairAddress": "2uF4Xh61rDwxnG9woyxsVQP7zuA6kLFpb3NvnRQeoiSd",
+      "baseToken": {
+        "address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+        "name": "Pump",
+        "symbol": "PUMP"
+      },
+      "quoteToken": {
+        "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "name": "USD Coin",
+        "symbol": "USDC"
+      },
+      "priceNative": "0.002299",
+      "priceUsd": "0.002299",
+      "liquidity": {
+        "base": 3726255941,
+        "quote": 8592825,
+        "usd": 17159872.51
+      },
+      "pairCreatedAt": 1752512149000
+    }
+  ]
+}

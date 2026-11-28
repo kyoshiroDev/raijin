@@ -1,0 +1,8 @@
+/* Feuille complète : mêmes couches que theme.css, utilitaires de TOUS les fichiers de apps/web et libs/web
+   (admin et /_design compris). Chargée par apps/web à l'entrée de l'espace admin ou de /_design, après la
+   feuille initiale : sur-ensemble dans le même ordre, elle ne change rien au rendu des autres écrans
+   (docs/ARCHITECTURE.md §10.6, G5). */
+@import './theme-layers.css';
+
+@source '../../../../../apps/web/src';
+@source '../../..';

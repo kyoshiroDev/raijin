@@ -1,0 +1,375 @@
+<div class="flex flex-col gap-12 pb-8 md:gap-16">
+  <header class="flex flex-col gap-2">
+    <p class="text-label font-semibold uppercase tracking-widest text-ink-muted">Référence interne · dev</p>
+    <h1 class="font-display text-h2 text-ink md:text-h1">Design — Raijin</h1>
+    <p class="max-w-2xl text-body text-ink-muted">
+      Tous les composants de base de Raijin dans tous leurs états. Tokens de la charte uniquement, mobile d’abord.
+    </p>
+  </header>
+
+  <!-- Marque -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-brand">
+    <h2 id="ds-brand" class="font-display text-h3 text-ink md:text-h2">Marque et couleurs</h2>
+    <div class="grid gap-4 md:grid-cols-2">
+      <rj-card>
+        <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Logo</p>
+        <div class="flex flex-wrap items-center gap-6">
+          <rj-logo variant="wordmark" />
+          <rj-logo variant="mark" />
+        </div>
+        <p class="text-body-sm text-ink-muted">Le header passe au symbole seul sous 360 px.</p>
+      </rj-card>
+      <rj-card>
+        <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Palette</p>
+        <ul class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3">
+          @for (swatch of swatches; track swatch.name) {
+            <li class="flex min-w-0 items-center gap-2">
+              <span class="size-6 shrink-0 rounded-sm border border-line" [class]="swatch.className"></span>
+              <span class="tabular min-w-0 break-words text-data text-ink-muted">{{ swatch.name }}</span>
+            </li>
+          }
+        </ul>
+      </rj-card>
+    </div>
+  </section>
+
+  <!-- Typographie -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-type">
+    <h2 id="ds-type" class="font-display text-h3 text-ink md:text-h2">Typographie</h2>
+    <rj-card>
+      <div class="flex flex-col gap-4">
+        <p class="font-display text-h2 text-ink sm:text-h1 lg:text-display">Vérifie avant de signer.</p>
+        <p class="font-display text-h2 text-ink">Titre h2 · Space Grotesk</p>
+        <p class="font-display text-h3 text-ink">Titre h3 · Space Grotesk</p>
+        <p class="max-w-2xl text-body text-ink">
+          Texte courant en Inter. Raijin dit ce qu’il a vérifié et ce qu’il n’a pas pu vérifier, sans jargon inutile.
+        </p>
+        <p class="text-body-sm text-ink-muted">Texte secondaire · body-sm</p>
+        <div class="flex flex-wrap items-end gap-x-8 gap-y-4">
+          <div class="flex flex-col gap-1">
+            <span class="text-label font-semibold uppercase tracking-wider text-ink-muted">Liquidité</span>
+            <span class="tabular text-metric text-ink" title="1 234 567 $">1,2 M$</span>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-label font-semibold uppercase tracking-wider text-ink-muted">Top 10 holders</span>
+            <span class="tabular text-metric text-ink">41,3 %</span>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-label font-semibold uppercase tracking-wider text-ink-muted">Market cap</span>
+            <span class="tabular text-metric text-ink" title="340 120 $">340 k$</span>
+          </div>
+        </div>
+      </div>
+    </rj-card>
+  </section>
+
+  <!-- Boutons -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-buttons">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-buttons" class="font-display text-h3 text-ink md:text-h2">Boutons</h2>
+      <p class="text-body-sm text-ink-muted">Un seul bouton jaune par écran. Halo au survol et au focus.</p>
+    </div>
+    <rj-card>
+      <div class="flex flex-col gap-6">
+        <div class="flex flex-col gap-3">
+          <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Principal</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" rjButton="primary" icon="analyse">Analyser</button>
+            <button type="button" rjButton="primary" [loading]="true">Analyse en cours</button>
+            <button type="button" rjButton="primary" [disabled]="true">Analyser</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-3">
+          <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Secondaire</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" rjButton="secondary">Suivre</button>
+            <button type="button" rjButton="secondary" icon="copy">Copier le lien</button>
+            <button type="button" rjButton="secondary" [loading]="true">Envoi</button>
+            <button type="button" rjButton="secondary" [disabled]="true">Suivre</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-3">
+          <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Fantôme</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" rjButton="ghost">Annuler</button>
+            <button type="button" rjButton="ghost" icon="info">En savoir plus</button>
+            <button type="button" rjButton="ghost" [disabled]="true">Annuler</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-3">
+          <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Danger (action destructive)</p>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" rjButton="danger" icon="trash">Supprimer le compte</button>
+            <button type="button" rjButton="danger" [disabled]="true">Supprimer définitivement</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-3">
+          <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Grand, pleine largeur sur mobile</p>
+          <div class="sm:max-w-xs">
+            <button type="button" rjButton="secondary" size="lg" [block]="true" icon="suivis">Voir mes suivis</button>
+          </div>
+        </div>
+      </div>
+    </rj-card>
+  </section>
+
+  <!-- Verdicts -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-verdicts">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-verdicts" class="font-display text-h3 text-ink md:text-h2">Verdicts</h2>
+      <p class="text-body-sm text-ink-muted">Toujours une icône et un mot, jamais la couleur seule.</p>
+    </div>
+    <rj-card>
+      <div class="flex flex-col gap-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <rj-verdict-badge verdict="safe" />
+          <rj-verdict-badge verdict="warn" />
+          <rj-verdict-badge verdict="danger" />
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <rj-verdict-badge verdict="safe" size="lg" />
+          <rj-verdict-badge verdict="warn" size="lg" />
+          <rj-verdict-badge verdict="danger" size="lg" />
+        </div>
+        <ul class="flex flex-col gap-3 border-t border-line pt-5">
+          <li class="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <rj-verdict-badge verdict="danger" />
+            <p class="text-body-sm text-ink">L’autorité de mint est encore active. Le créateur peut imprimer des tokens à volonté.</p>
+          </li>
+          <li class="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <rj-verdict-badge verdict="warn" />
+            <p class="text-body-sm text-ink">62 % de l’offre est dans 5 wallets.</p>
+          </li>
+        </ul>
+      </div>
+    </rj-card>
+  </section>
+
+  <!-- Cartes -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-cards">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-cards" class="font-display text-h3 text-ink md:text-h2">Cartes</h2>
+      <p class="text-body-sm text-ink-muted">Même hauteur dans une grille, pied de carte poussé en bas.</p>
+    </div>
+    <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      @for (token of tokens; track token.mint) {
+        <li class="min-w-0">
+          <rj-card [interactive]="true">
+            <div class="flex items-start justify-between gap-3">
+              <h3 class="min-w-0 font-display text-h3 text-ink line-clamp-2" [title]="token.name">{{ token.name }}</h3>
+              <rj-verdict-badge [verdict]="token.verdict" />
+            </div>
+            <ul class="flex flex-col gap-1.5">
+              @for (fact of token.facts; track fact) {
+                <li class="text-body-sm text-ink-muted">{{ fact }}</li>
+              }
+            </ul>
+            <div rjCardFooter class="flex items-center justify-between gap-3 border-t border-line pt-4">
+              <rj-address-chip [address]="token.mint" label="Adresse du token" />
+              <span class="shrink-0 text-body-sm text-ink-muted">il y a 2 min</span>
+            </div>
+          </rj-card>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <!-- Champs -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-inputs">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-inputs" class="font-display text-h3 text-ink md:text-h2">Champs de saisie</h2>
+      <p class="text-body-sm text-ink-muted">16 px minimum, bouton « Coller » en un tap, repli si l’accès est refusé.</p>
+    </div>
+    <rj-card>
+      <div class="grid gap-6 md:grid-cols-2">
+        <rj-input-field
+          label="Adresse du token"
+          placeholder="Colle une adresse Solana"
+          hint="Adresse du mint, 32 à 44 caractères."
+          inputmode="text"
+          enterkeyhint="search"
+          [mono]="true"
+          [pasteable]="true"
+          [(value)]="address"
+        />
+        <rj-input-field label="Adresse remplie" [mono]="true" [pasteable]="true" [(value)]="filledAddress" />
+        <rj-input-field
+          label="Adresse invalide"
+          [mono]="true"
+          [pasteable]="true"
+          error="Ce n’est pas une adresse Solana valide."
+          [(value)]="invalidAddress"
+        />
+        <rj-input-field label="E-mail" type="email" inputmode="email" autocomplete="email" placeholder="toi@exemple.fr" />
+        <rj-input-field label="Champ désactivé" placeholder="Indisponible" [disabled]="true" [pasteable]="true" />
+        <rj-input-field
+          label="Mot de passe"
+          type="password"
+          autocomplete="new-password"
+          hint="Au moins 12 caractères."
+          [revealable]="true"
+          [required]="true"
+        />
+        <rj-checkbox [required]="true">J’accepte les conditions d’utilisation.</rj-checkbox>
+        <rj-checkbox error="Accepte les conditions pour continuer.">Case en erreur</rj-checkbox>
+      </div>
+      <div class="flex flex-col divide-y divide-line">
+        <rj-switch label="Alertes par e-mail" description="Interrupteur contrôlé, état écrit en toutes lettres." [checked]="switchOn()" (checkedChange)="switchOn.set($event)" />
+        <rj-switch label="Notifications push" description="Désactivé : réservé au plan Pro." [disabled]="true" />
+      </div>
+    </rj-card>
+  </section>
+
+  <!-- Adresses -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-address">
+    <h2 id="ds-address" class="font-display text-h3 text-ink md:text-h2">Adresses</h2>
+    <rj-card>
+      <div class="flex flex-wrap items-center gap-3">
+        <rj-address-chip [address]="sampleMint" />
+        <rj-address-chip [address]="sampleMint" [head]="6" [tail]="6" />
+        <rj-address-chip address="So11111111111111111111111111111111111111112" label="Adresse du wSOL" />
+      </div>
+      <p class="text-body-sm text-ink-muted">Mono, tronquée au milieu, valeur complète au survol et lue par les lecteurs d’écran.</p>
+    </rj-card>
+  </section>
+
+  <!-- Bottom sheet -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-sheet">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-sheet" class="font-display text-h3 text-ink md:text-h2">Bottom sheet</h2>
+      <p class="text-body-sm text-ink-muted">Monte du bas sur mobile ; modale ou panneau latéral dès 1024 px.</p>
+    </div>
+    <rj-card>
+      <div class="flex flex-wrap gap-3">
+        <button type="button" rjButton="secondary" (click)="modalOpen.set(true)">Ouvrir (modale)</button>
+        <button type="button" rjButton="secondary" (click)="panelOpen.set(true)">Ouvrir (panneau)</button>
+      </div>
+    </rj-card>
+    <rj-bottom-sheet
+      title="Ajouter aux suivis"
+      description="Raijin te prévient si le verdict de ce token change."
+      [(open)]="modalOpen"
+    >
+      <div class="flex flex-col gap-4">
+        <rj-address-chip [address]="sampleMint" label="Adresse du token" />
+        <p class="text-body-sm text-ink-muted">
+          Tu recevras une alerte si la LP se déverrouille, si l’autorité de mint est réactivée ou si la concentration des holders
+          grimpe.
+        </p>
+      </div>
+      <ng-container rjSheetFooter>
+        <button type="button" rjButton="ghost" (click)="modalOpen.set(false)">Annuler</button>
+        <button type="button" rjButton="secondary" (click)="modalOpen.set(false)">Suivre ce token</button>
+      </ng-container>
+    </rj-bottom-sheet>
+    <rj-bottom-sheet title="Détail du verdict" desktop="panel" [(open)]="panelOpen">
+      <ul class="flex flex-col gap-3">
+        <li class="flex items-center justify-between gap-3"><span>Autorité de mint</span><rj-verdict-badge verdict="safe" /></li>
+        <li class="flex items-center justify-between gap-3"><span>Autorité de gel</span><rj-verdict-badge verdict="safe" /></li>
+        <li class="flex items-center justify-between gap-3"><span>Concentration</span><rj-verdict-badge verdict="warn" /></li>
+      </ul>
+      <p class="mt-4 text-body-sm text-ink-muted">Le risque zéro n’existe pas : ce verdict n’est pas un conseil en investissement.</p>
+    </rj-bottom-sheet>
+  </section>
+
+  <!-- Navigation -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-nav">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-nav" class="font-display text-h3 text-ink md:text-h2">Navigation</h2>
+      <p class="text-body-sm text-ink-muted">Barre d’onglets sous 1024 px, barre latérale de 240 px repliable à 72 px au-delà.</p>
+    </div>
+    <div class="flex flex-col gap-3">
+      <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Barre d’onglets</p>
+      <div class="max-w-md">
+        <rj-tab-bar [items]="navItems" mode="inline" label="Aperçu de la barre d’onglets" />
+      </div>
+    </div>
+    <div class="flex flex-col gap-3">
+      <p class="text-label font-semibold uppercase tracking-wider text-ink-muted">Barre latérale (dépliée · repliée)</p>
+      <div class="flex flex-wrap items-stretch gap-4">
+        <rj-sidebar [items]="navItems" [secondaryItems]="secondaryNav" mode="inline" label="Aperçu de la barre latérale dépliée" />
+        <rj-sidebar
+          [items]="navItems"
+          [secondaryItems]="secondaryNav"
+          mode="inline"
+          label="Aperçu de la barre latérale repliée"
+          [(collapsed)]="sidebarCollapsed"
+        />
+      </div>
+    </div>
+  </section>
+
+  <!-- Chargement -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-skeleton">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-skeleton" class="font-display text-h3 text-ink md:text-h2">Chargement</h2>
+      <p class="text-body-sm text-ink-muted">Skeleton à la forme du contenu, jamais de spinner seul.</p>
+    </div>
+    <ul class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Chargement des tokens">
+      @for (i of [1, 2, 3]; track i) {
+        <li class="min-w-0">
+          <rj-card>
+            <div class="flex items-start justify-between gap-3">
+              <rj-skeleton class="h-6 w-2/3" />
+              <rj-skeleton class="h-7 w-20" />
+            </div>
+            <div class="flex flex-col gap-2">
+              <rj-skeleton class="h-4 w-full" />
+              <rj-skeleton class="h-4 w-4/5" />
+            </div>
+            <div rjCardFooter class="flex items-center justify-between gap-3 border-t border-line pt-4">
+              <rj-skeleton class="h-11 w-36" shape="block" />
+              <rj-skeleton class="h-4 w-16" />
+            </div>
+          </rj-card>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <!-- États -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-states">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-states" class="font-display text-h3 text-ink md:text-h2">États vide et erreur</h2>
+      <p class="text-body-sm text-ink-muted">Rai bravo pour le vide, Rai alerte pour l’erreur (une seule apparition par écran réel).</p>
+    </div>
+    <div class="grid gap-4 md:grid-cols-2">
+      <rj-card>
+        <rj-empty-state
+          title="Aucun token suivi"
+          description="Analyse un token puis touche « Suivre » : Raijin te prévient si son verdict change."
+        >
+          <button type="button" rjButton="secondary" icon="analyse">Analyser un token</button>
+        </rj-empty-state>
+      </rj-card>
+      <rj-card>
+        <rj-error-state (retry)="toast('info')" />
+      </rj-card>
+    </div>
+  </section>
+
+  <!-- Toasts -->
+  <section class="flex flex-col gap-4" aria-labelledby="ds-toasts">
+    <div class="flex flex-col gap-1">
+      <h2 id="ds-toasts" class="font-display text-h3 text-ink md:text-h2">Toasts</h2>
+      <p class="text-body-sm text-ink-muted">Au-dessus de la barre d’onglets sur mobile, en bas à droite sur desktop.</p>
+    </div>
+    <rj-card>
+      <div class="flex max-w-md flex-col gap-2">
+        <rj-toast message="Analyse lancée : Raijin vérifie le mint, la LP et les holders." kind="info" />
+        <rj-toast message="Token ajouté à tes suivis." kind="success" />
+        <rj-toast message="Analyse impossible pour l’instant. Réessaie dans un moment." kind="error" />
+      </div>
+      <div class="flex flex-wrap gap-3 border-t border-line pt-4">
+        <button type="button" rjButton="ghost" (click)="toast('info')">Toast info</button>
+        <button type="button" rjButton="ghost" (click)="toast('success')">Toast succès</button>
+        <button type="button" rjButton="ghost" (click)="toast('error')">Toast erreur</button>
+      </div>
+    </rj-card>
+  </section>
+
+  <p class="max-w-3xl border-t border-line pt-6 text-body-sm text-ink-muted">
+    Raijin Shield fournit des analyses de sécurité à titre informatif. Ce n’est pas un conseil en investissement. Les memecoins
+    sont extrêmement risqués : ne mise que ce que tu peux perdre.
+  </p>
+</div>

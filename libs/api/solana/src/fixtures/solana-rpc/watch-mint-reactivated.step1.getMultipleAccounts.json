@@ -1,0 +1,52 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Autorité de mint de nouveau active.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "6kA3B4uMv3vuePwmUcH5ca3xWtV3KnfHzBfzTtWziG83"
+      ],
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472400001
+      },
+      "value": [
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "decimals": 6,
+                "freezeAuthority": null,
+                "isInitialized": true,
+                "mintAuthority": "CiFRipHDezkK8F92zyzvHSyLftn5rVbyqBQTv1AGYh42",
+                "supply": "1000000000000"
+              },
+              "type": "mint"
+            },
+            "program": "spl-token",
+            "space": 82
+          },
+          "executable": false,
+          "lamports": 1461600,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 0,
+          "space": 82
+        }
+      ]
+    }
+  }
+}

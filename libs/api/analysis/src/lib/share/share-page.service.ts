@@ -1,0 +1,279 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { APP_CONFIG, errorCode, GLOBAL_PREFIX, type AppConfig } from '@raijin/api-core';
+import { ANALYSIS_DISCLAIMER, VERDICT_LABELS, type AnalysisResult } from '@raijin/shared-contracts';
+import { sanitizeUntrustedText, truncateMiddle } from '@raijin/shared-util';
+import { readFile, stat } from 'node:fs/promises';
+import { AnalysisService } from '../analysis/analysis.service';
+import { OG_HEIGHT, OG_WIDTH } from '../og/og-template';
+
+/** Échappement HTML (texte et valeurs d'attributs entre guillemets doubles). */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Balises remplacées dans l'`index.html` du build web (titre, description, OG, Twitter, canonique). */
+const REPLACED_TAGS = [
+  /<title\b[^>]*>[\s\S]*?<\/title>\s*/gi,
+  /<meta\s+[^>]*name=["']description["'][^>]*>\s*/gi,
+  /<meta\s+[^>]*property=["']og:[^"']*["'][^>]*>\s*/gi,
+  /<meta\s+[^>]*name=["']twitter:[^"']*["'][^>]*>\s*/gi,
+  /<link\s+[^>]*rel=["']canonical["'][^>]*>\s*/gi,
+];
+
+/** Fermeture de `<head>`, insensible à la casse (même motif pour la validation du gabarit et `injectMeta`). */
+const HEAD_CLOSE = /<\/head>/i;
+
+export interface SharePageMeta {
+  readonly title: string;
+  readonly description: string;
+  readonly canonical: string;
+  readonly image: string;
+  readonly imageAlt: string;
+}
+
+/**
+ * Page publique `/t/<mint>` pour les robots des réseaux sociaux (docs/ARCHITECTURE.md §9.7) :
+ * `index.html` du build web (`WEB_INDEX_HTML_PATH`) avec titre, description, `og:*`, `twitter:*` et
+ * canonique injectés, toutes les valeurs échappées. Le nom et le symbole du token, non fiables,
+ * n'apparaissent qu'entre guillemets, marqués « non vérifié ». Angular démarre ensuite normalement.
+ */
+@Injectable()
+export class SharePageService {
+  private readonly logger = new Logger('SharePage');
+  /** `index.html` en mémoire, relu dès que sa date de modification change (nouveau build web). */
+  private template: { path: string; mtimeMs: number; html: string } | null = null;
+
+  constructor(
+    private readonly analyses: AnalysisService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {}
+
+  /** HTML de la page publique d'un mint (`null` : mint invalide, page générique). */
+  async render(mint: string | null): Promise<string> {
+    const analysis = mint ? await this.analyses.findLatest(mint) : null;
+    const template = await this.loadTemplate(mint);
+    let html = template.html;
+    // Verdict statique dans `<rj-root>` (§10.7) : seulement avec une analyse publiée et le gabarit du build web.
+    if (mint && analysis && template.fromBuild) {
+      const injected = injectStaticVerdict(html, renderStaticVerdict(analysis, mint));
+      if (injected === null) this.logger.warn('Balise <rj-root> introuvable dans index.html, verdict statique non injecté');
+      else html = injected;
+    }
+    return injectMeta(html, this.meta(mint, analysis));
+  }
+
+  meta(mint: string | null, analysis: AnalysisResult | null): SharePageMeta {
+    const app = this.config.appUrl;
+    const image = `${this.config.apiUrl}/${GLOBAL_PREFIX}/og/${mint ?? 'raijin'}.png`;
+    if (!mint) {
+      return {
+        title: 'Analyse de token Solana · Raijin Shield',
+        description: `Raijin Shield vérifie les signaux de rug d’un token Solana avant que tu signes. ${ANALYSIS_DISCLAIMER}`,
+        canonical: `${app}/analyse`,
+        image,
+        imageAlt: 'Raijin Shield, analyse anti-rug des tokens Solana',
+      };
+    }
+    const short = truncateMiddle(mint, 4, 4);
+    if (!analysis) {
+      return {
+        title: `Token ${short} · Raijin Shield`,
+        description: `Lance l’analyse anti-rug de ce token Solana avec Raijin Shield. ${ANALYSIS_DISCLAIMER}`,
+        canonical: `${app}/t/${mint}`,
+        image,
+        imageAlt: `Analyse Raijin Shield du token ${short}`,
+      };
+    }
+    const label = VERDICT_LABELS[analysis.verdict];
+    const declared = analysis.token.symbol ?? analysis.token.name;
+    const declaredPart = declared ? ` Symbole déclaré « ${declared} » (non vérifié).` : '';
+    const description = `Verdict Raijin : ${label}.${declaredPart} ${analysis.explanation} ${ANALYSIS_DISCLAIMER}`;
+    return {
+      title: `${label} · token ${short} · Raijin Shield`,
+      description: Array.from(description).slice(0, 300).join(''),
+      canonical: `${app}/t/${mint}`,
+      image,
+      imageAlt: `Verdict Raijin Shield : ${label} pour le token ${short}`,
+    };
+  }
+
+  /**
+   * Gabarit du build web : un `stat` par requête (peu coûteux), relecture seulement si le fichier a
+   * changé. Sans cela, après un nouveau build les noms des chunks changent et `/t/<mint>` resterait
+   * blanche jusqu'au redémarrage de l'API.
+   */
+  private async loadTemplate(mint: string | null): Promise<{ html: string; fromBuild: boolean }> {
+    const path = this.config.analysis.webIndexHtmlPath;
+    const fallback = { html: minimalHtml(this.config.appUrl, mint), fromBuild: false };
+    if (!path) return fallback;
+    try {
+      const { mtimeMs } = await stat(path);
+      if (!this.template || this.template.path !== path || this.template.mtimeMs !== mtimeMs) {
+        this.template = { path, mtimeMs, html: await readFile(path, 'utf8') };
+      }
+      return HEAD_CLOSE.test(this.template.html) ? { html: this.template.html, fromBuild: true } : fallback;
+    } catch (error) {
+      this.template = null;
+      this.logger.warn(`index.html du build web illisible, HTML minimal servi (${errorCode(error)})`);
+      return fallback;
+    }
+  }
+}
+
+/** Longueur maximale (points de code) du symbole ou du nom déclaré dans le verdict statique. */
+const STATIC_TOKEN_MAX = 32;
+
+const STATIC_DATE = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const LOGO_SHIELD = 'M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z';
+const LOGO_BOLT = 'M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z';
+
+/**
+ * Logo Raijin Shield en ligne, comme `RjLogo` en mode `auto` (géométrie de libs/brand/logos/raijin-mark-color.svg
+ * et raijin-wordmark-color.svg) : symbole seul sous 360 px, logotype complet « Raijin SHIELD » au-delà (bascule
+ * en CSS, classes `rj-static__logo--mark` / `--wordmark`). Décoratif : le lien qui le porte est nommé.
+ * Couleurs et police par classes (tokens), aucun attribut `style`.
+ */
+const STATIC_LOGO =
+  `<svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false">` +
+  `<path class="rj-static__logo-shield" d="${LOGO_SHIELD}"/><path class="rj-static__logo-bolt" d="${LOGO_BOLT}"/></svg>` +
+  `<svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false">` +
+  `<path class="rj-static__logo-shield" d="${LOGO_SHIELD}"/><path class="rj-static__logo-bolt" d="${LOGO_BOLT}"/>` +
+  `<text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text>` +
+  `<text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>`;
+
+/**
+ * Verdict statique de `/t/<mint>` (docs/ARCHITECTURE.md §10.7), injecté dans `<rj-root>` : lisible sans
+ * Angular, remplacé au démarrage de l'app. En-tête minimal (logo officiel, lien vers l'accueil) puis
+ * `<main data-rj-static="t">`. Toute valeur est échappée ; symbole ou nom (non fiables)
+ * nettoyés (contrôles, invisibles, bidi), tronqués à 32 caractères, entre « » et marqués non vérifiés.
+ * Aucun attribut `style`, aucun `on*`, aucun script, aucune URL issue des données du token.
+ */
+export function renderStaticVerdict(analysis: AnalysisResult, mint: string): string {
+  const e = (value: string) => escapeHtml(value);
+  const declared = sanitizeUntrustedText(analysis.token.symbol ?? analysis.token.name ?? '', STATIC_TOKEN_MAX);
+  const date = new Date(analysis.analyzedAt);
+  const valid = !Number.isNaN(date.getTime());
+  const lines = [
+    `<header class="rj-static__header">`,
+    `  <div class="rj-static__bar">`,
+    `    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">`,
+    `      ${STATIC_LOGO}`,
+    `    </a>`,
+    `  </div>`,
+    `</header>`,
+    `<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">`,
+    `  <p class="rj-static__eyebrow">Analyse partagée</p>`,
+    `  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>`,
+    `  <p class="rj-static__verdict" data-verdict="${e(analysis.verdict)}" role="status" aria-label="Verdict : ${e(VERDICT_LABELS[analysis.verdict])}">${e(VERDICT_LABELS[analysis.verdict])}</p>`,
+    ...(declared ? [`  <p class="rj-static__token">Symbole déclaré « ${e(declared)} » (non vérifié)</p>`] : []),
+    `  <p class="rj-static__explanation">${e(analysis.explanation)}</p>`,
+    ...(valid
+      ? [`  <p class="rj-static__date">Analyse du <time datetime="${e(date.toISOString())}">${e(STATIC_DATE.format(date))}</time></p>`]
+      : []),
+    ...(analysis.degraded ? [`  <p class="rj-static__note">Résultat partiel : une source était indisponible.</p>`] : []),
+    `  <nav class="rj-static__actions" aria-label="Actions">`,
+    `    <a class="rj-static__link" href="/analyse/${e(mint)}">Réanalyser ce token</a>`,
+    `    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>`,
+    `  </nav>`,
+    `  <p class="rj-static__disclaimer" data-disclaimer>${e(ANALYSIS_DISCLAIMER)}</p>`,
+    `</main>`,
+  ];
+  return lines.join('\n');
+}
+
+/** Masque les commentaires HTML (espaces de même longueur) : les index restent ceux du HTML d'origine. */
+function maskComments(html: string): string {
+  return html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => ' '.repeat(comment.length));
+}
+
+/**
+ * Remplace le contenu de la première balise `<rj-root>` (insensible à la casse) située après `<body`
+ * (début du document si `<body` est absent), hors commentaires HTML, par `content`. La forme
+ * auto-fermante `<rj-root/>` est réécrite en `<rj-root>content</rj-root>`.
+ * `null` si la balise est introuvable : la page est alors servie sans verdict statique.
+ */
+export function injectStaticVerdict(html: string, content: string): string | null {
+  const masked = maskComments(html);
+  const bodyIndex = masked.search(/<body\b/i);
+  const from = bodyIndex === -1 ? 0 : bodyIndex;
+  const scope = masked.slice(from);
+  const open = /<rj-root(?=[\s/>])([^>]*?)(\/?)>/i.exec(scope);
+  if (!open) return null;
+  const openStart = from + open.index;
+  const openEnd = openStart + open[0].length;
+  // Concaténation plutôt que `String.replace` : `content` pourrait contenir des motifs `$&`.
+  if (open[2] === '/') {
+    const nameEnd = openStart + 1 + 'rj-root'.length;
+    const tagName = html.slice(openStart + 1, nameEnd);
+    const attributes = html.slice(nameEnd, openEnd - '/>'.length).replace(/\s+$/, '');
+    const opening = `<${tagName}${attributes}>`;
+    return `${html.slice(0, openStart)}${opening}${content}</${tagName}>${html.slice(openEnd)}`;
+  }
+  const close = /<\/rj-root\s*>/i.exec(masked.slice(openEnd));
+  if (!close) return null;
+  const closeStart = openEnd + close.index;
+  return `${html.slice(0, openEnd)}${content}${html.slice(closeStart)}`;
+}
+
+/** HTML minimal (sans build web) : lien vers l'app. */
+export function minimalHtml(appUrl: string, mint: string | null): string {
+  const href = escapeHtml(mint ? `${appUrl}/t/${mint}` : `${appUrl}/analyse`);
+  return `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <main>
+      <h1>Raijin Shield</h1>
+      <p><a href="${href}">Ouvrir l’analyse dans Raijin</a></p>
+    </main>
+  </body>
+</html>
+`;
+}
+
+/** Retire les balises existantes et insère les nôtres (valeurs échappées) avant `</head>`. */
+export function injectMeta(html: string, meta: SharePageMeta): string {
+  let output = html;
+  for (const pattern of REPLACED_TAGS) output = output.replace(pattern, '');
+  const e = (value: string) => escapeHtml(value);
+  const tags = [
+    `<title>${e(meta.title)}</title>`,
+    `<meta name="description" content="${e(meta.description)}" />`,
+    `<link rel="canonical" href="${e(meta.canonical)}" />`,
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Raijin Shield" />`,
+    `<meta property="og:locale" content="fr_FR" />`,
+    `<meta property="og:title" content="${e(meta.title)}" />`,
+    `<meta property="og:description" content="${e(meta.description)}" />`,
+    `<meta property="og:url" content="${e(meta.canonical)}" />`,
+    `<meta property="og:image" content="${e(meta.image)}" />`,
+    `<meta property="og:image:type" content="image/png" />`,
+    `<meta property="og:image:width" content="${OG_WIDTH}" />`,
+    `<meta property="og:image:height" content="${OG_HEIGHT}" />`,
+    `<meta property="og:image:alt" content="${e(meta.imageAlt)}" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:title" content="${e(meta.title)}" />`,
+    `<meta name="twitter:description" content="${e(meta.description)}" />`,
+    `<meta name="twitter:image" content="${e(meta.image)}" />`,
+    `<meta name="twitter:image:alt" content="${e(meta.imageAlt)}" />`,
+  ];
+  const block = `    ${tags.join('\n    ')}\n  `;
+  const index = output.search(HEAD_CLOSE);
+  return `${output.slice(0, index)}${block}${output.slice(index)}`;
+}

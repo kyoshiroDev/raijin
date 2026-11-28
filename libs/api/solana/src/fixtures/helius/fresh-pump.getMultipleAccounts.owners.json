@@ -1,0 +1,58 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Courbe de liaison détenue par le programme pump.fun (RugCheck knownAccounts : « Pump Fun », AMM).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+        "HbPR3bpDR8WxsqgBu6QUAZcEXhUJrdChvBt7UWyz8M82",
+        "G9ELzG3Gg6HsGmEK7xd3CWrany9haheuAiRt6jWL9D2M"
+      ],
+      {
+        "encoding": "base64",
+        "dataSlice": {
+          "offset": 0,
+          "length": 0
+        },
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "slot": 472388102
+      },
+      "value": [
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 8000000000,
+          "owner": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+          "space": 150
+        },
+        {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 120000000,
+          "owner": "11111111111111111111111111111111",
+          "space": 0
+        },
+        null
+      ]
+    }
+  }
+}

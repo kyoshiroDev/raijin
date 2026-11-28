@@ -1,0 +1,17 @@
+# Sauvegarde quotidienne des bases Raijin (infra/backup.sh). Installation : docs/DEPLOY.md A9.
+# Remplace /opt/raijin par le chemin du dépôt sur le VPS et « deploy » par ton utilisateur (membre du groupe docker).
+[Unit]
+Description=Raijin - sauvegarde Postgres (pg_dump, rotation 7 j, copie hors site)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=docker
+WorkingDirectory=/opt/raijin
+ExecStart=/opt/raijin/infra/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=1h

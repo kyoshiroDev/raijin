@@ -1,0 +1,12 @@
+/* Landing : même source de tokens que l'app (libs/brand/tokens.css). Voir docs/ARCHITECTURE.md §4. */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import '../../../../libs/web/ui/src/styles/theme-reset.css';
+@import '../../../../libs/brand/tokens.css';
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import '../../../../libs/web/ui/src/styles/extras.css';
+@import './landing.css' layer(components);
+
+@source '../';

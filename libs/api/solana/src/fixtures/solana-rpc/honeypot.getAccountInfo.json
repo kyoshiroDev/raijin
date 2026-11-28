@@ -1,0 +1,55 @@
+{
+  "recordedAt": "2026-11-22T03:21:33.040Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": {
+      "context": {
+        "apiVersion": "4.4.0",
+        "slot": 472388238
+      },
+      "value": {
+        "data": {
+          "parsed": {
+            "info": {
+              "decimals": 0,
+              "extensions": [
+                {
+                  "extension": "mintCloseAuthority",
+                  "state": {
+                    "closeAuthority": "8YoTSZsVfD7mnWa5LnhoWNRdxTnKXrvPRhgq36d68fjs"
+                  }
+                }
+              ],
+              "freezeAuthority": "8sLbNZoA1cfnvMJLPfp98ZLAnFSYCFApfJKMbiXNLwxj",
+              "isInitialized": true,
+              "mintAuthority": null,
+              "supply": "1"
+            },
+            "type": "mint"
+          },
+          "program": "spl-token-2022",
+          "space": 202
+        },
+        "executable": false,
+        "lamports": 1676400,
+        "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "rentEpoch": 18446744073709552000,
+        "space": 202
+      }
+    },
+    "id": 1
+  }
+}

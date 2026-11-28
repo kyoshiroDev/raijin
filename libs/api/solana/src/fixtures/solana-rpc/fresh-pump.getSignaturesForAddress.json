@@ -1,0 +1,46 @@
+{
+  "recordedAt": "2026-11-22T03:20:59.261Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getSignaturesForAddress",
+    "params": [
+      "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+      {
+        "limit": 1000,
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": [
+      {
+        "signature": "49Z6i1wNrTVN6BQE4U6hAsunmLaANbDXsaCmUnYUPRmqTxdr3u7vTucj3MuZA7484Nmx6ZiYjGgFryaiyyS2dS1r",
+        "slot": 472386935,
+        "blockTime": 1795317408,
+        "err": null
+      },
+      {
+        "signature": "21LNsjTL6mdpZpfF7oxpc62B1x6Do6rnE7r7tmBpQHvasRXZRUKepRTuS9dzNtV76NiXXanLE8ZRTCATvKb95rHc",
+        "slot": 472385735,
+        "blockTime": 1795317149,
+        "err": null
+      },
+      {
+        "signature": "ccwsBHxHyJ1G9AHR7zwY2D6LDjUP4hCo3Uvkv5sPEuX9xhj3zGJsH3gdQegksQhF8sJZkBV2KVyUmn2qJyksG6J",
+        "slot": 472384995,
+        "blockTime": 1795316989,
+        "err": null
+      },
+      {
+        "signature": "KS91Y7SZQQwWh1pq1amb5uB8wxWVyK7264ubFFWuKr8BEw9T6ka4dQkziGM4rMzL69gmHszsLPveQ3Hk6KAc4Rh",
+        "slot": 472384604,
+        "blockTime": 1795316904,
+        "err": null
+      }
+    ],
+    "id": 1
+  }
+}

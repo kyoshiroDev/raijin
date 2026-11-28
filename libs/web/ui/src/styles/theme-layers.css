@@ -1,0 +1,10 @@
+/* Couches du thème Tailwind 4 (sans @source) : partagées par theme.css (feuille initiale) et
+   theme-full.css (feuille complète de l'espace admin et de /_design). */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import './theme-reset.css';
+@import '../../../../brand/tokens.css';
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './extras.css';

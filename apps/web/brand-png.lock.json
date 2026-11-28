@@ -1,0 +1,20 @@
+{
+  "email/rai-alerte@2x.png": {
+    "source": "libs/brand/mascot/rai-alerte.svg",
+    "sourceSha256": "c5cab1bbf7bec19ece710adde676a3187e7b797ac6f456328043c4944feaf0bc",
+    "width": 240,
+    "height": 280
+  },
+  "email/rai-bravo@2x.png": {
+    "source": "libs/brand/mascot/rai-bravo.svg",
+    "sourceSha256": "21249ce69c19abffe8e391a1b103eebee936611858e49b7f448923f1a304befa",
+    "width": 240,
+    "height": 280
+  },
+  "icons/badge-72.png": {
+    "source": "libs/brand/logos/raijin-mark.svg",
+    "sourceSha256": "91d6283a0c227215b5f605d2d39977259d7d3628f48d7cc2569b7ee4542c7fe4",
+    "width": 72,
+    "height": 72
+  }
+}

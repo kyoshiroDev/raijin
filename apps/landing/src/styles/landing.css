@@ -1,0 +1,219 @@
+/* Styles propres à la landing, uniquement à partir des tokens (libs/brand/tokens.css) : aucun code couleur ici. */
+
+/* SVG inline de la charte (logo, Rai) : remplit son conteneur dimensionné. */
+.svg-fill > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Rai, pose héros : respiration 3 s, éclat jaune sur le bouclier au survol (PROMPT.md §2). */
+/* Animation portée par le conteneur HTML (transformation composée par le GPU, sans repeindre le SVG). */
+.rai-animated {
+  transform-origin: 50% 90%;
+  animation: rai-breathe 3s var(--ease-raijin) infinite alternate;
+}
+.rai-animated > svg > g:last-of-type {
+  transition: filter 250ms var(--ease-raijin);
+}
+.rai-animated:hover > svg > g:last-of-type {
+  filter: drop-shadow(0 0 calc(var(--spacing) * 1.5) var(--color-thunder))
+    drop-shadow(0 0 calc(var(--spacing) * 3.5) var(--color-thunder));
+}
+@keyframes rai-breathe {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(calc(var(--spacing) * -0.75)) scale(1.025);
+  }
+}
+
+/* Typographie : titres équilibrés, pas de mot orphelin en fin de paragraphe (« ? » ou « Pro. » seuls). */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p,
+li,
+dd {
+  text-wrap: pretty;
+}
+
+/* Menu mobile : <details> natif, icône qui bascule, marqueur masqué. */
+.menu-mobile > summary::-webkit-details-marker {
+  display: none;
+}
+.menu-mobile .menu-close-icon,
+.menu-mobile[open] .menu-open-icon {
+  display: none;
+}
+.menu-mobile[open] .menu-close-icon {
+  display: block;
+}
+
+/* FAQ : chevron qui pivote à l'ouverture. */
+.faq-item > summary::-webkit-details-marker {
+  display: none;
+}
+.faq-item .faq-chevron {
+  transition: transform 200ms var(--ease-raijin);
+}
+.faq-item[open] .faq-chevron {
+  transform: rotate(180deg);
+}
+
+/* Démonstration : sans JS, le résultat est visible. Avec JS, verdict, statuts et explications sont masqués (place
+   réservée, aucun saut de mise en page ; seuls les noms des 9 contrôles restent) jusqu'au clic sur « Lancer la
+   démonstration », puis révélés contrôle par contrôle. */
+[data-demo='idle'] .demo-reveal {
+  visibility: hidden;
+}
+/* État d'attente : chaque valeur masquée est remplacée par une barre de squelette à sa place exacte (pseudo-élément
+   décoratif, ignoré des lecteurs d'écran ; le contenu reste `visibility: hidden`). */
+[data-demo='idle'] .demo-check .demo-reveal {
+  position: relative;
+}
+[data-demo='idle'] .demo-check .demo-reveal::after {
+  content: '';
+  position: absolute;
+  /* Relatif à la taille du texte (em) : la barre suit la hauteur de ligne de chaque valeur masquée. */
+  inset: 0.2em 0;
+  visibility: visible;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+[data-demo='idle'] .demo-check p.demo-reveal:last-child::after {
+  right: 40%;
+}
+[data-demo='done'] .demo-check {
+  animation: demo-in 250ms var(--ease-raijin) both;
+}
+[data-demo='done'] .demo-check:nth-child(2) {
+  animation-delay: 60ms;
+}
+[data-demo='done'] .demo-check:nth-child(3) {
+  animation-delay: 120ms;
+}
+[data-demo='done'] .demo-check:nth-child(4) {
+  animation-delay: 180ms;
+}
+[data-demo='done'] .demo-check:nth-child(5) {
+  animation-delay: 240ms;
+}
+[data-demo='done'] .demo-check:nth-child(6) {
+  animation-delay: 300ms;
+}
+[data-demo='done'] .demo-check:nth-child(7) {
+  animation-delay: 360ms;
+}
+[data-demo='done'] .demo-check:nth-child(8) {
+  animation-delay: 420ms;
+}
+[data-demo='done'] .demo-check:nth-child(9) {
+  animation-delay: 480ms;
+}
+@keyframes demo-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rai-animated,
+  [data-demo='done'] .demo-check {
+    animation: none;
+  }
+  .rai-animated > svg > g:last-of-type,
+  .faq-item .faq-chevron {
+    transition: none;
+  }
+}
+
+/* Contenu éditorial (guides, pages légales) : rythme de lecture, liens visibles, tableaux défilants sur mobile. */
+.prose {
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  /* Ratio sans unité (pas de longueur) : interligne de lecture éditoriale, proportionnel à --text-body. */
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.prose > * + * {
+  margin-top: calc(var(--spacing) * 4);
+}
+.prose h2 {
+  margin-top: calc(var(--spacing) * 10);
+  font-family: var(--font-display);
+  font-size: var(--text-h2);
+  line-height: var(--text-h2--line-height);
+  font-weight: 700;
+}
+.prose h3 {
+  margin-top: calc(var(--spacing) * 8);
+  font-family: var(--font-display);
+  font-size: var(--text-h3);
+  line-height: var(--text-h3--line-height);
+  font-weight: 700;
+}
+.prose a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-thunder);
+  text-underline-offset: var(--spacing);
+  text-decoration-thickness: calc(var(--spacing) * 0.5);
+}
+.prose a:hover {
+  color: var(--color-thunder-ink);
+}
+.prose ul,
+.prose ol {
+  padding-left: calc(var(--spacing) * 6);
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li + li {
+  margin-top: calc(var(--spacing) * 2);
+}
+.prose strong {
+  font-weight: 600;
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: var(--text-data);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 1.5);
+}
+.prose .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+.prose table {
+  border-collapse: collapse;
+  font-size: var(--text-body-sm);
+  line-height: var(--text-body-sm--line-height);
+}
+.prose th,
+.prose td {
+  /* 1px : épaisseur de filet (comme l'utilitaire `border`), pas une mesure d'espacement. */
+  border: 1px solid var(--color-line);
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  text-align: left;
+  vertical-align: top;
+  min-width: calc(var(--spacing) * 32);
+}
+.prose th {
+  background: var(--color-surface);
+  font-weight: 600;
+}

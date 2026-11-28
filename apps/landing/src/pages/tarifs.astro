@@ -1,0 +1,101 @@
+---
+import Container from '../components/Container.astro';
+import CtaFinal from '../components/CtaFinal.astro';
+import FaqList from '../components/FaqList.astro';
+import PageIntro from '../components/PageIntro.astro';
+import PricingCards from '../components/PricingCards.astro';
+import Base from '../layouts/Base.astro';
+import { pageCrumbs } from '../lib/breadcrumbs';
+import { getFaq } from '../lib/collections';
+import { DISCLAIMER } from '../lib/content';
+import { STATIC_PAGES } from '../lib/pages';
+import { PRICING } from '../lib/pricing';
+import { breadcrumbLd } from '../lib/seo';
+
+const page = STATIC_PAGES.tarifs;
+const crumbs = pageCrumbs('tarifs');
+const faq = (await getFaq()).filter((item) => ['essai-pro', 'resiliation', 'sans-compte', 'scan-wallet'].includes(item.id));
+const { free, pro, trialDays, trialAnalysesPerDay, anonAnalysesPerDay } = PRICING;
+const yes = 'Oui';
+const no = 'Non';
+const rows: { label: string; anon: string; free: string; pro: string }[] = [
+  {
+    label: 'Analyses par jour',
+    anon: String(anonAnalysesPerDay),
+    free: String(free.analysesPerDay ?? 'Illimitées'),
+    pro: 'Illimitées',
+  },
+  { label: 'Tokens suivis', anon: '0', free: String(free.maxActiveWatches), pro: String(PRICING.proMaxActiveWatches) },
+  { label: 'Alertes e-mail', anon: no, free: yes, pro: yes },
+  { label: 'Alertes push', anon: no, free: no, pro: yes },
+  { label: 'Scan de wallet', anon: no, free: no, pro: yes },
+];
+---
+
+<Base
+  title={page.title}
+  description={page.description}
+  path={page.path}
+  og={page.og}
+  jsonLd={[breadcrumbLd(crumbs)]}
+>
+  <div data-track-view="voir_tarifs">
+    <PageIntro crumbs={crumbs} title="Tarifs" lead={PRICING.trialOffer}>
+      <p class="mt-2 text-body-sm text-ink-muted">
+        Pendant les {trialDays} jours d'essai, tu as toutes les fonctions Pro{
+          trialAnalysesPerDay !== null && `, avec ${trialAnalysesPerDay} analyses par jour`
+        }. À la fin, tu repasses en Gratuit automatiquement : rien n'est prélevé.
+      </p>
+    </PageIntro>
+
+    <Container class="py-10 md:py-14">
+      <PricingCards headingLevel="h2" />
+
+      <section aria-labelledby="comparatif-title" class="mt-12">
+        <h2 id="comparatif-title" class="font-display text-h2 font-bold text-ink">Comparatif</h2>
+        <dl class="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {
+            rows.map((row) => (
+              <div class="rounded-lg border border-line bg-surface p-4">
+                <dt class="font-semibold text-ink">{row.label}</dt>
+                <dd class="mt-2 grid grid-cols-3 gap-2 text-body-sm">
+                  <span class="flex flex-col">
+                    <span class="text-label text-ink-muted">Sans compte</span>
+                    <span class="tabular text-ink">{row.anon}</span>
+                  </span>
+                  <span class="flex flex-col">
+                    <span class="text-label text-ink-muted">Gratuit</span>
+                    <span class="tabular text-ink">{row.free}</span>
+                  </span>
+                  <span class="flex flex-col">
+                    <span class="text-label text-ink-muted">Pro</span>
+                    <span class="tabular text-ink">{row.pro}</span>
+                  </span>
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
+        <p class="mt-4 text-body-sm text-ink-muted">
+          Prix TTC : {pro.monthly} par mois ou {pro.yearly} par an. Paiement sécurisé par Stripe, résiliable à tout
+          moment depuis l'app.
+        </p>
+      </section>
+
+      <aside aria-label="Mention légale" class="mt-10 rounded-lg border border-warn bg-surface p-4 md:p-6">
+        <p class="text-body text-ink" data-disclaimer>{DISCLAIMER}</p>
+      </aside>
+
+      <section aria-labelledby="tarifs-faq-title" class="mt-12">
+        <h2 id="tarifs-faq-title" class="font-display text-h2 font-bold text-ink">Questions sur les plans</h2>
+        <div class="mt-6">
+          <FaqList items={faq} />
+        </div>
+      </section>
+
+      <div class="mt-12">
+        <CtaFinal emplacement="final" title="Commence avec l'essai Pro." />
+      </div>
+    </Container>
+  </div>
+</Base>

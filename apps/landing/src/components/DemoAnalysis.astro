@@ -1,0 +1,61 @@
+---
+import { DEMO } from '../lib/demo/demo';
+import CheckStatusIcon from './CheckStatusIcon.astro';
+import VerdictBadge from './VerdictBadge.astro';
+
+/**
+ * Analyse de démonstration : token fictif « Exemple », verdict et contrôles calculés au build par le moteur de
+ * production (docs/ARCHITECTURE.md §15.4). Visible sans JS ; l'îlot `scripts/demo.ts` ajoute le bouton.
+ */
+const statusTone = {
+  ok: 'text-safe',
+  warn: 'text-warn',
+  danger: 'text-danger',
+  unavailable: 'text-ink-muted',
+} as const;
+---
+
+<div data-demo="static" data-demo-verdict={DEMO.verdict} class="rounded-lg border border-line bg-surface p-4 md:p-6">
+  <p class="text-body-sm text-ink-muted">
+    Token fictif <span class="font-semibold text-ink">« {DEMO.tokenName} »</span>, données inventées pour l'exemple.
+  </p>
+
+  <div class="relative mt-4">
+  <div data-demo-overlay hidden class="absolute inset-x-0 top-0 z-10 flex min-h-20 items-center justify-center">
+    <button
+      type="button"
+      data-demo-run
+      class="inline-flex min-h-12 items-center justify-center rounded-md border border-line-strong bg-surface-raised px-6 text-body font-semibold text-ink transition-colors hover:border-ink-muted"
+    >
+      Lancer la démonstration
+    </button>
+  </div>
+  <div data-demo-result tabindex="-1" class="demo-result outline-none">
+    <div class="demo-reveal flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-center">
+      <VerdictBadge verdict={DEMO.verdict} size="lg" />
+      <p class="text-body text-ink">{DEMO.explanation}</p>
+    </div>
+    <ol class="mt-2 divide-y divide-line">
+      {
+        DEMO.checks.map((check) => (
+          <li class="demo-check flex gap-3 py-3">
+            <span class="demo-reveal mt-0.5">
+              <CheckStatusIcon status={check.status} />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="flex flex-wrap items-baseline justify-between gap-x-3">
+                <span class="font-semibold text-ink">{check.label}</span>
+                <span class={`demo-reveal text-body-sm font-semibold ${statusTone[check.status]}`}>{check.statusLabel}</span>
+              </p>
+              <p class="demo-reveal mt-1 text-body-sm text-ink-muted">{check.summary}</p>
+              <p class="demo-reveal mt-1 text-label text-ink-muted">Source : {check.source}</p>
+            </div>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+  </div>
+</div>
+
+<script src="../scripts/demo.ts"></script>

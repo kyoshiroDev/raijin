@@ -1,0 +1,40 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "dexscreener",
+  "synthetic": true,
+  "note": "Paire vidée après retrait de la liquidité (12 USD restants).",
+  "request": {
+    "method": "GET",
+    "path": "/token-pairs/v1/solana/cnUfXtVipDb1Kg1R6XM4Unk5tEwoZAinRPUfuPh1vSw",
+    "params": {}
+  },
+  "status": 200,
+  "body": [
+    {
+      "chainId": "solana",
+      "dexId": "raydium",
+      "pairAddress": "7FC2ZWPsWqehHACbPbCE1csdVS6wteifLb9zwbYwL1vm",
+      "labels": [
+        "CPMM"
+      ],
+      "baseToken": {
+        "address": "cnUfXtVipDb1Kg1R6XM4Unk5tEwoZAinRPUfuPh1vSw",
+        "name": "Gone",
+        "symbol": "GONE"
+      },
+      "quoteToken": {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Wrapped SOL",
+        "symbol": "SOL"
+      },
+      "priceNative": "0.0000000001",
+      "priceUsd": "0.000000007",
+      "liquidity": {
+        "usd": 12.4,
+        "base": 1000,
+        "quote": 0.1
+      },
+      "pairCreatedAt": 1795230000000
+    }
+  ]
+}

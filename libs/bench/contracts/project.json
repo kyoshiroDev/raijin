@@ -1,0 +1,37 @@
+{
+  "name": "bench-contracts",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/bench/contracts/src",
+  "projectType": "library",
+  "tags": [
+    "scope:bench",
+    "type:contracts"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/bench/contracts",
+        "main": "libs/bench/contracts/src/index.ts",
+        "tsConfig": "libs/bench/contracts/tsconfig.lib.json",
+        "assets": [
+          "libs/bench/contracts/*.md"
+        ]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "libs/bench/contracts",
+        "commands": [
+          "tsc --noEmit -p tsconfig.lib.json",
+          "tsc --noEmit -p tsconfig.spec.json"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

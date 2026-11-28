@@ -1,0 +1,81 @@
+---
+import { GA4_MEASUREMENT_ID, GOOGLE_SITE_VERIFICATION } from 'astro:env/server';
+import interUrl from '../../../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2?url';
+import groteskUrl from '../../../../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2?url';
+import ConsentBanner from '../components/consent/ConsentBanner.astro';
+import Seo from '../components/Seo.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import { normalizeMeasurementId } from '../lib/analytics/ga4';
+import '../styles/fonts.css';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Chemin public de la page (canonical, og:url, navigation active). */
+  path: string;
+  /** Slug de l'image Open Graph (`/og/<slug>.png`). */
+  og: string;
+  ogAlt?: string;
+  type?: 'website' | 'article';
+  noindex?: boolean;
+  jsonLd?: readonly Record<string, unknown>[];
+  publishedAt?: Date | undefined;
+  updatedAt?: Date | undefined;
+}
+
+const {
+  title,
+  description,
+  path,
+  og,
+  ogAlt = 'Raijin Shield, le bouclier anti-rug des memecoins Solana',
+  type = 'website',
+  noindex = false,
+  jsonLd = [],
+  publishedAt,
+  updatedAt,
+} = Astro.props;
+// Identifiant mal formé ou absent : ni GA4 ni bannière (aucune finalité soumise au consentement).
+const measurementId = normalizeMeasurementId(GA4_MEASUREMENT_ID);
+const siteVerification = GOOGLE_SITE_VERIFICATION?.trim() || null;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="preload" href={groteskUrl} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={interUrl} as="font" type="font/woff2" crossorigin />
+    <Seo
+      title={title}
+      description={description}
+      path={path}
+      og={og}
+      ogAlt={ogAlt}
+      type={type}
+      noindex={noindex}
+      jsonLd={jsonLd}
+      publishedAt={publishedAt}
+      updatedAt={updatedAt}
+    />
+    {siteVerification && <meta name="google-site-verification" content={siteVerification} />}
+  </head>
+  <body class="flex min-h-dvh flex-col bg-base font-sans text-ink">
+    {measurementId && <ConsentBanner measurementId={measurementId} />}
+    <a
+      href="#contenu"
+      class="sr-only z-50 rounded-md bg-surface-raised text-body text-ink focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:inline-flex focus:min-h-11 focus:min-w-11 focus:items-center focus:px-4 focus:py-3"
+    >
+      Aller au contenu
+    </a>
+    <SiteHeader current={path} />
+    <main id="contenu" tabindex="-1" class="flex-1 outline-none">
+      <slot />
+    </main>
+    <SiteFooter consent={measurementId !== null} />
+    <script src="../scripts/analytics-boot.ts"></script>
+  </body>
+</html>

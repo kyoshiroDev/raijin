@@ -1,0 +1,25 @@
+{
+  "name": "@raijin/api-auth",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/swagger": "^11.4.8",
+    "@nestjs/throttler": "^6.8.0",
+    "@raijin/api-core": "*",
+    "@raijin/api-notifications": "*",
+    "@raijin/api-prisma": "*",
+    "@raijin/server-security": "*",
+    "@raijin/shared-contracts": "*",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "tslib": "^2.3.0",
+    "uqr": "^0.1.3",
+    "zod": "^4.6.7"
+  }
+}

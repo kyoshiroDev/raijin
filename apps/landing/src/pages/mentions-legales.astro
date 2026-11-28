@@ -1,0 +1,49 @@
+---
+import LegalPage from '../components/LegalPage.astro';
+import { DISCLAIMER } from '../lib/content';
+import { EDITOR, HOST } from '../lib/legal';
+---
+
+<LegalPage
+  page="mentionsLegales"
+  title="Mentions légales"
+  lead="Informations sur l'éditeur et l'hébergeur du site raijinshield.com et de l'application Raijin Shield."
+>
+  <h2>Éditeur du site</h2>
+  <ul>
+    <li>Éditeur : {EDITOR.name}, exerçant sous le nom commercial « {EDITOR.tradeName} »</li>
+    <li>Forme juridique : {EDITOR.legalForm}</li>
+    <li>SIREN : <span class="whitespace-nowrap">{EDITOR.siren}</span> — SIRET : <span class="whitespace-nowrap">{EDITOR.siret}</span></li>
+    <li>Code APE : {EDITOR.ape}</li>
+    {/* TODO TVA : régime non confirmé, aucune mention de TVA publiée (voir lib/legal.ts). */}
+    <li>Adresse : {EDITOR.address}</li>
+    <li>Contact : <a href={`mailto:${EDITOR.contactEmail}`}>{EDITOR.contactEmail}</a> (assistance : <a href={`mailto:${EDITOR.supportEmail}`}>{EDITOR.supportEmail}</a>)</li>
+    <li>Directeur de la publication : {EDITOR.publicationDirector}</li>
+  </ul>
+
+  <h2>Hébergement</h2>
+  <p>
+    Le site et l'application sont hébergés sur un serveur privé virtuel de {HOST.name}, {HOST.address}, situé
+    dans l'Union européenne.
+  </p>
+
+  <h2>Objet du service</h2>
+  <p>
+    Raijin Shield est un outil d'analyse de sécurité des tokens de la blockchain Solana, en lecture seule. Il ne se
+    connecte à aucun wallet, ne signe et n'exécute aucune transaction.
+  </p>
+  <p><strong>{DISCLAIMER}</strong></p>
+
+  <h2>Propriété intellectuelle</h2>
+  <p>
+    La marque Raijin Shield, le logo, la mascotte Rai, les textes et les guides de ce site sont protégés. Toute
+    reproduction sans autorisation est interdite. Les noms de services tiers cités (Solana, Helius, DexScreener,
+    GeckoTerminal, Jupiter, RugCheck, Stripe) appartiennent à leurs titulaires respectifs.
+  </p>
+
+  <h2>Données personnelles et cookies</h2>
+  <p>
+    Voir la <a href="/confidentialite">politique de confidentialité</a>. Les conditions d'utilisation et de vente sont
+    détaillées dans les <a href="/cgu">CGU et CGV</a>.
+  </p>
+</LegalPage>

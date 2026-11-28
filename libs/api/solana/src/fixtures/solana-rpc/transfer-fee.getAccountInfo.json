@@ -1,0 +1,80 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Dérivé de l'enregistrement réel PYUSD (Token-2022) : autorités révoquées, frais de transfert 5 %.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "dTREtmKNeJQVoQ5vz1wUXHNYfZ1y9KQjXcB8FF53LR4",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": {
+      "context": {
+        "apiVersion": "4.4.0",
+        "slot": 472387977
+      },
+      "value": {
+        "data": {
+          "parsed": {
+            "info": {
+              "decimals": 6,
+              "extensions": [
+                {
+                  "extension": "transferFeeConfig",
+                  "state": {
+                    "newerTransferFee": {
+                      "epoch": 605,
+                      "maximumFee": 0,
+                      "transferFeeBasisPoints": 500
+                    },
+                    "olderTransferFee": {
+                      "epoch": 605,
+                      "maximumFee": 0,
+                      "transferFeeBasisPoints": 300
+                    },
+                    "transferFeeConfigAuthority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+                    "withdrawWithheldAuthority": "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk",
+                    "withheldAmount": 0
+                  }
+                },
+                {
+                  "extension": "tokenMetadata",
+                  "state": {
+                    "additionalMetadata": [],
+                    "mint": "dTREtmKNeJQVoQ5vz1wUXHNYfZ1y9KQjXcB8FF53LR4",
+                    "name": "Taxed",
+                    "symbol": "TAX",
+                    "updateAuthority": null,
+                    "uri": ""
+                  }
+                }
+              ],
+              "freezeAuthority": null,
+              "isInitialized": true,
+              "mintAuthority": null,
+              "supply": "722736248270048"
+            },
+            "type": "mint"
+          },
+          "program": "spl-token-2022",
+          "space": 866
+        },
+        "executable": false,
+        "lamports": 2078412094,
+        "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "rentEpoch": 18446744073709552000,
+        "space": 866
+      }
+    },
+    "id": 1
+  }
+}

@@ -1,0 +1,260 @@
+{
+  "recordedAt": "2026-11-22T03:21:07.054Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump/report",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "creator": "HbPR3bpDR8WxsqgBu6QUAZcEXhUJrdChvBt7UWyz8M82",
+    "creatorBalance": 0,
+    "token": {
+      "mintAuthority": null,
+      "supply": 1000000000000000,
+      "decimals": 6,
+      "isInitialized": true,
+      "freezeAuthority": null
+    },
+    "token_extensions": {
+      "nonTransferable": false,
+      "transferFeeConfig": null,
+      "defaultAccountState": null,
+      "permanentDelegate": null,
+      "metadataPointer": {
+        "authority": null,
+        "metadataAddress": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump"
+      },
+      "groupPointer": null,
+      "groupMemberPointer": null,
+      "tokenMetadata": {
+        "authority": null,
+        "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+        "name": "Bearmas",
+        "symbol": "Bearmas",
+        "uri": "https://ipfs.io/ipfs/bafkreia53vblblfk37aapiidqtl66honaw2aruuqgun4poxhlrhxohmkpe",
+        "additionalMetadata": {}
+      },
+      "mintCloseAuthority": null,
+      "confidentialTransferMint": null,
+      "interestBearingConfig": null,
+      "transferHook": null,
+      "confidentialTransferFeeConfig": null,
+      "tokenGroup": null,
+      "tokenGroupMember": null,
+      "scaledUiAmountConfig": null,
+      "pausableConfig": null
+    },
+    "tokenMeta": {
+      "name": "Bearmas",
+      "symbol": "Bearmas",
+      "uri": "https://ipfs.io/ipfs/bafkreia53vblblfk37aapiidqtl66honaw2aruuqgun4poxhlrhxohmkpe",
+      "mutable": false,
+      "updateAuthority": "11111111111111111111111111111111"
+    },
+    "topHolders": [
+      {
+        "address": "38WfiSBuqQF4XSdzziptraFG2KL9SEC7Vefd7tCh9zVe",
+        "amount": 999791829744143,
+        "decimals": 6,
+        "pct": 99.9791829744143,
+        "uiAmount": 999791829.744143,
+        "uiAmountString": "999791829.744143",
+        "owner": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+        "insider": false
+      },
+      {
+        "address": "JCTtPehXUcPXbow6ysPG9ahqQftxhUoXwkvNjSXYALSR",
+        "amount": 208170255857,
+        "decimals": 6,
+        "pct": 0.020817025585700002,
+        "uiAmount": 208170.255857,
+        "uiAmountString": "208170.255857",
+        "owner": "HbPR3bpDR8WxsqgBu6QUAZcEXhUJrdChvBt7UWyz8M82",
+        "insider": false
+      },
+      {
+        "address": "6wTbF5uFzMYAGSs9qTbq7UkzRopvTSwBxfWEUqC7KZCo",
+        "amount": 0,
+        "decimals": 6,
+        "pct": 0,
+        "uiAmount": 0,
+        "uiAmountString": "0",
+        "owner": "G9ELzG3Gg6HsGmEK7xd3CWrany9haheuAiRt6jWL9D2M",
+        "insider": false
+      }
+    ],
+    "freezeAuthority": null,
+    "mintAuthority": null,
+    "risks": [
+      {
+        "name": "Creator history of rugged tokens",
+        "value": "",
+        "description": "Creator has a history of rugging tokens.",
+        "score": 12000,
+        "level": "danger"
+      }
+    ],
+    "score": 12001,
+    "score_normalised": 53,
+    "fileMeta": {
+      "description": "",
+      "name": "Bearmas",
+      "symbol": "Bearmas",
+      "image": ""
+    },
+    "lockerOwners": {},
+    "lockers": {},
+    "lockerScanStatus": "none",
+    "markets": [
+      {
+        "pubkey": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+        "marketType": "pump_fun",
+        "mintA": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+        "mintB": "So11111111111111111111111111111111111111112",
+        "mintLP": "11111111111111111111111111111111",
+        "liquidityA": "wGyDdUG5bKSZ2HNtqVNmKsC2ZgJWX8sKkDk2Ebhuwms",
+        "liquidityB": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+        "mintAAccount": {
+          "mintAuthority": null,
+          "supply": 1000000000000000,
+          "decimals": 6,
+          "isInitialized": true,
+          "freezeAuthority": null
+        },
+        "mintBAccount": {
+          "mintAuthority": null,
+          "supply": 0,
+          "decimals": 9,
+          "isInitialized": false,
+          "freezeAuthority": null
+        },
+        "mintLPAccount": {
+          "mintAuthority": null,
+          "supply": 0,
+          "decimals": 0,
+          "isInitialized": false,
+          "freezeAuthority": null
+        },
+        "liquidityAAccount": {
+          "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+          "owner": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+          "amount": 792891829744143,
+          "delegate": null,
+          "state": 0,
+          "delegatedAmount": 0,
+          "closeAuthority": null
+        },
+        "liquidityBAccount": {
+          "mint": "So11111111111111111111111111111111111111112",
+          "owner": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+          "amount": 7831863079,
+          "delegate": null,
+          "state": 0,
+          "delegatedAmount": 0,
+          "closeAuthority": null
+        },
+        "lp": {
+          "baseMint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+          "quoteMint": "So11111111111111111111111111111111111111112",
+          "lpMint": "11111111111111111111111111111111",
+          "quotePrice": 69.32187783860604,
+          "basePrice": 0,
+          "base": 792891829.744143,
+          "quote": 7.831863079,
+          "reserveSupply": 7831863079,
+          "currentSupply": 0,
+          "quoteUSD": 542.919455611127,
+          "baseUSD": 0,
+          "pctReserve": 0,
+          "pctSupply": 0,
+          "holders": null,
+          "totalTokensUnlocked": 0,
+          "tokenSupply": 0,
+          "lpLocked": 7831863079,
+          "lpUnlocked": 0,
+          "lpLockedPct": 100,
+          "lpLockedUSD": 542.919455611127,
+          "lpMaxSupply": 0,
+          "lpCurrentSupply": 0,
+          "lpTotalSupply": 7831863079
+        }
+      }
+    ],
+    "totalMarketLiquidity": 542.919455611127,
+    "totalStableLiquidity": 542.919455611127,
+    "totalLPProviders": 0,
+    "totalHolders": 3,
+    "price": 0,
+    "rugged": false,
+    "tokenType": "",
+    "transferFee": {
+      "pct": 0,
+      "maxAmount": 0,
+      "authority": "11111111111111111111111111111111"
+    },
+    "knownAccounts": {
+      "6cmDGrJcQ6KMHoQpuTBNGfmySdYMB3SxC5Txmtk3pxNi": {
+        "name": "Printr Stake Pool",
+        "type": "LOCKER"
+      },
+      "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj": {
+        "name": "Pump Fun",
+        "type": "AMM"
+      },
+      "HbPR3bpDR8WxsqgBu6QUAZcEXhUJrdChvBt7UWyz8M82": {
+        "name": "Creator",
+        "type": "CREATOR"
+      },
+      "wGyDdUG5bKSZ2HNtqVNmKsC2ZgJWX8sKkDk2Ebhuwms": {
+        "name": "Pump Fun",
+        "type": "AMM"
+      }
+    },
+    "events": [],
+    "verification": null,
+    "validation": {
+      "validated": false
+    },
+    "graphInsidersDetected": 0,
+    "insiderNetworks": null,
+    "detectedAt": "2026-11-22T03:08:24.671339866Z",
+    "creatorTokens": [
+      {
+        "mint": "5bPiYRsLKMf5yALZWZfvArTPUP3y6pkXH8EMd5Hzpump",
+        "marketCap": 2205.1403070833308,
+        "createdAt": "2026-11-22T03:03:02.611314689Z"
+      },
+      {
+        "mint": "41CT3WCShY7t4wZwbcc7iPn8FRq27WVJfCFA7ZbRpump",
+        "marketCap": 2240.47070771954,
+        "createdAt": "2026-11-22T02:14:38.982843597Z"
+      },
+      {
+        "mint": "8gkZLRXgLa8szu2mJv1pGNkkjgRrnhrGuvJY8o5bpump",
+        "marketCap": 1964.8788121980276,
+        "createdAt": "2026-11-20T22:51:06.444035401Z"
+      },
+      {
+        "mint": "7YCAeoWaTSdMWjKtV9MqYrEtPnmVZcYThJsvguEGpump",
+        "marketCap": 2286.956630321836,
+        "createdAt": "2026-11-20T20:42:15.006494192Z"
+      },
+      {
+        "mint": "65QUXP7YCF7VKoZCRdCgoRcXQgkUunkSazQgFW97pump",
+        "marketCap": 2337.8686901406077,
+        "createdAt": "2026-11-20T10:27:03.220176012Z"
+      }
+    ],
+    "launchpad": {
+      "name": "Pump.Fun",
+      "logo": "https://api.rugcheck.xyz/public/logos/pump_fun.png",
+      "url": "https://x.com/pumpfun",
+      "platform": "pump_fun"
+    },
+    "deployPlatform": "unknown"
+  }
+}

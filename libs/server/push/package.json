@@ -1,0 +1,13 @@
+{
+  "name": "@raijin/server-push",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@raijin/shared-contracts": "*",
+    "tslib": "^2.3.0",
+    "web-push": "~3.6.7"
+  }
+}

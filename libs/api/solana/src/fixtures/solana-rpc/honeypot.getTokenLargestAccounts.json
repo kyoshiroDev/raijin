@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-11-22T03:21:34.363Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getTokenLargestAccounts",
+    "params": [
+      "3Ss6A75uZG9cSRt4feyhcmJVGT38USeygDfwi1tBGQVa",
+      {
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 429,
+  "body": {
+    "jsonrpc": "2.0",
+    "error": {
+      "code": 429,
+      "message": "Too many requests for a specific RPC call"
+    },
+    "id": 1
+  }
+}

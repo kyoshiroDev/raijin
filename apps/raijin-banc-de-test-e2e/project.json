@@ -1,0 +1,24 @@
+{
+  "name": "raijin-banc-de-test-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/raijin-banc-de-test-e2e/src",
+  "tags": ["scope:bench", "type:app"],
+  "implicitDependencies": ["raijin-banc-de-test", "raijin-banc-de-test-api"],
+  "targets": {
+    "e2e": {
+      "dependsOn": [
+        { "projects": ["raijin-banc-de-test-api", "raijin-banc-de-test"], "target": "build" }
+      ]
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/raijin-banc-de-test-e2e",
+        "commands": ["tsc --noEmit -p tsconfig.json"],
+        "parallel": false
+      }
+    }
+  },
+  "// e2e": "Cible e2e inférée par @nx/playwright (playwright.config.mts). Préalables : Postgres 5433 avec la base raijin_bench_dev migrée (pnpm nx run bench-prisma:migrate-deploy) et les builds raijin-banc-de-test-api + raijin-banc-de-test (lancés par les webServer). Le compte propriétaire de test est créé par la CLI (global-setup) puis supprimé (global-teardown) ; refus de démarrer si un autre propriétaire existe déjà dans la base."
+}

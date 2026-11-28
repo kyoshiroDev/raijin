@@ -1,0 +1,27 @@
+{
+  "recordedAt": "2026-11-22T03:21:51.668Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "Y3Pg4fGfK1jz4exHgF2duMUhZvjAa1FdBuJYMsyZfWD",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": {
+      "context": {
+        "apiVersion": "4.4.0",
+        "slot": 472388326
+      },
+      "value": null
+    },
+    "id": 1
+  }
+}

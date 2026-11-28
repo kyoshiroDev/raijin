@@ -1,0 +1,27 @@
+{
+  "name": "bench-web-logic",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/bench/web-logic/src",
+  "projectType": "library",
+  "tags": ["scope:bench", "type:util"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/bench/web-logic",
+        "main": "libs/bench/web-logic/src/index.ts",
+        "tsConfig": "libs/bench/web-logic/tsconfig.lib.json",
+        "assets": ["libs/bench/web-logic/*.md"]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "libs/bench/web-logic",
+        "commands": ["tsc --noEmit -p tsconfig.lib.json", "tsc --noEmit -p tsconfig.spec.json"],
+        "parallel": false
+      }
+    }
+  }
+}

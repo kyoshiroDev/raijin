@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-11-22T03:23:16.027Z",
+  "source": "dexscreener",
+  "request": {
+    "method": "GET",
+    "path": "/token-pairs/v1/solana/9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+    "params": {}
+  },
+  "status": 200,
+  "body": [
+    {
+      "chainId": "solana",
+      "dexId": "pumpfun",
+      "pairAddress": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+      "baseToken": {
+        "address": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+        "name": "Bearmas",
+        "symbol": "Bearmas"
+      },
+      "quoteToken": {
+        "address": "47YW4F8fDHhjk51aL7oyAyxcyUrP1VRrKpPDVEmbpump",
+        "name": "Bullmas",
+        "symbol": "Bullmas"
+      },
+      "priceNative": "0.03762",
+      "pairCreatedAt": 1795316904000
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "jupiter",
+  "synthetic": true,
+  "note": "Erreur serveur Jupiter (rejeu puis contrôle indisponible).",
+  "request": {
+    "method": "GET",
+    "path": "/quote",
+    "params": {
+      "inputMint": "cnUfXtVipDb1Kg1R6XM4Unk5tEwoZAinRPUfuPh1vSw"
+    }
+  },
+  "status": 500,
+  "body": null
+}

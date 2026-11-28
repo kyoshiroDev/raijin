@@ -1,0 +1,39 @@
+{
+  "recordedAt": "2026-11-22T03:30:00.000Z",
+  "source": "helius",
+  "synthetic": true,
+  "note": "Construit d'après la doc Helius getAsset ; nom piégé (HTML, bidi, zéro largeur) pour vérifier le nettoyage.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAsset",
+    "params": {
+      "id": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump"
+    }
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": "1",
+    "result": {
+      "interface": "FungibleToken",
+      "id": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+      "content": {
+        "metadata": {
+          "name": "Bearmas <script>alert(1)</script>‮",
+          "symbol": "Bearmas​"
+        }
+      },
+      "authorities": [],
+      "creators": [],
+      "mutable": false,
+      "burnt": false,
+      "token_info": {
+        "supply": 1000000000000000,
+        "decimals": 6,
+        "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "mint_authority": null,
+        "freeze_authority": null
+      }
+    }
+  }
+}

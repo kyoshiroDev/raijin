@@ -1,0 +1,15 @@
+{
+  "name": "@raijin/web-data-access",
+  "version": "0.0.1",
+  "peerDependencies": {
+    "@angular/common": "~22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/router": "~22.2.0",
+    "@angular/service-worker": "~22.2.0",
+    "@raijin/shared-contracts": "*",
+    "@raijin/shared-util": "*",
+    "rxjs": "~7.8.0"
+  },
+  "sideEffects": false,
+  "private": true
+}

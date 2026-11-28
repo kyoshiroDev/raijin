@@ -1,0 +1,25 @@
+{
+  "name": "@raijin/api-analysis",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/swagger": "^11.4.8",
+    "@raijin/api-analytics": "*",
+    "@raijin/api-auth": "*",
+    "@raijin/api-core": "*",
+    "@raijin/api-prisma": "*",
+    "@raijin/api-solana": "*",
+    "@raijin/shared-contracts": "*",
+    "@raijin/shared-risk-engine": "*",
+    "@raijin/shared-util": "*",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "satori": "^0.63.2",
+    "tslib": "^2.3.0"
+  }
+}

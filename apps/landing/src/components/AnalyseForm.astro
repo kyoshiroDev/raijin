@@ -1,0 +1,73 @@
+---
+import { ANALYSIS_INPUT_MAX_LENGTH } from '@raijin/shared-util';
+import { APP_ROUTES, appHref } from '../lib/app-url';
+import Icon from './Icon.astro';
+
+/**
+ * Champ d'analyse du hero (docs/ARCHITECTURE.md §15.3). Sans JS : GET vers `{APP_URL}/analyse?mint=…`, l'app redirige.
+ * Avec JS (`scripts/analyse-form.ts`) : extraction de l'adresse (adresse brute ou lien DexScreener, pump.fun, Solscan,
+ * Birdeye), erreur inline accessible, puis navigation vers `{APP_URL}/analyse/<mint>` avec l'attribution.
+ */
+interface Props {
+  /** Identifiant unique dans la page (plusieurs formulaires possibles). */
+  id: string;
+  anonAnalysesPerDay: number;
+}
+
+const { id, anonAnalysesPerDay } = Astro.props;
+const inputId = `${id}-mint`;
+const errorId = `${id}-error`;
+const hintId = `${id}-hint`;
+---
+
+<form
+  method="get"
+  action={appHref(APP_ROUTES.analyse)}
+  data-analyse-form
+  novalidate
+  class="w-full"
+  aria-label="Analyser un token Solana"
+>
+  <label for={inputId} class="block text-body-sm font-medium text-ink">Adresse du token ou lien</label>
+  <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+    <div class="relative min-w-0 flex-1">
+      <input
+        id={inputId}
+        name="mint"
+        type="text"
+        inputmode="text"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        enterkeyhint="go"
+        maxlength={ANALYSIS_INPUT_MAX_LENGTH}
+        required
+        placeholder="Adresse ou lien DexScreener"
+        aria-describedby={`${hintId} ${errorId}`}
+        class="block min-h-12 w-full rounded-md border border-line-strong bg-surface-raised py-3 pl-4 pr-28 font-mono text-input text-ink placeholder:font-sans placeholder:text-ink-muted aria-invalid:border-danger"
+      />
+      <button
+        type="button"
+        data-paste
+        hidden
+        class="absolute right-1 top-1/2 inline-flex min-h-11 -translate-y-1/2 items-center gap-1 rounded-md px-3 text-body-sm font-medium text-ink hover:bg-surface"
+      >
+        <Icon name="clipboard" size={18} />
+        Coller
+      </button>
+    </div>
+    <button
+      type="submit"
+      class="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-thunder px-6 text-body font-semibold text-on-thunder transition-shadow hover:shadow-glow focus-visible:shadow-glow"
+    >
+      Analyser
+      <Icon name="arrowRight" size={18} />
+    </button>
+  </div>
+  <p id={errorId} data-error role="alert" class="mt-2 min-h-5 text-body-sm text-danger"></p>
+  <p id={hintId} class="text-body-sm text-ink-muted">
+    {anonAnalysesPerDay} analyses gratuites par jour sans compte. Lecture seule : aucune connexion de wallet.
+  </p>
+</form>
+
+<script src="../scripts/analyse-form.ts"></script>

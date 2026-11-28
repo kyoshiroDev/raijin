@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "paths": {
+      "jsr:@supabase/supabase-js@2": ["../../../node_modules/@supabase/supabase-js"],
+      "npm:zod@^3.24": ["../../../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v3/index.d.ts"]
+    }
+  },
+  "files": [
+    "deno-shim.d.ts",
+    "../scan-tokens/index.ts",
+    "../enrich-tokens/index.ts",
+    "../label-outcomes/index.ts",
+    "../paper-engine/index.ts",
+    "../send-test-push/index.ts",
+    "../backtest-run/index.ts",
+    "../wallet-study-collect/index.ts"
+  ]
+}

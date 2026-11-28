@@ -1,0 +1,39 @@
+{
+  "recordedAt": "2026-11-22T03:21:00.190Z",
+  "source": "geckoterminal",
+  "request": {
+    "method": "GET",
+    "path": "/networks/solana/tokens/9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump/pools",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "data": [
+      {
+        "id": "solana_Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+        "type": "pool",
+        "attributes": {
+          "address": "Gcmdf6TwAF5FCGhzSc85XC6T14WVzSxzgR6iRfsMnpaj",
+          "name": "Bearmas / Bullmas",
+          "pool_created_at": "2026-11-22T03:08:24Z",
+          "reserve_in_usd": "431.6359",
+          "base_token_price_usd": "0.000000544541884"
+        },
+        "relationships": {
+          "base_token": {
+            "data": {
+              "id": "solana_9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+              "type": "token"
+            }
+          },
+          "quote_token": {
+            "data": {
+              "id": "solana_47YW4F8fDHhjk51aL7oyAyxcyUrP1VRrKpPDVEmbpump",
+              "type": "token"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

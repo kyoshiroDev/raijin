@@ -1,0 +1,126 @@
+{
+  "name": "web-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "tags": [
+    "scope:web",
+    "type:app"
+  ],
+  "sourceRoot": "apps/web-e2e/src",
+  "implicitDependencies": [
+    "web",
+    "landing"
+  ],
+  "// targets": "to see all targets run: nx show project web-e2e --web",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/web-e2e",
+        "commands": [
+          "tsc --noEmit -p tsconfig.json"
+        ],
+        "parallel": false
+      }
+    },
+    "e2e": {
+      "parallelism": true,
+      "inputs": [
+        "default",
+        "^production",
+        {
+          "env": "E2E_LOT"
+        },
+        {
+          "env": "E2E_SHARD"
+        }
+      ]
+    },
+    "serve-prod": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "projects": [
+            "web"
+          ],
+          "target": "build"
+        }
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node apps/web-e2e/scripts/serve-prod.mjs",
+        "readyWhen": "build de production sur"
+      }
+    },
+    "serve-api-fixtures": {
+      "continuous": true,
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "projects": [
+            "api"
+          ],
+          "target": "build"
+        },
+        {
+          "projects": [
+            "web"
+          ],
+          "target": "build"
+        }
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node dist/apps/api/main.js",
+        "readyWhen": "API Raijin",
+        "env": {
+          "NODE_ENV": "development",
+          "ANALYSIS_FIXTURES": "1",
+          "TRUST_PROXY": "1",
+          "CORS_ORIGINS": "http://127.0.0.1:4310,http://localhost:4310",
+          "WEB_INDEX_HTML_PATH": "dist/apps/web/browser/index.html",
+          "RATE_LIMIT_PER_MINUTE": "10000"
+        }
+      }
+    },
+    "build-landing-lighthouse": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "apps/landing",
+        "command": "../../node_modules/.bin/astro build --outDir ../../dist/apps/landing-lighthouse",
+        "env": {
+          "GA4_MEASUREMENT_ID": "G-E2ETEST01",
+          "APP_URL": "http://127.0.0.1:4310"
+        }
+      }
+    },
+    "lighthouse": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        {
+          "projects": [
+            "web"
+          ],
+          "target": "build"
+        },
+        {
+          "projects": [
+            "api"
+          ],
+          "target": "build"
+        },
+        "build-landing-lighthouse"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node apps/web-e2e/scripts/lighthouse.mjs"
+      }
+    }
+  },
+  "// implicitDependencies": "landing : consentement, GA4 et attribution testés sur le build Astro servi par scripts/serve-landing.mjs (phase 6 bis) ; une modification de la landing rend web-e2e affecté.",
+  "// e2e": "Le plugin @nx/playwright passe parallelism à false quand webServer est un tableau (API + web) ; or e2e dépend du serveur continu web:serve, ce que Nx refuse sans parallélisme. Valeur d'origine rétablie (les deux serveurs ont des ports fixes et reuseExistingServer). Entrées : celles inférées, plus E2E_LOT et E2E_SHARD (lot et part de la matrice CI, lus par playwright.config.mts) pour que le cache Nx ne rejoue jamais le résultat d'un autre lot.",
+  "// lighthouse": "Lighthouse mobile (phases 3 et 7) : dépend seulement des builds (web, api, build-landing-lighthouse : build statique dans dist/apps/landing-lighthouse avec un identifiant GA4 factice, bannière de consentement rendue). scripts/lighthouse.mjs démarre lui-même le build de production de l'app (serve-prod.mjs, port 4310), l'API en mode fixtures (dist/apps/api/main.js, port 3100, même environnement que serve-api-fixtures ; refus si une autre API écoute déjà sur ce port, sauf --reuse-api) et la landing (serve-landing.mjs, port 4332), puis les arrête à sa sortie : plus de tâches continues dont l'arrêt par Nx en fin de mesure était compté comme un échec (run 45649168634). Code de sortie = celui du script (0 si tout ≥ 95, 1 sinon ou erreur de mesure, 124 au délai global). Options : --args=\"--runs 3 --phase phase-7 --pages all|app|landing\". Résumé dans docs/lighthouse/<phase>/, rapports complets dans dist/lighthouse/."
+}

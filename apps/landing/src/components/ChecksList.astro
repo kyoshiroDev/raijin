@@ -1,0 +1,32 @@
+---
+import { CHECKS } from '../lib/checks';
+
+/** Les 9 contrôles de l'analyse, avec leur source (PROMPT.md §4.1). */
+interface Props {
+  /** Titre de niveau 3 par contrôle (page « Comment ça marche ») ou simple paragraphe (accueil). */
+  headingLevel?: 'h3' | 'p';
+}
+
+const { headingLevel = 'h3' } = Astro.props;
+const Heading = headingLevel;
+---
+
+<ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+  {
+    CHECKS.map((check, index) => (
+      <li class="flex h-full gap-3 rounded-lg border border-line bg-surface p-4">
+        <span class="tabular flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-data text-ink">
+          {index + 1}
+        </span>
+        <div class="flex min-w-0 flex-1 flex-col">
+          <Heading class="font-display text-h3 font-bold text-ink">{check.label}</Heading>
+          <p class="mt-1 text-body-sm text-ink-muted">{check.description}</p>
+          <p class="mt-auto pt-2 text-label text-ink-muted">
+            Source : {check.source}
+            {check.critical && <span class="text-ink"> · contrôle critique</span>}
+          </p>
+        </div>
+      </li>
+    ))
+  }
+</ol>

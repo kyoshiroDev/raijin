@@ -1,0 +1,45 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Programme exécutable (Orca Whirlpool) saisi comme wallet : WALLET_INVALID.",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": {
+        "data": {
+          "parsed": {
+            "info": {
+              "programData": "FhJwS97WykifHo8CRdnxDjwBMA7amtACTnKC28Eh7jAy"
+            },
+            "type": "program"
+          },
+          "program": "bpf-upgradeable-loader",
+          "space": 36
+        },
+        "executable": true,
+        "lamports": 1141440,
+        "owner": "BPFLoaderUpgradeab1e11111111111111111111111",
+        "rentEpoch": 18446744073709552000,
+        "space": 36
+      }
+    }
+  }
+}

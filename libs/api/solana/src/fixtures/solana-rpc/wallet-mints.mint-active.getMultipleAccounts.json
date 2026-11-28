@@ -1,0 +1,53 @@
+{
+  "recordedAt": "2026-11-22T12:00:00.000Z",
+  "source": "solana-rpc",
+  "synthetic": true,
+  "note": "Comptes de mint du scan (lot trié).",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getMultipleAccounts",
+    "params": [
+      [
+        "BL7yQWfMeLesszudGL6TqnfWbieFMDTT1TFXzQWBazTi"
+      ],
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "context": {
+        "apiVersion": "3.0.6",
+        "slot": 472400000
+      },
+      "value": [
+        {
+          "data": {
+            "parsed": {
+              "info": {
+                "decimals": 9,
+                "freezeAuthority": null,
+                "isInitialized": true,
+                "mintAuthority": "644tv6RKk8MYQmYyTbm22YRTL25ZTMXJGVGA52GCsPp1",
+                "supply": "14142135623630"
+              },
+              "type": "mint"
+            },
+            "program": "spl-token-2022",
+            "space": 82
+          },
+          "executable": false,
+          "lamports": 1066800,
+          "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "rentEpoch": 18446744073709552000,
+          "space": 82
+        }
+      ]
+    }
+  }
+}

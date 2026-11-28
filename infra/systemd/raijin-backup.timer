@@ -1,0 +1,11 @@
+# Tous les jours à 04:15 (heure du VPS), après la purge de l'API (03:30 UTC). Rattrapage si le VPS était éteint.
+[Unit]
+Description=Raijin - sauvegarde quotidienne
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

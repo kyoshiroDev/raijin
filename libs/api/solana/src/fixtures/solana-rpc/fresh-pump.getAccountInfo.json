@@ -1,0 +1,67 @@
+{
+  "recordedAt": "2026-11-22T03:20:56.419Z",
+  "source": "solana-rpc",
+  "request": {
+    "method": "POST",
+    "rpcMethod": "getAccountInfo",
+    "params": [
+      "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+      {
+        "encoding": "jsonParsed",
+        "commitment": "confirmed"
+      }
+    ]
+  },
+  "status": 200,
+  "body": {
+    "jsonrpc": "2.0",
+    "result": {
+      "context": {
+        "apiVersion": "4.4.0",
+        "slot": 472388073
+      },
+      "value": {
+        "data": {
+          "parsed": {
+            "info": {
+              "decimals": 6,
+              "extensions": [
+                {
+                  "extension": "metadataPointer",
+                  "state": {
+                    "authority": null,
+                    "metadataAddress": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump"
+                  }
+                },
+                {
+                  "extension": "tokenMetadata",
+                  "state": {
+                    "additionalMetadata": [],
+                    "mint": "9rA3rJrcFJeQwWaLaHgJLi4LaF6wvRoae9ybwcYApump",
+                    "name": "Bearmas",
+                    "symbol": "Bearmas",
+                    "updateAuthority": null,
+                    "uri": "https://ipfs.io/ipfs/bafkreia53vblblfk37aapiidqtl66honaw2aruuqgun4poxhlrhxohmkpe"
+                  }
+                }
+              ],
+              "freezeAuthority": null,
+              "isInitialized": true,
+              "mintAuthority": null,
+              "supply": "1000000000000000"
+            },
+            "type": "mint"
+          },
+          "program": "spl-token-2022",
+          "space": 412
+        },
+        "executable": false,
+        "lamports": 2743200,
+        "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "rentEpoch": 18446744073709552000,
+        "space": 412
+      }
+    },
+    "id": 1
+  }
+}

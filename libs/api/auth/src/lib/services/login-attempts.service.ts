@@ -1,0 +1,214 @@
+import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
+import { APP_CONFIG, errorCode, hmac, raijinRedisOptions, type AppConfig } from '@raijin/api-core';
+import Redis from 'ioredis';
+
+/** Stockage minimal d'un compteur à expiration. */
+export interface AttemptStore {
+  /** Incrémente et renvoie la nouvelle valeur ; l'expiration est posée au premier échec. */
+  increment(key: string, ttlMs: number): Promise<number>;
+  get(key: string): Promise<number>;
+  reset(key: string): Promise<void>;
+  close(): void;
+}
+
+/** Jeton d'injection optionnel d'un stockage (tests). */
+export const ATTEMPT_STORE = Symbol('ATTEMPT_STORE');
+
+/** Repli en mémoire (dev sans Redis, ou Redis indisponible). */
+export class MemoryAttemptStore implements AttemptStore {
+  private readonly entries = new Map<string, { count: number; expiresAt: number }>();
+
+  private live(key: string): { count: number; expiresAt: number } | null {
+    const entry = this.entries.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      this.entries.delete(key);
+      return null;
+    }
+    return entry;
+  }
+
+  async increment(key: string, ttlMs: number): Promise<number> {
+    const entry = this.live(key) ?? { count: 0, expiresAt: Date.now() + ttlMs };
+    entry.count += 1;
+    this.entries.set(key, entry);
+    return entry.count;
+  }
+
+  async get(key: string): Promise<number> {
+    return this.live(key)?.count ?? 0;
+  }
+
+  async reset(key: string): Promise<void> {
+    this.entries.delete(key);
+  }
+
+  close(): void {
+    this.entries.clear();
+  }
+}
+
+/**
+ * INCR + PEXPIRE atomiques (script Lua exécuté d'un bloc par Redis) : l'expiration est posée au
+ * premier échec, ou reposée si la clé n'en a pas (clé héritée d'une ancienne version non atomique),
+ * pour qu'un compteur ne puisse jamais rester sans expiration (verrouillage permanent).
+ */
+export const INCREMENT_WITH_TTL_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 or redis.call('PTTL', KEYS[1]) < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
+
+/** Sous-ensemble d'ioredis utilisé (tests sans serveur). */
+export type AttemptRedis = Pick<Redis, 'eval' | 'get' | 'del' | 'disconnect'>;
+
+/** Compteur Redis partagé entre instances (INCR + PEXPIRE atomiques). */
+export class RedisAttemptStore implements AttemptStore {
+  constructor(private readonly redis: AttemptRedis) {}
+
+  async increment(key: string, ttlMs: number): Promise<number> {
+    const count = await this.redis.eval(INCREMENT_WITH_TTL_SCRIPT, 1, key, String(Math.max(1, Math.round(ttlMs))));
+    return Number(count);
+  }
+
+  async get(key: string): Promise<number> {
+    return Number((await this.redis.get(key)) ?? 0);
+  }
+
+  async reset(key: string): Promise<void> {
+    await this.redis.del(key);
+  }
+
+  close(): void {
+    this.redis.disconnect();
+  }
+}
+
+/**
+ * Plafonds des e-mails d'authentification (lien magique, réinitialisation, vérification), en plus des limites par
+ * IP, tous types confondus, sur une fenêtre d'une heure (audit 5) :
+ * - `AUTH_EMAIL_MAX_PER_SOURCE` envois par **paire adresse + IP** : une seule IP ne peut épuiser que sa part ;
+ * - `AUTH_EMAIL_MAX_PER_WINDOW` envois par **adresse**, toutes IP confondues : une IP tournante ne peut pas inonder
+ *   une boîte. Une demande refusée par le plafond de sa paire n'entame pas ce plafond global.
+ * Au-delà, la réponse reste identique (neutre) mais rien n'est envoyé. Risque résiduel (docs/SECURITY.md §4) : un
+ * tiers disposant de plusieurs IP peut encore épuiser le plafond global et bloquer les envois à la victime pendant 1 h.
+ */
+export const AUTH_EMAIL_MAX_PER_SOURCE = 5;
+export const AUTH_EMAIL_MAX_PER_WINDOW = 20;
+export const AUTH_EMAIL_WINDOW_MS = 3_600_000;
+
+/**
+ * Verrouillage temporaire par adresse (connexion, confirmation par mot de passe) : compteur
+ * d'échecs indexé par HMAC(emailNormalized), appliqué aussi aux adresses sans compte, pour que
+ * la réponse et le temps de traitement ne révèlent jamais si un compte existe.
+ * Redis en priorité ; repli en mémoire (journalisé) si Redis ne répond pas.
+ */
+@Injectable()
+export class LoginAttemptsService implements OnModuleDestroy {
+  private readonly logger = new Logger('LoginAttempts');
+  private readonly memory = new MemoryAttemptStore();
+  private readonly primary: AttemptStore | null;
+  private lastWarning = 0;
+
+  constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Optional() @Inject(ATTEMPT_STORE) store?: AttemptStore,
+  ) {
+    if (store) {
+      this.primary = store;
+    } else if (config.redisUrl) {
+      const redis = new Redis(config.redisUrl, raijinRedisOptions());
+      redis.on('error', (error: Error) => this.warn(`Redis indisponible (${errorCode(error)})`));
+      this.primary = new RedisAttemptStore(redis);
+    } else {
+      this.primary = null;
+    }
+  }
+
+  private key(emailNormalized: string): string {
+    return `rj:auth-fail:${hmac(this.config.auth.cookieSecret, `login:${emailNormalized}`)}`;
+  }
+
+  private async run<T>(operation: (store: AttemptStore) => Promise<T>): Promise<T> {
+    if (this.primary) {
+      try {
+        return await operation(this.primary);
+      } catch (error) {
+        this.warn(`Redis indisponible, compteur en mémoire (${errorCode(error)})`);
+      }
+    }
+    return operation(this.memory);
+  }
+
+  /** Vrai si l'adresse a atteint le seuil d'échecs (verrouillage en cours). */
+  async isLocked(emailNormalized: string): Promise<boolean> {
+    const count = await this.run((store) => store.get(this.key(emailNormalized)));
+    return count >= this.config.auth.lockoutThreshold;
+  }
+
+  /** Enregistre un échec ; renvoie vrai si ce échec déclenche le verrouillage. */
+  async recordFailure(emailNormalized: string): Promise<boolean> {
+    const count = await this.run((store) =>
+      store.increment(this.key(emailNormalized), this.config.auth.lockoutMs),
+    );
+    return count === this.config.auth.lockoutThreshold;
+  }
+
+  /**
+   * Réserve une tentative **avant** toute vérification du mot de passe (audit 6 bis n3, comme `reserveAttempt` de la
+   * 2FA admin) : le compteur est incrémenté d'un bloc (INCR + PEXPIRE), si bien qu'une rafale parallèle ne peut évaluer
+   * qu'au plus `lockoutThreshold` mots de passe par fenêtre. `locked` : tentative au-delà du seuil (refusée sans tenir
+   * compte du résultat) ; `lockedNow` : cette tentative est la dernière autorisée (verrouillage si elle échoue).
+   */
+  async reserve(emailNormalized: string): Promise<{ attempt: number; locked: boolean; lockedNow: boolean }> {
+    const attempt = await this.run((store) => store.increment(this.key(emailNormalized), this.config.auth.lockoutMs));
+    const threshold = this.config.auth.lockoutThreshold;
+    return { attempt, locked: attempt > threshold, lockedNow: attempt === threshold };
+  }
+
+  /**
+   * Compte un e-mail d'authentification pour l'adresse (HMAC, jamais en clair) ; faux au-delà d'un plafond. Appelé
+   * aussi pour les adresses sans compte, pour que le coût de la requête ne révèle pas l'existence du compte.
+   * `ip` nul (action d'un admin, IP inconnue) : seul le plafond global s'applique.
+   */
+  async allowAuthEmail(emailNormalized: string, ip: string | null): Promise<boolean> {
+    const secret = this.config.auth.cookieSecret;
+    if (ip) {
+      const pairKey = `rj:auth-mail-ip:${hmac(secret, `mail-ip:${emailNormalized}\n${ip}`)}`;
+      const pair = await this.run((store) => store.increment(pairKey, AUTH_EMAIL_WINDOW_MS));
+      if (pair > AUTH_EMAIL_MAX_PER_SOURCE) return false;
+    }
+    const key = `rj:auth-mail:${hmac(secret, `mail:${emailNormalized}`)}`;
+    const count = await this.run((store) => store.increment(key, AUTH_EMAIL_WINDOW_MS));
+    return count <= AUTH_EMAIL_MAX_PER_WINDOW;
+  }
+
+  async reset(emailNormalized: string): Promise<void> {
+    await this.run((store) => store.reset(this.key(emailNormalized)));
+  }
+
+  /**
+   * Compteurs à expiration d'autres usages (codes 2FA admin…), même stockage (Redis, script Lua atomique,
+   * repli mémoire). `key` est construit par l'appelant, sans donnée personnelle en clair.
+   */
+  readonly counters = {
+    get: (key: string): Promise<number> => this.run((store) => store.get(key)),
+    increment: (key: string, ttlMs: number): Promise<number> => this.run((store) => store.increment(key, ttlMs)),
+    reset: (key: string): Promise<void> => this.run((store) => store.reset(key)),
+  };
+
+  onModuleDestroy(): void {
+    this.primary?.close();
+    this.memory.close();
+  }
+
+  private warn(message: string): void {
+    const now = Date.now();
+    if (now - this.lastWarning > 60_000) {
+      this.lastWarning = now;
+      this.logger.warn(message);
+    }
+  }
+}

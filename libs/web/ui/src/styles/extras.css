@@ -1,0 +1,53 @@
+/* Compléments de thème dérivés de la charte (BRAND.md) : grille de 4 px, rayon « full »,
+   courbe d'animation. Aucune couleur ici : les couleurs viennent de libs/brand/tokens.css. */
+@theme {
+  --spacing: 4px;
+  --radius-full: 999px;
+  --ease-raijin: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Largeur de lecture max du contenu (PROMPT.md §3) : max-w-reading. */
+  --container-reading: 1200px;
+  /* Champs de saisie : 16 px minimum, sinon iOS zoome (PROMPT.md §3) : text-input. */
+  --text-input: 16px;
+  --text-input--line-height: 24px;
+  /* Seuil du logotype : symbole seul sous 360 px (PROMPT.md §2) : variante xs:. */
+  --breakpoint-xs: 360px;
+  /* Bordure des contrôles interactifs (champs, bouton secondaire) dont la bordure est la seule
+     limite : ≥ 3:1 sur base, surface et surface-raised (WCAG 1.4.11). Alias dérivé de ink-muted ;
+     border-line reste réservé aux séparateurs et aux cartes. Suit le thème clair via les variables. */
+  --color-line-strong: color-mix(in srgb, var(--color-ink-muted) 70%, var(--color-surface));
+}
+
+/* Safe areas iOS (PROMPT.md §3) : utilitaires dédiés plutôt que des valeurs arbitraires. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+/* Espace réservé sous le contenu pour la barre d'onglets mobile (48 px + 8 px de marge + safe area). */
+@utility pb-tabbar {
+  padding-bottom: calc(var(--spacing) * 20 + env(safe-area-inset-bottom));
+}
+/* Position des toasts au-dessus de la barre d'onglets mobile. */
+@utility bottom-tabbar {
+  bottom: calc(var(--spacing) * 18 + env(safe-area-inset-bottom));
+}
+
+/* Action collée juste au-dessus de la barre d'onglets mobile (56 px + safe area). */
+@utility bottom-tabbar-edge {
+  bottom: calc(var(--spacing) * 14 + env(safe-area-inset-bottom));
+}
+
+@layer base {
+  body {
+    min-height: 100dvh;
+    background: var(--color-base);
+    color: var(--color-ink);
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "recordedAt": "2026-11-22T03:20:49.881Z",
+  "source": "rugcheck",
+  "request": {
+    "method": "GET",
+    "path": "/tokens/2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo/report/summary",
+    "params": {}
+  },
+  "status": 200,
+  "body": {
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "tokenType": "",
+    "risks": [],
+    "score": 1,
+    "score_normalised": 1,
+    "lpLockedPct": 0
+  }
+}

@@ -1,0 +1,35 @@
+# Workspace pnpm à un seul package (monorepo Nx « integrated » : toutes les dépendances à la racine).
+# Scripts d'installation des dépendances (pnpm 11, clé `allowBuilds`) : refusés par défaut
+# (sécurité de la chaîne d'approvisionnement). pnpm 11 échoue (ERR_PNPM_IGNORED_BUILDS) si un
+# paquet doté d'un script n'est pas listé : chaque paquet doit donc être explicitement autorisé
+# (true) ou refusé (false).
+allowBuilds:
+  # Autorisés : postinstall de vérification / préparation du binaire natif.
+  nx: true
+  '@swc/core': true
+  # Refusés : binaires fournis par les dépendances optionnelles par plateforme, script inutile.
+  '@parcel/watcher': false
+  esbuild: false
+  unrs-resolver: false
+  lmdb: false
+  msgpackr-extract: false
+  '@nestjs/core': false
+  # Refusé : aucune transformation d'image côté serveur à ce stade (Astro n'en a pas besoin pour la landing).
+  sharp: false
+  # Autorisé : argon2 (hachage des mots de passe, argon2id) charge un binaire natif précompilé
+  # via node-gyp-build (compilation locale seulement si aucun binaire ne correspond à la plateforme).
+  argon2: true
+  # Refusé : télémétrie de swagger-ui-dist (dépendance de @nestjs/swagger), inutile.
+  '@scarf/scarf': false
+  # Refusés : prisma (preinstall = simple contrôle de version de Node) et @prisma/engines
+  # (postinstall = téléchargement anticipé du schema engine). `prisma generate` n'en a pas besoin
+  # (moteur WebAssembly) ; la CLI télécharge le schema engine à la demande pour `migrate`.
+  prisma: false
+  '@prisma/engines': false
+
+# Correctifs de sécurité des dépendances transitives (pnpm audit).
+overrides:
+  # effect ≤ 3.22.0 (vulnérabilité haute), épinglé en 3.20.0 par @prisma/config 7.10.1 (CLI Prisma, dev).
+  'effect@<3.22.1': ^3.22.1
+  # fflate < 0.7.5 (GHSA-px8p-9vwx-vf98), épinglé en 0.7.3 par satori (image Open Graph de l'API).
+  'fflate@<0.7.5': '>=0.7.5'

@@ -1,0 +1,116 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`renderStaticVerdict résultat partiel (degraded) 1`] = `
+"<header class="rj-static__header">
+  <div class="rj-static__bar">
+    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
+      <svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/></svg><svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/><text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text><text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>
+    </a>
+  </div>
+</header>
+<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
+  <p class="rj-static__eyebrow">Analyse partagée</p>
+  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
+  <p class="rj-static__verdict" data-verdict="warn" role="status" aria-label="Verdict : Prudence">Prudence</p>
+  <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
+  <p class="rj-static__explanation">Aucun signal critique détecté.</p>
+  <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
+  <p class="rj-static__note">Résultat partiel : une source était indisponible.</p>
+  <nav class="rj-static__actions" aria-label="Actions">
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
+  </nav>
+  <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
+</main>"
+`;
+
+exports[`renderStaticVerdict sans symbole : repli sur le nom, puis aucune ligne 1`] = `
+"<header class="rj-static__header">
+  <div class="rj-static__bar">
+    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
+      <svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/></svg><svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/><text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text><text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>
+    </a>
+  </div>
+</header>
+<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
+  <p class="rj-static__eyebrow">Analyse partagée</p>
+  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
+  <p class="rj-static__verdict" data-verdict="safe" role="status" aria-label="Verdict : Sain">Sain</p>
+  <p class="rj-static__explanation">Aucun signal critique détecté.</p>
+  <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
+  <nav class="rj-static__actions" aria-label="Actions">
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
+  </nav>
+  <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
+</main>"
+`;
+
+exports[`renderStaticVerdict verdict danger 1`] = `
+"<header class="rj-static__header">
+  <div class="rj-static__bar">
+    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
+      <svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/></svg><svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/><text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text><text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>
+    </a>
+  </div>
+</header>
+<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
+  <p class="rj-static__eyebrow">Analyse partagée</p>
+  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
+  <p class="rj-static__verdict" data-verdict="danger" role="status" aria-label="Verdict : Danger">Danger</p>
+  <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
+  <p class="rj-static__explanation">Aucun signal critique détecté.</p>
+  <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
+  <nav class="rj-static__actions" aria-label="Actions">
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
+  </nav>
+  <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
+</main>"
+`;
+
+exports[`renderStaticVerdict verdict safe 1`] = `
+"<header class="rj-static__header">
+  <div class="rj-static__bar">
+    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
+      <svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/></svg><svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/><text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text><text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>
+    </a>
+  </div>
+</header>
+<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
+  <p class="rj-static__eyebrow">Analyse partagée</p>
+  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
+  <p class="rj-static__verdict" data-verdict="safe" role="status" aria-label="Verdict : Sain">Sain</p>
+  <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
+  <p class="rj-static__explanation">Aucun signal critique détecté.</p>
+  <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
+  <nav class="rj-static__actions" aria-label="Actions">
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
+  </nav>
+  <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
+</main>"
+`;
+
+exports[`renderStaticVerdict verdict warn 1`] = `
+"<header class="rj-static__header">
+  <div class="rj-static__bar">
+    <a class="rj-static__brand" href="/" aria-label="Raijin Shield, accueil">
+      <svg class="rj-static__logo rj-static__logo--mark" viewBox="8 2 48 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/></svg><svg class="rj-static__logo rj-static__logo--wordmark" viewBox="8 2 204 60" aria-hidden="true" focusable="false"><path class="rj-static__logo-shield" d="M32 4 L54 11.5 V29 C54 43.5 45 53.5 32 60 C19 53.5 10 43.5 10 29 V11.5 Z"/><path class="rj-static__logo-bolt" d="M36 13 L21 35 H30.5 L27 51 L43 27.5 H33.5 Z"/><text class="rj-static__logo-name" x="70" y="38" font-size="36" font-weight="700" letter-spacing="-1">Raijin</text><text class="rj-static__logo-tagline" x="72" y="56" font-size="12" font-weight="600" letter-spacing="5.2">SHIELD</text></svg>
+    </a>
+  </div>
+</header>
+<main data-rj-static="t" class="rj-static" aria-labelledby="rj-static-title">
+  <p class="rj-static__eyebrow">Analyse partagée</p>
+  <h1 id="rj-static-title" class="rj-static__title">Verdict Raijin</h1>
+  <p class="rj-static__verdict" data-verdict="warn" role="status" aria-label="Verdict : Prudence">Prudence</p>
+  <p class="rj-static__token">Symbole déclaré « BONK » (non vérifié)</p>
+  <p class="rj-static__explanation">Aucun signal critique détecté.</p>
+  <p class="rj-static__date">Analyse du <time datetime="2026-11-22T14:03:00.000Z">22 novembre 2026 à 15:03</time></p>
+  <nav class="rj-static__actions" aria-label="Actions">
+    <a class="rj-static__link" href="/analyse/8hVdV1j7khEZ1FukoH65EvpwuMZPszv1ikjNSbEnGypt">Réanalyser ce token</a>
+    <a class="rj-static__link rj-static__link--primary" href="/analyse">Analyser un autre token</a>
+  </nav>
+  <p class="rj-static__disclaimer" data-disclaimer>Information en lecture seule, pas un conseil en investissement.</p>
+</main>"
+`;

@@ -1,0 +1,196 @@
+import Stripe from 'stripe';
+import { loadBillingConfig } from '../config/billing-config';
+import { BillingUnavailableError, WebhookSignatureError } from './billing-provider';
+import { signFakeEvent } from './fake-billing.provider';
+import { STRIPE_API_VERSION, StripeBillingProvider } from './stripe-billing.provider';
+
+const ENV = {
+  BILLING_PROVIDER: 'stripe',
+  STRIPE_SECRET_KEY: 'sk_test_51abcdefghijklmnopqrstuvwxyz',
+  STRIPE_WEBHOOK_SECRET: 'whsec_abcdefghijklmnopqrstuvwxyz',
+  STRIPE_PRICE_PRO_MONTHLY: 'price_1Monthly0001',
+  STRIPE_PRICE_PRO_YEARLY: 'price_1Yearly00001',
+  STRIPE_PORTAL_CONFIGURATION_ID: 'bpc_1portal01',
+};
+const config = loadBillingConfig(ENV, { isProduction: false, appUrl: 'http://localhost:4200' });
+
+function price(interval: 'month' | 'year', cents: number, extra: Record<string, unknown> = {}) {
+  return { id: `price_${interval}`, active: true, type: 'recurring', currency: 'eur', unit_amount: cents, recurring: { interval, interval_count: 1 }, ...extra };
+}
+
+function notFound() {
+  return new Stripe.errors.StripeInvalidRequestError({ type: 'invalid_request_error', message: 'No such object', statusCode: 404 } as never);
+}
+
+/** Client Stripe simulé (aucun appel réseau). */
+function client() {
+  return {
+    customers: { create: jest.fn(async () => ({ id: 'cus_1' })), del: jest.fn(async () => ({ deleted: true })) },
+    checkout: {
+      sessions: {
+        create: jest.fn(async () => ({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' })),
+        list: jest.fn(async (): Promise<{ data: { id: string }[]; has_more: boolean }> => ({ data: [], has_more: false })),
+        expire: jest.fn(async (_id: string): Promise<unknown> => ({})),
+      },
+    },
+    billingPortal: { sessions: { create: jest.fn(async () => ({ url: 'https://billing.stripe.com/p/session/x' })) } },
+    prices: { retrieve: jest.fn(async (id: string) => (id.includes('Monthly') ? price('month', 1490) : price('year', 14900))) },
+    subscriptions: { retrieve: jest.fn(), list: jest.fn(), cancel: jest.fn(async () => ({})) },
+    invoices: { retrieve: jest.fn() },
+  };
+}
+
+function provider(mock = client()) {
+  return { mock, stripe: new StripeBillingProvider(config, mock as unknown as Stripe) };
+}
+
+describe('StripeBillingProvider', () => {
+  it('épingle la version d’API du SDK installé', () => {
+    expect(STRIPE_API_VERSION).toBe(Stripe.API_VERSION);
+  });
+
+  it('Checkout : prix de la configuration, metadata userId, aucun essai Stripe, clé d’idempotence', async () => {
+    const { mock, stripe } = provider();
+    const url = await stripe.createCheckoutSession({ userId: 'u1', customerId: 'cus_1', interval: 'year', successUrl: 'https://app/s', cancelUrl: 'https://app/c', idempotencyKey: 'checkout:u1:year:1' });
+    expect(url).toBe('https://checkout.stripe.com/c/pay/cs_test_1');
+    const [params, options] = mock.checkout.sessions.create.mock.calls[0] as unknown as [Record<string, unknown>, Record<string, unknown>];
+    expect(params).toMatchObject({
+      mode: 'subscription',
+      customer: 'cus_1',
+      client_reference_id: 'u1',
+      line_items: [{ price: 'price_1Yearly00001', quantity: 1 }],
+      metadata: { userId: 'u1' },
+      subscription_data: { metadata: { userId: 'u1' } },
+    });
+    expect(JSON.stringify(params)).not.toContain('trial');
+    expect(options).toEqual({ idempotencyKey: 'checkout:u1:year:1' });
+    expect(stripe.mode()).toBe('stripe');
+  });
+
+  it('client, portail (configuration optionnelle)', async () => {
+    const { mock, stripe } = provider();
+    await expect(stripe.createCustomer({ userId: 'u1', email: 'a@b.fr', idempotencyKey: 'customer:u1' })).resolves.toBe('cus_1');
+    expect(mock.customers.create).toHaveBeenCalledWith({ email: 'a@b.fr', metadata: { userId: 'u1' } }, { idempotencyKey: 'customer:u1' });
+    await expect(stripe.createPortalSession('cus_1', 'https://app/abonnement')).resolves.toBe('https://billing.stripe.com/p/session/x');
+    expect(mock.billingPortal.sessions.create).toHaveBeenCalledWith({ customer: 'cus_1', return_url: 'https://app/abonnement', locale: 'fr', configuration: 'bpc_1portal01' });
+  });
+
+  it('expire les sessions Checkout ouvertes du client (pagination, sessions déjà closes ignorées)', async () => {
+    const { mock, stripe } = provider();
+    mock.checkout.sessions.list
+      .mockResolvedValueOnce({ data: [{ id: 'cs_1' }, { id: 'cs_2' }], has_more: true })
+      .mockResolvedValueOnce({ data: [{ id: 'cs_3' }], has_more: false });
+    mock.checkout.sessions.expire.mockImplementation(async (id: string) => {
+      if (id === 'cs_2') throw new Stripe.errors.StripeInvalidRequestError({ type: 'invalid_request_error', message: 'Only open sessions can be expired', statusCode: 400 } as never);
+      return {};
+    });
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).resolves.toBe(2);
+    expect(mock.checkout.sessions.list.mock.calls).toEqual([
+      [{ customer: 'cus_1', status: 'open', limit: 100 }],
+      [{ customer: 'cus_1', status: 'open', limit: 100, starting_after: 'cs_2' }],
+    ]);
+    expect(mock.checkout.sessions.expire).toHaveBeenCalledWith('cs_1', {}, { idempotencyKey: 'expire:cs_1' });
+  });
+
+  it('expiration des sessions : panne réseau propagée, aucune session ouverte : 0', async () => {
+    const { mock, stripe } = provider();
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).resolves.toBe(0);
+    mock.checkout.sessions.list.mockResolvedValueOnce({ data: [{ id: 'cs_1' }], has_more: false });
+    mock.checkout.sessions.expire.mockRejectedValueOnce(new Error('réseau'));
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).rejects.toThrow('réseau');
+    mock.checkout.sessions.list.mockResolvedValueOnce({ data: [], has_more: true });
+    await expect(stripe.expireOpenCheckoutSessions('cus_1')).resolves.toBe(0);
+  });
+
+  it('prix Stripe différents de la configuration : indisponible', async () => {
+    const mock = client();
+    mock.prices.retrieve.mockImplementation(async (id: string) => (id.includes('Monthly') ? price('month', 1590) : price('year', 14900)));
+    const { stripe } = provider(mock);
+    await expect(stripe.verifyPrices()).resolves.toBe('mismatch');
+    expect(stripe.mode()).toBe('unavailable');
+    await expect(stripe.createCheckoutSession({ userId: 'u', customerId: 'c', interval: 'month', successUrl: '', cancelUrl: '', idempotencyKey: 'k' })).rejects.toBeInstanceOf(BillingUnavailableError);
+  });
+
+  it('vérification impossible (réseau) : réessayée au Checkout suivant', async () => {
+    const mock = client();
+    mock.prices.retrieve.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
+    const { stripe } = provider(mock);
+    await expect(stripe.verifyPrices()).resolves.toBe('error');
+    expect(stripe.mode()).toBe('stripe');
+    await expect(stripe.createCheckoutSession({ userId: 'u', customerId: 'c', interval: 'month', successUrl: '', cancelUrl: '', idempotencyKey: 'k' })).resolves.toContain('checkout.stripe.com');
+  });
+
+  it('relit abonnements et factures ; 404 → null ; autre erreur propagée', async () => {
+    const { mock, stripe } = provider();
+    mock.subscriptions.retrieve.mockResolvedValueOnce({
+      id: 'sub_1',
+      object: 'subscription',
+      customer: { id: 'cus_1' },
+      status: 'past_due',
+      cancel_at_period_end: false,
+      cancel_at: 1_800_000_000,
+      metadata: { userId: '0195A0C4-0000-7000-8000-0000000000AA' },
+      latest_invoice: { id: 'in_1' },
+      items: { data: [{ current_period_end: 1_800_000_000, price: { id: 'price_1Monthly0001', recurring: { interval: 'month' } } }] },
+    });
+    await expect(stripe.retrieveSubscription('sub_1')).resolves.toEqual({
+      id: 'sub_1',
+      customerId: 'cus_1',
+      status: 'past_due',
+      priceId: 'price_1Monthly0001',
+      interval: 'month',
+      currentPeriodEnd: new Date(1_800_000_000_000),
+      cancelAtPeriodEnd: true,
+      userId: '0195a0c4-0000-7000-8000-0000000000aa',
+      latestInvoiceId: 'in_1',
+    });
+    mock.subscriptions.retrieve.mockRejectedValueOnce(notFound());
+    await expect(stripe.retrieveSubscription('sub_x')).resolves.toBeNull();
+    mock.subscriptions.retrieve.mockRejectedValueOnce(new Error('panne'));
+    await expect(stripe.retrieveSubscription('sub_x')).rejects.toThrow('panne');
+    mock.invoices.retrieve.mockResolvedValueOnce({ id: 'in_1', object: 'invoice', currency: 'eur', amount_paid: 1490, subscription: 'sub_1', hosted_invoice_url: 'https://evil.example/x' });
+    await expect(stripe.retrieveInvoice('in_1')).resolves.toMatchObject({ amountPaidCents: 1490, currency: 'EUR', subscriptionId: 'sub_1', hostedInvoiceUrl: null });
+    mock.invoices.retrieve.mockRejectedValueOnce(notFound());
+    await expect(stripe.retrieveInvoice('in_x')).resolves.toBeNull();
+  });
+
+  it('clôture : liste les abonnements Pro, résilie sans prorata (idempotent), supprime le client (introuvable : ok)', async () => {
+    const { mock, stripe } = provider();
+    const sub = (id: string, status: string) => ({ id, object: 'subscription', customer: 'cus_1', status, metadata: {}, items: { data: [{ current_period_end: 1_800_000_000, price: { id: 'price_1Monthly0001' } }] } });
+    mock.subscriptions.list.mockResolvedValueOnce({ data: [sub('sub_a', 'active'), sub('sub_b', 'canceled'), sub('sub_c', 'past_due')] });
+    expect((await stripe.listProSubscriptions('cus_1')).map((s) => s.id)).toEqual(['sub_a', 'sub_c']);
+    expect(mock.subscriptions.list).toHaveBeenCalledWith({ customer: 'cus_1', status: 'all', limit: 100 });
+    mock.subscriptions.retrieve.mockResolvedValueOnce({ status: 'active' });
+    await stripe.cancelSubscriptionNow('sub_a');
+    expect(mock.subscriptions.cancel).toHaveBeenCalledWith('sub_a', { prorate: false, invoice_now: false }, { idempotencyKey: 'cancel:sub_a' });
+    mock.subscriptions.retrieve.mockResolvedValueOnce({ status: 'canceled' });
+    await stripe.cancelSubscriptionNow('sub_b');
+    expect(mock.subscriptions.cancel).toHaveBeenCalledTimes(1);
+    mock.subscriptions.retrieve.mockRejectedValueOnce(notFound());
+    await expect(stripe.cancelSubscriptionNow('sub_x')).resolves.toBeUndefined();
+    mock.subscriptions.retrieve.mockRejectedValueOnce(new Error('panne'));
+    await expect(stripe.cancelSubscriptionNow('sub_y')).rejects.toThrow('panne');
+    await stripe.deleteCustomer('cus_1');
+    expect(mock.customers.del).toHaveBeenCalledWith('cus_1');
+    mock.customers.del.mockRejectedValueOnce(notFound());
+    await expect(stripe.deleteCustomer('cus_1')).resolves.toBeUndefined();
+    mock.customers.del.mockRejectedValueOnce(new Error('panne'));
+    await expect(stripe.deleteCustomer('cus_1')).rejects.toThrow('panne');
+  });
+
+  it('vérifie la signature avec le secret du webhook', () => {
+    const { stripe } = provider();
+    const good = signFakeEvent(ENV.STRIPE_WEBHOOK_SECRET, 'invoice.paid', { id: 'in_1', object: 'invoice' }, { created: new Date() });
+    expect(stripe.constructWebhookEvent(good.payload, good.signature)).toMatchObject({ type: 'invoice.paid', livemode: false });
+    expect(() => stripe.constructWebhookEvent(good.payload, 'x'.repeat(3000))).toThrow(WebhookSignatureError);
+  });
+
+  it('sans configuration : indisponible, aucun appel possible', async () => {
+    const stripe = new StripeBillingProvider(loadBillingConfig({ BILLING_PROVIDER: 'stripe' }, { isProduction: false, appUrl: 'http://localhost:4200' }));
+    expect(stripe.mode()).toBe('unavailable');
+    await expect(stripe.verifyPrices()).resolves.toBe('error');
+    await expect(stripe.createPortalSession('cus_1', 'x')).rejects.toBeInstanceOf(BillingUnavailableError);
+    const event = signFakeEvent('whsec_x', 'invoice.paid', { id: 'in_1', object: 'invoice' }, { created: new Date() });
+    expect(() => stripe.constructWebhookEvent(event.payload, event.signature)).toThrow(WebhookSignatureError);
+  });
+});

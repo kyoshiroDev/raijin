@@ -1,0 +1,34 @@
+# Contexte de build de infra/docker/Dockerfile (racine du dépôt). Lu par BuildKit à la place d'un
+# .dockerignore racine. Règle n°1 : aucun secret ne doit entrer dans le contexte.
+**/.env
+**/.env.*
+.secrets
+**/.secrets
+infra/.env*
+
+# Dépendances et sorties (réinstallées / reconstruites dans l'image)
+**/node_modules
+dist
+tmp
+coverage
+out-tsc
+.nx
+.angular
+**/.astro
+libs/api/prisma/src/generated
+libs/bench/prisma/src/generated
+
+# Inutile au build
+.git
+.github
+.claude
+.vscode
+.idea
+docs
+legacy
+supabase
+test-results
+playwright-report
+apps/web-e2e
+apps/api-e2e
+**/*.log
