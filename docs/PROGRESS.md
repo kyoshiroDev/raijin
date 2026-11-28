@@ -452,3 +452,4 @@
 
 - Tour 7 de la relecture finale (`9e28d50`) : **REFUSÉ** (2 points : mots collés sur la landing livrée — CGU, confidentialité, comment ça marche ; audit à consigner pour `a10220e` et `9e28d50`). Corrections en cours.
 - **Audit 7 (security-reviewer) sur `a10220e`, `9e28d50`** : 0 critique, 0 important, 2 mineurs acceptés en l'état (perte d'e-mail journalisée `BILLING_MAIL_LOST` si le retrait du marqueur échoue → à surveiller ; double e-mail possible si un rejeu arrive après la purge du jobId BullMQ, 24 h / 1 000 jobs) ; point 2 du tour 7 clos.
+- Tour 8 de la relecture finale (`73394a1`) : **REFUSÉ** (1 point : tags Nx absents sur `web-e2e`). Correction en cours.
