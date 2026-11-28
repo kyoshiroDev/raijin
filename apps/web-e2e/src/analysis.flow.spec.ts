@@ -19,8 +19,8 @@ import { openPage } from './support/pages';
  * proxy /api) et build de production (4310, /t/<mint> servi par l'API), API réelle en mode fixtures.
  */
 /**
- * Copie de `EXTERNAL_LINK_HOSTS` (@raijin/shared-contracts, sources.ts) : web-e2e n'a pas de tag Nx
- * et ne peut donc importer aucune lib (frontières de modules). À tenir synchronisée.
+ * Copie de `EXTERNAL_LINK_HOSTS` (@raijin/shared-contracts, sources.ts) : copie volontaire :
+ * le test vérifie le rendu attendu, indépendamment de la source. À tenir synchronisée.
  */
 const EXTERNAL_LINK_HOSTS = ['dexscreener.com', 'geckoterminal.com', 'jup.ag', 'rugcheck.xyz', 'solscan.io', 'explorer.solana.com', 'pump.fun', 'birdeye.so'];
 const DISCLAIMER = 'Information en lecture seule, pas un conseil en investissement.';

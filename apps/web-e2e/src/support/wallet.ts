@@ -31,8 +31,8 @@ export const WALLET_MINTS = { safe: '9N3J88UmdXNRJVUCgTjuR52tWLNmzkzxg1atuBYnuRe
 export const T22_DELEGATE = 'Uwbx7KF9hCB7YCYJxqZhVXD8Dhgezn7AWVWdiDDNAw8';
 
 /**
- * Copie de `WALLET_REVOKE_GUIDE_URLS` (@raijin/shared-contracts, wallet/revoke.ts) : web-e2e n'a pas de tag Nx
- * et ne peut importer aucune lib (frontières de modules). À tenir synchronisée.
+ * Copie de `WALLET_REVOKE_GUIDE_URLS` (@raijin/shared-contracts, wallet/revoke.ts) : copie volontaire :
+ * le test vérifie le rendu attendu, indépendamment de la source. À tenir synchronisée.
  */
 export const REVOKE_GUIDE_URLS = [
   'https://help.phantom.com/articles/revoke-token-approvals-19142125651731',

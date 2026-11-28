@@ -18,7 +18,7 @@ const CLI = join(workspaceRoot, 'dist', 'apps', 'api', 'cli.js');
 const run = promisify(execFile);
 
 /**
- * Libellés copiés des contrats (web-e2e n'a pas de tag Nx et n'importe pas @raijin/shared-contracts) :
+ * Libellés copiés des contrats (copie volontaire : le test vérifie le rendu attendu, indépendamment de la source) :
  * `ADMIN_USER_ACTION_LABELS`, `ADMIN_AUDIT_ACTION_LABELS`, `ADMIN_ERROR_MESSAGES`, `NOT_CONNECTED_LABEL`.
  */
 export const ADMIN_LABELS = {

@@ -2,6 +2,10 @@
   "name": "web-e2e",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
+  "tags": [
+    "scope:web",
+    "type:app"
+  ],
   "sourceRoot": "apps/web-e2e/src",
   "implicitDependencies": [
     "web",
